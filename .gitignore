@@ -1,0 +1,8 @@
+# Compilación
+src-tauri/target/
+src-tauri/gen/
+
+# Datos de usuario: viven junto al .exe, no aquí
+instancias/
+base/
+datos/

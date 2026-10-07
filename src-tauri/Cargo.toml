@@ -1,0 +1,36 @@
+[package]
+name = "parabellum"
+version = "0.1.0"
+description = "Parabellum: launcher de Minecraft no premium"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "Parabellum"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# custom-protocol: la interfaz va dentro del .exe (sin servidor de desarrollo)
+tauri = { version = "2", features = ["custom-protocol"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["fs", "io-util", "sync", "time", "macros", "rt-multi-thread", "net"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "gzip"] }
+futures = "0.3"
+sha1 = "0.10"
+md-5 = "0.10"
+hex = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+regex = "1"
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
+thiserror = "2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
