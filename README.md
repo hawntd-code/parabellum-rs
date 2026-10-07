@@ -35,12 +35,8 @@ escriben el resultado en `datos/logs/comando.txt`.
 
 ## Hoja de ruta
 
-0. Proyecto y herramientas ✔
-1. Launcher mínimo: nombre y UUID offline, versiones de Mojang, descarga con Java, jugar ✔ (en pruebas)
-2. Servidores: servidor de sesión local (mundos LAN/e4mc en modo online), pruebas con servidores públicos
-3. Interfaz completa
-4. Fabric y mods
-5. Paquetes y Google Drive (versiones para la escuela), auto-actualización
-6. Forge/NeoForge e instancias de CurseForge
-7. Social: cuentas de Google, amigos, presencia, unirse
-8. Chat
+Ver [ROADMAP.md](ROADMAP.md).
+
+## Créditos
+
+Fuente [Inter](https://github.com/rsms/inter) bajo la SIL Open Font License (`ui/fonts/OFL.txt`).
