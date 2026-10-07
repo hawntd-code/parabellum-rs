@@ -1,6 +1,7 @@
 // Sin ventana de consola en Windows.
 #![windows_subsystem = "windows"]
 
+mod content;
 mod download;
 mod instances;
 mod java;
@@ -11,8 +12,9 @@ mod settings;
 mod version;
 
 use serde::Serialize;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use instances::Instance;
 use paths::Paths;
@@ -21,6 +23,10 @@ use settings::Settings;
 struct AppState {
     paths: Paths,
     settings: Mutex<Settings>,
+    /// Juegos abiertos: id de la instancia -> PID.
+    games: Mutex<HashMap<String, u32>>,
+    /// Juegos que el jugador cerró desde el launcher (no cuentan como error).
+    stopped: Mutex<HashSet<String>>,
 }
 
 #[derive(Serialize)]
@@ -122,40 +128,160 @@ async fn crear_instancia(app: AppHandle, state: State<'_, AppState>, nombre: Str
     instances::create(&nombre, &version, &paths)
 }
 
+/// Aviso a la interfaz cuando un juego se cierra (con el motivo si fue por un error).
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct GameClosed {
+    id: String,
+    code: Option<i32>,
+    reason: Option<String>,
+}
+
 #[tauri::command]
-async fn jugar(state: State<'_, AppState>, id: String, servidor: Option<String>) -> Result<u32, String> {
+async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor: Option<String>) -> Result<u32, String> {
     let paths = state.paths.clone();
     let settings = state.settings.lock().unwrap().clone();
     if let Some(problem) = settings::validate_username(&settings.username) {
         return Err(format!("{problem} Cámbialo en Ajustes."));
     }
     let instance = instances::find(&paths, &id).ok_or("No se encontró la instancia.")?;
-    if launch::is_running(&instance) {
+    if state.games.lock().unwrap().contains_key(&id) {
         return Err("Este juego ya está abierto.".into());
     }
-    tauri::async_runtime::spawn_blocking(move || {
-        let mut plan = launch::plan(&instance, &settings, &paths)?;
+    let launched = instance.clone();
+    let mut child = tauri::async_runtime::spawn_blocking(move || {
+        let mut plan = launch::plan(&launched, &settings, &paths)?;
         if let Some(address) = servidor.filter(|s| !s.trim().is_empty()) {
-            plan.join_server(address.trim(), &instance.minecraft_version);
+            plan.join_server(address.trim(), &launched.minecraft_version);
         }
-        launch::start(&plan, &instance)
+        launch::start(&plan, &launched)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())??;
+
+    let pid = child.id();
+    let started = chrono::Utc::now().timestamp_millis();
+    state.games.lock().unwrap().insert(id.clone(), pid);
+    // Un hilo espera a que el juego termine para avisar a la interfaz (y explicar el error si lo hubo).
+    std::thread::spawn(move || {
+        let code = child.wait().ok().and_then(|s| s.code());
+        let state = app.state::<AppState>();
+        let stopped = state.stopped.lock().unwrap().remove(&id);
+        state.games.lock().unwrap().remove(&id);
+        let failed = !stopped && code.is_some_and(|c| c != 0);
+        let reason = if failed { launch::crash_reason(&instance, started) } else { None };
+        let _ = app.emit("juego-cerrado", GameClosed { id, code: if stopped { None } else { code }, reason });
+    });
+    Ok(pid)
 }
 
 #[tauri::command]
-async fn juegos_abiertos(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+fn detener(state: State<AppState>, id: String) -> Result<(), String> {
+    let pid = *state.games.lock().unwrap().get(&id).ok_or("Ese juego no está abierto.")?;
+    state.stopped.lock().unwrap().insert(id);
+    launch::kill(pid);
+    Ok(())
+}
+
+#[tauri::command]
+fn juegos_abiertos(state: State<AppState>) -> Vec<String> {
+    state.games.lock().unwrap().keys().cloned().collect()
+}
+
+/// Juegos que siguen abiertos de una sesión anterior del launcher: se vigilan hasta que se cierren.
+fn adopt_running_games(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    for instance in instances::list(&state.paths) {
+        let Some(pid) = launch::running_pid(&instance) else { continue };
+        state.games.lock().unwrap().insert(instance.id.clone(), pid);
+        let app = app.clone();
+        std::thread::spawn(move || {
+            while launch::running_pid(&instance) == Some(pid) {
+                std::thread::sleep(std::time::Duration::from_secs(5));
+            }
+            app.state::<AppState>().games.lock().unwrap().remove(&instance.id);
+            let _ = app.emit("juego-cerrado", GameClosed { id: instance.id, code: None, reason: None });
+        });
+    }
+}
+
+// ================= Gestión de instancias
+
+fn instance_or_error(state: &AppState, id: &str) -> Result<Instance, String> {
+    instances::find(&state.paths, id).ok_or_else(|| "No se encontró la instancia.".into())
+}
+
+#[tauri::command]
+fn editar_instancia(state: State<AppState>, id: String, nombre: String, ram_gb: Option<u32>, jvm_args: Vec<String>) -> Result<Instance, String> {
+    let instance = instance_or_error(&state, &id)?;
+    instances::update(&instance, &nombre, ram_gb, &jvm_args)?;
+    instance_or_error(&state, &id)
+}
+
+#[tauri::command]
+fn icono_instancia(state: State<AppState>, id: String, png: Option<String>) -> Result<Instance, String> {
+    let instance = instance_or_error(&state, &id)?;
+    instances::set_icon(&instance, png.as_deref())?;
+    instance_or_error(&state, &id)
+}
+
+#[tauri::command]
+async fn duplicar_instancia(state: State<'_, AppState>, id: String) -> Result<Instance, String> {
+    let instance = instance_or_error(&state, &id)?;
     let paths = state.paths.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        instances::list(&paths)
-            .into_iter()
-            .filter(|i| i.state_dir().join("juego.pid").exists() && launch::is_running(i))
-            .map(|i| i.id)
-            .collect()
-    })
-    .await
-    .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || instances::duplicate(&instance, &paths)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn eliminar_instancia(state: State<AppState>, id: String) -> Result<(), String> {
+    if state.games.lock().unwrap().contains_key(&id) {
+        return Err("Cierra el juego antes de eliminar la instancia.".into());
+    }
+    instances::delete(&instance_or_error(&state, &id)?)
+}
+
+#[tauri::command]
+async fn contenido(state: State<'_, AppState>, id: String) -> Result<content::Content, String> {
+    let instance = instance_or_error(&state, &id)?;
+    tauri::async_runtime::spawn_blocking(move || content::list(&instance)).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn activar_contenido(state: State<AppState>, id: String, tipo: String, archivo: String, activo: bool) -> Result<String, String> {
+    content::set_enabled(&instance_or_error(&state, &id)?, &tipo, &archivo, activo)
+}
+
+#[tauri::command]
+fn eliminar_contenido(state: State<AppState>, id: String, tipo: String, archivo: String) -> Result<(), String> {
+    content::delete(&instance_or_error(&state, &id)?, &tipo, &archivo)
+}
+
+#[tauri::command]
+fn abrir_carpeta_contenido(state: State<AppState>, id: String, tipo: String) -> Result<(), String> {
+    let folder = content::folder(&instance_or_error(&state, &id)?, &tipo).ok_or("Categoría desconocida.")?;
+    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    std::process::Command::new("explorer").arg(folder).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LogText {
+    file: String,
+    text: String,
+}
+
+#[tauri::command]
+fn registro(state: State<AppState>, id: String) -> Result<LogText, String> {
+    let (file, text) = launch::read_log(&instance_or_error(&state, &id)?, 400_000);
+    Ok(LogText { file, text })
+}
+
+#[tauri::command]
+fn abrir_registro(state: State<AppState>, id: String) -> Result<(), String> {
+    let instance = instance_or_error(&state, &id)?;
+    let folder = instance.game_dir.join("logs");
+    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    std::process::Command::new("explorer").arg(folder).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
 #[derive(Serialize)]
@@ -249,7 +375,75 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             if let Some(server) = args.get(2) {
                 plan.join_server(server, &instance.minecraft_version);
             }
-            Ok(format!("Abierto, PID {}", launch::start(&plan, &instance)?))
+            Ok(format!("Abierto, PID {}", launch::start(&plan, &instance)?.id()))
+        }
+        "--probar-gestion" => {
+            // Prueba de la fase 3 sobre una COPIA de la instancia indicada (la original no se toca).
+            let original = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
+            let mut out = String::new();
+            let copy = instances::duplicate(&original, paths)?;
+            out += &format!("duplicada: {} -> carpeta {}\n", copy.name, copy.id);
+
+            instances::update(&copy, "Prueba fase 3", Some(3), &["-XX:+UseG1GC".to_string()])?;
+            let edited = instances::find(paths, &copy.id).ok_or("No se encontró la copia.")?;
+            out += &format!("editada: nombre={} ram={:?} jvm={:?}\n", edited.name, edited.ram_gb, edited.jvm_args);
+
+            // PNG mínimo de 1×1 píxel
+            let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+            instances::set_icon(&edited, Some(png))?;
+            out += &format!("icono puesto: {}\n", instances::find(paths, &copy.id).and_then(|i| i.icon).is_some());
+            instances::set_icon(&edited, None)?;
+            out += &format!("icono quitado: {}\n", instances::find(paths, &copy.id).and_then(|i| i.icon).is_none());
+
+            // Un "mod" falso para probar activar/desactivar y la papelera
+            let mods = edited.game_dir.join("mods");
+            std::fs::create_dir_all(&mods).map_err(|e| e.to_string())?;
+            std::fs::write(mods.join("prueba.jar"), b"no es un jar").map_err(|e| e.to_string())?;
+            let renamed = content::set_enabled(&edited, "mods", "prueba.jar", false)?;
+            out += &format!("mod desactivado: {renamed}, en la lista: {}\n", content::list(&edited).mods.iter().any(|m| !m.enabled));
+            let restored = content::set_enabled(&edited, "mods", &renamed, true)?;
+            out += &format!("mod activado: {restored}\n");
+            content::delete(&edited, "mods", &restored)?;
+            out += &format!("mod a la papelera: {}\n", !mods.join(&restored).exists());
+
+            // Un argumento de Java inválido hace que Java se cierre con error al momento
+            instances::update(&edited, "Prueba fase 3", None, &["-XX:+OpcionQueNoExiste".to_string()])?;
+            let broken = instances::find(paths, &copy.id).ok_or("No se encontró la copia.")?;
+            let started = chrono::Utc::now().timestamp_millis();
+            let plan = launch::plan(&broken, settings, paths)?;
+            let code = launch::start(&plan, &broken)?.wait().map_err(|e| e.to_string())?.code();
+            out += &format!("juego con error: código {code:?}\nmotivo: {:?}\n", launch::crash_reason(&broken, started));
+            out += &format!(
+                "  (salida de Java: {:?}; latest.log existe: {})\n",
+                std::fs::read_to_string(broken.state_dir().join("salida-java.log")).unwrap_or_default(),
+                broken.game_dir.join("logs").join("latest.log").exists()
+            );
+
+            instances::delete(&broken)?;
+            out += &format!("copia a la papelera: {}\n", !broken.folder.exists());
+            Ok(out)
+        }
+        "--contenido" => {
+            let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
+            let c = content::list(&instance);
+            let mut out = format!(
+                "mods {} · resource packs {} · shaders {} · mundos {}\n",
+                c.mods.len(),
+                c.resourcepacks.len(),
+                c.shaderpacks.len(),
+                c.worlds.len()
+            );
+            for item in c.mods.iter().take(12) {
+                out += &format!(
+                    "  {}{} {} [{}] icono={}\n",
+                    if item.enabled { "" } else { "(desactivado) " },
+                    item.name,
+                    item.version.as_deref().unwrap_or("?"),
+                    item.file,
+                    item.icon.is_some()
+                );
+            }
+            Ok(out)
         }
         other => Err(format!("Comando desconocido: {other}")),
     }
@@ -266,7 +460,11 @@ fn main() {
         return;
     }
     tauri::Builder::default()
-        .manage(AppState { paths, settings: Mutex::new(settings) })
+        .manage(AppState { paths, settings: Mutex::new(settings), games: Mutex::default(), stopped: Mutex::default() })
+        .setup(|app| {
+            adopt_running_games(app.handle());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             estado_inicial,
             guardar_ajustes,
@@ -276,6 +474,17 @@ fn main() {
             crear_instancia,
             jugar,
             juegos_abiertos,
+            detener,
+            editar_instancia,
+            icono_instancia,
+            duplicar_instancia,
+            eliminar_instancia,
+            contenido,
+            activar_contenido,
+            eliminar_contenido,
+            abrir_carpeta_contenido,
+            registro,
+            abrir_registro,
             listar_java,
             abrir_carpeta
         ])

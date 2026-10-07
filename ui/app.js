@@ -26,6 +26,12 @@ const state = {
   selectedVersion: null,
   nameEdited: false,
   creating: false,
+  tab: "content",
+  kind: "mods",
+  content: null,
+  contentFor: null,
+  log: null,
+  editing: null,
 };
 
 const pages = {
@@ -73,6 +79,7 @@ const palettes = [
 ];
 
 function art(instance, size = "") {
+  if (instance.icon) return `<div class="art has-icon ${size}"><img src="${instance.icon}" alt=""></div>`;
   const h = hashOf(instance.name);
   const p = palettes[h % palettes.length];
   const id = `g${h}`;
@@ -132,7 +139,7 @@ function contextMenu(anchor, items) {
   $$(".menu").forEach((m) => m.remove());
   const menu = document.createElement("div");
   menu.className = "menu";
-  menu.innerHTML = items.map((item, i) => `<button data-i="${i}">${icon(item.icon)}${escapeHtml(item.label)}</button>`).join("");
+  menu.innerHTML = items.map((item, i) => `<button data-i="${i}" class="${item.danger ? "danger" : ""}">${icon(item.icon)}${escapeHtml(item.label)}</button>`).join("");
   document.body.appendChild(menu);
   const rect = anchor.getBoundingClientRect();
   menu.style.top = `${Math.min(rect.bottom + 6, innerHeight - menu.offsetHeight - 10)}px`;
@@ -302,17 +309,278 @@ function renderInstance() {
     <dt>Versión del perfil</dt><dd>${escapeHtml(i.versionId)}</dd>
     <dt>Carpeta</dt><dd>instancias\\${escapeHtml(i.id)}</dd>
     <dt>Memoria</dt><dd>${i.ramGb ? `${i.ramGb} GB (propia de esta instancia)` : `${state.settings.ramGb} GB (la general de Ajustes)`}</dd>
+    <dt>Argumentos de Java</dt><dd>${i.jvmArgs.length ? escapeHtml(i.jvmArgs.join(" ")) : "—"}</dd>
     <dt>Creada</dt><dd>${i.created ? new Date(i.created).toLocaleString("es-MX") : "—"}</dd>`;
   const running = state.running.has(i.id);
-  $("#detail-play").disabled = running;
-  $("#detail-play span").textContent = running ? "En juego" : "Jugar";
+  $("#detail-play").classList.toggle("hidden", running);
+  $("#detail-stop").classList.toggle("hidden", !running);
   $("#detail-join").disabled = running;
+  // Al abrir otra instancia se vuelve a la pestaña Contenido con su contenido.
+  if (state.contentFor !== i.id) {
+    state.contentFor = i.id;
+    state.content = null;
+    selectTab("content");
+  }
 }
 
 function selectTab(tab) {
+  state.tab = tab;
   for (const button of $$("#detail-tabs .tab")) button.classList.toggle("active", button.dataset.tab === tab);
-  $("#tab-overview").classList.toggle("hidden", tab !== "overview");
-  $("#tab-server").classList.toggle("hidden", tab !== "server");
+  for (const name of ["content", "logs", "server", "overview"]) $(`#tab-${name}`).classList.toggle("hidden", tab !== name);
+  if (tab === "content" && !state.content) loadContent();
+  if (tab === "logs") loadLog(true);
+}
+
+// ---------- Contenido (mods, resource packs, shaders y mundos) ----------
+const kindNames = { mods: "mods", resourcepacks: "resource packs", shaderpacks: "shaders", worlds: "mundos" };
+const kindIcons = { mods: "puzzle", resourcepacks: "image", shaderpacks: "sun-sparkle", worlds: "globe" };
+
+async function loadContent() {
+  const id = state.current?.id;
+  if (!id) return;
+  $("#content-list").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
+  try {
+    const content = await invoke("contenido", { id });
+    if (state.current?.id !== id) return;
+    state.content = content;
+    renderContent();
+  } catch (error) {
+    $("#content-list").innerHTML = `<div class="content-empty">${escapeHtml(error)}</div>`;
+  }
+}
+
+function renderContent() {
+  const content = state.content;
+  if (!content) return;
+  for (const button of $$("#content-kinds .kind")) {
+    button.classList.toggle("active", button.dataset.kind === state.kind);
+    $("span", button).textContent = content[button.dataset.kind].length;
+  }
+  const query = $("#content-search").value.trim().toLowerCase();
+  const items = content[state.kind].filter((i) => !query || `${i.name} ${i.file} ${i.authors ?? ""}`.toLowerCase().includes(query));
+  if (!items.length) {
+    const none = content[state.kind].length === 0;
+    $("#content-list").innerHTML = `<div class="content-empty">${
+      none ? `Esta instancia no tiene ${kindNames[state.kind]}. Puedes copiarlos con "Abrir carpeta".` : "Nada coincide con la búsqueda."
+    }</div>`;
+    return;
+  }
+  const world = state.kind === "worlds";
+  $("#content-list").innerHTML = items
+    .slice(0, 600)
+    .map((item, index) => {
+      const sub = world ? `Jugado ${ago(item.modified).toLowerCase()}` : item.authors ? `por ${item.authors}` : item.file;
+      return `<div class="content-item ${item.enabled ? "" : "disabled"}" style="animation-delay:${Math.min(index, 20) * 15}ms">
+        <div class="content-icon">${item.icon ? `<img src="${item.icon}" alt="">` : icon(kindIcons[state.kind])}</div>
+        <div class="grow"><div class="c-name">${escapeHtml(item.name)}</div><div class="c-sub">${escapeHtml(sub)}</div></div>
+        ${world ? "" : `<div class="c-version">${escapeHtml(item.version ?? "")}</div>
+          <label class="toggle" title="${item.enabled ? "Desactivar" : "Activar"}"><input type="checkbox" data-toggle="${escapeHtml(item.file)}" ${item.enabled ? "checked" : ""}><span></span></label>`}
+        <button class="circle-btn" data-remove="${escapeHtml(item.file)}" title="Mandar a la papelera">${icon("trash")}</button>
+      </div>`;
+    })
+    .join("");
+}
+
+async function toggleContent(file, enabled) {
+  try {
+    const renamed = await invoke("activar_contenido", { id: state.current.id, tipo: state.kind, archivo: file, activo: enabled });
+    const item = state.content[state.kind].find((i) => i.file === file);
+    if (item) Object.assign(item, { file: renamed, enabled });
+    renderContent();
+  } catch (error) {
+    toast(String(error), "error");
+    renderContent();
+  }
+}
+
+async function removeContent(file) {
+  const item = state.content[state.kind].find((i) => i.file === file);
+  const ok = await confirmAction({
+    title: state.kind === "worlds" ? "¿Eliminar este mundo?" : "¿Eliminar este archivo?",
+    text: `"${item?.name ?? file}" se moverá a la papelera de reciclaje; desde ahí lo puedes recuperar.`,
+    ok: "Mandar a la papelera",
+  });
+  if (!ok) return;
+  try {
+    await invoke("eliminar_contenido", { id: state.current.id, tipo: state.kind, archivo: file });
+    state.content[state.kind] = state.content[state.kind].filter((i) => i.file !== file);
+    renderContent();
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+// ---------- Registro del juego ----------
+let logTimer = null;
+
+async function loadLog(scrollToEnd = false) {
+  clearTimeout(logTimer);
+  const id = state.current?.id;
+  if (!id || state.page !== "instance" || state.tab !== "logs") return;
+  try {
+    const log = await invoke("registro", { id });
+    state.log = log;
+    renderLog(scrollToEnd);
+  } catch (error) {
+    $("#log").textContent = String(error);
+  }
+  // Mientras el juego está abierto el registro se actualiza solo.
+  if (state.running.has(id)) logTimer = setTimeout(() => loadLog(false), 2000);
+}
+
+function renderLog(scrollToEnd) {
+  const box = $("#log");
+  const query = $("#log-search").value.trim().toLowerCase();
+  const lines = (state.log?.text ?? "").split("\n").filter((l) => !query || l.toLowerCase().includes(query));
+  $("#log-file").textContent = state.log?.file ? `Mostrando ${state.log.file}` : "";
+  box.innerHTML = lines.length && state.log?.text
+    ? lines
+        .slice(-4000)
+        .map((line) => {
+          const css = /\/(ERROR|FATAL)\]|Exception|^\s+at /.test(line) ? "l-error" : /\/WARN\]/.test(line) ? "l-warn" : /\[CHAT\]/.test(line) ? "l-chat" : /\/DEBUG\]/.test(line) ? "l-dim" : "";
+          return css ? `<span class="${css}">${escapeHtml(line)}</span>` : escapeHtml(line);
+        })
+        .join("\n")
+    : `<span class="l-dim">${query ? "Ninguna línea coincide." : "Esta instancia todavía no tiene registro: se crea al abrir el juego."}</span>`;
+  if (scrollToEnd || $("#log-follow").checked) box.scrollTop = box.scrollHeight;
+}
+
+// ---------- Acciones sobre instancias ----------
+function instanceMenuItems(id) {
+  return [
+    { icon: "info", label: "Ver instancia", action: () => navigate("instance", id) },
+    { icon: "settings", label: "Ajustes de la instancia", action: () => openEdit(id) },
+    { icon: "folder", label: "Abrir carpeta", action: () => invoke("abrir_carpeta", { id }) },
+    { icon: "duplicate", label: "Duplicar", action: () => duplicateInstance(id) },
+    { icon: "trash", label: "Eliminar", danger: true, action: () => deleteInstance(id) },
+  ];
+}
+
+async function duplicateInstance(id) {
+  const instance = state.instances.find((i) => i.id === id);
+  toast(`Duplicando ${instance?.name}… (se copian también sus mundos y mods)`);
+  try {
+    const copy = await invoke("duplicar_instancia", { id });
+    await reloadInstances();
+    toast(`Se creó ${copy.name}.`);
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+async function deleteInstance(id) {
+  const instance = state.instances.find((i) => i.id === id);
+  const ok = await confirmAction({
+    title: `¿Eliminar ${instance?.name}?`,
+    text: "La instancia, con sus mundos y mods, se moverá a la papelera de reciclaje. Desde ahí la puedes recuperar.",
+    ok: "Mandar a la papelera",
+  });
+  if (!ok) return;
+  try {
+    await invoke("eliminar_instancia", { id });
+    if (state.current?.id === id) navigate("home");
+    state.back = state.back.filter((h) => h.instanceId !== id);
+    state.forward = state.forward.filter((h) => h.instanceId !== id);
+    await reloadInstances();
+    toast(`${instance?.name} se movió a la papelera.`);
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+function openEdit(id) {
+  const instance = state.instances.find((i) => i.id === id);
+  if (!instance) return;
+  state.editing = { id, icon: instance.icon ?? null, iconChanged: false };
+  $("#edit-name").value = instance.name;
+  $("#edit-ram-own").checked = !!instance.ramGb;
+  $("#edit-ram").max = $("#ram").max || 16;
+  $("#edit-ram").value = instance.ramGb ?? state.settings.ramGb;
+  $("#edit-jvm").value = instance.jvmArgs.join(" ");
+  updateEditTexts();
+  openModal("#edit-dialog");
+}
+
+function updateEditTexts() {
+  const name = $("#edit-name").value.trim() || "Instancia";
+  $("#edit-art").outerHTML = art({ name, icon: state.editing?.icon }, "large").replace('class="art', 'id="edit-art" class="art');
+  $("#edit-icon-remove").classList.toggle("hidden", !state.editing?.icon);
+  $("#edit-ram-box").classList.toggle("hidden", !$("#edit-ram-own").checked);
+  $("#edit-ram-value").textContent = `${$("#edit-ram").value} GB`;
+}
+
+/** Recorta la imagen elegida a un cuadrado de 256 px y la convierte a PNG. */
+function imageToPng(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      const size = Math.min(image.width, image.height);
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 256;
+      const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingEnabled = size > 64; // los iconos pixelados se mantienen nítidos
+      ctx.drawImage(image, (image.width - size) / 2, (image.height - size) / 2, size, size, 0, 0, 256, 256);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    image.onerror = () => reject("No se pudo leer esa imagen.");
+    image.src = url;
+  });
+}
+
+async function saveEdit() {
+  const { id, icon: newIcon, iconChanged } = state.editing;
+  try {
+    let updated = await invoke("editar_instancia", {
+      id,
+      nombre: $("#edit-name").value,
+      ramGb: $("#edit-ram-own").checked ? Number($("#edit-ram").value) : null,
+      jvmArgs: $("#edit-jvm").value.split(/\s+/).filter(Boolean),
+    });
+    if (iconChanged) updated = await invoke("icono_instancia", { id, png: newIcon });
+    closeModal("#edit-dialog");
+    await reloadInstances();
+    if (state.current?.id === id) {
+      state.current = state.instances.find((i) => i.id === id) ?? updated;
+      renderInstance();
+      $("#crumb-text").textContent = state.current.name;
+    }
+    toast("Cambios guardados.");
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+/** Ventana de confirmación propia (en lugar de la del sistema). */
+function confirmAction({ title, text, ok }) {
+  return new Promise((resolve) => {
+    $("#confirm-title").textContent = title;
+    $("#confirm-text").textContent = text;
+    $("#confirm-ok").textContent = ok;
+    const finish = (value) => {
+      closeModal("#confirm-dialog");
+      resolve(value);
+    };
+    $("#confirm-ok").onclick = () => finish(true);
+    $("#confirm-cancel").onclick = () => finish(false);
+    state.confirmCancel = () => finish(false);
+    openModal("#confirm-dialog");
+  });
+}
+
+/** Aviso del backend: un juego se cerró. Si fue por un error, se explica el motivo. */
+function onGameClosed({ id, code, reason }) {
+  state.running.delete(id);
+  refreshRunning();
+  if (state.page === "instance" && state.current?.id === id && state.tab === "logs") loadLog(false);
+  if (code === null || code === undefined || code === 0) return;
+  const instance = state.instances.find((i) => i.id === id);
+  state.crashFor = id;
+  $("#crash-title").textContent = `${instance?.name ?? "El juego"} se cerró con un error`;
+  $("#crash-reason").textContent = reason ?? `Java terminó con el código ${code}. Revisa el registro completo para ver el motivo.`;
+  appWindow?.unminimize?.();
+  openModal("#crash-dialog");
 }
 
 async function play(id, server = null) {
@@ -633,10 +901,7 @@ function wireEvents() {
     if (more) {
       event.stopPropagation();
       const id = more.dataset.more;
-      return contextMenu(more, [
-        { icon: "info", label: "Ver detalles", action: () => navigate("instance", id) },
-        { icon: "folder", label: "Abrir carpeta", action: () => invoke("abrir_carpeta", { id }) },
-      ]);
+      return contextMenu(more, instanceMenuItems(id));
     }
     const open = event.target.closest("[data-open]");
     if (open) navigate("instance", open.dataset.open);
@@ -665,8 +930,91 @@ function wireEvents() {
 
   // Detalle
   $("#detail-play").onclick = () => state.current && play(state.current.id);
-  $("#detail-folder").onclick = () => state.current && invoke("abrir_carpeta", { id: state.current.id });
+  $("#detail-stop").onclick = async () => {
+    try {
+      await invoke("detener", { id: state.current.id });
+    } catch (error) {
+      toast(String(error), "error");
+    }
+  };
+  $("#detail-edit").onclick = () => state.current && openEdit(state.current.id);
+  $("#detail-more").onclick = (event) => {
+    event.stopPropagation();
+    if (state.current) contextMenu($("#detail-more"), instanceMenuItems(state.current.id).slice(2));
+  };
   for (const tab of $$("#detail-tabs .tab")) tab.onclick = () => selectTab(tab.dataset.tab);
+
+  // Contenido
+  for (const button of $$("#content-kinds .kind")) {
+    button.onclick = () => {
+      state.kind = button.dataset.kind;
+      renderContent();
+    };
+  }
+  $("#content-search").oninput = renderContent;
+  $("#content-folder").onclick = () => invoke("abrir_carpeta_contenido", { id: state.current.id, tipo: state.kind });
+  $("#content-list").onchange = (event) => {
+    const toggle = event.target.closest("[data-toggle]");
+    if (toggle) toggleContent(toggle.dataset.toggle, toggle.checked);
+  };
+  $("#content-list").onclick = (event) => {
+    const remove = event.target.closest("[data-remove]");
+    if (remove) removeContent(remove.dataset.remove);
+  };
+
+  // Registro
+  $("#log-search").oninput = () => renderLog(false);
+  $("#log-follow").onchange = () => renderLog(true);
+  $("#log-copy").onclick = async () => {
+    await navigator.clipboard.writeText(state.log?.text ?? "");
+    toast("Registro copiado: pégalo donde quieras pedir ayuda.");
+  };
+  $("#log-folder").onclick = () => invoke("abrir_registro", { id: state.current.id });
+
+  // Clic derecho sobre una instancia (mosaicos, filas y barra lateral)
+  document.addEventListener("contextmenu", (event) => {
+    const target = event.target.closest("[data-open]");
+    if (!target) return;
+    event.preventDefault();
+    contextMenu(target, instanceMenuItems(target.dataset.open));
+  });
+
+  // Ajustes de la instancia
+  $("#edit-close").onclick = () => closeModal("#edit-dialog");
+  $("#edit-cancel").onclick = () => closeModal("#edit-dialog");
+  $("#edit-dialog").onmousedown = (event) => event.target.id === "edit-dialog" && closeModal("#edit-dialog");
+  $("#edit-name").oninput = updateEditTexts;
+  $("#edit-ram-own").onchange = updateEditTexts;
+  $("#edit-ram").oninput = updateEditTexts;
+  $("#edit-icon-button").onclick = () => $("#edit-icon-file").click();
+  $("#edit-icon-file").onchange = async () => {
+    const file = $("#edit-icon-file").files[0];
+    $("#edit-icon-file").value = "";
+    if (!file) return;
+    try {
+      state.editing.icon = await imageToPng(file);
+      state.editing.iconChanged = true;
+      updateEditTexts();
+    } catch (error) {
+      toast(String(error), "error");
+    }
+  };
+  $("#edit-icon-remove").onclick = () => {
+    state.editing.icon = null;
+    state.editing.iconChanged = true;
+    updateEditTexts();
+  };
+  $("#edit-save").onclick = saveEdit;
+  $("#edit-name").onkeydown = (event) => event.key === "Enter" && saveEdit();
+
+  // Confirmación y error del juego
+  $("#confirm-dialog").onmousedown = (event) => event.target.id === "confirm-dialog" && state.confirmCancel?.();
+  for (const id of ["#crash-close", "#crash-dismiss"]) $(id).onclick = () => closeModal("#crash-dialog");
+  $("#crash-logs").onclick = () => {
+    closeModal("#crash-dialog");
+    navigate("instance", state.crashFor);
+    selectTab("logs");
+  };
   $("#detail-join").onclick = () => {
     const address = $("#detail-server").value.trim();
     if (!address) return toast("Escribe la dirección del servidor.", "error");
@@ -745,6 +1093,9 @@ function wireEvents() {
     if (event.key === "Escape") {
       closeModal("#create-dialog");
       closeModal("#settings-dialog");
+      closeModal("#edit-dialog");
+      closeModal("#crash-dialog");
+      if (!$("#confirm-dialog").classList.contains("hidden")) state.confirmCancel?.();
     } else if ((event.key === "n" || event.key === "N") && !isTyping() && !event.ctrlKey && !event.altKey) {
       event.preventDefault();
       openCreate();
@@ -759,6 +1110,7 @@ function wireEvents() {
     if (event.button === 4) goForward();
   });
 
+  listen("juego-cerrado", ({ payload }) => onGameClosed(payload));
   listen("progreso", ({ payload }) => {
     $("#new-status").textContent = payload.stage;
     const percent = Math.max(2, payload.fraction * 100);
@@ -791,12 +1143,12 @@ async function init() {
 function demoInvoke(command, args = {}) {
   const now = Date.now();
   const instances = [
-    { id: "Vanilla 1.21.1", name: "Vanilla 1.21.1", versionId: "1.21.1", minecraftVersion: "1.21.1", loader: "Vanilla", ramGb: null, lastPlayed: now - 3600e3, created: now - 86400e3 * 4 },
-    { id: "Survival con amigos", name: "Survival con amigos", versionId: "26.2", minecraftVersion: "26.2", loader: "Vanilla", ramGb: null, lastPlayed: null, created: now - 3600e3 },
-    { id: "Better MC BMC4", name: "Better MC BMC4", versionId: "forge-47.4.20", minecraftVersion: "1.20.1", loader: "Forge", ramGb: 8, lastPlayed: now - 86400e3 * 2, created: now - 86400e3 * 10 },
-    { id: "Minecraft++", name: "Minecraft++", versionId: "fabric-loader-0.19.5-26.1.2", minecraftVersion: "26.1.2", loader: "Fabric", ramGb: null, lastPlayed: null, created: now - 86400e3 * 9 },
-    { id: "Creativo", name: "Creativo", versionId: "1.21.11", minecraftVersion: "1.21.11", loader: "Vanilla", ramGb: null, lastPlayed: now - 86400e3 * 6, created: now - 86400e3 * 20 },
-    { id: "Skyblock", name: "Skyblock", versionId: "1.20.1", minecraftVersion: "1.20.1", loader: "Vanilla", ramGb: null, lastPlayed: now - 86400e3 * 15, created: now - 86400e3 * 30 },
+    { id: "Vanilla 1.21.1", name: "Vanilla 1.21.1", versionId: "1.21.1", minecraftVersion: "1.21.1", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: now - 3600e3, created: now - 86400e3 * 4 },
+    { id: "Survival con amigos", name: "Survival con amigos", versionId: "26.2", minecraftVersion: "26.2", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: null, created: now - 3600e3 },
+    { id: "Better MC BMC4", name: "Better MC BMC4", versionId: "forge-47.4.20", minecraftVersion: "1.20.1", loader: "Forge", jvmArgs: [], icon: null, ramGb: 8, lastPlayed: now - 86400e3 * 2, created: now - 86400e3 * 10 },
+    { id: "Minecraft++", name: "Minecraft++", versionId: "fabric-loader-0.19.5-26.1.2", minecraftVersion: "26.1.2", loader: "Fabric", jvmArgs: [], icon: null, ramGb: null, lastPlayed: null, created: now - 86400e3 * 9 },
+    { id: "Creativo", name: "Creativo", versionId: "1.21.11", minecraftVersion: "1.21.11", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: now - 86400e3 * 6, created: now - 86400e3 * 20 },
+    { id: "Skyblock", name: "Skyblock", versionId: "1.20.1", minecraftVersion: "1.20.1", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: now - 86400e3 * 15, created: now - 86400e3 * 30 },
   ];
   const settings = demoInvoke.settings ?? (demoInvoke.settings = {
     username: "GxxseS", uuid: "", ramGb: 6, theme: "oscuro", windowWidth: 1280, windowHeight: 720, minimizeOnLaunch: true,
@@ -825,6 +1177,23 @@ function demoInvoke(command, args = {}) {
       ],
     },
   };
+  if (command === "contenido") {
+    const mod = (name, version, authors, enabled = true) => ({ file: `${name.toLowerCase().replace(/\W+/g, "-")}-${version}.jar${enabled ? "" : ".disabled"}`, name, version, authors, enabled, size: 1e6, modified: now - 86400e3, icon: null });
+    return new Promise((r) => setTimeout(() => r({
+      mods: [mod("Sodium", "0.6.0", "jellysquid3, IMS"), mod("Fabric API", "0.102.0", "FabricMC"), mod("Iris Shaders", "1.8.0", "coderbot, IMS"), mod("Mod Menu", "11.0.1", "Prospector", false), mod("Lithium", "0.13.0", "jellysquid3")],
+      resourcepacks: [{ file: "Faithful 32x.zip", name: "Faithful 32x", version: null, authors: null, enabled: true, size: 3e7, modified: now, icon: null }],
+      shaderpacks: [],
+      worlds: [{ file: "Mi mundo", name: "Mi mundo", enabled: true, size: 0, modified: now - 7200e3, icon: null }, { file: "Creativo", name: "Creativo", enabled: true, size: 0, modified: now - 86400e3 * 3, icon: null }],
+    }), 500));
+  }
+  if (command === "registro")
+    return Promise.resolve({ file: "latest.log", text: "[21:54:42] [Render thread/INFO]: Environment: Environment[sessionHost=https://sessionserver.mojang.com, name=PROD]\n[21:54:42] [Render thread/INFO]: Setting user: GxxseS\n[21:54:50] [Render thread/WARN]: Missing sound for event: minecraft:item.goat_horn.play\n[21:55:00] [Render thread/INFO]: Connecting to mc.universocraft.com, 25565\n[21:55:02] [Render thread/INFO]: [CHAT] Bienvenido a UniversoCraft\n[21:56:10] [Render thread/ERROR]: Failed to load texture minecraft:textures/entity/foo.png\njava.io.FileNotFoundException: minecraft:textures/entity/foo.png\n\tat net.minecraft.client.renderer.texture.SimpleTexture.load(SimpleTexture.java:40)" });
+  if (command === "editar_instancia" || command === "icono_instancia") {
+    const instance = instances.find((i) => i.id === args.id);
+    return Promise.resolve(Object.assign(instance, args.nombre ? { name: args.nombre, ramGb: args.ramGb, jvmArgs: args.jvmArgs } : { icon: args.png }));
+  }
+  if (["duplicar_instancia", "eliminar_instancia", "activar_contenido", "eliminar_contenido", "detener"].includes(command))
+    return Promise.reject("Modo demostración: esta acción solo funciona en Parabellum.exe.");
   if (command === "guardar_ajustes") return Promise.resolve(Object.assign(settings, args.ajustes));
   if (command === "jugar" || command === "crear_instancia") return Promise.reject("Modo demostración: abre Parabellum.exe para jugar.");
   return Promise.resolve(demo[command]);

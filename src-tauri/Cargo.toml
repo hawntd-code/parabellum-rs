@@ -27,6 +27,9 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 regex = "1"
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
 thiserror = "2"
+# Borrar a la papelera de reciclaje (se puede deshacer)
+trash = "5"
+base64 = "0.22"
 
 [profile.release]
 opt-level = "s"

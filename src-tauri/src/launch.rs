@@ -204,6 +204,7 @@ pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<L
         "-XX:MaxGCPauseMillis=50".into(),
         "-XX:G1HeapRegionSize=32M".into(),
     ];
+    arguments.extend(instance.jvm_args.iter().cloned());
     if version.jvm_arguments.is_empty() {
         arguments.extend([format!("-Djava.library.path={}", natives_dir.display()), "-cp".into(), classpath_text]);
     } else {
@@ -232,7 +233,8 @@ pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<L
 }
 
 /// Abre el juego. La salida de Java va a un archivo (no a una tubería), así el juego no depende del launcher.
-pub fn start(plan: &LaunchPlan, instance: &Instance) -> Result<u32, String> {
+/// Devuelve el proceso para poder seguirlo y detenerlo.
+pub fn start(plan: &LaunchPlan, instance: &Instance) -> Result<std::process::Child, String> {
     let java = plan.java.as_ref().ok_or("No hay Java para esta versión.")?;
     if !plan.missing.is_empty() {
         return Err(format!("Faltan archivos:\n{}", plan.missing.iter().take(5).cloned().collect::<Vec<_>>().join("\n")));
@@ -262,11 +264,10 @@ pub fn start(plan: &LaunchPlan, instance: &Instance) -> Result<u32, String> {
         .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
         .spawn()
         .map_err(|e| format!("No se pudo abrir Java: {e}"))?;
-    let pid = child.id();
     let now = chrono::Utc::now().timestamp_millis();
     let _ = std::fs::write(state.join("ultima-partida.txt"), now.to_string());
-    let _ = std::fs::write(state.join("juego.pid"), pid.to_string());
-    Ok(pid)
+    let _ = std::fs::write(state.join("juego.pid"), child.id().to_string());
+    Ok(child)
 }
 
 fn extract_natives(archives: &[PathBuf], target: &Path) -> Result<(), String> {
@@ -298,11 +299,87 @@ fn extract_natives(archives: &[PathBuf], target: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// ¿Sigue abierto el juego de esta instancia? (por el PID guardado al abrirlo)
-pub fn is_running(instance: &Instance) -> bool {
-    let Ok(text) = std::fs::read_to_string(instance.state_dir().join("juego.pid")) else { return false };
-    let Ok(pid) = text.trim().parse::<u32>() else { return false };
-    process_alive(pid)
+/// PID de un juego que siga abierto desde antes de abrir el launcher (por el archivo juego.pid).
+pub fn running_pid(instance: &Instance) -> Option<u32> {
+    let pid = std::fs::read_to_string(instance.state_dir().join("juego.pid")).ok()?.trim().parse::<u32>().ok()?;
+    process_alive(pid).then_some(pid)
+}
+
+/// Cierra el juego y los procesos que haya abierto.
+pub fn kill(pid: u32) {
+    let _ = Command::new("taskkill").args(["/PID", &pid.to_string(), "/T", "/F"]).creation_flags(CREATE_NO_WINDOW).output();
+}
+
+/// Últimas líneas del registro del juego (latest.log; si aún no existe, la salida de Java).
+pub fn read_log(instance: &Instance, max_bytes: u64) -> (String, String) {
+    let latest = instance.game_dir.join("logs").join("latest.log");
+    let java = instance.state_dir().join("salida-java.log");
+    // Si Java falló antes de que Minecraft creara su registro, el motivo está en la salida de Java.
+    let newest = [&latest, &java]
+        .into_iter()
+        .filter_map(|p| std::fs::metadata(p).ok().and_then(|m| m.modified().ok()).map(|t| (p, t)))
+        .max_by_key(|(_, t)| *t)
+        .map(|(p, _)| p.clone());
+    let Some(path) = newest else { return (String::new(), String::new()) };
+    let text = read_tail(&path, max_bytes);
+    (path.file_name().unwrap_or_default().to_string_lossy().to_string(), text)
+}
+
+fn read_tail(path: &Path, max_bytes: u64) -> String {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = std::fs::File::open(path) else { return String::new() };
+    let length = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let start = length.saturating_sub(max_bytes);
+    let _ = file.seek(SeekFrom::Start(start));
+    let mut bytes = Vec::new();
+    let _ = file.read_to_end(&mut bytes);
+    let text = String::from_utf8_lossy(&bytes).to_string();
+    // Empieza en una línea completa
+    if start > 0 { text.split_once('\n').map(|(_, rest)| rest.to_string()).unwrap_or(text) } else { text }
+}
+
+/// Explica por qué el juego se cerró con error: el informe de fallo de Minecraft si lo hay,
+/// o la última excepción de Java.
+pub fn crash_reason(instance: &Instance, since_ms: i64) -> Option<String> {
+    let reports = instance.game_dir.join("crash-reports");
+    // Sin carpeta de informes se sigue buscando en los registros (no se sale de la función).
+    let newest = std::fs::read_dir(&reports)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let modified = e.metadata().ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as i64;
+            (modified >= since_ms).then_some((e.path(), modified))
+        })
+        .max_by_key(|(_, m)| *m);
+    if let Some((path, _)) = newest {
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        let description = text.lines().find_map(|l| l.strip_prefix("Description: ")).unwrap_or("Minecraft dejó un informe de fallo");
+        let exception = text.lines().skip_while(|l| !l.starts_with("Description:")).skip(1).find(|l| !l.trim().is_empty());
+        return Some(match exception {
+            Some(e) => format!("{description}\n{}", e.trim()),
+            None => description.to_string(),
+        });
+    }
+    // Si Minecraft no llegó a escribir su registro, Java falló al arrancar: lo explica su propia salida.
+    let modified = |p: &Path| {
+        std::fs::metadata(p).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as i64)
+    };
+    let latest = instance.game_dir.join("logs").join("latest.log");
+    if modified(&latest).is_none_or(|m| m < since_ms) {
+        let output = read_tail(&instance.state_dir().join("salida-java.log"), 20_000);
+        let lines: Vec<&str> = output.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+        if !lines.is_empty() {
+            return Some(lines[lines.len().saturating_sub(4)..].join("\n"));
+        }
+    }
+    None.or_else(|| {
+        let (_, log) = read_log(instance, 200_000);
+        log.lines()
+            .rev()
+            .find(|l| l.contains("Exception") || l.contains("Error:") || l.contains("/FATAL]") || l.contains("/ERROR]"))
+            .map(|l| l.trim().chars().take(400).collect())
+    })
 }
 
 fn process_alive(pid: u32) -> bool {
