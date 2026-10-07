@@ -27,6 +27,8 @@ pub struct Instance {
     pub ram_gb: Option<u32>,
     /// Milisegundos Unix de la última vez que se abrió.
     pub last_played: Option<i64>,
+    /// Milisegundos Unix de cuando se creó (fecha de la carpeta).
+    pub created: Option<i64>,
 }
 
 impl Instance {
@@ -68,7 +70,13 @@ fn load(folder: &Path) -> Option<Instance> {
         .and_then(|t| t.trim().parse::<i64>().ok())
         // La versión anterior guardaba ticks de .NET (100 ns desde el año 1).
         .map(|v| if v > 100_000_000_000_000 { (v - 621_355_968_000_000_000) / 10_000 } else { v });
+    let created = std::fs::metadata(folder.join(INSTANCE_FILE))
+        .and_then(|m| m.created())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as i64);
     Some(Instance {
+        created,
         name: json["name"].as_str().unwrap_or(&id).to_string(),
         minecraft_version: json["minecraftVersion"].as_str().unwrap_or(&version_id).to_string(),
         loader: loader.into(),

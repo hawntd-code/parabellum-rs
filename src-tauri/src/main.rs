@@ -158,6 +158,25 @@ async fn juegos_abiertos(state: State<'_, AppState>) -> Result<Vec<String>, Stri
     .map_err(|e| e.to_string())
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JavaInfo {
+    name: String,
+    version: String,
+    major: u32,
+    path: String,
+}
+
+#[tauri::command]
+fn listar_java(state: State<AppState>) -> Vec<JavaInfo> {
+    let mut list: Vec<JavaInfo> = java::discover(&state.paths)
+        .into_iter()
+        .map(|j| JavaInfo { path: j.home.display().to_string(), name: j.name, version: j.version, major: j.major })
+        .collect();
+    list.sort_by(|a, b| b.major.cmp(&a.major));
+    list
+}
+
 #[tauri::command]
 fn abrir_carpeta(state: State<AppState>, id: Option<String>) -> Result<(), String> {
     let folder = match id {
@@ -257,6 +276,7 @@ fn main() {
             crear_instancia,
             jugar,
             juegos_abiertos,
+            listar_java,
             abrir_carpeta
         ])
         .run(tauri::generate_context!())

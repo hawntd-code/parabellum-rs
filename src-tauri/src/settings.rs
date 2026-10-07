@@ -18,6 +18,19 @@ pub struct Settings {
     pub theme: String,
     pub window_width: u32,
     pub window_height: u32,
+    /// Minimizar Parabellum cuando se abre el juego.
+    pub minimize_on_launch: bool,
+    /// Servidores guardados en la página Servidores.
+    pub servers: Vec<SavedServer>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SavedServer {
+    pub name: String,
+    pub address: String,
+    /// Instancia con la que se entra (id = nombre de su carpeta).
+    pub instance: String,
 }
 
 impl Default for Settings {
@@ -29,6 +42,8 @@ impl Default for Settings {
             theme: "oscuro".into(),
             window_width: 1280,
             window_height: 720,
+            minimize_on_launch: true,
+            servers: Vec::new(),
         }
     }
 }
