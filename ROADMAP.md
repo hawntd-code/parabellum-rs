@@ -47,18 +47,20 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Al cerrarse el juego por mods incompatibles se muestra la explicación de Fabric
 - [x] *Prueba:* Lithium, Iris (con su Sodium compatible) y Mod Menu instalados desde la interfaz llegan al menú principal sin errores
 
+### Fase 6: modpacks
+- [x] **Exportar para Drive o USB**: paquete completo con el mismo formato que la versión C# (modpack + base con Minecraft y Java, y su .json con SHA-256); se instala sin internet
+- [x] **Exportar .mrpack** (estándar de Modrinth): ligero, los mods se descargan al instalarlo
+- [x] Elegir qué incluir (mods, configuración, mundos, opciones…)
+- [x] **Subir un modpack** desde Crear instancia o soltándolo en la ventana: .mrpack, paquetes de Parabellum y de la versión C# (también sus instancias de CurseForge con Fabric); reinstalar un paquete lo actualiza conservando mundos, opciones y memoria propia
+- [x] Instalar **modpacks de Modrinth** como instancia nueva, con su icono
+- [x] **Data packs** de Modrinth dentro del mundo que elijas
+- [x] *Prueba:* escuela simulada (carpeta vacía: base y modpack, sin Mojang, Fabric ni Modrinth) llega al menú; el paquete real "Minecraft++" de la versión C# (147 mods) funciona; .mrpack de ida y vuelta; Fabulously Optimized desde Modrinth
+
 ### Diseño
 - [x] Interfaz al estilo de la app de Modrinth con identidad morada (tema oscuro y claro, fuente Inter)
 - [x] Biblioteca, continuar jugando, crear instancia por tipo, ajustes por secciones, página Servidores
 
 ## ⏭️ Pendiente, en orden
-
-### Fase 6: modpacks
-- [ ] Data packs (se instalan dentro de un mundo)
-- [ ] Crear un modpack a partir de una instancia
-- [ ] Exportar en formato `.mrpack` (estándar de Modrinth) y en zip completo
-- [ ] Importar `.mrpack` y zip ("Subir un modpack")
-- [ ] Instalar modpacks de Modrinth
 
 ### Fase 7: escuela y distribución
 - [ ] Catálogo de Google Drive en Explorar (modpacks y versiones), para redes donde Mojang/Modrinth están bloqueados
@@ -67,6 +69,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] Configuración integrada en el exe
 
 ### Fase 8: Forge, NeoForge e importación
+- [ ] Modpacks de Forge y NeoForge (.mrpack y de Modrinth)
 - [ ] (Opcional) CurseForge: requiere solicitar una clave de API y respetar qué autores permiten descargas externas
 - [ ] Instancias Forge y NeoForge (instaladores con "processors")
 - [ ] Importar instancias de CurseForge, Prism y de la versión C# (por ejemplo Better MC)

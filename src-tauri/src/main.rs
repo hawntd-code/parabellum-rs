@@ -508,7 +508,15 @@ async fn versiones_proyecto(
     tipo: String,
     instancia: Option<String>,
 ) -> Result<Vec<modrinth::Version>, String> {
+    // Los modpacks se instalan como instancia nueva: todas sus versiones de Fabric y Quilt.
+    if tipo == "modpack" {
+        return modrinth::project_versions(&id, &["fabric", "quilt"], &[]).await;
+    }
     match instancia {
+        Some(instance_id) if tipo == "datapack" => {
+            let instance = instance_or_error(&state, &instance_id)?;
+            modrinth::project_versions(&id, &["datapack"], &[instance.minecraft_version.as_str()]).await
+        }
         Some(instance_id) => {
             let instance = instance_or_error(&state, &instance_id)?;
             let kind = modrinth::ContentType::parse(&tipo).ok_or("Tipo de contenido desconocido.")?;
@@ -605,6 +613,16 @@ async fn actualizar_contenido(
         );
     })
     .await
+}
+
+/// Muestra un archivo exportado en el Explorador de Windows.
+#[tauri::command]
+fn mostrar_archivo(ruta: String) -> Result<(), String> {
+    let path = PathBuf::from(&ruta);
+    if !path.exists() {
+        return Err("Ese archivo ya no existe.".into());
+    }
+    std::process::Command::new("explorer").arg(format!("/select,{}", path.display())).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
 /// Abre en el navegador un enlace de la página de un proyecto (solo http y https).
@@ -1220,6 +1238,7 @@ fn main() {
             importar_modpack,
             instalar_modpack,
             instalar_datapack,
+            mostrar_archivo,
             registro,
             abrir_registro,
             listar_java,

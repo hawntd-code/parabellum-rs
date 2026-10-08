@@ -712,3 +712,27 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .markdown li > ul, .markdown li > ol { margin: 4px 0 0; }
 /* Contenido: categorías en su propia fila; debajo, buscar y acciones */
 #tab-content .content-toolbar #content-kinds { flex-basis: 100%; }
+
+/* ===================== Fase 6: modpacks ===================== */
+.option.active { border-color: var(--accent); background: var(--accent-softer); }
+.option.active .option-icon { border-color: var(--accent); color: var(--accent-fg); }
+.export-formats .option { margin-bottom: 10px; padding: 12px 14px; }
+.export-formats .option-icon { width: 42px; height: 42px; }
+.field-row { display: flex; gap: 12px; margin-top: 6px; }
+.field-row .narrow { width: 140px; flex: none; }
+.export-list { display: flex; flex-direction: column; max-height: 230px; overflow-y: auto; border-radius: var(--r-lg); background: var(--field); border: 1px solid var(--border); padding: 4px; }
+.export-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--r); cursor: pointer; }
+.export-item:hover { background: var(--card); }
+.export-item input { width: 16px; height: 16px; accent-color: var(--accent); flex: none; }
+.export-item svg { width: 17px; height: 17px; color: var(--muted); flex: none; }
+.export-item .grow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.export-item .muted { font-size: 13px; }
+#export-progress, #import-progress { margin-top: 14px; }
+#export-status { margin-top: 10px; line-height: 1.5; }
+.import-box { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 30px 20px 10px; }
+.import-box .option-icon { width: 60px; height: 60px; color: var(--accent-fg); border-color: var(--accent); }
+.import-box .option-icon svg { width: 28px; height: 28px; }
+.import-box b { font-size: 17px; overflow-wrap: anywhere; }
+.import-box p { max-width: 460px; min-height: 22px; }
+.import-box .progress { width: 100%; max-width: 420px; }
+#project-install-note { margin: 0; align-self: center; }

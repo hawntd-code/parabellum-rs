@@ -44,6 +44,11 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--buscar <texto> [mod\|resourcepack\|shader] [loader] [versión]` | Busca en Modrinth |
 | `--instalar <instancia> <proyecto> [versión]` | Instala de Modrinth con dependencias compatibles |
 | `--actualizaciones <instancia> [aplicar]` | Lista (o aplica) las actualizaciones seguras |
+| `--exportar <instancia> <carpeta> [con-mundos]` | Paquete para Drive o USB (modpack + base de Minecraft) |
+| `--exportar-mrpack <instancia> <archivo.mrpack>` | Modpack en formato de Modrinth |
+| `--importar <archivo> [nombre]` | Instala un .mrpack o un paquete de Parabellum |
+| `--instalar-modpack <proyecto> [versión]` | Instala un modpack de Modrinth como instancia nueva |
+| `--instalar-datapack <instancia> <mundo> <proyecto>` | Instala un data pack de Modrinth en un mundo |
 
 ## Hoja de ruta
 

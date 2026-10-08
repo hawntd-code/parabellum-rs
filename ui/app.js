@@ -365,6 +365,7 @@ function renderInstance() {
     <span>${icon("play-outline")}${escapeHtml(state.running.has(i.id) ? "Jugando ahora" : ago(i.lastPlayed))}</span>`;
   $("#detail-rows").innerHTML = `
     <dt>Versión de Minecraft</dt><dd>${escapeHtml(i.minecraftVersion)}</dd>
+    ${i.modpack ? `<dt>Modpack</dt><dd>${escapeHtml(i.modpack)}</dd>` : ""}
     <dt>Loader</dt><dd>${escapeHtml(i.loader)}${i.loaderVersion ? " " + escapeHtml(i.loaderVersion) : ""}</dd>
     <dt>Versión del perfil</dt><dd>${escapeHtml(i.versionId)}</dd>
     <dt>Carpeta</dt><dd>instancias\\${escapeHtml(i.id)}</dd>
@@ -439,7 +440,7 @@ function renderContent() {
   $("#content-list").innerHTML = items
     .slice(0, 600)
     .map((item, index) => {
-      const sub = world ? `Jugado ${ago(item.modified).toLowerCase()}` : item.authors ? `por ${item.authors}` : item.file;
+      const sub = world ? `Jugado ${ago(item.modified).toLowerCase()}${item.version ? ` · ${item.version}` : ""}` : item.authors ? `por ${item.authors}` : item.file;
       return `<div class="content-item ${item.enabled ? "" : "disabled"}" style="animation-delay:${Math.min(index, 20) * 15}ms">
         <div class="content-icon">${item.icon ? `<img src="${item.icon}" alt="">` : icon(kindIcons[state.kind])}</div>
         <div class="grow">${
@@ -579,6 +580,7 @@ function instanceMenuItems(id) {
     { icon: "settings", label: "Ajustes de la instancia", action: () => openEdit(id) },
     { icon: "folder", label: "Abrir carpeta", action: () => invoke("abrir_carpeta", { id }) },
     { icon: "duplicate", label: "Duplicar", action: () => duplicateInstance(id) },
+    { icon: "upload", label: "Exportar modpack", action: () => openExport(id) },
     { icon: "trash", label: "Eliminar", danger: true, action: () => deleteInstance(id) },
   ];
 }
@@ -860,7 +862,8 @@ function closeModal(id) {
 
 // ---------- Crear instancia ----------
 function openCreate() {
-  if (state.creating) return openModal("#create-dialog");
+  if (state.creating || state.importing) return openModal("#create-dialog");
+  $("#create-step-import").classList.add("hidden");
   $("#create-step-type").classList.remove("hidden");
   $("#create-step-custom").classList.add("hidden");
   $("#create-back").classList.add("hidden");
@@ -1244,6 +1247,8 @@ function wireEvents() {
     }
     const project = event.target.closest("[data-project-open]");
     if (project) {
+      // Abierto desde Contenido: el tipo lo dice el propio proyecto.
+      state.projectKind = null;
       setExploreTarget(state.current?.id);
       navigate("project", project.dataset.projectOpen);
     }
@@ -1331,9 +1336,10 @@ function wireEvents() {
 
   // Crear instancia
   $("#create-close").onclick = () => closeModal("#create-dialog");
-  $("#create-back").onclick = () => !state.creating && openCreate();
+  $("#create-back").onclick = () => !state.creating && !state.importing && openCreate();
   $("#create-dialog").onmousedown = (event) => event.target.id === "create-dialog" && closeModal("#create-dialog");
   $("[data-type='custom']").onclick = showCustomStep;
+  $("[data-type='import']").onclick = () => importModpack();
   $("#new-cancel").onclick = () => closeModal("#create-dialog");
   $("#loader-choice").onclick = (event) => {
     const button = event.target.closest("[data-loader]");
@@ -1388,6 +1394,7 @@ function wireEvents() {
       closeModal("#edit-dialog");
       closeModal("#crash-dialog");
       closeModal("#install-dialog");
+      if (!state.exporting?.busy) closeModal("#export-dialog");
       $("#lightbox").classList.add("hidden");
       if (!$("#confirm-dialog").classList.contains("hidden")) state.confirmCancel?.();
     } else if ((event.key === "n" || event.key === "N") && !isTyping() && !event.ctrlKey && !event.altKey) {
@@ -1405,20 +1412,40 @@ function wireEvents() {
   });
 
   wireExploreEvents();
+  wireModpackEvents();
   listen("juego-cerrado", ({ payload }) => onGameClosed(payload));
   // Arrastrar archivos a la ventana: se agregan a la instancia abierta.
+  // Fuera de una instancia (o con un .mrpack) lo que se suelta se instala como modpack.
+  const dropsModpack = (paths) => !(state.page === "instance" && state.current) || (paths ?? []).some((p) => /\.mrpack$/i.test(p));
   tauri?.webview?.getCurrentWebview().onDragDropEvent(({ payload }) => {
-    const target = state.page === "instance" && state.current;
-    if (payload.type === "enter" && target) {
-      $("#drop-title").textContent = `Suelta para agregar a ${state.current.name}`;
+    if (payload.type === "enter") {
+      const modpack = dropsModpack(payload.paths);
+      $("#drop-title").textContent = modpack ? "Suelta para instalar el modpack" : `Suelta para agregar a ${state.current.name}`;
+      $("#drop-text").textContent = modpack
+        ? "Un .mrpack o un paquete .zip de Parabellum (de Drive o una USB)."
+        : "Mods, resource packs, shaders y mundos: cada uno va a su lugar.";
       $("#drop-overlay").classList.remove("hidden");
     } else if (payload.type === "drop" || payload.type === "leave") {
       $("#drop-overlay").classList.add("hidden");
-      if (payload.type === "drop" && target && payload.paths?.length) addContentFiles(payload.paths);
+      if (payload.type !== "drop" || !payload.paths?.length) return;
+      if (dropsModpack(payload.paths)) importModpack(payload.paths[0]);
+      else addContentFiles(payload.paths);
     }
   });
 
   listen("progreso", ({ payload }) => {
+    if (payload.task === "exportar") {
+      $("#export-progress").classList.remove("hidden");
+      $("#export-progress div").style.width = `${Math.max(2, payload.fraction * 100)}%`;
+      $("#export-status").textContent = payload.stage;
+      return;
+    }
+    if (payload.task === "importar") {
+      $("#import-progress div").style.width = `${Math.max(2, payload.fraction * 100)}%`;
+      $("#import-status").textContent = payload.stage;
+      $("#download-percent").textContent = `${Math.round(payload.fraction * 100)}%`;
+      return;
+    }
     if (payload.task === "instalar") {
       $("#download-percent").textContent = `${Math.round(payload.fraction * 100)}%`;
       return;
@@ -1459,8 +1486,12 @@ const exploreKinds = {
   mod: { placeholder: "Buscar mods…", contentKind: "mods", noun: "mods" },
   resourcepack: { placeholder: "Buscar resource packs…", contentKind: "resourcepacks", noun: "resource packs" },
   shader: { placeholder: "Buscar shaders…", contentKind: "shaderpacks", noun: "shaders" },
+  datapack: { placeholder: "Buscar data packs…", contentKind: "worlds", noun: "data packs" },
+  modpack: { placeholder: "Buscar modpacks…", contentKind: null, noun: "modpacks" },
 };
-const contentToExplore = { mods: "mod", resourcepacks: "resourcepack", shaderpacks: "shader", worlds: "mod" };
+const contentToExplore = { mods: "mod", resourcepacks: "resourcepack", shaderpacks: "shader", worlds: "datapack" };
+/** Qué es el proyecto abierto: lo dice la pestaña desde la que se abrió (los data packs en Modrinth son "mod"). */
+const projectKind = () => state.projectKind ?? state.projectData?.projectType;
 
 const categoryNames = {
   adventure: "Aventura", cursed: "Raros", decoration: "Decoración", economy: "Economía", equipment: "Equipo", food: "Comida",
@@ -1561,13 +1592,16 @@ function selectExploreKind(kind) {
 function renderExploreFilters() {
   const e = state.explore;
   const instance = exploreTarget();
-  // Con instancia, el loader y la versión salen de ella.
-  $("#filter-loader").classList.toggle("hidden", e.kind !== "mod" || !!instance);
-  $("#filter-version").classList.toggle("hidden", !!instance);
+  // Con instancia, el loader y la versión salen de ella; los modpacks crean su propia instancia.
+  const modpack = e.kind === "modpack";
+  $("#filter-target").classList.toggle("hidden", modpack);
+  $("#filter-loader").classList.toggle("hidden", !(modpack || (e.kind === "mod" && !instance)));
+  $("#filter-version").classList.toggle("hidden", !!instance && !modpack);
   for (const chip of $$("#explore-loaders [data-loader]")) chip.classList.toggle("active", e.loader === chip.dataset.loader);
   const note = $("#explore-instance-note");
   if (!instance) note.textContent = "Elige una instancia para ver solo lo compatible e instalar con un clic.";
   else if (e.kind === "mod" && instance.loader === "Vanilla") note.textContent = "Es vanilla: no carga mods. Elige una con Fabric o Quilt.";
+  else if (e.kind === "datapack") note.textContent = `Se muestra solo lo compatible con Minecraft ${instance.minecraftVersion}. Al instalar eliges el mundo.`;
   else note.textContent = `Se muestra solo lo compatible con ${e.kind === "mod" ? instance.loader + " " : "Minecraft "}${instance.minecraftVersion}.`;
   const showNote = instance && e.kind === "mod" && instance.loader === "Vanilla";
   $("#explore-note").classList.toggle("hidden", !showNote);
@@ -1626,8 +1660,9 @@ async function runExplore(append = false) {
   const e = state.explore;
   const id = ++e.requestId;
   const instance = exploreTarget();
-  const loaders = e.kind !== "mod" ? [] : instance ? modLoadersFor(instance) : e.loader ? [e.loader] : [];
-  const gameVersion = instance ? instance.minecraftVersion : e.version || null;
+  const modpack = e.kind === "modpack";
+  const loaders = modpack ? (e.loader ? [e.loader] : []) : e.kind !== "mod" ? [] : instance ? modLoadersFor(instance) : e.loader ? [e.loader] : [];
+  const gameVersion = !modpack && instance ? instance.minecraftVersion : e.version || null;
   if (!append) $("#explore-results").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
   $("#explore-more").disabled = true;
   try {
@@ -1647,10 +1682,13 @@ async function runExplore(append = false) {
   }
 }
 
+const modpackInstalled = (projectId) => state.instances.some((i) => i.modpackProject === projectId);
+
 function installButton(projectId, extraClass = "") {
   const e = state.explore;
   if (e.installing.has(projectId)) return `<button class="btn ${extraClass}" disabled><span class="spinner tiny"></span>Instalando…</button>`;
-  if (e.installed.has(projectId)) return `<button class="btn installed ${extraClass}" disabled><svg><use href="#i-check"/></svg>Instalado</button>`;
+  const installed = e.kind === "modpack" ? modpackInstalled(projectId) : e.kind !== "datapack" && e.installed.has(projectId);
+  if (installed) return `<button class="btn installed ${extraClass}" disabled><svg><use href="#i-check"/></svg>Instalado</button>`;
   return `<button class="btn primary ${extraClass}" data-install="${escapeHtml(projectId)}"><svg><use href="#i-download"/></svg>Instalar</button>`;
 }
 
@@ -1767,13 +1805,13 @@ function offerOptional(plan) {
   });
 }
 
-function openInstallDialog({ alert, title, text, items, ok, secondary, onOk }) {
+function openInstallDialog({ alert, title, text, items, ok, secondary, onOk, single = false }) {
   $("#install-alert").classList.toggle("hidden", !alert);
   $("#install-title").textContent = title;
   $("#install-text").textContent = text;
   $("#install-list").innerHTML = items
     .map(
-      (p) => `<label class="install-item"><input type="checkbox" value="${escapeHtml(p.id)}">
+      (p, index) => `<label class="install-item"><input type="${single ? "radio" : "checkbox"}" name="install-choice" value="${escapeHtml(p.id)}" ${single && index === 0 ? "checked" : ""}>
         <span class="content-icon">${projectIcon(p.iconUrl)}</span><b class="grow">${escapeHtml(p.title)}</b></label>`,
     )
     .join("");
@@ -1873,9 +1911,25 @@ function renderProjectInstall() {
   const installed = state.explore.installed.has(p.id);
   button.disabled = installing || installed;
   button.className = `btn big ${installed ? "installed" : "primary"}`;
-  $("span", button).textContent = installing ? "Instalando…" : installed ? "Instalado" : instance ? `Instalar en ${instance.name}` : "Instalar";
-  $("use", button).setAttribute("href", installed ? "#i-check" : "#i-download");
-  $(".project-install").classList.toggle("hidden", !exploreKinds[p.projectType]);
+  const kind = projectKind();
+  const modpack = kind === "modpack";
+  const done = modpack ? modpackInstalled(p.id) : kind !== "datapack" && installed;
+  button.disabled = installing || done;
+  button.className = `btn big ${done ? "installed" : "primary"}`;
+  $("span", button).textContent = installing
+    ? "Instalando…"
+    : done
+      ? "Instalado"
+      : modpack
+        ? "Instalar modpack"
+        : instance
+          ? `Instalar en ${instance.name}`
+          : "Instalar";
+  $("use", button).setAttribute("href", done ? "#i-check" : "#i-download");
+  $("#project-target-box").classList.toggle("hidden", modpack);
+  $("#project-install-note").classList.toggle("hidden", !modpack);
+  $("#project-install-note").textContent = "Se instala como una instancia nueva, con su versión de Minecraft y su loader.";
+  $(".project-install").classList.toggle("hidden", !exploreKinds[kind]);
 }
 
 function selectProjectTab(tab) {
@@ -1888,13 +1942,17 @@ async function loadProjectVersions() {
   const id = state.projectId;
   const p = state.projectData;
   if (!id || !p) return;
-  const instance = exploreKinds[p.projectType] ? exploreTarget() : null;
+  const kind = projectKind();
+  const instance = exploreKinds[kind] && kind !== "modpack" ? exploreTarget() : null;
   $("#project-versions").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
-  $("#project-versions-note").textContent = instance
-    ? `Versiones compatibles con ${instance.name} (${p.projectType === "mod" ? instance.loader + " " : "Minecraft "}${instance.minecraftVersion}).`
-    : "Todas las versiones. Elige una instancia en \"Instalar en\" para ver solo las compatibles.";
+  $("#project-versions-note").textContent =
+    kind === "modpack"
+      ? "Versiones para Fabric y Quilt. Cada una se instala como una instancia nueva."
+      : instance
+        ? `Versiones compatibles con ${instance.name} (${kind === "mod" ? instance.loader + " " : "Minecraft "}${instance.minecraftVersion}).`
+        : "Todas las versiones. Elige una instancia en \"Instalar en\" para ver solo las compatibles.";
   try {
-    const versions = await invoke("versiones_proyecto", { id, tipo: p.projectType, instancia: instance?.id ?? null });
+    const versions = await invoke("versiones_proyecto", { id, tipo: kind, instancia: instance?.id ?? null });
     if (state.projectId !== id) return;
     state.projectVersions = versions;
     renderProjectVersions();
@@ -1913,8 +1971,9 @@ function renderProjectVersions() {
         .map((v) => {
           const [typeName, typeClass] = types[v.versionType] ?? [v.versionType, "alpha"];
           const games = v.gameVersions.length > 3 ? `${v.gameVersions[0]} – ${v.gameVersions.at(-1)}` : v.gameVersions.join(", ");
-          const installed = state.explore.installedVersions.has(v.id);
-          const action = !instance || !exploreKinds[state.projectData.projectType]
+          const kind = projectKind();
+          const installed = kind !== "modpack" && kind !== "datapack" && state.explore.installedVersions.has(v.id);
+          const action = !exploreKinds[kind] || (!instance && kind !== "modpack")
             ? ""
             : installed
               ? `<button class="btn installed small" disabled><svg><use href="#i-check"/></svg>Instalada</button>`
@@ -2032,17 +2091,20 @@ function wireExploreEvents() {
   $("#explore-more").onclick = () => runExplore(true);
   $("#explore-results").onclick = (event) => {
     const install = event.target.closest("[data-install]");
-    if (install) return installProject(install.dataset.install);
+    if (install) return installAny(state.explore.kind, install.dataset.install);
     const result = event.target.closest("[data-project]");
-    if (result && !event.target.closest("button")) navigate("project", result.dataset.project);
+    if (result && !event.target.closest("button")) {
+      state.projectKind = state.explore.kind;
+      navigate("project", result.dataset.project);
+    }
   };
 
   // Página del proyecto
   for (const tab of $$("#project-tabs .tab")) tab.onclick = () => selectProjectTab(tab.dataset.tab);
-  $("#project-install").onclick = () => state.projectData && installProject(state.projectData.id);
+  $("#project-install").onclick = () => state.projectData && installAny(projectKind(), state.projectData.id);
   $("#project-versions").onclick = (event) => {
     const button = event.target.closest("[data-install-version]");
-    if (button) installProject(state.projectId, button.dataset.installVersion);
+    if (button) installAny(projectKind(), state.projectId, button.dataset.installVersion);
   };
   $("#project-gallery").onclick = (event) => {
     const figure = event.target.closest("[data-image]");
@@ -2070,6 +2132,252 @@ function wireExploreEvents() {
   };
   document.addEventListener("click", openLink);
   document.addEventListener("auxclick", openLink);
+}
+
+// ======================================================================
+// Modpacks y data packs: instalar, subir y exportar
+// ======================================================================
+
+/** Instala según el tipo: un modpack crea su instancia; un data pack va dentro de un mundo. */
+function installAny(kind, projectId, versionId = null) {
+  if (kind === "modpack") return installModpack(projectId, versionId);
+  if (kind === "datapack") return installDatapack(projectId, versionId);
+  return installProject(projectId, versionId);
+}
+
+function setBusy(projectId, busy) {
+  if (busy) state.explore.installing.add(projectId);
+  else state.explore.installing.delete(projectId);
+  $("#download-indicator").classList.toggle("hidden", !busy);
+  $("#download-percent").textContent = "…";
+  refreshInstallButtons();
+  if (state.page === "project" && state.projectVersions) renderProjectVersions();
+}
+
+async function installModpack(projectId, versionId = null) {
+  if (state.explore.installing.has(projectId)) return;
+  setBusy(projectId, true);
+  try {
+    const result = await invoke("instalar_modpack", { proyecto: projectId, version: versionId });
+    await reloadInstances();
+    toast(`${result.name} está lista para jugar. La encuentras en tu biblioteca.`);
+  } catch (error) {
+    toast(String(error), "error");
+  } finally {
+    setBusy(projectId, false);
+  }
+}
+
+async function installDatapack(projectId, versionId = null) {
+  const instance = exploreTarget();
+  if (!instance) {
+    toast('Elige en qué instancia instalarlo en "Instalar en".', "error");
+    return;
+  }
+  let worlds;
+  try {
+    worlds = (await invoke("contenido", { id: instance.id })).worlds;
+  } catch (error) {
+    return toast(String(error), "error");
+  }
+  if (!worlds.length) {
+    return openInstallDialog({
+      alert: true,
+      title: "Todavía no hay mundos",
+      text: `Los data packs van dentro de un mundo y ${instance.name} aún no tiene ninguno. Abre el juego, crea un mundo y vuelve.`,
+      items: [],
+      ok: "",
+      secondary: "Entendido",
+    });
+  }
+  openInstallDialog({
+    alert: false,
+    title: "¿En qué mundo?",
+    text: "Los data packs se instalan dentro de un mundo. Si el mundo ya existe, se activan la próxima vez que lo abras.",
+    items: worlds.map((w) => ({ id: w.file, title: w.name, iconUrl: w.icon })),
+    ok: "Instalar",
+    secondary: "Cancelar",
+    single: true,
+    onOk: async ([world]) => {
+      if (!world) return;
+      setBusy(projectId, true);
+      try {
+        toast(await invoke("instalar_datapack", { id: instance.id, mundo: world, proyecto: projectId, version: versionId }));
+        if (state.contentFor === instance.id) state.content = null;
+      } catch (error) {
+        toast(String(error), "error");
+      } finally {
+        setBusy(projectId, false);
+      }
+    },
+  });
+}
+
+/** Subir un modpack: .mrpack o paquete de Parabellum. Sin ruta, abre la ventana para elegirlo. */
+async function importModpack(path = null) {
+  if (state.importing) return toast("Ya se está instalando un modpack; espera a que termine.", "error");
+  state.importing = true;
+  $("#create-step-type").classList.add("hidden");
+  $("#create-step-custom").classList.add("hidden");
+  $("#create-step-import").classList.remove("hidden");
+  $("#create-back").classList.add("hidden");
+  $("#create-title").textContent = "Subir un modpack";
+  $("#import-title").textContent = path ? path.split(/[\\/]/).pop() : "Elige el archivo del modpack…";
+  $("#import-status").textContent = path ? "Preparando…" : "Se abrió una ventana para elegirlo.";
+  $("#import-progress div").style.width = "2%";
+  openModal("#create-dialog");
+  $("#download-indicator").classList.remove("hidden");
+  $("#download-percent").textContent = "…";
+  try {
+    const result = await invoke("importar_modpack", { ruta: path });
+    state.importing = false;
+    if (!result) return openCreate();
+    closeModal("#create-dialog");
+    await reloadInstances();
+    if (result.kind === "base") {
+      toast(`Se instaló ${result.name}. Ya puedes instalar los modpacks de esa versión.`);
+    } else {
+      toast(result.updated ? `${result.name} se actualizó: tus mundos y opciones se conservaron.` : `${result.name} está lista para jugar.`);
+      navigate("instance", result.id);
+    }
+  } catch (error) {
+    $("#import-title").textContent = "No se pudo instalar";
+    $("#import-status").textContent = String(error);
+    $("#create-back").classList.remove("hidden");
+  } finally {
+    state.importing = false;
+    $("#download-indicator").classList.add("hidden");
+  }
+}
+
+// ---------- Exportar ----------
+const exportHints = {
+  mods: "Mods",
+  config: "Configuración de los mods",
+  resourcepacks: "Resource packs",
+  shaderpacks: "Shaders",
+  saves: "Mundos (tus partidas)",
+  "options.txt": "Opciones del juego (teclas, video, sonido)",
+  "servers.dat": "Lista de servidores",
+  screenshots: "Capturas de pantalla",
+  defaultconfigs: "Configuración inicial",
+  kubejs: "Scripts de KubeJS",
+};
+
+function formatSize(bytes) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(bytes < 10 * 1024 ** 2 ? 1 : 0)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+async function openExport(id) {
+  const instance = state.instances.find((i) => i.id === id);
+  if (!instance) return;
+  state.exporting = { id, format: "drive", entries: [], busy: false, file: null };
+  $("#export-title").textContent = `Exportar ${instance.name}`;
+  $("#export-name").value = instance.name;
+  $("#export-version").value = "1.0.0";
+  $("#export-description").value = "";
+  $("#export-status").textContent = "";
+  $("#export-progress").classList.add("hidden");
+  resetExportButton();
+  selectExportFormat("drive");
+  $("#export-list").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
+  openModal("#export-dialog");
+  try {
+    state.exporting.entries = await invoke("contenido_exportable", { id });
+    renderExportList();
+  } catch (error) {
+    $("#export-list").innerHTML = `<div class="content-empty">${escapeHtml(error)}</div>`;
+  }
+}
+
+function resetExportButton() {
+  $("#export-ok").disabled = false;
+  $("#export-ok span").textContent = "Exportar…";
+  $("#export-ok use").setAttribute("href", "#i-download");
+  state.exporting.file = null;
+}
+
+function selectExportFormat(format) {
+  if (state.exporting.busy) return;
+  state.exporting.format = format;
+  for (const option of $$("#export-formats [data-format]")) option.classList.toggle("active", option.dataset.format === format);
+  $("#export-mrpack-fields").classList.toggle("hidden", format !== "mrpack");
+  resetExportButton();
+  $("#export-status").textContent = "";
+}
+
+function renderExportList() {
+  $("#export-list").innerHTML = state.exporting.entries
+    .map(
+      (e) => `<label class="export-item">
+        <input type="checkbox" data-entry="${escapeHtml(e.name)}" ${e.checked ? "checked" : ""}>
+        ${icon(e.folder ? "folder" : "file")}
+        <span class="grow"><b>${escapeHtml(e.name)}</b>${exportHints[e.name.toLowerCase()] ? `<span class="muted"> · ${escapeHtml(exportHints[e.name.toLowerCase()])}</span>` : ""}</span>
+        <span class="faint">${formatSize(e.size)}</span>
+      </label>`,
+    )
+    .join("");
+  updateExportSize();
+}
+
+function updateExportSize() {
+  const chosen = new Set($$("#export-list [data-entry]:checked").map((i) => i.dataset.entry));
+  const total = state.exporting.entries.filter((e) => chosen.has(e.name)).reduce((sum, e) => sum + e.size, 0);
+  $("#export-size").textContent = `${formatSize(total)} de la instancia`;
+}
+
+async function runExport() {
+  const exporting = state.exporting;
+  if (exporting.file) return invoke("mostrar_archivo", { ruta: exporting.file }).catch((error) => toast(String(error), "error"));
+  if (exporting.busy) return;
+  const include = $$("#export-list [data-entry]:checked").map((i) => i.dataset.entry);
+  if (!include.length) return toast("Marca al menos una cosa para incluir.", "error");
+  exporting.busy = true;
+  $("#export-ok").disabled = true;
+  $("#export-status").textContent = exporting.format === "mrpack" ? "Elige dónde guardar el .mrpack…" : "Elige la carpeta donde guardar el paquete…";
+  try {
+    const result = await invoke("exportar_modpack", {
+      id: exporting.id,
+      formato: exporting.format,
+      opciones: { include, description: $("#export-description").value, name: $("#export-name").value, version: $("#export-version").value },
+    });
+    if (!result) {
+      $("#export-status").textContent = "";
+      return;
+    }
+    $("#export-progress").classList.add("hidden");
+    if (exporting.format === "mrpack") {
+      exporting.file = result.file;
+      $("#export-status").textContent = `Listo: ${plural(result.downloads, "archivo se descargará", "archivos se descargarán")} de Modrinth y ${plural(result.included, "va", "van")} dentro del .mrpack.${result.warning ? ` ${result.warning}` : ""}`;
+    } else {
+      exporting.file = result.modpack;
+      const folder = result.folder.split(/[\\/]/).pop();
+      $("#export-status").textContent = `Listo (${formatSize(result.size)}). Sube la carpeta «${folder}» a tu Drive tal cual o cópiala a una USB: dentro van el modpack y Minecraft ${folder} con su Java.${
+        result.baseReused ? " Minecraft ya estaba en esa carpeta y no se volvió a empaquetar." : ""
+      }`;
+    }
+    $("#export-ok span").textContent = "Mostrar en la carpeta";
+    $("#export-ok use").setAttribute("href", "#i-folder");
+  } catch (error) {
+    $("#export-progress").classList.add("hidden");
+    $("#export-status").textContent = String(error);
+  } finally {
+    exporting.busy = false;
+    $("#export-ok").disabled = false;
+  }
+}
+
+function wireModpackEvents() {
+  $("#export-formats").onclick = (event) => {
+    const option = event.target.closest("[data-format]");
+    if (option) selectExportFormat(option.dataset.format);
+  };
+  $("#export-list").onchange = updateExportSize;
+  $("#export-ok").onclick = runExport;
+  for (const id of ["#export-close", "#export-cancel"]) $(id).onclick = () => !state.exporting?.busy && closeModal("#export-dialog");
+  $("#export-dialog").onmousedown = (event) => event.target.id === "export-dialog" && !state.exporting?.busy && closeModal("#export-dialog");
 }
 
 // ======================================================================
@@ -2171,6 +2479,27 @@ function demoInvoke(command, args = {}) {
   if (command === "buscar_actualizaciones")
     return later([{ projectId: "AANobbMI", versionId: "nueva", title: "Sodium", versionNumber: "0.6.13", kind: "mods", filename: "sodium-0.6.13.jar", replaces: "sodium-0.6.0.jar", dependency: false }], 300);
   if (command === "actualizar_contenido") return later([], 500);
+  // Modpacks de ejemplo
+  if (command === "contenido_exportable")
+    return later([
+      { name: "config", folder: true, size: 2.4e6, checked: true },
+      { name: "mods", folder: true, size: 182e6, checked: true },
+      { name: "resourcepacks", folder: true, size: 31e6, checked: true },
+      { name: "saves", folder: true, size: 54e6, checked: false },
+      { name: "screenshots", folder: true, size: 8e6, checked: false },
+      { name: "options.txt", folder: false, size: 5200, checked: true },
+      { name: "servers.dat", folder: false, size: 900, checked: true },
+    ], 300);
+  if (command === "exportar_modpack")
+    return later(
+      args.formato === "mrpack"
+        ? { file: "C:\\Users\\Juan\\Desktop\\Minecraft++ 1.0.0.mrpack", downloads: 44, included: 37, warning: null }
+        : { folder: "D:\\Drive\\Parabellum\\26.1.2", modpack: "D:\\Drive\\Parabellum\\26.1.2\\Minecraft++\\Minecraft++.zip", base: "D:\\Drive\\Parabellum\\26.1.2\\base-minecraft-26.1.2.zip", baseReused: false, size: 356e6 },
+      900,
+    );
+  if (command === "importar_modpack") return later({ id: "Minecraft++", name: "Minecraft++", kind: "modpack", updated: false }, 1200);
+  if (command === "instalar_modpack") return later({ id: "Minecraft++", name: "Fabulously Optimized", kind: "modpack", updated: false }, 1200);
+  if (command === "instalar_datapack") return later("Se instaló Terralith 2.5.8 en el mundo «Mi mundo».", 600);
   if (command === "contenido") {
     const mod = (name, version, authors, enabled = true) => ({ file: `${name.toLowerCase().replace(/\W+/g, "-")}-${version}.jar${enabled ? "" : ".disabled"}`, name, version, authors, enabled, size: 1e6, modified: now - 86400e3, icon: null });
     return new Promise((r) => setTimeout(() => r({

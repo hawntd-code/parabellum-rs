@@ -41,6 +41,8 @@ pub struct Instance {
     pub icon: Option<String>,
     /// De qué modpack viene ("Fabulously Optimized 6.5.0 · Modrinth"), si vino de uno.
     pub modpack: Option<String>,
+    /// Proyecto de Modrinth del modpack (para marcarlo como instalado al explorar).
+    pub modpack_project: Option<String>,
 }
 
 impl Instance {
@@ -168,6 +170,7 @@ fn load(folder: &Path) -> Option<Instance> {
     Some(Instance {
         created,
         icon,
+        modpack_project: json["modpack"]["projectId"].as_str().map(String::from),
         modpack,
         name: json["name"].as_str().unwrap_or(&id).to_string(),
         minecraft_version,

@@ -112,7 +112,8 @@
                 <button class="tab active" data-kind="mod"><svg><use href="#i-puzzle"/></svg>Mods</button>
                 <button class="tab" data-kind="resourcepack"><svg><use href="#i-image"/></svg>Resource packs</button>
                 <button class="tab" data-kind="shader"><svg><use href="#i-sun-sparkle"/></svg>Shaders</button>
-                <button class="tab" disabled title="Llega en la siguiente fase"><svg><use href="#i-cubes"/></svg>Modpacks <span class="soon">Pronto</span></button>
+                <button class="tab" data-kind="datapack"><svg><use href="#i-globe"/></svg>Data packs</button>
+                <button class="tab" data-kind="modpack"><svg><use href="#i-cubes"/></svg>Modpacks</button>
               </div>
               <div class="content-toolbar">
                 <div class="search grow">
@@ -132,7 +133,7 @@
               <div class="explore-more"><button class="btn hidden" id="explore-more">Cargar más</button></div>
             </div>
             <aside class="explore-filters">
-              <div class="filter-block">
+              <div class="filter-block" id="filter-target">
                 <h4>Instalar en</h4>
                 <select id="explore-instance"></select>
                 <p class="faint" id="explore-instance-note"></p>
@@ -168,10 +169,11 @@
                 </div>
               </div>
               <div class="project-install card-panel">
-                <div class="grow">
+                <div class="grow" id="project-target-box">
                   <label class="label" for="project-target">Instalar en</label>
                   <select id="project-target"></select>
                 </div>
+                <p class="grow muted hidden" id="project-install-note"></p>
                 <button class="btn primary big" id="project-install"><svg><use href="#i-download"/></svg><span>Instalar</span></button>
               </div>
               <div class="tabs" id="project-tabs">
@@ -334,7 +336,7 @@
     <div class="drop-box">
       <svg><use href="#i-upload"/></svg>
       <b id="drop-title">Suelta para agregar</b>
-      <span>Mods, resource packs, shaders y mundos: cada uno va a su lugar.</span>
+      <span id="drop-text">Mods, resource packs, shaders y mundos: cada uno va a su lugar.</span>
     </div>
   </div>
 
@@ -359,16 +361,25 @@
             <span class="grow"><b>Desde un modpack de Drive</b><span>Elige un modpack de tu carpeta de Google Drive.</span></span>
             <span class="soon">Pronto</span>
           </button>
-          <button class="option" disabled>
+          <button class="option" data-type="import">
             <span class="option-icon"><svg><use href="#i-upload"/></svg></span>
-            <span class="grow"><b>Subir un modpack</b><span>Instala un modpack desde un archivo .zip de tu PC o un USB.</span></span>
-            <span class="soon">Pronto</span>
+            <span class="grow"><b>Subir un modpack</b><span>Instala un .mrpack o un paquete .zip de Parabellum desde tu PC o una USB.</span></span>
           </button>
           <button class="option" disabled>
             <span class="option-icon"><svg><use href="#i-import"/></svg></span>
             <span class="grow"><b>Importar instancia</b><span>Importa una instancia de CurseForge, Prism o similares.</span></span>
             <span class="soon">Pronto</span>
           </button>
+        </div>
+
+        <!-- Subir un modpack -->
+        <div id="create-step-import" class="hidden">
+          <div class="import-box">
+            <span class="option-icon"><svg><use href="#i-upload"/></svg></span>
+            <b id="import-title"></b>
+            <p class="muted" id="import-status"></p>
+            <div class="progress" id="import-progress"><div></div></div>
+          </div>
         </div>
 
         <!-- Paso 2: versión -->
@@ -541,6 +552,42 @@
     </div>
   </div>
 
+  <!-- ================= Exportar modpack ================= -->
+  <div class="overlay hidden" id="export-dialog">
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="export-title">Exportar modpack</h2>
+        <button class="circle-btn" id="export-close" title="Cerrar"><svg><use href="#i-close"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="export-formats" id="export-formats">
+          <button class="option active" data-format="drive">
+            <span class="option-icon"><svg><use href="#i-upload"/></svg></span>
+            <span class="grow"><b>Para Drive o USB</b><span>Completo: se instala sin internet, como en la escuela. Minecraft y Java van en un paquete aparte que comparten todos los modpacks de esa versión.</span></span>
+          </button>
+          <button class="option" data-format="mrpack">
+            <span class="option-icon"><svg><use href="#i-cubes"/></svg></span>
+            <span class="grow"><b>Modrinth (.mrpack)</b><span>Ligero: los mods se descargan de Modrinth al instalarlo. Sirve en Prism, Modrinth App y otros launchers.</span></span>
+          </button>
+        </div>
+        <div class="field-row hidden" id="export-mrpack-fields">
+          <div class="grow"><label class="label" for="export-name">Nombre</label><input id="export-name" maxlength="60" autocomplete="off" spellcheck="false"></div>
+          <div class="narrow"><label class="label" for="export-version">Versión</label><input id="export-version" maxlength="20" autocomplete="off" spellcheck="false"></div>
+        </div>
+        <label class="label" for="export-description" style="margin-top:14px">Descripción (opcional)</label>
+        <input id="export-description" maxlength="200" autocomplete="off" placeholder="Para qué es, qué trae…">
+        <div class="label-row"><span class="label">Qué incluir</span><span class="faint" id="export-size"></span></div>
+        <div class="export-list" id="export-list"></div>
+        <div class="progress hidden" id="export-progress"><div></div></div>
+        <p class="muted small-text" id="export-status"></p>
+        <div class="modal-actions">
+          <button class="btn" id="export-cancel">Cerrar</button>
+          <button class="btn primary" id="export-ok"><svg><use href="#i-download"/></svg><span>Exportar…</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ================= Instalar desde Modrinth ================= -->
   <div class="overlay hidden" id="install-dialog">
     <div class="modal small">
@@ -647,6 +694,7 @@
       <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="m20.5 16-5-5L6 19.5"/></symbol>
       <symbol id="i-sun-sparkle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
       <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-10z"/><path d="M14 3.5v5h5"/></symbol>
       <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.3a4.3 4.3 0 0 1 7.5 2.5C19.5 15.4 12 20 12 20z"/></symbol>
       <symbol id="i-update" viewBox="0 0 24 24"><path d="M12 19V7M6.5 12.5 12 7l5.5 5.5M5 4h14"/></symbol>
       <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
