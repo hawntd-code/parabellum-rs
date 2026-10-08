@@ -41,6 +41,9 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--jugar <instancia> [servidor]` | Abre el juego (y entra al servidor) |
 | `--probar-juego <instancia> [segundos]` | Abre el juego, espera al menú principal, lo cierra y resume los mods cargados |
 | `--contenido <instancia>` | Lista los mods, packs y mundos |
+| `--buscar <texto> [mod\|resourcepack\|shader] [loader] [versión]` | Busca en Modrinth |
+| `--instalar <instancia> <proyecto> [versión]` | Instala de Modrinth con dependencias compatibles |
+| `--actualizaciones <instancia> [aplicar]` | Lista (o aplica) las actualizaciones seguras |
 
 ## Hoja de ruta
 

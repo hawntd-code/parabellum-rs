@@ -105,12 +105,88 @@
 
         <!-- EXPLORAR -->
         <section class="page hidden" id="page-explore">
-          <div class="page-inner">
-            <div class="welcome">
-              <div class="welcome-logo soft"><svg><use href="#i-compass"/></svg></div>
-              <h2>Explorar modpacks</h2>
-              <p class="muted">Muy pronto podrás buscar e instalar aquí los modpacks de tu carpeta de Google Drive, también desde la escuela.</p>
+          <div class="page-inner explore-layout">
+            <div class="explore-main">
+              <h1 class="section-title">Explorar</h1>
+              <div class="tabs" id="explore-kinds">
+                <button class="tab active" data-kind="mod"><svg><use href="#i-puzzle"/></svg>Mods</button>
+                <button class="tab" data-kind="resourcepack"><svg><use href="#i-image"/></svg>Resource packs</button>
+                <button class="tab" data-kind="shader"><svg><use href="#i-sun-sparkle"/></svg>Shaders</button>
+                <button class="tab" disabled title="Llega en la siguiente fase"><svg><use href="#i-cubes"/></svg>Modpacks <span class="soon">Pronto</span></button>
+              </div>
+              <div class="content-toolbar">
+                <div class="search grow">
+                  <svg><use href="#i-search"/></svg>
+                  <input id="explore-search" placeholder="Buscar mods…" autocomplete="off" spellcheck="false">
+                </div>
+                <select id="explore-sort" class="compact" title="Ordenar">
+                  <option value="relevance">Relevancia</option>
+                  <option value="downloads">Más descargados</option>
+                  <option value="follows">Más seguidos</option>
+                  <option value="newest">Más nuevos</option>
+                  <option value="updated">Actualizados</option>
+                </select>
+              </div>
+              <div class="explore-note hidden" id="explore-note"></div>
+              <div class="results" id="explore-results"></div>
+              <div class="explore-more"><button class="btn hidden" id="explore-more">Cargar más</button></div>
             </div>
+            <aside class="explore-filters">
+              <div class="filter-block">
+                <h4>Instalar en</h4>
+                <select id="explore-instance"></select>
+                <p class="faint" id="explore-instance-note"></p>
+              </div>
+              <div class="filter-block" id="filter-loader">
+                <h4>Loader</h4>
+                <div class="filter-chips" id="explore-loaders">
+                  <button data-loader="fabric">Fabric</button>
+                  <button data-loader="quilt">Quilt</button>
+                  <button data-loader="forge">Forge</button>
+                  <button data-loader="neoforge">NeoForge</button>
+                </div>
+              </div>
+              <div class="filter-block" id="filter-version">
+                <h4>Versión de Minecraft</h4>
+                <select id="explore-version"><option value="">Todas</option></select>
+              </div>
+              <div id="explore-categories"></div>
+            </aside>
+          </div>
+        </section>
+
+        <!-- PROYECTO DE MODRINTH -->
+        <section class="page hidden" id="page-project">
+          <div class="page-inner project-layout">
+            <div class="project-main">
+              <div class="instance-header project-header">
+                <div class="project-icon" id="project-icon"></div>
+                <div class="grow">
+                  <h1 id="project-title"></h1>
+                  <p class="muted project-summary" id="project-summary"></p>
+                  <div class="meta" id="project-meta"></div>
+                </div>
+              </div>
+              <div class="project-install card-panel">
+                <div class="grow">
+                  <label class="label" for="project-target">Instalar en</label>
+                  <select id="project-target"></select>
+                </div>
+                <button class="btn primary big" id="project-install"><svg><use href="#i-download"/></svg><span>Instalar</span></button>
+              </div>
+              <div class="tabs" id="project-tabs">
+                <button class="tab active" data-tab="description"><svg><use href="#i-info"/></svg>Descripción</button>
+                <button class="tab" data-tab="versions"><svg><use href="#i-cubes"/></svg>Versiones</button>
+                <button class="tab" data-tab="gallery"><svg><use href="#i-image"/></svg>Galería</button>
+              </div>
+              <div class="tab-panel" id="ptab-description"><div class="markdown card-panel" id="project-body"></div></div>
+              <div class="tab-panel hidden" id="ptab-versions">
+                <p class="muted small-text" id="project-versions-note"></p>
+                <div class="content-list" id="project-versions"></div>
+              </div>
+              <div class="tab-panel hidden" id="ptab-gallery"><div class="gallery" id="project-gallery"></div></div>
+            </div>
+            <aside class="project-aside" id="project-aside"></aside>
           </div>
         </section>
 
@@ -164,8 +240,9 @@
                   <svg><use href="#i-search"/></svg>
                   <input id="content-search" placeholder="Buscar" autocomplete="off" spellcheck="false">
                 </div>
-                <button class="btn" id="content-folder"><svg><use href="#i-folder"/></svg>Abrir carpeta</button>
-                <button class="btn primary" id="content-add"><svg><use href="#i-plus"/></svg>Agregar archivos</button>
+                <button class="btn hidden" id="content-update-all"><svg><use href="#i-update"/></svg><span>Actualizar todo</span></button>
+                <button class="circle-btn" id="content-folder" title="Abrir carpeta"><svg><use href="#i-folder"/></svg></button>
+                <button class="btn primary" id="content-add"><svg><use href="#i-plus"/></svg>Agregar contenido<svg class="chev"><use href="#i-down"/></svg></button>
               </div>
               <div class="content-list" id="content-list"></div>
             </div>
@@ -464,6 +541,30 @@
     </div>
   </div>
 
+  <!-- ================= Instalar desde Modrinth ================= -->
+  <div class="overlay hidden" id="install-dialog">
+    <div class="modal small">
+      <div class="modal-head">
+        <span class="crash-icon hidden" id="install-alert"><svg><use href="#i-alert"/></svg></span>
+        <h2 id="install-title"></h2>
+        <button class="circle-btn" id="install-close" title="Cerrar"><svg><use href="#i-close"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p class="muted" id="install-text"></p>
+        <div class="install-list" id="install-list"></div>
+        <div class="modal-actions">
+          <button class="btn" id="install-secondary"></button>
+          <button class="btn primary" id="install-ok"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="lightbox hidden" id="lightbox">
+    <img id="lightbox-image" alt="">
+    <p id="lightbox-caption"></p>
+  </div>
+
   <!-- ================= Confirmación ================= -->
   <div class="overlay hidden" id="confirm-dialog">
     <div class="modal small">
@@ -546,9 +647,14 @@
       <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="m20.5 16-5-5L6 19.5"/></symbol>
       <symbol id="i-sun-sparkle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
       <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+      <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.3a4.3 4.3 0 0 1 7.5 2.5C19.5 15.4 12 20 12 20z"/></symbol>
+      <symbol id="i-update" viewBox="0 0 24 24"><path d="M12 19V7M6.5 12.5 12 7l5.5 5.5M5 4h14"/></symbol>
+      <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
       <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></symbol>
     </defs>
   </svg>
+  <script src="markdown.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

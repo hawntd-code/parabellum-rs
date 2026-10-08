@@ -517,14 +517,22 @@ async fn versiones_proyecto(
     }
 }
 
-/// Proyectos de Modrinth instalados en la instancia (para marcar "Instalado" al explorar).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledProjects {
+    projects: Vec<String>,
+    versions: Vec<String>,
+}
+
+/// Proyectos (y versiones exactas) de Modrinth instalados en la instancia, para marcar "Instalado".
 #[tauri::command]
-async fn proyectos_instalados(state: State<'_, AppState>, id: String) -> Result<Vec<String>, String> {
+async fn proyectos_instalados(state: State<'_, AppState>, id: String) -> Result<InstalledProjects, String> {
     let instance = instance_or_error(&state, &id)?;
-    let mut ids: Vec<String> = modrinth::identify(&instance).await.into_iter().filter_map(|f| f.project_id).collect();
-    ids.sort();
-    ids.dedup();
-    Ok(ids)
+    let files = modrinth::identify(&instance).await;
+    Ok(InstalledProjects {
+        projects: files.iter().filter_map(|f| f.project_id.clone()).collect(),
+        versions: files.into_iter().filter_map(|f| f.version_id).collect(),
+    })
 }
 
 /// Qué se descargaría al instalar un proyecto (con sus dependencias) o por qué no se puede.
@@ -573,7 +581,12 @@ async fn buscar_actualizaciones(state: State<'_, AppState>, id: String) -> Resul
 
 /// Aplica actualizaciones; devuelve las que se dejaron fuera por no ser compatibles (con el motivo).
 #[tauri::command]
-async fn actualizar_contenido(app: AppHandle, state: State<'_, AppState>, id: String, archivos: Vec<modrinth::PlannedFile>) -> Result<Vec<String>, String> {
+async fn actualizar_contenido(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    archivos: Vec<modrinth::PlannedFile>,
+) -> Result<Vec<modrinth::HeldBack>, String> {
     let instance = instance_or_error(&state, &id)?;
     if state.games.lock().unwrap().contains_key(&id) {
         return Err("Cierra el juego antes de actualizar.".into());
@@ -903,8 +916,8 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             if args.get(2).is_some_and(|a| a == "aplicar") && !updates.is_empty() {
                 let held_back = tauri::async_runtime::block_on(modrinth::apply_updates(&instance, updates, |_, _, _, _| {}))?;
                 out += "  APLICADAS\n";
-                for reason in held_back {
-                    out += &format!("  SIN ACTUALIZAR {reason}\n");
+                for held in held_back {
+                    out += &format!("  SIN ACTUALIZAR {}: {}\n", held.title, held.reason);
                 }
             }
             Ok(out)

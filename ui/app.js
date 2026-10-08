@@ -37,11 +37,37 @@ const state = {
   loaderGames: {},
   /** Versiones de cada loader por versión de Minecraft: { "fabric:1.21.1": { online, versions, recommended, installed } } */
   loaderVersions: {},
+  explore: {
+    kind: "mod",
+    query: "",
+    sort: "relevance",
+    loader: "",
+    version: "",
+    categories: new Set(),
+    categoryList: {},
+    target: null,
+    hits: [],
+    total: 0,
+    requestId: 0,
+    installed: new Set(),
+    installedVersions: new Set(),
+    installing: new Set(),
+    initialized: false,
+    versionsLoaded: false,
+  },
+  projectId: null,
+  projectData: null,
+  projectVersions: null,
+  /** Actualizaciones de Modrinth de la instancia abierta. */
+  updates: { for: null, list: [], at: 0 },
+  /** Actualizaciones que se dejaron fuera por romper algo: id de versión -> motivo. */
+  heldBack: new Map(),
 };
 
 const pages = {
   home: { title: "Inicio", icon: "home", sidebar: true },
-  explore: { title: "Explorar", icon: "compass", sidebar: true },
+  explore: { title: "Explorar", icon: "compass", sidebar: false },
+  project: { title: "Proyecto", icon: "compass", sidebar: false },
   servers: { title: "Servidores", icon: "server", sidebar: true },
   instance: { title: "", icon: "cubes", sidebar: false },
 };
@@ -160,22 +186,33 @@ function contextMenu(anchor, items) {
 // ======================================================================
 // Navegación (con historial Atrás/Adelante)
 // ======================================================================
-function navigate(page, instanceId = null, record = true) {
-  const target = { page, instanceId };
-  const same = state.page === page && (state.current?.id ?? null) === instanceId;
+/** Lo que identifica la página actual: la instancia o el proyecto abiertos. */
+function currentParam() {
+  if (state.page === "instance") return state.current?.id ?? null;
+  if (state.page === "project") return state.projectId ?? null;
+  return null;
+}
+
+function navigate(page, param = null, record = true) {
+  const same = state.page === page && currentParam() === param;
   if (record && !same) {
-    state.back.push({ page: state.page, instanceId: state.current?.id ?? null });
+    state.back.push({ page: state.page, param: currentParam() });
     state.forward = [];
   }
   if (page === "instance") {
-    const instance = state.instances.find((i) => i.id === instanceId);
+    const instance = state.instances.find((i) => i.id === param);
     if (!instance) return navigate("home", null, false);
     state.current = instance;
     renderInstance();
   } else {
     state.current = null;
   }
-  state.page = target.page;
+  state.page = page;
+  if (page === "project") {
+    if (state.projectId !== param || !state.projectData) loadProject(param);
+    else renderProjectInstall();
+  }
+  if (page === "explore") enterExplore();
   for (const section of $$(".page")) {
     const active = section.id === `page-${page}`;
     section.classList.toggle("hidden", !active);
@@ -186,10 +223,12 @@ function navigate(page, instanceId = null, record = true) {
       section.scrollTop = 0;
     }
   }
-  for (const button of $$(".rail-btn[data-page]")) button.classList.toggle("active", button.dataset.page === page);
+  const railPage = page === "project" ? "explore" : page;
+  for (const button of $$(".rail-btn[data-page]")) button.classList.toggle("active", button.dataset.page === railPage);
   $(".workspace").classList.toggle("no-sidebar", !pages[page].sidebar);
   $("#crumb-icon").innerHTML = `<use href="#i-${pages[page].icon}"/>`;
-  $("#crumb-text").textContent = page === "instance" ? state.current.name : pages[page].title;
+  $("#crumb-text").textContent =
+    page === "instance" ? state.current.name : page === "project" ? (state.projectData?.title ?? pages.project.title) : pages[page].title;
   $("#nav-back").disabled = state.back.length === 0;
   $("#nav-forward").disabled = state.forward.length === 0;
   renderRail();
@@ -198,15 +237,31 @@ function navigate(page, instanceId = null, record = true) {
 function goBack() {
   const previous = state.back.pop();
   if (!previous) return;
-  state.forward.push({ page: state.page, instanceId: state.current?.id ?? null });
-  navigate(previous.page, previous.instanceId, false);
+  state.forward.push({ page: state.page, param: currentParam() });
+  navigate(previous.page, previous.param, false);
 }
 
 function goForward() {
   const next = state.forward.pop();
   if (!next) return;
-  state.back.push({ page: state.page, instanceId: state.current?.id ?? null });
-  navigate(next.page, next.instanceId, false);
+  state.back.push({ page: state.page, param: currentParam() });
+  navigate(next.page, next.param, false);
+}
+
+/** Primera vez en Explorar: versiones, la instancia por defecto y la primera búsqueda. */
+function enterExplore() {
+  const e = state.explore;
+  fillTargetSelect($("#explore-instance"));
+  if (e.initialized) return;
+  e.initialized = true;
+  loadExploreVersions();
+  if (e.target === null) {
+    const modded = [...state.instances]
+      .filter((i) => i.loader !== "Vanilla")
+      .sort((a, b) => (b.lastPlayed ?? b.created ?? 0) - (a.lastPlayed ?? a.created ?? 0))[0];
+    if (modded) setExploreTarget(modded.id);
+  }
+  selectExploreKind(e.kind);
 }
 
 function applyTheme(theme) {
@@ -349,6 +404,8 @@ async function loadContent() {
     if (state.current?.id !== id) return;
     state.content = content;
     renderContent();
+    // Buscar actualizaciones en segundo plano (como mucho cada 10 minutos por instancia).
+    if (state.updates.for !== id || Date.now() - state.updates.at > 600e3) checkUpdates(id);
   } catch (error) {
     $("#content-list").innerHTML = `<div class="content-empty">${escapeHtml(error)}</div>`;
   }
@@ -361,6 +418,9 @@ function renderContent() {
     button.classList.toggle("active", button.dataset.kind === state.kind);
     $("span", button).textContent = content[button.dataset.kind].length;
   }
+  const updates = availableUpdates();
+  $("#content-update-all").classList.toggle("hidden", !updates.length);
+  $("#content-update-all span").textContent = `Actualizar todo (${updates.length})`;
   const query = $("#content-search").value.trim().toLowerCase();
   const items = content[state.kind].filter((i) => !query || `${i.name} ${i.file} ${i.authors ?? ""}`.toLowerCase().includes(query));
   if (!items.length) {
@@ -382,13 +442,29 @@ function renderContent() {
       const sub = world ? `Jugado ${ago(item.modified).toLowerCase()}` : item.authors ? `por ${item.authors}` : item.file;
       return `<div class="content-item ${item.enabled ? "" : "disabled"}" style="animation-delay:${Math.min(index, 20) * 15}ms">
         <div class="content-icon">${item.icon ? `<img src="${item.icon}" alt="">` : icon(kindIcons[state.kind])}</div>
-        <div class="grow"><div class="c-name">${escapeHtml(item.name)}</div><div class="c-sub">${escapeHtml(sub)}</div></div>
+        <div class="grow">${
+          item.projectId
+            ? `<button class="c-name link" data-project-open="${escapeHtml(item.projectId)}" title="Ver su página">${escapeHtml(item.name)}</button>`
+            : `<div class="c-name">${escapeHtml(item.name)}</div>`
+        }<div class="c-sub">${escapeHtml(sub)}</div></div>
+        ${updateChip(item.file)}
         ${world ? "" : `<div class="c-version">${escapeHtml(item.version ?? "")}</div>
           <label class="toggle" title="${item.enabled ? "Desactivar" : "Activar"}"><input type="checkbox" data-toggle="${escapeHtml(item.file)}" ${item.enabled ? "checked" : ""}><span></span></label>`}
         <button class="circle-btn" data-remove="${escapeHtml(item.file)}" title="Mandar a la papelera">${icon("trash")}</button>
       </div>`;
     })
     .join("");
+}
+
+/** Botón de actualizar (o aviso de que la nueva versión rompería algo) junto a un elemento. */
+function updateChip(file) {
+  if (state.updates.for !== state.current?.id) return "";
+  const update = state.updates.list.find((u) => u.replaces === file);
+  if (!update) return "";
+  const reason = state.heldBack.get(update.versionId);
+  return reason
+    ? `<span class="update-chip held" title="${escapeHtml(`${update.versionNumber} no se instaló: ${reason}`)}">${icon("alert")}No compatible</span>`
+    : `<button class="update-chip" data-update="${escapeHtml(file)}" title="Actualizar a ${escapeHtml(update.versionNumber)}">${icon("update")}${escapeHtml(update.versionNumber)}</button>`;
 }
 
 async function toggleContent(file, enabled) {
@@ -530,8 +606,8 @@ async function deleteInstance(id) {
   try {
     await invoke("eliminar_instancia", { id });
     if (state.current?.id === id) navigate("home");
-    state.back = state.back.filter((h) => h.instanceId !== id);
-    state.forward = state.forward.filter((h) => h.instanceId !== id);
+    state.back = state.back.filter((h) => !(h.page === "instance" && h.param === id));
+    state.forward = state.forward.filter((h) => !(h.page === "instance" && h.param === id));
     await reloadInstances();
     toast(`${instance?.name} se movió a la papelera.`);
   } catch (error) {
@@ -1153,7 +1229,6 @@ function wireEvents() {
     };
   }
   $("#content-search").oninput = renderContent;
-  $("#content-add").onclick = pickContentFiles;
   $("#content-folder").onclick = () => invoke("abrir_carpeta_contenido", { id: state.current.id, tipo: state.kind });
   $("#content-list").onchange = (event) => {
     const toggle = event.target.closest("[data-toggle]");
@@ -1161,7 +1236,17 @@ function wireEvents() {
   };
   $("#content-list").onclick = (event) => {
     const remove = event.target.closest("[data-remove]");
-    if (remove) removeContent(remove.dataset.remove);
+    if (remove) return removeContent(remove.dataset.remove);
+    const update = event.target.closest("[data-update]");
+    if (update) {
+      const found = availableUpdates().find((u) => u.replaces === update.dataset.update);
+      return found && applyUpdates([found]);
+    }
+    const project = event.target.closest("[data-project-open]");
+    if (project) {
+      setExploreTarget(state.current?.id);
+      navigate("project", project.dataset.projectOpen);
+    }
   };
 
   // Registro
@@ -1302,6 +1387,8 @@ function wireEvents() {
       closeModal("#settings-dialog");
       closeModal("#edit-dialog");
       closeModal("#crash-dialog");
+      closeModal("#install-dialog");
+      $("#lightbox").classList.add("hidden");
       if (!$("#confirm-dialog").classList.contains("hidden")) state.confirmCancel?.();
     } else if ((event.key === "n" || event.key === "N") && !isTyping() && !event.ctrlKey && !event.altKey) {
       event.preventDefault();
@@ -1317,6 +1404,7 @@ function wireEvents() {
     if (event.button === 4) goForward();
   });
 
+  wireExploreEvents();
   listen("juego-cerrado", ({ payload }) => onGameClosed(payload));
   // Arrastrar archivos a la ventana: se agregan a la instancia abierta.
   tauri?.webview?.getCurrentWebview().onDragDropEvent(({ payload }) => {
@@ -1331,6 +1419,10 @@ function wireEvents() {
   });
 
   listen("progreso", ({ payload }) => {
+    if (payload.task === "instalar") {
+      $("#download-percent").textContent = `${Math.round(payload.fraction * 100)}%`;
+      return;
+    }
     if (payload.task === "loader") {
       $("#edit-loader-hint").textContent = payload.stage;
       return;
@@ -1358,6 +1450,626 @@ async function init() {
   navigate("home", null, false);
   pollRunning();
   setInterval(pollRunning, 3000);
+}
+
+// ======================================================================
+// Explorar: mods, resource packs y shaders de Modrinth
+// ======================================================================
+const exploreKinds = {
+  mod: { placeholder: "Buscar mods…", contentKind: "mods", noun: "mods" },
+  resourcepack: { placeholder: "Buscar resource packs…", contentKind: "resourcepacks", noun: "resource packs" },
+  shader: { placeholder: "Buscar shaders…", contentKind: "shaderpacks", noun: "shaders" },
+};
+const contentToExplore = { mods: "mod", resourcepacks: "resourcepack", shaderpacks: "shader", worlds: "mod" };
+
+const categoryNames = {
+  adventure: "Aventura", cursed: "Raros", decoration: "Decoración", economy: "Economía", equipment: "Equipo", food: "Comida",
+  "game-mechanics": "Mecánicas", library: "Bibliotecas", magic: "Magia", management: "Gestión", minigame: "Minijuegos",
+  mobs: "Criaturas", optimization: "Optimización", social: "Social", storage: "Almacenamiento", technology: "Tecnología",
+  transportation: "Transporte", utility: "Utilidades", worldgen: "Generación de mundo",
+  fabric: "Fabric", quilt: "Quilt", forge: "Forge", neoforge: "NeoForge", iris: "Iris", optifine: "OptiFine", canvas: "Canvas",
+  vanilla: "Vanilla", minecraft: "Minecraft", datapack: "Data pack",
+  audio: "Sonido", blocks: "Bloques", combat: "Combate", "core-shaders": "Shaders básicos", entities: "Criaturas",
+  environment: "Entorno", fonts: "Fuentes", gui: "Interfaz", items: "Objetos", locale: "Idioma", modded: "Para mods",
+  models: "Modelos", realistic: "Realista", simplistic: "Sencillo", themed: "Temático", tweaks: "Ajustes", "vanilla-like": "Estilo vanilla",
+  atmosphere: "Atmósfera", bloom: "Resplandor", "colored-lighting": "Luces de colores", foliage: "Vegetación",
+  "path-tracing": "Trazado de rayos", pbr: "PBR", reflections: "Reflejos", shadows: "Sombras", cartoon: "Caricatura",
+  fantasy: "Fantasía", "semi-realistic": "Semirrealista", screenshot: "Capturas", high: "Exigente", medium: "Medio",
+  low: "Ligero", potato: "Muy ligero", "8x-": "8x o menos", "512x+": "512x o más",
+};
+const categoryHeaders = { categories: "Categorías", features: "Características", resolutions: "Resolución", "performance impact": "Rendimiento" };
+const loaderCategories = new Set(["fabric", "quilt", "forge", "neoforge", "iris", "optifine", "canvas", "vanilla", "minecraft", "datapack", "liteloader", "modloader", "rift", "bukkit", "paper", "spigot", "velocity"]);
+const categoryName = (name) => categoryNames[name] ?? name.charAt(0).toUpperCase() + name.slice(1);
+const compact = new Intl.NumberFormat("es-MX", { notation: "compact", maximumFractionDigits: 1 });
+
+function relativeDate(iso) {
+  const ms = Date.parse(iso);
+  if (!ms) return "";
+  const days = (Date.now() - ms) / 86400e3;
+  if (days < 1) return "hoy";
+  if (days < 2) return "ayer";
+  if (days < 31) return `hace ${Math.floor(days)} días`;
+  if (days < 365) return `hace ${Math.floor(days / 30)} ${Math.floor(days / 30) === 1 ? "mes" : "meses"}`;
+  return `hace ${Math.floor(days / 365)} ${Math.floor(days / 365) === 1 ? "año" : "años"}`;
+}
+
+function projectIcon(url, size = "") {
+  return url
+    ? `<img src="${escapeHtml(url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
+    : `<svg class="${size}"><use href="#i-puzzle"/></svg>`;
+}
+
+/** Loaders de Modrinth que sirven en una instancia (Quilt también carga mods de Fabric). */
+function modLoadersFor(instance) {
+  return { Fabric: ["fabric"], Quilt: ["quilt", "fabric"], Forge: ["forge"], NeoForge: ["neoforge"] }[instance.loader] ?? [];
+}
+
+const exploreTarget = () => state.instances.find((i) => i.id === state.explore.target) ?? null;
+
+function installLabel(instance) {
+  return `${instance.name} · ${instance.loader} ${instance.minecraftVersion}`;
+}
+
+function fillTargetSelect(select) {
+  const target = state.explore.target;
+  select.innerHTML =
+    `<option value="">Ninguna (solo ver)</option>` +
+    state.instances.map((i) => `<option value="${escapeHtml(i.id)}" ${i.id === target ? "selected" : ""}>${escapeHtml(installLabel(i))}</option>`).join("");
+}
+
+async function setExploreTarget(id) {
+  state.explore.target = id || null;
+  state.explore.installed = new Set();
+  state.explore.installedVersions = new Set();
+  fillTargetSelect($("#explore-instance"));
+  fillTargetSelect($("#project-target"));
+  renderExploreFilters();
+  const instance = exploreTarget();
+  if (instance) {
+    try {
+      const installed = await invoke("proyectos_instalados", { id: instance.id });
+      if (state.explore.target !== instance.id) return;
+      state.explore.installed = new Set(installed.projects);
+      state.explore.installedVersions = new Set(installed.versions);
+    } catch {
+      // Sin conexión: simplemente no se marca lo instalado.
+    }
+  }
+  refreshInstallButtons();
+}
+
+/** Abre Explorar para agregar contenido a una instancia (desde su pestaña Contenido). */
+function openExploreFor(instanceId, contentKind) {
+  state.explore.kind = contentToExplore[contentKind] ?? "mod";
+  state.explore.categories.clear();
+  navigate("explore");
+  setExploreTarget(instanceId);
+  selectExploreKind(state.explore.kind);
+}
+
+function selectExploreKind(kind) {
+  const e = state.explore;
+  if (e.kind !== kind) e.categories.clear();
+  e.kind = kind;
+  for (const tab of $$("#explore-kinds .tab[data-kind]")) tab.classList.toggle("active", tab.dataset.kind === kind);
+  $("#explore-search").placeholder = exploreKinds[kind].placeholder;
+  renderExploreFilters();
+  loadCategories(kind);
+  runExplore();
+}
+
+function renderExploreFilters() {
+  const e = state.explore;
+  const instance = exploreTarget();
+  // Con instancia, el loader y la versión salen de ella.
+  $("#filter-loader").classList.toggle("hidden", e.kind !== "mod" || !!instance);
+  $("#filter-version").classList.toggle("hidden", !!instance);
+  for (const chip of $$("#explore-loaders [data-loader]")) chip.classList.toggle("active", e.loader === chip.dataset.loader);
+  const note = $("#explore-instance-note");
+  if (!instance) note.textContent = "Elige una instancia para ver solo lo compatible e instalar con un clic.";
+  else if (e.kind === "mod" && instance.loader === "Vanilla") note.textContent = "Es vanilla: no carga mods. Elige una con Fabric o Quilt.";
+  else note.textContent = `Se muestra solo lo compatible con ${e.kind === "mod" ? instance.loader + " " : "Minecraft "}${instance.minecraftVersion}.`;
+  const showNote = instance && e.kind === "mod" && instance.loader === "Vanilla";
+  $("#explore-note").classList.toggle("hidden", !showNote);
+  $("#explore-note").textContent = showNote ? `${instance.name} es vanilla y no puede cargar mods. Crea una instancia con Fabric o Quilt, o explora resource packs y shaders.` : "";
+}
+
+async function loadExploreVersions() {
+  if (state.explore.versionsLoaded) return;
+  state.explore.versionsLoaded = true;
+  try {
+    const versions = state.versions ?? (await invoke("listar_versiones"));
+    state.versions ??= versions;
+    const releases = versions.mojang ? versions.releases.filter((r) => r.type === "release").map((r) => r.id) : versions.installed;
+    $("#explore-version").innerHTML = `<option value="">Todas</option>` + releases.map((v) => `<option>${escapeHtml(v)}</option>`).join("");
+  } catch {
+    state.explore.versionsLoaded = false;
+  }
+}
+
+async function loadCategories(kind) {
+  const box = $("#explore-categories");
+  if (!state.explore.categoryList[kind]) {
+    try {
+      state.explore.categoryList[kind] = await invoke("categorias", { tipo: kind });
+    } catch {
+      box.innerHTML = "";
+      return;
+    }
+  }
+  if (state.explore.kind !== kind) return;
+  const groups = {};
+  for (const category of state.explore.categoryList[kind]) {
+    if (loaderCategories.has(category.name)) continue;
+    (groups[category.header] ??= []).push(category);
+  }
+  box.innerHTML = Object.entries(groups)
+    .map(
+      ([header, list]) => `<div class="filter-block"><h4>${escapeHtml(categoryHeaders[header] ?? header)}</h4><div class="filter-list">${list
+        .sort((a, b) => categoryName(a.name).localeCompare(categoryName(b.name), "es"))
+        .map(
+          (c) => `<button class="filter-item ${state.explore.categories.has(c.name) ? "active" : ""}" data-category="${escapeHtml(c.name)}">
+            <span class="cat-icon" style="--icon:url('${c.icon}')"></span>${escapeHtml(categoryName(c.name))}</button>`,
+        )
+        .join("")}</div></div>`,
+    )
+    .join("");
+}
+
+let exploreTimer = null;
+function queueExplore() {
+  clearTimeout(exploreTimer);
+  exploreTimer = setTimeout(() => runExplore(), 280);
+}
+
+async function runExplore(append = false) {
+  const e = state.explore;
+  const id = ++e.requestId;
+  const instance = exploreTarget();
+  const loaders = e.kind !== "mod" ? [] : instance ? modLoadersFor(instance) : e.loader ? [e.loader] : [];
+  const gameVersion = instance ? instance.minecraftVersion : e.version || null;
+  if (!append) $("#explore-results").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
+  $("#explore-more").disabled = true;
+  try {
+    const result = await invoke("buscar_contenido", {
+      busqueda: { query: e.query, kind: e.kind, loaders, gameVersion, categories: [...e.categories], sort: e.sort, offset: append ? e.hits.length : 0 },
+    });
+    if (id !== e.requestId) return;
+    e.hits = append ? [...e.hits, ...result.hits] : result.hits;
+    e.total = result.total;
+    renderExploreResults(append ? e.hits.length - result.hits.length : 0);
+  } catch (error) {
+    if (id !== e.requestId) return;
+    $("#explore-results").innerHTML = `<div class="content-empty">${escapeHtml(error)}</div>`;
+    $("#explore-more").classList.add("hidden");
+  } finally {
+    $("#explore-more").disabled = false;
+  }
+}
+
+function installButton(projectId, extraClass = "") {
+  const e = state.explore;
+  if (e.installing.has(projectId)) return `<button class="btn ${extraClass}" disabled><span class="spinner tiny"></span>Instalando…</button>`;
+  if (e.installed.has(projectId)) return `<button class="btn installed ${extraClass}" disabled><svg><use href="#i-check"/></svg>Instalado</button>`;
+  return `<button class="btn primary ${extraClass}" data-install="${escapeHtml(projectId)}"><svg><use href="#i-download"/></svg>Instalar</button>`;
+}
+
+function renderExploreResults(from = 0) {
+  const e = state.explore;
+  const list = $("#explore-results");
+  if (!e.hits.length) {
+    list.innerHTML = `<div class="content-empty">No se encontró nada${e.query ? ` para "${escapeHtml(e.query)}"` : ""}. Prueba con otras palabras o quita filtros.</div>`;
+    $("#explore-more").classList.add("hidden");
+    return;
+  }
+  const html = e.hits
+    .slice(from)
+    .map((hit, index) => {
+      const tags = hit.categories.filter((c) => !loaderCategories.has(c)).slice(0, 4);
+      return `<div class="result" data-project="${escapeHtml(hit.id)}" style="animation-delay:${Math.min(index, 12) * 25}ms">
+        <div class="result-icon">${projectIcon(hit.iconUrl)}</div>
+        <div class="grow result-body">
+          <div class="r-title"><b>${escapeHtml(hit.title)}</b><span class="muted">por ${escapeHtml(hit.author)}</span></div>
+          <div class="r-desc">${escapeHtml(hit.description)}</div>
+          <div class="r-tags">${tags.map((t) => `<span class="tag">${escapeHtml(categoryName(t))}</span>`).join("")}</div>
+        </div>
+        <div class="r-side">
+          <div class="r-stats">
+            <span title="Descargas">${icon("download")}${compact.format(hit.downloads)}</span>
+            <span title="Seguidores">${icon("heart")}${compact.format(hit.follows)}</span>
+          </div>
+          <div class="faint r-updated">${icon("clock")}Actualizado ${escapeHtml(relativeDate(hit.updated))}</div>
+          <div class="r-action">${installButton(hit.id)}</div>
+        </div>
+      </div>`;
+    })
+    .join("");
+  if (from === 0) list.innerHTML = html;
+  else list.insertAdjacentHTML("beforeend", html);
+  $("#explore-more").classList.toggle("hidden", e.hits.length >= e.total);
+}
+
+function refreshInstallButtons() {
+  for (const result of $$("#explore-results .result")) $(".r-action", result).innerHTML = installButton(result.dataset.project);
+  if (state.page === "project" && state.projectData) renderProjectInstall();
+}
+
+// ---------- Instalar ----------
+async function installProject(projectId, versionId = null) {
+  const e = state.explore;
+  const instance = exploreTarget();
+  if (!instance) {
+    toast('Elige en qué instancia instalarlo en "Instalar en".', "error");
+    ($("#page-project").classList.contains("hidden") ? $("#explore-instance") : $("#project-target")).focus();
+    return;
+  }
+  if (e.installing.has(projectId)) return;
+  e.installing.add(projectId);
+  refreshInstallButtons();
+  $("#download-indicator").classList.remove("hidden");
+  $("#download-percent").textContent = "…";
+  try {
+    const plan = await invoke("preparar_instalacion", { id: instance.id, proyecto: projectId, version: versionId });
+    if (plan.installed) {
+      toast(`${plan.title} ${plan.versionNumber} ya está instalado en ${instance.name}.`);
+    } else if (plan.problem) {
+      showInstallProblem(plan, projectId);
+    } else {
+      await invoke("instalar_contenido", { id: instance.id, archivos: plan.files });
+      const dependencies = plan.files.filter((f) => f.dependency).map((f) => f.title);
+      toast(`Se instaló ${plan.title} ${plan.versionNumber} en ${instance.name}${dependencies.length ? `, con ${dependencies.join(", ")}` : ""}.`);
+      for (const file of plan.files) {
+        e.installed.add(file.projectId);
+        e.installedVersions.add(file.versionId);
+      }
+      if (state.contentFor === instance.id) {
+        state.content = null;
+        state.updates = { for: null, list: [] };
+      }
+      if (plan.optional.length) offerOptional(plan);
+    }
+  } catch (error) {
+    toast(String(error), "error");
+  } finally {
+    e.installing.delete(projectId);
+    $("#download-indicator").classList.add("hidden");
+    refreshInstallButtons();
+    if (state.page === "project" && state.projectVersions) renderProjectVersions();
+  }
+}
+
+function showInstallProblem(plan, projectId) {
+  openInstallDialog({
+    alert: true,
+    title: `No se puede instalar ${plan.title}`,
+    text: plan.problem,
+    items: [],
+    ok: state.page === "project" ? "" : "Ver versiones",
+    secondary: "Entendido",
+    onOk: () => {
+      navigate("project", projectId);
+      selectProjectTab("versions");
+    },
+  });
+}
+
+function offerOptional(plan) {
+  openInstallDialog({
+    alert: false,
+    title: `${plan.title} está instalado`,
+    text: "También funciona con estos mods opcionales. ¿Quieres alguno?",
+    items: plan.optional,
+    ok: "Instalar los marcados",
+    secondary: "No, gracias",
+    onOk: async (chosen) => {
+      for (const id of chosen) await installProject(id);
+    },
+  });
+}
+
+function openInstallDialog({ alert, title, text, items, ok, secondary, onOk }) {
+  $("#install-alert").classList.toggle("hidden", !alert);
+  $("#install-title").textContent = title;
+  $("#install-text").textContent = text;
+  $("#install-list").innerHTML = items
+    .map(
+      (p) => `<label class="install-item"><input type="checkbox" value="${escapeHtml(p.id)}">
+        <span class="content-icon">${projectIcon(p.iconUrl)}</span><b class="grow">${escapeHtml(p.title)}</b></label>`,
+    )
+    .join("");
+  $("#install-ok").textContent = ok;
+  $("#install-ok").classList.toggle("hidden", !ok);
+  $("#install-secondary").textContent = secondary;
+  $("#install-ok").onclick = () => {
+    const chosen = $$("#install-list input:checked").map((i) => i.value);
+    closeModal("#install-dialog");
+    onOk(chosen);
+  };
+  openModal("#install-dialog");
+}
+
+// ======================================================================
+// Página de un proyecto
+// ======================================================================
+async function loadProject(id) {
+  state.projectId = id;
+  state.projectData = null;
+  state.projectVersions = null;
+  selectProjectTab("description");
+  $("#project-icon").innerHTML = `<div class="spinner"></div>`;
+  $("#project-title").textContent = "Cargando…";
+  $("#project-summary").textContent = "";
+  $("#project-meta").innerHTML = "";
+  $("#project-body").replaceChildren();
+  $("#project-aside").innerHTML = "";
+  $("#project-gallery").innerHTML = "";
+  fillTargetSelect($("#project-target"));
+  try {
+    const project = await invoke("proyecto", { id });
+    if (state.projectId !== id) return;
+    state.projectData = project;
+    renderProject();
+  } catch (error) {
+    if (state.projectId !== id) return;
+    $("#project-icon").innerHTML = icon("alert");
+    $("#project-title").textContent = "No se pudo abrir";
+    $("#project-summary").textContent = String(error);
+  }
+}
+
+function renderProject() {
+  const p = state.projectData;
+  if (state.page === "project") $("#crumb-text").textContent = p.title;
+  $("#project-icon").innerHTML = projectIcon(p.iconUrl, "large");
+  $("#project-title").textContent = p.title;
+  $("#project-summary").textContent = p.description;
+  $("#project-meta").innerHTML = `
+    <span>${icon("download")}${compact.format(p.downloads)} descargas</span>
+    <span>${icon("heart")}${compact.format(p.followers)} seguidores</span>
+    <span>${icon("clock")}Actualizado ${escapeHtml(relativeDate(p.updated))}</span>`;
+  renderProjectInstall();
+  const body = $("#project-body");
+  body.replaceChildren(Markdown.toFragment(p.body || p.description));
+  const releases = p.gameVersions.filter((v) => /^\d+(\.\d+)+$/.test(v));
+  const sides = { required: "Necesario", optional: "Opcional", unsupported: "No se usa", unknown: "Sin datos" };
+  $("#project-aside").innerHTML = `
+    <div class="card-panel"><h4>Compatibilidad</h4>
+      <dl class="mini-details">
+        <dt>Minecraft</dt><dd>${releases.length ? `${escapeHtml(releases[0])} – ${escapeHtml(releases.at(-1))}` : escapeHtml(p.gameVersions.at(-1) ?? "—")}</dd>
+        <dt>Plataformas</dt><dd>${escapeHtml(p.loaders.map(categoryName).join(", ") || "—")}</dd>
+        <dt>En el cliente</dt><dd>${sides[p.clientSide] ?? "—"}</dd>
+        <dt>En el servidor</dt><dd>${sides[p.serverSide] ?? "—"}</dd>
+      </dl></div>
+    <div class="card-panel"><h4>Detalles</h4>
+      <dl class="mini-details">
+        <dt>Autor</dt><dd>${escapeHtml(p.author || "—")}</dd>
+        <dt>Licencia</dt><dd>${escapeHtml(p.license || "—")}</dd>
+        <dt>Publicado</dt><dd>${p.published ? new Date(p.published).toLocaleDateString("es-MX") : "—"}</dd>
+      </dl>
+      <div class="r-tags">${p.categories.filter((c) => !loaderCategories.has(c)).map((c) => `<span class="tag">${escapeHtml(categoryName(c))}</span>`).join("")}</div>
+    </div>
+    <div class="card-panel"><h4>Enlaces</h4>
+      <div class="link-list">
+        <a href="https://modrinth.com/${escapeHtml(p.projectType)}/${escapeHtml(p.slug)}">${icon("external")}Ver en Modrinth</a>
+        ${p.links.map(([label, url]) => `<a href="${escapeHtml(url)}">${icon("external")}${escapeHtml(label)}</a>`).join("")}
+      </div>
+    </div>`;
+  $("#project-gallery").innerHTML = p.gallery.length
+    ? p.gallery
+        .map(
+          (g, i) => `<figure data-image="${i}"><img src="${escapeHtml(g.url)}" alt="" loading="lazy" referrerpolicy="no-referrer">
+          ${g.title ? `<figcaption>${escapeHtml(g.title)}</figcaption>` : ""}</figure>`,
+        )
+        .join("")
+    : `<div class="content-empty">Este proyecto no tiene imágenes.</div>`;
+  $('#project-tabs [data-tab="gallery"]').classList.toggle("hidden", !p.gallery.length);
+}
+
+function renderProjectInstall() {
+  const p = state.projectData;
+  const button = $("#project-install");
+  const instance = exploreTarget();
+  const installing = state.explore.installing.has(p.id);
+  const installed = state.explore.installed.has(p.id);
+  button.disabled = installing || installed;
+  button.className = `btn big ${installed ? "installed" : "primary"}`;
+  $("span", button).textContent = installing ? "Instalando…" : installed ? "Instalado" : instance ? `Instalar en ${instance.name}` : "Instalar";
+  $("use", button).setAttribute("href", installed ? "#i-check" : "#i-download");
+  $(".project-install").classList.toggle("hidden", !exploreKinds[p.projectType]);
+}
+
+function selectProjectTab(tab) {
+  for (const button of $$("#project-tabs .tab")) button.classList.toggle("active", button.dataset.tab === tab);
+  for (const name of ["description", "versions", "gallery"]) $(`#ptab-${name}`).classList.toggle("hidden", name !== tab);
+  if (tab === "versions" && !state.projectVersions) loadProjectVersions();
+}
+
+async function loadProjectVersions() {
+  const id = state.projectId;
+  const p = state.projectData;
+  if (!id || !p) return;
+  const instance = exploreKinds[p.projectType] ? exploreTarget() : null;
+  $("#project-versions").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
+  $("#project-versions-note").textContent = instance
+    ? `Versiones compatibles con ${instance.name} (${p.projectType === "mod" ? instance.loader + " " : "Minecraft "}${instance.minecraftVersion}).`
+    : "Todas las versiones. Elige una instancia en \"Instalar en\" para ver solo las compatibles.";
+  try {
+    const versions = await invoke("versiones_proyecto", { id, tipo: p.projectType, instancia: instance?.id ?? null });
+    if (state.projectId !== id) return;
+    state.projectVersions = versions;
+    renderProjectVersions();
+  } catch (error) {
+    $("#project-versions").innerHTML = `<div class="content-empty">${escapeHtml(error)}</div>`;
+  }
+}
+
+function renderProjectVersions() {
+  const versions = state.projectVersions ?? [];
+  const types = { release: ["Estable", "release"], beta: ["Beta", "beta"], alpha: ["Alfa", "alpha"] };
+  const instance = exploreTarget();
+  $("#project-versions").innerHTML = versions.length
+    ? versions
+        .slice(0, 150)
+        .map((v) => {
+          const [typeName, typeClass] = types[v.versionType] ?? [v.versionType, "alpha"];
+          const games = v.gameVersions.length > 3 ? `${v.gameVersions[0]} – ${v.gameVersions.at(-1)}` : v.gameVersions.join(", ");
+          const installed = state.explore.installedVersions.has(v.id);
+          const action = !instance || !exploreKinds[state.projectData.projectType]
+            ? ""
+            : installed
+              ? `<button class="btn installed small" disabled><svg><use href="#i-check"/></svg>Instalada</button>`
+              : `<button class="btn small" data-install-version="${escapeHtml(v.id)}" ${state.explore.installing.has(state.projectId) ? "disabled" : ""}><svg><use href="#i-download"/></svg>Instalar</button>`;
+          return `<div class="content-item">
+            <span class="version-type ${typeClass}">${typeName}</span>
+            <div class="grow"><div class="c-name">${escapeHtml(v.name || v.versionNumber)}</div>
+              <div class="c-sub">${escapeHtml(v.loaders.map(categoryName).join(", "))} · Minecraft ${escapeHtml(games)}</div></div>
+            <div class="c-version">${new Date(v.published).toLocaleDateString("es-MX")} · ${compact.format(v.downloads)}</div>
+            ${action}
+          </div>`;
+        })
+        .join("")
+    : `<div class="content-empty">No hay versiones${instance ? ` para ${escapeHtml(instance.name)}` : ""}.</div>`;
+}
+
+// ======================================================================
+// Actualizaciones (pestaña Contenido)
+// ======================================================================
+async function checkUpdates(id) {
+  try {
+    const list = await invoke("buscar_actualizaciones", { id });
+    if (state.current?.id !== id) return;
+    state.updates = { for: id, list };
+    renderContent();
+  } catch {
+    // Sin conexión con Modrinth: no se muestran actualizaciones.
+  }
+}
+
+const availableUpdates = () => (state.updates.for === state.current?.id ? state.updates.list.filter((u) => !state.heldBack.has(u.versionId)) : []);
+
+async function applyUpdates(files) {
+  const id = state.current?.id;
+  if (!id || !files.length) return;
+  const button = $("#content-update-all");
+  button.disabled = true;
+  $("#download-indicator").classList.remove("hidden");
+  $("#download-percent").textContent = "…";
+  try {
+    const heldBack = await invoke("actualizar_contenido", { id, archivos: files });
+    for (const held of heldBack) state.heldBack.set(held.versionId, held.reason);
+    const done = files.length - heldBack.length;
+    if (done) toast(`Se ${done === 1 ? "actualizó" : "actualizaron"} ${plural(done, "elemento", "elementos")}.`);
+    if (heldBack.length) {
+      const one = heldBack.length === 1;
+      toast(`No se ${one ? "actualizó" : "actualizaron"} porque ${one ? "rompería" : "romperían"} algo: ${heldBack.map((h) => `${h.title} (${h.reason})`).join(" · ")}`, "error");
+    }
+    state.content = null;
+    state.updates = { for: null, list: [] };
+    await loadContent();
+  } catch (error) {
+    toast(String(error), "error");
+  } finally {
+    button.disabled = false;
+    $("#download-indicator").classList.add("hidden");
+  }
+}
+
+function contentAddMenu() {
+  const id = state.current?.id;
+  if (!id) return;
+  contextMenu($("#content-add"), [
+    { label: "Buscar en Modrinth", icon: "compass", action: () => openExploreFor(id, state.kind) },
+    { label: "Desde un archivo de la PC", icon: "upload", action: pickContentFiles },
+  ]);
+}
+
+function openLightbox(index) {
+  const image = state.projectData?.gallery[index];
+  if (!image) return;
+  $("#lightbox-image").src = image.url;
+  $("#lightbox-caption").textContent = [image.title, image.description].filter(Boolean).join(" — ");
+  $("#lightbox").classList.remove("hidden");
+}
+
+function wireExploreEvents() {
+  for (const tab of $$("#explore-kinds .tab[data-kind]")) tab.onclick = () => selectExploreKind(tab.dataset.kind);
+  $("#explore-search").oninput = () => {
+    state.explore.query = $("#explore-search").value.trim();
+    queueExplore();
+  };
+  $("#explore-sort").onchange = () => {
+    state.explore.sort = $("#explore-sort").value;
+    runExplore();
+  };
+  $("#explore-instance").onchange = () => {
+    setExploreTarget($("#explore-instance").value);
+    runExplore();
+  };
+  $("#project-target").onchange = () => {
+    setExploreTarget($("#project-target").value);
+    state.projectVersions = null;
+    if (!$("#ptab-versions").classList.contains("hidden")) loadProjectVersions();
+  };
+  $("#explore-version").onchange = () => {
+    state.explore.version = $("#explore-version").value;
+    runExplore();
+  };
+  $("#explore-loaders").onclick = (event) => {
+    const chip = event.target.closest("[data-loader]");
+    if (!chip) return;
+    state.explore.loader = state.explore.loader === chip.dataset.loader ? "" : chip.dataset.loader;
+    renderExploreFilters();
+    runExplore();
+  };
+  $("#explore-categories").onclick = (event) => {
+    const item = event.target.closest("[data-category]");
+    if (!item) return;
+    const set = state.explore.categories;
+    set.has(item.dataset.category) ? set.delete(item.dataset.category) : set.add(item.dataset.category);
+    item.classList.toggle("active", set.has(item.dataset.category));
+    runExplore();
+  };
+  $("#explore-more").onclick = () => runExplore(true);
+  $("#explore-results").onclick = (event) => {
+    const install = event.target.closest("[data-install]");
+    if (install) return installProject(install.dataset.install);
+    const result = event.target.closest("[data-project]");
+    if (result && !event.target.closest("button")) navigate("project", result.dataset.project);
+  };
+
+  // Página del proyecto
+  for (const tab of $$("#project-tabs .tab")) tab.onclick = () => selectProjectTab(tab.dataset.tab);
+  $("#project-install").onclick = () => state.projectData && installProject(state.projectData.id);
+  $("#project-versions").onclick = (event) => {
+    const button = event.target.closest("[data-install-version]");
+    if (button) installProject(state.projectId, button.dataset.installVersion);
+  };
+  $("#project-gallery").onclick = (event) => {
+    const figure = event.target.closest("[data-image]");
+    if (figure) openLightbox(Number(figure.dataset.image));
+  };
+  $("#lightbox").onclick = () => $("#lightbox").classList.add("hidden");
+
+  // Ventana de instalar
+  for (const id of ["#install-close", "#install-secondary"]) $(id).onclick = () => closeModal("#install-dialog");
+  $("#install-dialog").onmousedown = (event) => event.target.id === "install-dialog" && closeModal("#install-dialog");
+
+  // Contenido: agregar, actualizar y abrir el proyecto de un mod
+  $("#content-add").onclick = (event) => {
+    event.stopPropagation();
+    contentAddMenu();
+  };
+  $("#content-update-all").onclick = () => applyUpdates(availableUpdates());
+
+  // Los enlaces (descripciones, "Ver en Modrinth") se abren en el navegador, nunca dentro del launcher.
+  const openLink = (event) => {
+    const link = event.target.closest("a[href]");
+    if (!link) return;
+    event.preventDefault();
+    if (/^https?:/i.test(link.href)) invoke("abrir_enlace", { url: link.href }).catch((error) => toast(String(error), "error"));
+  };
+  document.addEventListener("click", openLink);
+  document.addEventListener("auxclick", openLink);
 }
 
 // ======================================================================
@@ -1415,10 +2127,54 @@ function demoInvoke(command, args = {}) {
         message: null,
       }), 300),
     );
+  // Modrinth de ejemplo
+  const later = (value, ms = 350) => new Promise((resolve) => setTimeout(() => resolve(value), ms));
+  if (command === "buscar_contenido") {
+    const names = [
+      ["AANobbMI", "Sodium", "jellysquid3", "Un motor de renderizado que mejora muchísimo los FPS y reduce los tirones.", ["fabric", "optimization"], 238896364, 41530],
+      ["YL57xq9U", "Iris Shaders", "coderbot", "Un mod de shaders moderno para Fabric, compatible con los packs de OptiFine.", ["fabric", "decoration", "utility"], 120123456, 30120],
+      ["P7dR8mSH", "Fabric API", "modmuss50", "Biblioteca esencial para casi todos los mods de Fabric.", ["fabric", "library"], 140000000, 25000],
+      ["mOgUt4GM", "Mod Menu", "Prospector", "Agrega un menú para ver y configurar tus mods.", ["fabric", "utility"], 90000000, 18000],
+      ["gvQqBUqZ", "Lithium", "jellysquid3", "Optimiza la lógica del juego sin cambiar cómo funciona.", ["fabric", "optimization"], 80000000, 16000],
+    ];
+    const hits = names.map(([id, title, author, description, categories, downloads, follows]) => ({
+      id, slug: title.toLowerCase().replace(/\W+/g, "-"), title, author, description, categories, downloads, follows,
+      iconUrl: null, updated: new Date(now - 86400e3 * 9).toISOString(), clientSide: "required", serverSide: "optional",
+    }));
+    const query = args.busqueda.query.toLowerCase();
+    return later({ hits: hits.filter((h) => !query || h.title.toLowerCase().includes(query)), total: hits.length });
+  }
+  if (command === "categorias")
+    return later(["optimization", "utility", "library", "decoration", "adventure", "technology"].map((name) => ({
+      name, header: "categories",
+      icon: "data:image/svg+xml;base64," + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg>'),
+    })), 100);
+  if (command === "proyectos_instalados") return later({ projects: ["P7dR8mSH"], versions: ["v1"] }, 100);
+  if (command === "proyecto")
+    return later({
+      id: args.id, slug: "sodium", title: "Sodium", description: "Un motor de renderizado que mejora muchísimo los FPS.", projectType: "mod",
+      author: "CaffeineMC", downloads: 238896364, followers: 41530, categories: ["fabric", "optimization"], loaders: ["fabric", "quilt", "neoforge"],
+      gameVersions: ["1.16.5", "1.20.1", "1.21.1", "26.3"], clientSide: "required", serverSide: "unsupported", license: "Polyform Shield 1.0.0",
+      updated: new Date(now - 86400e3 * 17).toISOString(), published: "2021-01-03T00:53:34Z", iconUrl: null,
+      links: [["Código fuente", "https://github.com/CaffeineMC/sodium"], ["Discord", "https://caffeinemc.net/discord"]],
+      gallery: [],
+      body: "## Sodium\n\nSodium es un **motor de renderizado** gratuito y de código abierto.\n\n- Mejora los *FPS*\n- Reduce los tirones\n  - también en servidores\n\n| Versión | Estado |\n|---|---|\n| 1.21.1 | Estable |\n\n> Nota: necesita Fabric.\n\n<p align=\"center\"><b>HTML permitido</b></p>\n\n<script>alert('esto no se ejecuta')</script>\n<img src=x onerror=alert(1)>\n<a href=\"javascript:alert(1)\">enlace peligroso</a>\n\n[Página oficial](https://modrinth.com/mod/sodium) y `código`.",
+    });
+  if (command === "versiones_proyecto")
+    return later([
+      { id: "v2", projectId: args.id, name: "Sodium 0.6.13", versionNumber: "mc1.21.1-0.6.13-fabric", versionType: "release", published: new Date(now - 86400e3 * 20).toISOString(), downloads: 1200000, loaders: ["fabric", "quilt"], gameVersions: ["1.21", "1.21.1"], filename: "sodium.jar", size: 1, dependencies: [] },
+      { id: "v1", projectId: args.id, name: "Sodium 0.6.12 beta", versionNumber: "mc1.21.1-0.6.12-beta.1", versionType: "beta", published: new Date(now - 86400e3 * 40).toISOString(), downloads: 30000, loaders: ["fabric"], gameVersions: ["1.21.1"], filename: "sodium.jar", size: 1, dependencies: [] },
+    ]);
+  if (command === "preparar_instalacion")
+    return later({ projectId: args.proyecto, title: "Mod de ejemplo", versionNumber: "1.0.0", files: [], optional: [{ id: "x", title: "Mod opcional", iconUrl: null }], installed: false, problem: args.proyecto === "YL57xq9U" ? "Iris necesita Sodium 0.6.x, pero la versión es 0.8.13." : null });
+  if (command === "instalar_contenido") return later(null, 600);
+  if (command === "buscar_actualizaciones")
+    return later([{ projectId: "AANobbMI", versionId: "nueva", title: "Sodium", versionNumber: "0.6.13", kind: "mods", filename: "sodium-0.6.13.jar", replaces: "sodium-0.6.0.jar", dependency: false }], 300);
+  if (command === "actualizar_contenido") return later([], 500);
   if (command === "contenido") {
     const mod = (name, version, authors, enabled = true) => ({ file: `${name.toLowerCase().replace(/\W+/g, "-")}-${version}.jar${enabled ? "" : ".disabled"}`, name, version, authors, enabled, size: 1e6, modified: now - 86400e3, icon: null });
     return new Promise((r) => setTimeout(() => r({
-      mods: [mod("Sodium", "0.6.0", "jellysquid3, IMS"), mod("Fabric API", "0.102.0", "FabricMC"), mod("Iris Shaders", "1.8.0", "coderbot, IMS"), mod("Mod Menu", "11.0.1", "Prospector", false), mod("Lithium", "0.13.0", "jellysquid3")],
+      mods: [Object.assign(mod("Sodium", "0.6.0", "jellysquid3, IMS"), { file: "sodium-0.6.0.jar", projectId: "AANobbMI" }), mod("Fabric API", "0.102.0", "FabricMC"), mod("Iris Shaders", "1.8.0", "coderbot, IMS"), mod("Mod Menu", "11.0.1", "Prospector", false), mod("Lithium", "0.13.0", "jellysquid3")],
       resourcepacks: [{ file: "Faithful 32x.zip", name: "Faithful 32x", version: null, authors: null, enabled: true, size: 3e7, modified: now, icon: null }],
       shaderpacks: [],
       worlds: [{ file: "Mi mundo", name: "Mi mundo", enabled: true, size: 0, modified: now - 7200e3, icon: null }, { file: "Creativo", name: "Creativo", enabled: true, size: 0, modified: now - 86400e3 * 3, icon: null }],

@@ -237,9 +237,15 @@ pub async fn categories(kind: &str) -> Result<Vec<Category>, String> {
         .into_iter()
         .flatten()
         .filter(|c| c["project_type"] == kind.api())
-        .map(|c| Category {
+        .map(|c| {
+            // Como imagen suelta, un SVG sin xmlns no se dibuja.
+            let svg = text(c, "icon");
+            let svg = if svg.contains("xmlns=") { svg } else { svg.replacen("<svg", r#"<svg xmlns="http://www.w3.org/2000/svg""#, 1) };
+            (c, svg)
+        })
+        .map(|(c, svg)| Category {
             name: text(c, "name"),
-            icon: format!("data:image/svg+xml;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, text(c, "icon"))),
+            icon: format!("data:image/svg+xml;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, svg)),
             header: text(c, "header"),
         })
         .collect())
@@ -1127,13 +1133,22 @@ pub async fn updates(instance: &Instance) -> Result<Vec<PlannedFile>, String> {
     Ok(result)
 }
 
+/// Una actualización que se dejó fuera porque rompería algo.
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct HeldBack {
+    pub version_id: String,
+    pub title: String,
+    pub reason: String,
+}
+
 /// Aplica actualizaciones dejando fuera las que romperían algo (por ejemplo, un Sodium nuevo que el
-/// Iris instalado no acepta). Devuelve por qué se dejó fuera cada una.
+/// Iris instalado no acepta). Devuelve las que se dejaron fuera y por qué.
 pub async fn apply_updates(
     instance: &Instance,
     mut files: Vec<PlannedFile>,
     progress: impl Fn(usize, usize, u64, u64) + Send + Sync + 'static,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<HeldBack>, String> {
     let mut held_back = Vec::new();
     if matches!(instance.loader.as_str(), "Fabric" | "Quilt") && files.iter().any(|f| f.kind == "mods") {
         let installed = identify(instance).await;
@@ -1158,7 +1173,11 @@ pub async fn apply_updates(
                 break;
             };
             let removed = files.remove(index);
-            held_back.push(format!("{} {}: {}", removed.title, removed.version_number, problem.describe(&compat::names(&all))));
+            held_back.push(HeldBack {
+                reason: problem.describe(&compat::names(&all)),
+                title: format!("{} {}", removed.title, removed.version_number),
+                version_id: removed.version_id,
+            });
         }
     }
     install(instance, &files, progress).await?;

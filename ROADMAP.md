@@ -36,22 +36,25 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Agregar archivos a una instancia con un botón o arrastrándolos a la ventana; cada uno va a su categoría y se rechazan los mods de otro loader
 - [x] *Prueba:* Fabric 0.19.5 y Quilt 0.30.1 en 1.21.1 con Fabric API y Mod Menu llegan al menú principal sin errores (`--probar-juego`)
 
+### Fase 5: explorar e instalar de Modrinth (base de datos de mods)
+- [x] Página Explorar: mods, resource packs y shaders de **Modrinth** con búsqueda, orden y filtros (loader, versión, categorías)
+- [x] Página de cada proyecto: descripción (Markdown limpiado: sin scripts ni enlaces peligrosos), versiones, galería, compatibilidad y enlaces
+- [x] Instalar con un clic eligiendo la versión compatible con la instancia ("Instalar en")
+- [x] **Dependencias**: las obligatorias se instalan solas, las opcionales se ofrecen y las incompatibles se bloquean
+- [x] **Versiones que funcionan juntas**: se leen los rangos de versión de cada mod (fabric.mod.json) y, si una dependencia no encaja, se prueban otras (p. ej. Iris 1.8.8 pide Sodium 0.6.x); si no hay forma, se explica por qué
+- [x] Lo instalado se reconoce por SHA-1, también los mods agregados a mano
+- [x] Actualizaciones en la pestaña Contenido: sin bajar de estable a beta y sin aplicar las que romperían algo (se avisa por qué)
+- [x] Al cerrarse el juego por mods incompatibles se muestra la explicación de Fabric
+- [x] *Prueba:* Lithium, Iris (con su Sodium compatible) y Mod Menu instalados desde la interfaz llegan al menú principal sin errores
+
 ### Diseño
 - [x] Interfaz al estilo de la app de Modrinth con identidad morada (tema oscuro y claro, fuente Inter)
 - [x] Biblioteca, continuar jugando, crear instancia por tipo, ajustes por secciones, página Servidores
 
 ## ⏭️ Pendiente, en orden
 
-### Fase 5: explorar e instalar mods (base de datos de mods)
-- [ ] Conexión con la API de **Modrinth** (abierta, sin clave, permite launchers de terceros)
-- [ ] Buscar mods con filtros (versión, loader, categoría) y página de cada mod
-- [ ] Instalar eligiendo automáticamente la versión compatible con la instancia
-- [ ] **Dependencias**: las obligatorias se instalan solas, las opcionales se ofrecen, las incompatibles se bloquean
-- [ ] Verificación por hash, detectar mods ya instalados y actualizar mods
-- [ ] Resource packs, shaders y data packs
-- [ ] (Opcional) CurseForge: requiere solicitar una clave de API y respetar qué autores permiten descargas externas
-
 ### Fase 6: modpacks
+- [ ] Data packs (se instalan dentro de un mundo)
 - [ ] Crear un modpack a partir de una instancia
 - [ ] Exportar en formato `.mrpack` (estándar de Modrinth) y en zip completo
 - [ ] Importar `.mrpack` y zip ("Subir un modpack")
@@ -64,6 +67,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] Configuración integrada en el exe
 
 ### Fase 8: Forge, NeoForge e importación
+- [ ] (Opcional) CurseForge: requiere solicitar una clave de API y respetar qué autores permiten descargas externas
 - [ ] Instancias Forge y NeoForge (instaladores con "processors")
 - [ ] Importar instancias de CurseForge, Prism y de la versión C# (por ejemplo Better MC)
 
