@@ -302,7 +302,7 @@ fn write_json(instance: &Instance, json: &Value) -> Result<(), String> {
 }
 
 /// Tipo de imagen por su firma (los iconos de Modrinth suelen ser WebP).
-fn image_type(bytes: &[u8]) -> Option<&'static str> {
+pub fn image_type(bytes: &[u8]) -> Option<&'static str> {
     if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
         Some("image/png")
     } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {

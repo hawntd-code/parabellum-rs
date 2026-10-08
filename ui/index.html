@@ -27,6 +27,9 @@
           <svg><use href="#i-download"/></svg>
           <span id="download-percent">0%</span>
         </div>
+        <button class="update-pill hidden" id="update-pill" title="Hay una versión nueva de Parabellum">
+          <svg><use href="#i-update"/></svg><span id="update-text">Actualizar</span>
+        </button>
         <button class="status-pill" id="status" title="Ir a tu biblioteca">
           <i class="dot"></i><span id="status-text">Ningún juego abierto</span>
         </button>
@@ -109,6 +112,7 @@
             <div class="explore-main">
               <h1 class="section-title">Explorar</h1>
               <div class="tabs" id="explore-kinds">
+                <button class="tab" data-kind="drive"><svg><use href="#i-cloud"/></svg>Drive</button>
                 <button class="tab active" data-kind="mod"><svg><use href="#i-puzzle"/></svg>Mods</button>
                 <button class="tab" data-kind="resourcepack"><svg><use href="#i-image"/></svg>Resource packs</button>
                 <button class="tab" data-kind="shader"><svg><use href="#i-sun-sparkle"/></svg>Shaders</button>
@@ -133,6 +137,11 @@
               <div class="explore-more"><button class="btn hidden" id="explore-more">Cargar más</button></div>
             </div>
             <aside class="explore-filters">
+              <div class="filter-block hidden" id="filter-drive">
+                <h4>De dónde salen</h4>
+                <div class="drive-sources" id="drive-sources"></div>
+                <button class="btn small" id="drive-reload"><svg><use href="#i-refresh"/></svg>Volver a leer</button>
+              </div>
               <div class="filter-block" id="filter-target">
                 <h4>Instalar en</h4>
                 <select id="explore-instance"></select>
@@ -356,10 +365,9 @@
             <span class="option-icon"><svg><use href="#i-cubes"/></svg></span>
             <span class="grow"><b>Configuración personalizada</b><span>Empieza desde cero eligiendo la versión de Minecraft y el loader.</span></span>
           </button>
-          <button class="option" disabled>
-            <span class="option-icon"><svg><use href="#i-compass"/></svg></span>
-            <span class="grow"><b>Desde un modpack de Drive</b><span>Elige un modpack de tu carpeta de Google Drive.</span></span>
-            <span class="soon">Pronto</span>
+          <button class="option" data-type="drive">
+            <span class="option-icon"><svg><use href="#i-cloud"/></svg></span>
+            <span class="grow"><b>Desde un modpack de Drive</b><span>Elige un modpack de tu carpeta de Google Drive. Funciona también en la escuela.</span></span>
           </button>
           <button class="option" data-type="import">
             <span class="option-icon"><svg><use href="#i-upload"/></svg></span>
@@ -440,6 +448,8 @@
           <span class="nav-group">Instancias</span>
           <button data-section="java"><svg><use href="#i-coffee"/></svg>Instalaciones de Java</button>
           <button data-section="resources"><svg><use href="#i-gauge"/></svg>Recursos</button>
+          <span class="nav-group">Parabellum</span>
+          <button data-section="about"><svg><use href="#i-info"/></svg>Acerca de</button>
           <div class="settings-footer">
             <img src="logo.png" alt="">
             <div><b id="version-text">Parabellum</b><span>Windows</span></div>
@@ -483,6 +493,24 @@
               <div class="grow"><b>Java detectados</b><span>Parabellum descarga automáticamente el Java que pide cada versión de Minecraft.</span></div>
             </div>
             <div class="java-list" id="java-list"></div>
+          </section>
+          <section data-section="about" class="hidden">
+            <div class="setting">
+              <div class="grow"><b id="about-version">Parabellum</b><span id="about-update">Busca si hay una versión nueva en tu Drive o en la carpeta paquetes.</span></div>
+              <button class="btn" id="about-check"><svg><use href="#i-refresh"/></svg>Buscar actualizaciones</button>
+            </div>
+            <div class="setting">
+              <div class="grow"><b>Carpeta para Drive</b><span class="mono" id="about-folder">Todavía no eliges una</span></div>
+              <button class="btn" id="about-folder-change"><svg><use href="#i-folder"/></svg>Cambiar</button>
+            </div>
+            <div class="setting">
+              <div class="grow"><b>Publicar esta versión</b><span>Prepara la carpeta _parabellum con este Parabellum para que la subas a tu Drive. Los demás se actualizarán solos al abrirlo.</span></div>
+            </div>
+            <input id="about-notes" maxlength="200" autocomplete="off" placeholder="Qué cambió (opcional, lo verán al actualizar)">
+            <div class="row-actions">
+              <button class="btn primary" id="about-publish"><svg><use href="#i-upload"/></svg>Publicar en la carpeta</button>
+              <button class="btn hidden" id="about-open-drive"><svg><use href="#i-external"/></svg>Abrir mi Drive</button>
+            </div>
           </section>
           <section data-section="resources" class="hidden">
             <div class="setting">
@@ -574,6 +602,11 @@
           <div class="grow"><label class="label" for="export-name">Nombre</label><input id="export-name" maxlength="60" autocomplete="off" spellcheck="false"></div>
           <div class="narrow"><label class="label" for="export-version">Versión</label><input id="export-version" maxlength="20" autocomplete="off" spellcheck="false"></div>
         </div>
+        <div class="export-destination" id="export-destination">
+          <svg><use href="#i-folder"/></svg>
+          <span class="grow" id="export-folder-text"></span>
+          <button class="link-btn" id="export-folder-change">Cambiar</button>
+        </div>
         <label class="label" for="export-description" style="margin-top:14px">Descripción (opcional)</label>
         <input id="export-description" maxlength="200" autocomplete="off" placeholder="Para qué es, qué trae…">
         <div class="label-row"><span class="label">Qué incluir</span><span class="faint" id="export-size"></span></div>
@@ -581,6 +614,7 @@
         <div class="progress hidden" id="export-progress"><div></div></div>
         <p class="muted small-text" id="export-status"></p>
         <div class="modal-actions">
+          <button class="btn hidden" id="export-drive"><svg><use href="#i-external"/></svg>Abrir mi Drive</button>
           <button class="btn" id="export-cancel">Cerrar</button>
           <button class="btn primary" id="export-ok"><svg><use href="#i-download"/></svg><span>Exportar…</span></button>
         </div>
@@ -696,6 +730,8 @@
       <symbol id="i-sun-sparkle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
       <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
       <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-10z"/><path d="M14 3.5v5h5"/></symbol>
+      <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7.5 18.5h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.6 9.6 4.5 4.5 0 0 0 7.5 18.5z"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 0 1-13 5.1M4.5 12a7.5 7.5 0 0 1 13-5.1"/><path d="M17.5 3.5v3.4h-3.4M6.5 20.5v-3.4h3.4"/></symbol>
       <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.3a4.3 4.3 0 0 1 7.5 2.5C19.5 15.4 12 20 12 20z"/></symbol>
       <symbol id="i-update" viewBox="0 0 24 24"><path d="M12 19V7M6.5 12.5 12 7l5.5 5.5M5 4h14"/></symbol>
       <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>

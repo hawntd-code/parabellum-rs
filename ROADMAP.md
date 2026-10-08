@@ -56,17 +56,22 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] **Data packs** de Modrinth dentro del mundo que elijas
 - [x] *Prueba:* escuela simulada (carpeta vacía: base y modpack, sin Mojang, Fabric ni Modrinth) llega al menú; el paquete real "Minecraft++" de la versión C# (147 mods) funciona; .mrpack de ida y vuelta; Fabulously Optimized desde Modrinth
 
+### Fase 7: escuela y distribución
+- [x] **Catálogo de Drive** en Explorar (pestaña Drive): modpacks y versiones de Minecraft de la carpeta pública de Drive y de la carpeta «paquetes» junto al launcher (USB); mismo formato que la versión C#
+- [x] Instalar con un clic: si falta Minecraft, se instala antes su paquete base; todo se verifica con SHA-256
+- [x] **Actualizar bajando solo lo que cambió** (o reparar lo dañado): se lee el índice del zip en Drive por rangos y se descargan solo los archivos distintos (CRC32)
+- [x] En la escuela, si Modrinth está bloqueado, Explorar pasa solo a la pestaña Drive
+- [x] Exportar para Drive recuerda la carpeta; botón para abrir tu Drive y arrastrarla
+- [x] **Auto-actualización del launcher**: Acerca de › Publicar esta versión prepara _parabellum; los demás ven «Actualizar a X» y se reinicia solo
+- [x] Configuración integrada en el exe (config-integrada.json fuera del repositorio; lanzador-config.json junto al exe la sustituye)
+- [x] La ventana se abre maximizada
+- [ ] (Fase 9) Subir a Drive directamente desde Parabellum, con la sesión de Google
+
 ### Diseño
 - [x] Interfaz al estilo de la app de Modrinth con identidad morada (tema oscuro y claro, fuente Inter)
 - [x] Biblioteca, continuar jugando, crear instancia por tipo, ajustes por secciones, página Servidores
 
 ## ⏭️ Pendiente, en orden
-
-### Fase 7: escuela y distribución
-- [ ] Catálogo de Google Drive en Explorar (modpacks y versiones), para redes donde Mojang/Modrinth están bloqueados
-- [ ] Subir a Drive versiones y modpacks desde casa con un botón
-- [ ] Auto-actualización del launcher
-- [ ] Configuración integrada en el exe
 
 ### Fase 8: Forge, NeoForge e importación
 - [ ] Modpacks de Forge y NeoForge (.mrpack y de Modrinth)

@@ -736,3 +736,32 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .import-box p { max-width: 460px; min-height: 22px; }
 .import-box .progress { width: 100%; max-width: 420px; }
 #project-install-note { margin: 0; align-self: center; }
+
+/* ===================== Fase 7: Drive y actualizaciones ===================== */
+.results-title { font-size: 15px; margin: 14px 0 4px 2px; }
+.results-title:first-child { margin-top: 0; }
+.results-note { margin: 0 0 4px 2px; }
+.r-progress { min-height: 0; }
+.r-progress:empty { display: none; }
+.drive-item .r-side { justify-content: center; }
+.drive-item .r-action { display: flex; gap: 8px; align-items: center; margin-top: 0; }
+.tag.accent { background: var(--accent-soft); color: var(--accent-fg); }
+.drive-sources { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.drive-sources a, .drive-sources .link-btn { display: inline-flex; align-items: center; gap: 8px; color: var(--accent-fg); font-weight: 600; font-size: 13.5px; text-decoration: none; text-align: left; }
+.drive-sources svg { width: 15px; height: 15px; flex: none; }
+.drive-warnings { font-size: 12.5px; color: var(--muted); }
+.drive-warnings summary { cursor: pointer; font-weight: 650; }
+.drive-warnings p { margin: 6px 0 0; overflow-wrap: anywhere; }
+.content-loading.column { flex-direction: column; align-items: center; gap: 12px; }
+.update-pill {
+  display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--accent);
+  background: var(--accent-soft); color: var(--accent-fg); font-weight: 650; font-size: 13px; margin-right: 8px; animation: rise .3s var(--ease) both;
+}
+.update-pill svg { width: 16px; height: 16px; }
+.update-pill:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); }
+.update-pill:disabled { opacity: .7; }
+.export-destination { display: flex; align-items: center; gap: 10px; margin-top: 2px; padding: 10px 12px; border-radius: var(--r); background: var(--field); font-size: 13px; color: var(--muted); }
+.export-destination svg { width: 16px; height: 16px; flex: none; }
+.export-destination .grow { overflow-wrap: anywhere; }
+.row-actions { display: flex; gap: 10px; margin-top: 12px; }
+#about-notes { margin-top: 4px; }

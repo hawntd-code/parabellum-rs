@@ -1,7 +1,9 @@
 // Sin ventana de consola en Windows.
 #![windows_subsystem = "windows"]
 
+mod catalog;
 mod compat;
+mod config;
 mod content;
 mod download;
 mod instances;
@@ -13,13 +15,14 @@ mod mojang;
 mod mrpack;
 mod packs;
 mod paths;
+mod remote_zip;
 mod settings;
 mod version;
 
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
@@ -35,6 +38,9 @@ struct AppState {
     games: Mutex<HashMap<String, u32>>,
     /// Juegos que el jugador cerró desde el launcher (no cuentan como error).
     stopped: Mutex<HashSet<String>>,
+    config: config::Config,
+    /// Último catálogo leído de Drive y de la carpeta paquetes.
+    catalog: Mutex<Option<Arc<catalog::Catalog>>>,
 }
 
 #[derive(Serialize)]
@@ -46,6 +52,8 @@ struct Initial {
     version: &'static str,
     root: String,
     system_ram_gb: u32,
+    /// Carpeta de Drive con los modpacks (si está configurada).
+    drive_url: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -77,6 +85,7 @@ fn estado_inicial(state: State<AppState>) -> Initial {
         version: env!("CARGO_PKG_VERSION"),
         root: state.paths.root.display().to_string(),
         system_ram_gb: system_ram_gb(),
+        drive_url: state.config.drive_folder_url(),
         settings,
     }
 }
@@ -733,6 +742,7 @@ async fn exportar_modpack(
     id: String,
     formato: String,
     opciones: packs::ExportOptions,
+    elegir: bool,
 ) -> Result<Option<serde_json::Value>, String> {
     let instance = instance_or_error(&state, &id)?;
     let paths = state.paths.clone();
@@ -750,9 +760,8 @@ async fn exportar_modpack(
         let result = mrpack::export(&instance, &path, &opciones, progress).await?;
         return Ok(Some(serde_json::to_value(result).unwrap()));
     }
-    let dialog = app.dialog().file().set_title("Carpeta donde guardar el paquete (por ejemplo, tu carpeta de Drive o una USB)");
-    let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder()).await.map_err(|e| e.to_string())?;
-    let Some(folder) = picked.and_then(|p| p.into_path().ok()) else { return Ok(None) };
+    let title = "Carpeta donde guardar el paquete (la de tus paquetes para Drive, o una USB)";
+    let Some(folder) = export_folder(&app, &paths, elegir, title).await? else { return Ok(None) };
     let result = tauri::async_runtime::spawn_blocking(move || packs::export(&instance, &paths, &folder, &opciones, progress))
         .await
         .map_err(|e| e.to_string())??;
@@ -811,6 +820,152 @@ async fn instalar_datapack(state: State<'_, AppState>, id: String, mundo: String
     let instance = instance_or_error(&state, &id)?;
     let (title, number) = modrinth::install_datapack(&instance, &mundo, &proyecto, version.as_deref()).await?;
     Ok(format!("Se instaló {title} {number} en el mundo «{mundo}»."))
+}
+
+// ================= Catálogo de Drive, publicar y actualizar el launcher
+
+/// El catálogo se lee una vez y se guarda; `reload` lo vuelve a leer de Drive y de la carpeta paquetes.
+async fn catalog_snapshot(state: &AppState, reload: bool) -> Arc<catalog::Catalog> {
+    if !reload {
+        if let Some(cached) = state.catalog.lock().unwrap().clone() {
+            return cached;
+        }
+    }
+    let loaded = Arc::new(catalog::load(&state.paths, &state.config).await);
+    *state.catalog.lock().unwrap() = Some(loaded.clone());
+    loaded
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CatalogView {
+    /// Hay carpeta de Drive configurada.
+    configured: bool,
+    folder_url: Option<String>,
+    local_folder: String,
+    entries: Vec<catalog::EntryView>,
+    warnings: Vec<String>,
+}
+
+#[tauri::command]
+async fn catalogo(state: State<'_, AppState>, recargar: bool) -> Result<CatalogView, String> {
+    let catalog = catalog_snapshot(&state, recargar).await;
+    let list = instances::list(&state.paths);
+    Ok(CatalogView {
+        configured: state.config.has_drive(),
+        folder_url: state.config.drive_folder_url(),
+        local_folder: state.paths.root.join(catalog::LOCAL_FOLDER).display().to_string(),
+        entries: catalog.entries.iter().filter(|e| !e.is_launcher()).map(|e| catalog::view(e, &list, &state.paths)).collect(),
+        warnings: catalog.warnings.clone(),
+    })
+}
+
+/// Instala (o actualiza, o repara bajando solo lo dañado) un paquete del catálogo.
+#[tauri::command]
+async fn instalar_de_catalogo(app: AppHandle, state: State<'_, AppState>, id: String, reparar: Option<bool>) -> Result<catalog::CatalogInstall, String> {
+    let catalog = catalog_snapshot(&state, false).await;
+    let entry = catalog
+        .entries
+        .iter()
+        .find(|e| !e.is_launcher() && e.manifest.id.eq_ignore_ascii_case(&id))
+        .ok_or("Ese paquete ya no está en el catálogo. Recárgalo.")?;
+    let list = instances::list(&state.paths);
+    if let Some(reason) = catalog::view(entry, &list, &state.paths).unsupported {
+        return Err(reason);
+    }
+    if let Some((instance, _)) = catalog::installed_instance(&entry.manifest, &list) {
+        if state.games.lock().unwrap().contains_key(&instance.id) {
+            return Err("Cierra el juego antes de actualizar este modpack.".into());
+        }
+    }
+    catalog::install(entry, &catalog.entries, &state.paths, &list, reparar.unwrap_or(false), progress_emitter(&app, "catalogo")).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LauncherUpdate {
+    version: String,
+    notes: String,
+    size: u64,
+}
+
+/// Versión nueva de Parabellum publicada en Drive o en la carpeta paquetes, si la hay.
+#[tauri::command]
+async fn actualizacion_launcher(state: State<'_, AppState>, recargar: bool) -> Result<Option<LauncherUpdate>, String> {
+    let catalog = catalog_snapshot(&state, recargar).await;
+    Ok(catalog::launcher_update(&catalog.entries).map(|e| LauncherUpdate {
+        version: e.manifest.version.clone(),
+        notes: e.manifest.description.clone(),
+        size: e.size,
+    }))
+}
+
+/// Descarga la versión nueva, reemplaza el exe y reinicia Parabellum.
+#[tauri::command]
+async fn aplicar_actualizacion(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let catalog = catalog_snapshot(&state, false).await;
+    let entry = catalog::launcher_update(&catalog.entries).ok_or("No hay una versión nueva.")?.clone();
+    let exe = catalog::apply_launcher_update(&entry, &state.paths, progress_emitter(&app, "actualizacion")).await?;
+    std::process::Command::new(&exe).arg("--reiniciar").spawn().map_err(|e| format!("Se actualizó, pero no se pudo reabrir: {e}"))?;
+    app.exit(0);
+    Ok(())
+}
+
+/// Carpeta donde se guardan los paquetes para subir a Drive (se recuerda la última).
+fn export_folder_file(paths: &Paths) -> PathBuf {
+    paths.data.join("carpeta-exportar.txt")
+}
+
+fn remembered_export_folder(paths: &Paths) -> Option<PathBuf> {
+    std::fs::read_to_string(export_folder_file(paths)).ok().map(|t| PathBuf::from(t.trim())).filter(|p| p.is_dir())
+}
+
+#[tauri::command]
+fn carpeta_exportar(state: State<AppState>) -> Option<String> {
+    remembered_export_folder(&state.paths).map(|p| p.display().to_string())
+}
+
+/// La carpeta recordada o, si no hay (o se pide otra), la que se elija. None si se canceló.
+async fn export_folder(app: &AppHandle, paths: &Paths, choose: bool, title: &str) -> Result<Option<PathBuf>, String> {
+    if !choose {
+        if let Some(folder) = remembered_export_folder(paths) {
+            return Ok(Some(folder));
+        }
+    }
+    let mut dialog = app.dialog().file().set_title(title);
+    if let Some(folder) = remembered_export_folder(paths) {
+        dialog = dialog.set_directory(folder);
+    }
+    let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder()).await.map_err(|e| e.to_string())?;
+    let folder = picked.and_then(|p| p.into_path().ok());
+    if let Some(folder) = &folder {
+        let _ = std::fs::write(export_folder_file(paths), folder.display().to_string());
+    }
+    Ok(folder)
+}
+
+/// Elegir (y recordar) la carpeta donde se guardan los paquetes para Drive.
+#[tauri::command]
+async fn elegir_carpeta_exportar(app: AppHandle, state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let title = "Carpeta de tus paquetes para Drive";
+    Ok(export_folder(&app, &state.paths, true, title).await?.map(|p| p.display().to_string()))
+}
+
+/// La carpeta "paquetes" junto a Parabellum (zips copiados de una USB, por ejemplo).
+#[tauri::command]
+fn abrir_carpeta_paquetes(state: State<AppState>) -> Result<(), String> {
+    let folder = state.paths.root.join(catalog::LOCAL_FOLDER);
+    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    std::process::Command::new("explorer").arg(folder).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Prepara la carpeta _parabellum con esta versión para subirla a Drive. None si se canceló.
+#[tauri::command]
+async fn publicar_launcher(app: AppHandle, state: State<'_, AppState>, notas: String, elegir: bool) -> Result<Option<String>, String> {
+    let title = "Carpeta de tus paquetes para Drive (donde va la carpeta _parabellum)";
+    let Some(folder) = export_folder(&app, &state.paths, elegir, title).await? else { return Ok(None) };
+    let result = tauri::async_runtime::spawn_blocking(move || catalog::publish_launcher(&folder, &notas)).await.map_err(|e| e.to_string())??;
+    Ok(Some(result.display().to_string()))
 }
 
 #[derive(Serialize)]
@@ -886,6 +1041,9 @@ fn system_ram_gb() -> u32 {
 ///   --importar <archivo> [nombre]                   paquete de Parabellum o .mrpack
 ///   --instalar-modpack <proyecto> [versión]         modpack de Modrinth como instancia nueva
 ///   --instalar-datapack <instancia> <mundo> <proyecto>
+///   --catalogo                                      modpacks y versiones de Drive y de la carpeta paquetes
+///   --instalar-catalogo <id> [reparar]              instala, actualiza o repara (bajando solo lo que cambió)
+///   --publicar-launcher <carpeta> [notas]           prepara _parabellum para subirla a Drive
 fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<String, String> {
     match args[0].as_str() {
         "--comprobar" => {
@@ -1179,6 +1337,55 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             let (title, number) = tauri::async_runtime::block_on(modrinth::install_datapack(&instance, world, project, None))?;
             Ok(format!("{title} {number} instalado en {world}"))
         }
+        "--catalogo" => {
+            let config = config::Config::load(paths);
+            let catalog = tauri::async_runtime::block_on(catalog::load(paths, &config));
+            let list = instances::list(paths);
+            let mut out = format!("Drive configurado: {}\n", config.has_drive());
+            for entry in &catalog.entries {
+                if entry.is_launcher() {
+                    out += &format!("  launcher {} {} ({:?})\n", entry.manifest.id, entry.manifest.version, entry.source);
+                    continue;
+                }
+                let view = catalog::view(entry, &list, paths);
+                out += &format!(
+                    "  {} [{}] {} · {} · {} MB · {:?} · {}{}\n",
+                    view.name,
+                    view.kind,
+                    view.minecraft_version,
+                    view.loader,
+                    view.size / 1048576,
+                    view.source,
+                    view.status,
+                    view.unsupported.map(|u| format!(" · {u}")).unwrap_or_default()
+                );
+            }
+            for warning in &catalog.warnings {
+                out += &format!("  aviso: {warning}\n");
+            }
+            if let Some(update) = catalog::launcher_update(&catalog.entries) {
+                out += &format!("  ACTUALIZACIÓN DEL LAUNCHER: {}\n", update.manifest.version);
+            }
+            Ok(out)
+        }
+        "--instalar-catalogo" => {
+            // --instalar-catalogo <id> [reparar]
+            let id = args.get(1).ok_or("Falta el id del paquete.")?;
+            let config = config::Config::load(paths);
+            let started = std::time::Instant::now();
+            let result = tauri::async_runtime::block_on(async {
+                let catalog = catalog::load(paths, &config).await;
+                let entry = catalog.entries.iter().find(|e| e.manifest.id.eq_ignore_ascii_case(id)).ok_or("No está en el catálogo.")?;
+                let list = instances::list(paths);
+                catalog::install(entry, &catalog.entries, paths, &list, args.get(2).is_some_and(|a| a == "reparar"), |_, _| {}).await
+            })?;
+            Ok(format!("{result:#?}\nen {:.0} s", started.elapsed().as_secs_f64()))
+        }
+        "--publicar-launcher" => {
+            let folder = PathBuf::from(args.get(1).ok_or("Falta la carpeta.")?);
+            let notes = args.get(2).cloned().unwrap_or_default();
+            Ok(format!("{}", catalog::publish_launcher(&folder, &notes)?.display()))
+        }
         other => Err(format!("Comando desconocido: {other}")),
     }
 }
@@ -1188,14 +1395,27 @@ fn main() {
     let _ = paths.ensure_created();
     let settings = Settings::load(&paths);
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().is_some_and(|a| a.starts_with("--")) {
+    // Tras actualizarse, la versión nueva espera a que la anterior termine de cerrarse.
+    let restarting = args.first().is_some_and(|a| a == "--reiniciar");
+    if restarting {
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+    }
+    if !restarting && args.first().is_some_and(|a| a.starts_with("--")) {
         let report = run_command(&args, &paths, &settings).unwrap_or_else(|e| format!("ERROR: {e}"));
         let _ = std::fs::write(paths.logs.join("comando.txt"), report);
         return;
     }
+    catalog::cleanup_previous_version();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(AppState { paths, settings: Mutex::new(settings), games: Mutex::default(), stopped: Mutex::default() })
+        .manage(AppState {
+            config: config::Config::load(&paths),
+            paths,
+            settings: Mutex::new(settings),
+            games: Mutex::default(),
+            stopped: Mutex::default(),
+            catalog: Mutex::default(),
+        })
         .setup(|app| {
             adopt_running_games(app.handle());
             Ok(())
@@ -1239,6 +1459,14 @@ fn main() {
             instalar_modpack,
             instalar_datapack,
             mostrar_archivo,
+            catalogo,
+            instalar_de_catalogo,
+            actualizacion_launcher,
+            aplicar_actualizacion,
+            carpeta_exportar,
+            elegir_carpeta_exportar,
+            abrir_carpeta_paquetes,
+            publicar_launcher,
             registro,
             abrir_registro,
             listar_java,

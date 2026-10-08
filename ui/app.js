@@ -62,6 +62,11 @@ const state = {
   updates: { for: null, list: [], at: 0 },
   /** Actualizaciones que se dejaron fuera por romper algo: id de versión -> motivo. */
   heldBack: new Map(),
+  /** Catálogo de Drive y de la carpeta paquetes. */
+  drive: { data: null, loading: false, installing: null },
+  launcherUpdate: null,
+  version: "",
+  driveUrl: null,
 };
 
 const pages = {
@@ -717,11 +722,12 @@ async function saveEdit() {
 }
 
 /** Ventana de confirmación propia (en lugar de la del sistema). */
-function confirmAction({ title, text, ok }) {
+function confirmAction({ title, text, ok, primary = false }) {
   return new Promise((resolve) => {
     $("#confirm-title").textContent = title;
     $("#confirm-text").textContent = text;
     $("#confirm-ok").textContent = ok;
+    $("#confirm-ok").className = primary ? "btn primary" : "btn danger";
     const finish = (value) => {
       closeModal("#confirm-dialog");
       resolve(value);
@@ -1083,6 +1089,7 @@ function openSettings(section = "appearance") {
 }
 
 function selectSettingsSection(section) {
+  if (section === "about") refreshAbout();
   for (const button of $$(".settings-nav button")) button.classList.toggle("active", button.dataset.section === section);
   for (const panel of $$(".settings-content section")) panel.classList.toggle("hidden", panel.dataset.section !== section);
 }
@@ -1348,6 +1355,12 @@ function wireEvents() {
   $("#create-dialog").onmousedown = (event) => event.target.id === "create-dialog" && closeModal("#create-dialog");
   $("[data-type='custom']").onclick = showCustomStep;
   $("[data-type='import']").onclick = () => importModpack();
+  $("[data-type='drive']").onclick = () => {
+    closeModal("#create-dialog");
+    state.explore.kind = "drive";
+    navigate("explore");
+    selectExploreKind("drive");
+  };
   $("#new-cancel").onclick = () => closeModal("#create-dialog");
   $("#loader-choice").onclick = (event) => {
     const button = event.target.closest("[data-loader]");
@@ -1421,6 +1434,7 @@ function wireEvents() {
 
   wireExploreEvents();
   wireModpackEvents();
+  wireDriveEvents();
   listen("juego-cerrado", ({ payload }) => onGameClosed(payload));
   // Arrastrar archivos a la ventana: se agregan a la instancia abierta.
   // Fuera de una instancia (o con un .mrpack) lo que se suelta se instala como modpack.
@@ -1442,6 +1456,16 @@ function wireEvents() {
   });
 
   listen("progreso", ({ payload }) => {
+    if (payload.task === "catalogo") {
+      const line = state.drive.installing && $(`[data-progress-for="${CSS.escape(state.drive.installing)}"]`);
+      if (line) line.textContent = payload.stage;
+      $("#download-percent").textContent = `${Math.round(payload.fraction * 100)}%`;
+      return;
+    }
+    if (payload.task === "actualizacion") {
+      $("#update-text").textContent = `Descargando… ${Math.round(payload.fraction * 100)}%`;
+      return;
+    }
     if (payload.task === "exportar") {
       $("#export-progress").classList.remove("hidden");
       $("#export-progress div").style.width = `${Math.max(2, payload.fraction * 100)}%`;
@@ -1475,6 +1499,10 @@ async function init() {
   state.settings = initial.settings;
   state.instances = initial.instances;
   state.systemRam = initial.systemRamGb;
+  state.version = initial.version;
+  state.driveUrl = initial.driveUrl;
+  // Buscar una versión nueva de Parabellum sin estorbar el arranque.
+  setTimeout(() => checkLauncherUpdate(false, true), 4000);
   $("#root-text").textContent = initial.root;
   $("#version-text").textContent = `Parabellum ${initial.version}`;
   applyTheme(state.settings.theme);
@@ -1496,6 +1524,7 @@ const exploreKinds = {
   shader: { placeholder: "Buscar shaders…", contentKind: "shaderpacks", noun: "shaders" },
   datapack: { placeholder: "Buscar data packs…", contentKind: "worlds", noun: "data packs" },
   modpack: { placeholder: "Buscar modpacks…", contentKind: null, noun: "modpacks" },
+  drive: { placeholder: "Buscar en tus paquetes…", contentKind: null, noun: "paquetes" },
 };
 const contentToExplore = { mods: "mod", resourcepacks: "resourcepack", shaderpacks: "shader", worlds: "datapack" };
 /** Qué es el proyecto abierto: lo dice la pestaña desde la que se abrió (los data packs en Modrinth son "mod"). */
@@ -1593,6 +1622,11 @@ function selectExploreKind(kind) {
   for (const tab of $$("#explore-kinds .tab[data-kind]")) tab.classList.toggle("active", tab.dataset.kind === kind);
   $("#explore-search").placeholder = exploreKinds[kind].placeholder;
   renderExploreFilters();
+  if (kind === "drive") {
+    $("#explore-categories").innerHTML = "";
+    $("#explore-more").classList.add("hidden");
+    return state.drive.data ? renderDrive() : loadDriveCatalog();
+  }
   loadCategories(kind);
   runExplore();
 }
@@ -1602,9 +1636,13 @@ function renderExploreFilters() {
   const instance = exploreTarget();
   // Con instancia, el loader y la versión salen de ella; los modpacks crean su propia instancia.
   const modpack = e.kind === "modpack";
-  $("#filter-target").classList.toggle("hidden", modpack);
-  $("#filter-loader").classList.toggle("hidden", !(modpack || (e.kind === "mod" && !instance)));
-  $("#filter-version").classList.toggle("hidden", !!instance && !modpack);
+  const drive = e.kind === "drive";
+  $("#filter-drive").classList.toggle("hidden", !drive);
+  $("#explore-sort").classList.toggle("hidden", drive);
+  $("#explore-categories").classList.toggle("hidden", drive);
+  $("#filter-target").classList.toggle("hidden", modpack || drive);
+  $("#filter-loader").classList.toggle("hidden", drive || !(modpack || (e.kind === "mod" && !instance)));
+  $("#filter-version").classList.toggle("hidden", drive || (!!instance && !modpack));
   for (const chip of $$("#explore-loaders [data-loader]")) chip.classList.toggle("active", e.loader === chip.dataset.loader);
   const note = $("#explore-instance-note");
   if (!instance) note.textContent = "Elige una instancia para ver solo lo compatible e instalar con un clic.";
@@ -1666,6 +1704,7 @@ function queueExplore() {
 
 async function runExplore(append = false) {
   const e = state.explore;
+  if (e.kind === "drive") return renderDrive();
   const id = ++e.requestId;
   const instance = exploreTarget();
   const modpack = e.kind === "modpack";
@@ -1683,6 +1722,11 @@ async function runExplore(append = false) {
     renderExploreResults(append ? e.hits.length - result.hits.length : 0);
   } catch (error) {
     if (id !== e.requestId) return;
+    if (String(error).includes("No se puede conectar con Modrinth") && !e.autoDrive) {
+      e.autoDrive = true;
+      toast("Modrinth está bloqueado en esta red: aquí tienes los modpacks de tu Drive.");
+      return selectExploreKind("drive");
+    }
     $("#explore-results").innerHTML = `<div class="content-empty">${escapeHtml(error)}</div>`;
     $("#explore-more").classList.add("hidden");
   } finally {
@@ -1736,7 +1780,7 @@ function renderExploreResults(from = 0) {
 }
 
 function refreshInstallButtons() {
-  for (const result of $$("#explore-results .result")) $(".r-action", result).innerHTML = installButton(result.dataset.project);
+  for (const result of $$("#explore-results .result[data-project]")) $(".r-action", result).innerHTML = installButton(result.dataset.project);
   if (state.page === "project" && state.projectData) renderProjectInstall();
 }
 
@@ -2098,6 +2142,13 @@ function wireExploreEvents() {
   };
   $("#explore-more").onclick = () => runExplore(true);
   $("#explore-results").onclick = (event) => {
+    const driveInstall = event.target.closest("[data-drive-install]");
+    if (driveInstall) return installFromDrive(driveInstall.dataset.driveInstall);
+    const driveRepair = event.target.closest("[data-drive-repair]");
+    if (driveRepair) return installFromDrive(driveRepair.dataset.driveRepair, true);
+    const driveOpen = event.target.closest("[data-drive-open]");
+    if (driveOpen) return driveOpen.dataset.driveOpen && navigate("instance", driveOpen.dataset.driveOpen);
+    if (event.target.closest("[data-drive]")) return;
     const install = event.target.closest("[data-install]");
     if (install) return installAny(state.explore.kind, install.dataset.install);
     const result = event.target.closest("[data-project]");
@@ -2281,7 +2332,8 @@ function formatSize(bytes) {
 async function openExport(id) {
   const instance = state.instances.find((i) => i.id === id);
   if (!instance) return;
-  state.exporting = { id, format: "drive", entries: [], busy: false, file: null };
+  state.exporting = { id, format: "drive", entries: [], busy: false, file: null, folder: await invoke("carpeta_exportar").catch(() => null), choose: false };
+  $("#export-drive").classList.add("hidden");
   $("#export-title").textContent = `Exportar ${instance.name}`;
   $("#export-name").value = instance.name;
   $("#export-version").value = "1.0.0";
@@ -2312,6 +2364,8 @@ function selectExportFormat(format) {
   state.exporting.format = format;
   for (const option of $$("#export-formats [data-format]")) option.classList.toggle("active", option.dataset.format === format);
   $("#export-mrpack-fields").classList.toggle("hidden", format !== "mrpack");
+  $("#export-drive").classList.add("hidden");
+  updateExportDestination();
   resetExportButton();
   $("#export-status").textContent = "";
 }
@@ -2350,6 +2404,7 @@ async function runExport() {
       id: exporting.id,
       formato: exporting.format,
       opciones: { include, description: $("#export-description").value, name: $("#export-name").value, version: $("#export-version").value },
+      elegir: exporting.choose || !exporting.folder,
     });
     if (!result) {
       $("#export-status").textContent = "";
@@ -2361,6 +2416,10 @@ async function runExport() {
       $("#export-status").textContent = `Listo: ${plural(result.downloads, "archivo se descargará", "archivos se descargarán")} de Modrinth y ${plural(result.included, "va", "van")} dentro del .mrpack.${result.warning ? ` ${result.warning}` : ""}`;
     } else {
       exporting.file = result.modpack;
+      exporting.folder = result.folder.replace(/[\\/][^\\/]+$/, "");
+      exporting.choose = false;
+      updateExportDestination();
+      $("#export-drive").classList.toggle("hidden", !state.driveUrl);
       const folder = result.folder.split(/[\\/]/).pop();
       $("#export-status").textContent = `Listo (${formatSize(result.size)}). Sube la carpeta «${folder}» a tu Drive tal cual o cópiala a una USB: dentro van el modpack y Minecraft ${folder} con su Java.${
         result.baseReused ? " Minecraft ya estaba en esa carpeta y no se volvió a empaquetar." : ""
@@ -2386,6 +2445,240 @@ function wireModpackEvents() {
   $("#export-ok").onclick = runExport;
   for (const id of ["#export-close", "#export-cancel"]) $(id).onclick = () => !state.exporting?.busy && closeModal("#export-dialog");
   $("#export-dialog").onmousedown = (event) => event.target.id === "export-dialog" && !state.exporting?.busy && closeModal("#export-dialog");
+}
+
+// ======================================================================
+// Drive: modpacks y versiones de Minecraft (también en la escuela), publicar y actualizar Parabellum
+// ======================================================================
+
+async function loadDriveCatalog(reload = false) {
+  const drive = state.drive;
+  if (drive.loading) return;
+  drive.loading = true;
+  if (!drive.data || reload) {
+    $("#explore-results").innerHTML = `<div class="content-loading column"><div class="spinner"></div><span class="muted">Leyendo tus paquetes de Drive…</span></div>`;
+  }
+  try {
+    drive.data = await invoke("catalogo", { recargar: reload });
+  } catch (error) {
+    drive.data = null;
+    if (state.explore.kind === "drive") $("#explore-results").innerHTML = `<div class="content-empty">${escapeHtml(error)}</div>`;
+    return;
+  } finally {
+    drive.loading = false;
+  }
+  if (state.explore.kind === "drive") renderDrive();
+}
+
+function driveAction(entry) {
+  const drive = state.drive;
+  if (drive.installing === entry.id) return `<button class="btn" disabled><span class="spinner tiny"></span>Instalando…</button>`;
+  if (entry.unsupported) return `<button class="btn" disabled title="${escapeHtml(entry.unsupported)}">Fase 8</button>`;
+  const busy = drive.installing ? "disabled" : "";
+  if (entry.kind === "base") {
+    return entry.status === "instalado"
+      ? `<button class="btn installed" disabled><svg><use href="#i-check"/></svg>Instalada</button>`
+      : `<button class="btn primary" data-drive-install="${escapeHtml(entry.id)}" ${busy}><svg><use href="#i-download"/></svg>Instalar</button>`;
+  }
+  if (entry.status === "actualizar") {
+    return `<button class="btn primary" data-drive-install="${escapeHtml(entry.id)}" ${busy}><svg><use href="#i-update"/></svg>Actualizar</button>`;
+  }
+  if (entry.status === "instalado") {
+    const repair = entry.source === "drive"
+      ? `<button class="circle-btn" data-drive-repair="${escapeHtml(entry.id)}" ${busy} title="Reparar: vuelve a bajar solo lo que falte o esté dañado">${icon("refresh")}</button>`
+      : "";
+    return `${repair}<button class="btn" data-drive-open="${escapeHtml(entry.instance ?? "")}"><svg><use href="#i-play"/></svg>Abrir</button>`;
+  }
+  return `<button class="btn primary" data-drive-install="${escapeHtml(entry.id)}" ${busy}><svg><use href="#i-download"/></svg>Instalar</button>`;
+}
+
+function driveCard(entry, index) {
+  const base = entry.kind === "base";
+  const subtitle = base
+    ? `Minecraft ${entry.minecraftVersion}`
+    : `${entry.loader} · Minecraft ${entry.minecraftVersion}${entry.modCount ? ` · ${plural(entry.modCount, "mod", "mods")}` : ""}`;
+  const description = entry.description || (base ? "Minecraft con sus sonidos, idiomas y Java. Sirve para crear instancias aunque Mojang esté bloqueado." : "");
+  const date = entry.exportedAt ? relativeDate(entry.exportedAt) : "";
+  return `<div class="result drive-item" data-drive="${escapeHtml(entry.id)}" style="animation-delay:${Math.min(index, 12) * 25}ms">
+    <div class="result-icon">${entry.icon ? `<img src="${entry.icon}" alt="">` : icon(base ? "cubes" : "puzzle")}</div>
+    <div class="grow result-body">
+      <div class="r-title"><b>${escapeHtml(entry.name)}</b><span class="muted">${escapeHtml(subtitle)}</span></div>
+      ${description ? `<div class="r-desc">${escapeHtml(description)}</div>` : ""}
+      <div class="r-tags">
+        <span class="tag">${entry.source === "drive" ? "Google Drive" : "Carpeta paquetes"}</span>
+        <span class="tag">${formatSize(entry.size)}</span>
+        ${date ? `<span class="tag">Subido ${escapeHtml(date)}</span>` : ""}
+        ${entry.status === "actualizar" ? `<span class="tag accent">Versión nueva</span>` : ""}
+      </div>
+      <div class="r-progress faint" data-progress-for="${escapeHtml(entry.id)}"></div>
+    </div>
+    <div class="r-side"><div class="r-action">${driveAction(entry)}</div></div>
+  </div>`;
+}
+
+function renderDrive() {
+  const data = state.drive.data;
+  if (!data) return;
+  const sources = [];
+  sources.push(
+    data.configured
+      ? `<a href="${escapeHtml(data.folderUrl)}">${icon("external")}Carpeta de Google Drive</a>`
+      : `<span class="muted">No hay carpeta de Drive configurada.</span>`,
+  );
+  sources.push(`<button class="link-btn" data-open-packages>${icon("folder")}Carpeta «paquetes» de este PC</button>`);
+  if (data.warnings.length) {
+    sources.push(`<details class="drive-warnings"><summary>${plural(data.warnings.length, "aviso", "avisos")}</summary>${data.warnings.map((w) => `<p>${escapeHtml(w)}</p>`).join("")}</details>`);
+  }
+  $("#drive-sources").innerHTML = sources.join("");
+
+  const query = state.explore.query.toLowerCase();
+  const matches = (e) => !query || `${e.name} ${e.description} ${e.minecraftVersion} ${e.loader}`.toLowerCase().includes(query);
+  const modpacks = data.entries.filter((e) => e.kind === "modpack" && matches(e));
+  const bases = data.entries.filter((e) => e.kind === "base" && matches(e));
+  // Primero lo que tiene versión nueva, luego lo no instalado.
+  const order = { actualizar: 0, nuevo: 1, instalado: 2 };
+  // Lo que todavía no se puede instalar (Forge) va al final.
+  const rank = (e) => (e.unsupported ? 3 : order[e.status]);
+  modpacks.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, "es"));
+  bases.sort((a, b) => b.minecraftVersion.localeCompare(a.minecraftVersion, "es", { numeric: true }));
+  if (!modpacks.length && !bases.length) {
+    $("#explore-results").innerHTML = `<div class="content-empty">${
+      query
+        ? "Nada coincide con la búsqueda."
+        : data.entries.length
+          ? "No hay modpacks."
+          : "Todavía no hay paquetes. Exporta un modpack «Para Drive o USB» y súbelo a la carpeta de Drive, o copia los zips a la carpeta «paquetes» junto a Parabellum."
+    }</div>`;
+    return;
+  }
+  let html = "";
+  if (modpacks.length) html += `<h3 class="results-title">Modpacks</h3>${modpacks.map(driveCard).join("")}`;
+  if (bases.length) {
+    html += `<h3 class="results-title">Versiones de Minecraft</h3>
+      <p class="muted small-text results-note">Los modpacks instalan la suya solos. Instálalas aparte para crear instancias vanilla aunque Mojang esté bloqueado.</p>
+      ${bases.map(driveCard).join("")}`;
+  }
+  $("#explore-results").innerHTML = html;
+  $("#explore-more").classList.add("hidden");
+}
+
+async function installFromDrive(id, repair = false) {
+  const drive = state.drive;
+  if (drive.installing) return toast("Espera a que termine la instalación que está en curso.", "error");
+  drive.installing = id;
+  renderDrive();
+  $("#download-indicator").classList.remove("hidden");
+  $("#download-percent").textContent = "…";
+  try {
+    const result = await invoke("instalar_de_catalogo", { id, reparar: repair });
+    await reloadInstances();
+    if (result.kind === "base") {
+      toast(`${result.name} quedó instalado: ya puedes crear instancias de esa versión.`);
+    } else if (result.downloadedFiles != null) {
+      const what = result.downloadedFiles ? `se bajaron ${plural(result.downloadedFiles, "archivo", "archivos")} (${formatSize(result.downloadedBytes)})` : "todo estaba bien, no hizo falta bajar nada";
+      toast(repair ? `${result.name} revisado: ${what}.` : `${result.name} actualizado: solo ${what}. Tus mundos se conservaron.`);
+    } else {
+      toast(result.updated ? `${result.name} se actualizó; tus mundos y opciones se conservaron.` : `${result.name} está lista para jugar.`);
+    }
+  } catch (error) {
+    toast(String(error), "error");
+  } finally {
+    drive.installing = null;
+    $("#download-indicator").classList.add("hidden");
+    await loadDriveCatalog(false);
+  }
+}
+
+// ---------- Actualizar y publicar Parabellum ----------
+async function checkLauncherUpdate(reload = false, quiet = true) {
+  try {
+    const update = await invoke("actualizacion_launcher", { recargar: reload });
+    state.launcherUpdate = update;
+    $("#update-pill").classList.toggle("hidden", !update);
+    $("#update-pill").disabled = false;
+    if (update) $("#update-text").textContent = `Actualizar a ${update.version}`;
+    $("#about-update").textContent = update
+      ? `Hay una versión nueva: ${update.version}${update.notes ? ` — ${update.notes.replace(/\.$/, "")}` : ""}.`
+      : `Tienes la versión más nueva.`;
+    if (!quiet) toast(update ? `Hay una versión nueva de Parabellum: ${update.version}.` : `Ya tienes la versión más nueva (${state.version}).`);
+  } catch (error) {
+    if (!quiet) toast(String(error), "error");
+  }
+}
+
+async function applyLauncherUpdate() {
+  const update = state.launcherUpdate;
+  if (!update) return;
+  const ok = await confirmAction({
+    title: `Actualizar a Parabellum ${update.version}`,
+    text: `${update.notes ? `${update.notes}\n\n` : ""}Se descargará (${formatSize(update.size)}) y Parabellum se reiniciará solo. Los juegos abiertos no se cierran.`,
+    ok: "Actualizar y reiniciar",
+    primary: true,
+  });
+  if (!ok) return;
+  $("#update-pill").disabled = true;
+  $("#update-text").textContent = "Descargando…";
+  try {
+    await invoke("aplicar_actualizacion");
+  } catch (error) {
+    toast(String(error), "error");
+    $("#update-pill").disabled = false;
+    $("#update-text").textContent = `Actualizar a ${update.version}`;
+  }
+}
+
+async function refreshAbout() {
+  $("#about-version").textContent = `Parabellum ${state.version}`;
+  const folder = await invoke("carpeta_exportar").catch(() => null);
+  $("#about-folder").textContent = folder ?? "Todavía no eliges una (se pide al publicar o exportar).";
+  $("#about-open-drive").classList.toggle("hidden", !state.driveUrl);
+}
+
+async function publishLauncher() {
+  const button = $("#about-publish");
+  button.disabled = true;
+  try {
+    const folder = await invoke("publicar_launcher", { notas: $("#about-notes").value, elegir: false });
+    if (folder) {
+      toast(`Listo: sube la carpeta «_parabellum» (está en ${folder.replace(/[\\/]_parabellum$/, "")}) a tu Drive. Quien abra Parabellum se actualizará.`);
+      refreshAbout();
+    }
+  } catch (error) {
+    toast(String(error), "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function wireDriveEvents() {
+  $("#drive-reload").onclick = () => loadDriveCatalog(true);
+  $("#drive-sources").onclick = (event) => {
+    if (event.target.closest("[data-open-packages]")) invoke("abrir_carpeta_paquetes").catch((error) => toast(String(error), "error"));
+  };
+  $("#update-pill").onclick = applyLauncherUpdate;
+  $("#about-check").onclick = () => checkLauncherUpdate(true, false);
+  $("#about-folder-change").onclick = async () => {
+    try {
+      if (await invoke("elegir_carpeta_exportar")) refreshAbout();
+    } catch (error) {
+      toast(String(error), "error");
+    }
+  };
+  $("#about-publish").onclick = publishLauncher;
+  $("#about-open-drive").onclick = () => state.driveUrl && invoke("abrir_enlace", { url: state.driveUrl });
+  $("#export-drive").onclick = () => state.driveUrl && invoke("abrir_enlace", { url: state.driveUrl });
+  $("#export-folder-change").onclick = () => {
+    state.exporting.choose = true;
+    updateExportDestination();
+  };
+}
+
+function updateExportDestination() {
+  const exporting = state.exporting;
+  $("#export-destination").classList.toggle("hidden", exporting.format !== "drive");
+  $("#export-folder-text").textContent =
+    exporting.choose || !exporting.folder ? "Elegirás la carpeta al exportar (la de tus paquetes para Drive, o una USB)." : `Se guardará en ${exporting.folder}`;
+  $("#export-folder-change").classList.toggle("hidden", exporting.choose || !exporting.folder);
 }
 
 // ======================================================================
@@ -2487,6 +2780,24 @@ function demoInvoke(command, args = {}) {
   if (command === "buscar_actualizaciones")
     return later([{ projectId: "AANobbMI", versionId: "nueva", title: "Sodium", versionNumber: "0.6.13", kind: "mods", filename: "sodium-0.6.13.jar", replaces: "sodium-0.6.0.jar", dependency: false }], 300);
   if (command === "actualizar_contenido") return later([], 500);
+  // Drive de ejemplo
+  if (command === "catalogo")
+    return later({
+      configured: true,
+      folderUrl: "https://drive.google.com/drive/folders/ejemplo",
+      localFolder: "C:\\Parabellum\\paquetes",
+      warnings: [],
+      entries: [
+        { id: "minecraft-plus-plus", kind: "modpack", name: "Minecraft++", description: "Optimización y mejoras visuales para jugar con amigos.", version: "202610042111", minecraftVersion: "26.1.2", loader: "Fabric 0.19.5", modCount: 47, size: 356e6, installedSize: 373e6, exportedAt: "2026-10-04T21:11:56-07:00", icon: null, source: "drive", location: "26.1.2/Minecraft++", status: "actualizar", instance: "Minecraft++", unsupported: null },
+        { id: "fabulously-optimized", kind: "modpack", name: "Fabulously Optimized", description: "", version: "202610050000", minecraftVersion: "26.2", loader: "Fabric 0.19.5", modCount: 48, size: 73e6, installedSize: 75e6, exportedAt: "2026-10-05T10:00:00-07:00", icon: null, source: "drive", location: "26.2/Fabulously Optimized", status: "nuevo", instance: null, unsupported: null },
+        { id: "better-mc-bmc4", kind: "modpack", name: "Better MC BMC4", description: "", version: "202610010000", minecraftVersion: "1.20.1", loader: "Forge 47.4.20", modCount: 371, size: 1.29e9, installedSize: 1.4e9, exportedAt: "2026-10-01T10:00:00-07:00", icon: null, source: "drive", location: "1.20.1/Better MC BMC4", status: "nuevo", instance: null, unsupported: "Los modpacks de Forge llegan en la fase 8." },
+        { id: "minecraft-26.1.2", kind: "base", name: "Minecraft 26.1.2 (base)", description: "", version: "202610042111", minecraftVersion: "26.1.2", loader: "Vanilla", modCount: 0, size: 615e6, installedSize: 753e6, exportedAt: "2026-10-04T21:11:56-07:00", icon: null, source: "drive", location: "26.1.2", status: "instalado", instance: null, unsupported: null },
+        { id: "minecraft-1.20.1", kind: "base", name: "Minecraft 1.20.1 (base)", description: "", version: "202610010000", minecraftVersion: "1.20.1", loader: "Vanilla", modCount: 0, size: 727e6, installedSize: 800e6, exportedAt: "2026-10-01T10:00:00-07:00", icon: null, source: "carpeta", location: "1.20.1", status: "nuevo", instance: null, unsupported: null },
+      ],
+    }, 400);
+  if (command === "actualizacion_launcher") return later({ version: "0.7.1", notes: "Arreglos del catálogo de Drive.", size: 7.4e6 }, 200);
+  if (command === "carpeta_exportar") return later("D:\\Drive\\Parabellum", 50);
+  if (command === "instalar_de_catalogo") return later({ id: "Minecraft++", name: "Minecraft++", kind: "modpack", updated: true, downloadedFiles: 3, downloadedBytes: 8.4e6 }, 900);
   // Modpacks de ejemplo
   if (command === "contenido_exportable")
     return later([

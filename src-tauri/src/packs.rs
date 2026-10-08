@@ -452,7 +452,7 @@ pub struct Installed {
 }
 
 /// Lo que un modpack actualizado conserva de la instancia anterior.
-const PRESERVED_ON_UPDATE: [&str; 14] = [
+pub(crate) const PRESERVED_ON_UPDATE: [&str; 14] = [
     "saves", "screenshots", "schematics", "options.txt", "optionsof.txt", "optionsshaders.txt", "servers.dat", "XaeroWaypoints",
     "XaeroWorldMap", "xaero", "journeymap", "local", ".lanzador/ultima-partida.txt", ".lanzador/ajustes.json",
 ];
@@ -570,7 +570,7 @@ fn replace_keeping_player_data(destination: &Path, staging: &Path, backup: &Path
     Ok(())
 }
 
-fn keep_local_settings(old: &Path, fresh: &Path) {
+pub(crate) fn keep_local_settings(old: &Path, fresh: &Path) {
     let read = |p: &Path| std::fs::read_to_string(p).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
     let (Some(old), Some(mut fresh_json)) = (read(old), read(fresh)) else { return };
     for key in ["ramGB", "extraJvmArgs"] {
@@ -579,6 +579,11 @@ fn keep_local_settings(old: &Path, fresh: &Path) {
         }
     }
     let _ = std::fs::write(fresh, serde_json::to_vec_pretty(&fresh_json).unwrap());
+}
+
+/// Manifiesto del paquete con el que se instaló la instancia (si vino de un paquete).
+pub fn installed_manifest(instance: &Instance) -> Option<Manifest> {
+    serde_json::from_str(&std::fs::read_to_string(instance.state_dir().join(INSTALLED_MANIFEST)).ok()?).ok()
 }
 
 #[cfg(test)]

@@ -28,6 +28,13 @@ base/         versions, libraries, assets, java compartidos por todas las instan
 datos/        ajustes y registros
 ```
 
+## Configuración
+
+La carpeta de Drive y las claves de Google y Firebase se integran al compilar desde
+`config-integrada.json` en la raíz del proyecto (no está en el repositorio; mismo formato que el
+`lanzador-config.json` de la versión C#). Sin ese archivo se compila igual, sin catálogo de Drive.
+Un `lanzador-config.json` junto al exe sustituye los valores que traiga.
+
 ## Diagnóstico
 
 Sin ventana, con el resultado en `datos/logs/comando.txt`:
@@ -49,6 +56,9 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--importar <archivo> [nombre]` | Instala un .mrpack o un paquete de Parabellum |
 | `--instalar-modpack <proyecto> [versión]` | Instala un modpack de Modrinth como instancia nueva |
 | `--instalar-datapack <instancia> <mundo> <proyecto>` | Instala un data pack de Modrinth en un mundo |
+| `--catalogo` | Modpacks y versiones de Drive y de la carpeta paquetes, con su estado |
+| `--instalar-catalogo <id> [reparar]` | Instala, actualiza o repara un paquete (bajando solo lo que cambió) |
+| `--publicar-launcher <carpeta> [notas]` | Prepara _parabellum con esta versión para subirla a Drive |
 
 ## Hoja de ruta
 

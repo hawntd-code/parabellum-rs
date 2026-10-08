@@ -140,7 +140,7 @@ pub struct Info {
 }
 
 /// Una ruta del índice solo puede ser relativa y quedarse dentro de la instancia.
-fn safe_relative(path: &str) -> Option<PathBuf> {
+pub(crate) fn safe_relative(path: &str) -> Option<PathBuf> {
     let candidate = Path::new(path);
     let valid = !path.is_empty() && !path.contains(':') && candidate.components().all(|c| matches!(c, Component::Normal(_)));
     valid.then(|| candidate.to_path_buf())

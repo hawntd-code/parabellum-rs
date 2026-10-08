@@ -6,3 +6,7 @@ src-tauri/gen/
 instancias/
 base/
 datos/
+
+# Configuración con claves (carpeta de Drive, Google, Firebase): nunca al repositorio
+config-integrada.json
+lanzador-config.json
