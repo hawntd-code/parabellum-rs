@@ -303,7 +303,7 @@
             <canvas width="8" height="8" class="head" id="side-head"></canvas>
             <div class="grow">
               <div class="account-name" id="side-name"></div>
-              <div class="account-sub">Cuenta no premium</div>
+              <div class="account-sub" id="side-account-sub">Cuenta no premium</div>
             </div>
             <svg class="chev"><use href="#i-down"/></svg>
           </button>
@@ -493,6 +493,17 @@
               <code id="uuid-text"></code>
               <button class="circle-btn small" id="uuid-copy" title="Copiar"><svg><use href="#i-copy"/></svg></button>
             </div>
+            <div class="setting uuid-fixed-row">
+              <div class="grow"><b>Usar un UUID fijo</b><span>Solo si tus mundos o un servidor te conocen por otro UUID (por ejemplo, el que tenías en la versión anterior de Parabellum).</span></div>
+              <label class="toggle big"><input type="checkbox" id="uuid-fixed"><span></span></label>
+            </div>
+            <input id="uuid-input" class="hidden" maxlength="36" autocomplete="off" spellcheck="false" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+            <p class="field-error hidden" id="uuid-error">El UUID tiene 32 letras y números (0–9, a–f), con o sin guiones.</p>
+            <div class="label-row">
+              <span class="label">Otras cuentas</span>
+              <button class="btn small" id="account-add"><svg><use href="#i-user-plus"/></svg>Añadir cuenta</button>
+            </div>
+            <div class="account-list" id="account-list"></div>
           </section>
           <section data-section="java" class="hidden">
             <div class="setting">
@@ -653,6 +664,25 @@
   </div>
 
   <!-- ================= Confirmación ================= -->
+  <div class="overlay hidden" id="account-dialog">
+    <div class="modal small">
+      <div class="modal-head">
+        <h2>Añadir cuenta</h2>
+      </div>
+      <div class="modal-body">
+        <label class="label" for="account-name">Nombre de jugador</label>
+        <input id="account-name" maxlength="16" autocomplete="off" spellcheck="false">
+        <label class="label" for="account-uuid">UUID fijo (opcional)</label>
+        <input id="account-uuid" maxlength="36" autocomplete="off" spellcheck="false" placeholder="Vacío: el que sale de su nombre">
+        <p class="field-error hidden" id="account-error"></p>
+        <div class="modal-actions">
+          <button class="btn" id="account-cancel">Cancelar</button>
+          <button class="btn primary" id="account-ok">Añadir y usar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay hidden" id="confirm-dialog">
     <div class="modal small">
       <div class="modal-head">

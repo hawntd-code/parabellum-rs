@@ -94,13 +94,7 @@ fn estado_inicial(state: State<AppState>) -> Initial {
 
 #[tauri::command]
 fn guardar_ajustes(state: State<AppState>, mut ajustes: Settings) -> Result<Settings, String> {
-    ajustes.username = ajustes.username.trim().to_string();
-    if let Some(problem) = settings::validate_username(&ajustes.username) {
-        return Err(problem.into());
-    }
-    if !ajustes.uuid.trim().is_empty() && settings::parse_uuid(&ajustes.uuid).is_none() {
-        return Err("El UUID no es válido. Déjalo vacío para usar el de tu nombre.".into());
-    }
+    ajustes.normalize()?;
     ajustes.ram_gb = ajustes.ram_gb.clamp(1, 64);
     ajustes.save(&state.paths).map_err(|e| format!("No se pudieron guardar los ajustes: {e}"))?;
     *state.settings.lock().unwrap() = ajustes.clone();

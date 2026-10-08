@@ -773,3 +773,18 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .external-item .grow { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .external-item .grow span { font-size: 13px; overflow-wrap: anywhere; }
 @media (max-width: 560px) { .external-item { flex-wrap: wrap; } .external-item .btn { width: 100%; } }
+
+/* ===================== Cuentas ===================== */
+.menu .head { width: 26px; height: 26px; border-radius: 6px; flex: none; image-rendering: pixelated; }
+.menu-text { display: flex; flex-direction: column; min-width: 0; }
+.menu-text small { color: var(--muted); font-weight: 500; font-size: 12px; }
+.menu-check { margin-left: auto; display: flex; }
+.menu .menu-check svg { color: var(--accent-fg); }
+.menu hr { border: 0; border-top: 1px solid var(--border); margin: 6px 4px; }
+.uuid-fixed-row { margin-top: 10px; }
+#uuid-input { margin-bottom: 4px; font-family: ui-monospace, Consolas, monospace; }
+.account-list { display: flex; flex-direction: column; gap: 8px; }
+.account-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--r); background: var(--field); }
+.account-row .head { width: 32px; height: 32px; border-radius: 6px; flex: none; image-rendering: pixelated; }
+.account-row .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.account-row .grow span { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }

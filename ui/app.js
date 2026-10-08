@@ -171,12 +171,22 @@ function toast(message, kind = "info") {
   }, kind === "error" ? 7000 : 3500);
 }
 
-function contextMenu(anchor, items) {
+function contextMenu(anchor, items, { matchWidth = false } = {}) {
   $$(".menu").forEach((m) => m.remove());
   const menu = document.createElement("div");
   menu.className = "menu";
-  menu.innerHTML = items.map((item, i) => `<button data-i="${i}" class="${item.danger ? "danger" : ""}">${icon(item.icon)}${escapeHtml(item.label)}</button>`).join("");
+  // Una entrada puede llevar la cabeza de un jugador en lugar de icono, una línea debajo y una marca.
+  menu.innerHTML = items
+    .map((item, i) => {
+      const lead = item.head ? `<canvas width="8" height="8" class="head" data-head="${escapeHtml(item.head)}"></canvas>` : icon(item.icon);
+      const text = item.sub ? `<span class="menu-text">${escapeHtml(item.label)}<small>${escapeHtml(item.sub)}</small></span>` : escapeHtml(item.label);
+      const check = item.checked ? `<span class="menu-check">${icon("check")}</span>` : "";
+      return `${item.separator ? "<hr>" : ""}<button data-i="${i}" class="${item.danger ? "danger" : ""}">${lead}${text}${check}</button>`;
+    })
+    .join("");
+  if (matchWidth) menu.style.minWidth = `${Math.max(220, anchor.getBoundingClientRect().width)}px`;
   document.body.appendChild(menu);
+  for (const canvas of menu.querySelectorAll("canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
   const rect = anchor.getBoundingClientRect();
   menu.style.top = `${Math.min(rect.bottom + 6, innerHeight - menu.offsetHeight - 10)}px`;
   menu.style.left = `${Math.min(rect.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 10)}px`;
@@ -795,8 +805,105 @@ async function pollRunning() {
 // ======================================================================
 function renderSidebar() {
   $("#side-name").textContent = state.settings.username;
+  $("#side-account-sub").textContent = state.settings.uuid ? "Cuenta no premium · UUID fijo" : "Cuenta no premium";
   drawHead($("#side-head"), state.settings.username);
   drawHead($("#rail-head"), state.settings.username);
+}
+
+// ---------- Cuentas ----------
+/** Menú de "Jugando como": cambiar de cuenta, añadir otra o administrarlas. */
+function openAccountMenu(anchor) {
+  const s = state.settings;
+  contextMenu(anchor, [
+    { head: s.username, label: s.username, sub: s.uuid ? "En uso · UUID fijo" : "En uso", checked: true, action: () => {} },
+    ...s.accounts.map((a, i) => ({ head: a.username, label: a.username, sub: a.uuid ? "UUID fijo" : "", action: () => switchAccount(i) })),
+    { icon: "user-plus", label: "Añadir cuenta", separator: true, action: openAccountDialog },
+    { icon: "settings", label: "Administrar cuentas", action: () => openSettings("profile") },
+  ], { matchWidth: true });
+}
+
+async function saveAccounts(changes) {
+  clearTimeout(saveTimer);
+  state.settings = await invoke("guardar_ajustes", { ajustes: { ...state.settings, ...changes } });
+  renderSidebar();
+  renderSettings();
+  renderSteps();
+}
+
+async function switchAccount(index) {
+  const s = state.settings;
+  const target = s.accounts[index];
+  if (!target) return;
+  const accounts = [{ username: s.username, uuid: s.uuid }, ...s.accounts.filter((_, i) => i !== index)];
+  try {
+    await saveAccounts({ username: target.username, uuid: target.uuid, accounts });
+    toast(`Ahora juegas como ${target.username}.`);
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+async function removeAccount(index) {
+  const target = state.settings.accounts[index];
+  if (!target) return;
+  const ok = await confirmAction({
+    title: `Quitar a ${target.username}`,
+    text: "Solo se quita de la lista para cambiar de cuenta. Sus mundos y partidas no se tocan.",
+    ok: "Quitar",
+  });
+  if (!ok) return;
+  try {
+    await saveAccounts({ accounts: state.settings.accounts.filter((_, i) => i !== index) });
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+function openAccountDialog() {
+  $("#account-name").value = "";
+  $("#account-uuid").value = "";
+  $("#account-error").classList.add("hidden");
+  openModal("#account-dialog");
+  setTimeout(() => $("#account-name").focus(), 60);
+}
+
+const validUuid = (text) => /^[0-9a-f]{32}$/i.test(text.replaceAll("-", ""));
+
+async function addAccount() {
+  const name = $("#account-name").value.trim();
+  const uuid = $("#account-uuid").value.trim();
+  const s = state.settings;
+  const fail = (message) => {
+    $("#account-error").textContent = message;
+    $("#account-error").classList.remove("hidden");
+  };
+  if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) return fail("El nombre debe tener de 1 a 16 letras, números o guiones bajos (sin espacios ni acentos).");
+  if (uuid && !validUuid(uuid)) return fail("El UUID tiene 32 letras y números (0–9, a–f), con o sin guiones. Déjalo vacío si no lo necesitas.");
+  if ([s.username, ...s.accounts.map((a) => a.username)].some((n) => n.toLowerCase() === name.toLowerCase())) return fail("Ya tienes una cuenta con ese nombre.");
+  try {
+    await saveAccounts({ username: name, uuid, accounts: [{ username: s.username, uuid: s.uuid }, ...s.accounts] });
+    closeModal("#account-dialog");
+    toast(`Cuenta añadida: ahora juegas como ${name}.`);
+  } catch (error) {
+    fail(String(error));
+  }
+}
+
+function renderAccounts() {
+  const accounts = state.settings.accounts ?? [];
+  $("#account-list").innerHTML = accounts.length
+    ? accounts
+        .map(
+          (a, i) => `<div class="account-row">
+            <canvas width="8" height="8" class="head" data-head="${escapeHtml(a.username)}"></canvas>
+            <div class="grow"><b>${escapeHtml(a.username)}</b><span>${a.uuid ? `UUID fijo ${escapeHtml(a.uuid)}` : "UUID de su nombre"}</span></div>
+            <button class="btn small" data-use-account="${i}">Usar</button>
+            <button class="circle-btn small" data-remove-account="${i}" title="Quitar de la lista">${icon("trash")}</button>
+          </div>`,
+        )
+        .join("")
+    : `<p class="muted small-text">Añade otra cuenta para cambiar de jugador con un clic desde «Jugando como».</p>`;
+  for (const canvas of $$("#account-list canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
 }
 
 function renderSteps() {
@@ -1098,6 +1205,10 @@ function selectSettingsSection(section) {
 function renderSettings() {
   const s = state.settings;
   $("#username").value = s.username;
+  $("#uuid-fixed").checked = !!s.uuid;
+  $("#uuid-input").value = s.uuid ?? "";
+  $("#uuid-input").classList.toggle("hidden", !s.uuid);
+  renderAccounts();
   $("#minimize-on-launch").checked = s.minimizeOnLaunch;
   $("#ram").max = Math.max(4, Math.min(32, state.systemRam - 2));
   $("#ram").value = s.ramGb;
@@ -1113,7 +1224,15 @@ async function updateSettingsTexts() {
   const valid = /^[A-Za-z0-9_]{1,16}$/.test(name);
   $("#username-error").textContent = "El nombre debe tener de 1 a 16 letras, números o guiones bajos (sin espacios ni acentos).";
   $("#username-error").classList.toggle("hidden", valid);
-  $("#uuid-text").textContent = valid ? await invoke("uuid_offline", { nombre: name }) : "—";
+  const fixed = $("#uuid-fixed").checked;
+  const typed = $("#uuid-input").value.trim();
+  $("#uuid-error").classList.toggle("hidden", !fixed || !typed || validUuid(typed));
+  if (fixed && validUuid(typed)) {
+    const hex = typed.replaceAll("-", "").toLowerCase();
+    $("#uuid-text").textContent = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  } else {
+    $("#uuid-text").textContent = valid ? await invoke("uuid_offline", { nombre: name }) : "—";
+  }
   drawHead($("#settings-head"), name);
   const ram = Number($("#ram").value);
   $("#ram-value").textContent = `${ram} GB`;
@@ -1130,11 +1249,15 @@ function queueSave() {
 async function saveSettings(extra = {}) {
   const name = $("#username").value.trim();
   if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) return;
+  // Con "UUID fijo" a medio escribir se conserva el que había.
+  const typed = $("#uuid-input").value.trim();
+  const uuid = !$("#uuid-fixed").checked ? "" : validUuid(typed) ? typed : state.settings.uuid;
   try {
     state.settings = await invoke("guardar_ajustes", {
       ajustes: {
         ...state.settings,
         username: name,
+        uuid,
         ramGb: Number($("#ram").value),
         windowWidth: Number($("#win-width").value) || state.settings.windowWidth,
         windowHeight: Number($("#win-height").value) || state.settings.windowHeight,
@@ -1179,8 +1302,8 @@ function wireEvents() {
   for (const button of $$(".rail-btn[data-page]")) button.onclick = () => navigate(button.dataset.page);
   for (const button of [$("#rail-new"), $("#home-new"), $("#empty-new")]) button.onclick = openCreate;
   $("#rail-settings").onclick = () => openSettings("appearance");
-  $("#rail-avatar").onclick = () => openSettings("profile");
-  $("#account-card").onclick = () => openSettings("profile");
+  $("#rail-avatar").onclick = () => openAccountMenu($("#rail-avatar"));
+  $("#account-card").onclick = () => openAccountMenu($("#account-card"));
   $("#status").onclick = () => {
     const running = state.instances.find((i) => state.running.has(i.id));
     navigate(running ? "instance" : "home", running?.id ?? null);
@@ -1414,6 +1537,27 @@ function wireEvents() {
     };
   }
   matchMedia("(prefers-color-scheme: light)").onchange = () => state.settings?.theme === "sistema" && applyTheme("sistema");
+  $("#uuid-fixed").onchange = () => {
+    const fixed = $("#uuid-fixed").checked;
+    $("#uuid-input").classList.toggle("hidden", !fixed);
+    if (fixed) $("#uuid-input").focus();
+    updateSettingsTexts();
+    queueSave();
+  };
+  $("#uuid-input").oninput = () => {
+    updateSettingsTexts();
+    queueSave();
+  };
+  $("#account-add").onclick = openAccountDialog;
+  $("#account-list").onclick = (event) => {
+    const use = event.target.closest("[data-use-account]");
+    if (use) return switchAccount(Number(use.dataset.useAccount));
+    const remove = event.target.closest("[data-remove-account]");
+    if (remove) removeAccount(Number(remove.dataset.removeAccount));
+  };
+  $("#account-ok").onclick = addAccount;
+  $("#account-cancel").onclick = () => closeModal("#account-dialog");
+  for (const input of [$("#account-name"), $("#account-uuid")]) input.onkeydown = (event) => event.key === "Enter" && addAccount();
   $("#uuid-copy").onclick = async () => {
     await navigator.clipboard.writeText($("#uuid-text").textContent);
     toast("UUID copiado.");
@@ -2767,7 +2911,7 @@ function demoInvoke(command, args = {}) {
     { id: "Skyblock", name: "Skyblock", versionId: "1.20.1", minecraftVersion: "1.20.1", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: now - 86400e3 * 15, created: now - 86400e3 * 30 },
   ];
   const settings = demoInvoke.settings ?? (demoInvoke.settings = {
-    username: "GxxseS", uuid: "", ramGb: 6, theme: "oscuro", windowWidth: 1280, windowHeight: 720, minimizeOnLaunch: true,
+    username: "GxxseS", uuid: "", accounts: [{ username: "Hawntd", uuid: "" }], ramGb: 6, theme: "oscuro", windowWidth: 1280, windowHeight: 720, minimizeOnLaunch: true,
     servers: [{ name: "UniversoCraft", address: "mc.universocraft.com", instance: "Vanilla 1.21.1" }],
   });
   const demo = {

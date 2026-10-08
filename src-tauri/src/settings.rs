@@ -22,6 +22,16 @@ pub struct Settings {
     pub minimize_on_launch: bool,
     /// Servidores guardados en la página Servidores.
     pub servers: Vec<SavedServer>,
+    /// Otras cuentas guardadas para cambiar con un clic (la que se usa es username/uuid).
+    pub accounts: Vec<Account>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Account {
+    pub username: String,
+    /// Vacío: el UUID offline de su nombre.
+    pub uuid: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -44,6 +54,7 @@ impl Default for Settings {
             window_height: 720,
             minimize_on_launch: true,
             servers: Vec::new(),
+            accounts: Vec::new(),
         }
     }
 }
@@ -91,6 +102,29 @@ impl Settings {
         let temp = file.with_extension("tmp");
         std::fs::write(&temp, serde_json::to_vec_pretty(self).unwrap())?;
         std::fs::rename(temp, file)
+    }
+
+    /// Deja los UUID con guiones y la lista de cuentas sin repetidas, sin nombres no válidos y sin la
+    /// que se está usando. Error si el UUID de la cuenta en uso no es válido.
+    pub fn normalize(&mut self) -> Result<(), &'static str> {
+        self.username = self.username.trim().to_string();
+        if let Some(problem) = validate_username(&self.username) {
+            return Err(problem);
+        }
+        self.uuid = match self.uuid.trim() {
+            "" => String::new(),
+            text => dashed(&parse_uuid(text).ok_or("El UUID no es válido. Déjalo vacío para usar el de tu nombre.")?),
+        };
+        let mut seen = vec![self.username.to_lowercase()];
+        self.accounts.retain_mut(|account| {
+            account.username = account.username.trim().to_string();
+            account.uuid = parse_uuid(&account.uuid).map(|u| dashed(&u)).unwrap_or_default();
+            let key = account.username.to_lowercase();
+            let keep = validate_username(&account.username).is_none() && !seen.contains(&key);
+            seen.push(key);
+            keep
+        });
+        Ok(())
     }
 
     /// UUID que recibe el juego, sin guiones.
@@ -153,6 +187,27 @@ mod tests {
         assert_eq!(settings.theme, "oscuro");
         // Un nombre que Minecraft no acepta no se copia.
         assert_eq!(from_old(r#"{ "Username": "con espacio" }"#).unwrap().username, "Jugador");
+    }
+
+    #[test]
+    fn ordena_las_cuentas() {
+        let mut settings = Settings {
+            username: " GxxseS ".into(),
+            uuid: "1525C21EE760484CA393E32CCB3611D2".into(),
+            accounts: vec![
+                Account { username: "Hawntd".into(), uuid: String::new() },
+                Account { username: "gxxses".into(), uuid: String::new() },
+                Account { username: "con espacio".into(), uuid: String::new() },
+                Account { username: "hawntd".into(), uuid: "x".into() },
+            ],
+            ..Settings::default()
+        };
+        settings.normalize().unwrap();
+        assert_eq!(settings.username, "GxxseS");
+        assert_eq!(settings.uuid, "1525c21e-e760-484c-a393-e32ccb3611d2");
+        assert_eq!(settings.accounts, vec![Account { username: "Hawntd".into(), uuid: String::new() }]);
+        settings.uuid = "no".into();
+        assert!(settings.normalize().is_err());
     }
 
     #[test]
