@@ -68,18 +68,20 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] **Versión C# retirada** (2026-10-08): sus instancias, mundos y bases pasaron a la carpeta de Parabellum; Parabellum lee sus ajustes (nombre, UUID fijo, memoria) y su actualizador lleva a quienes la usen a esta versión en cuanto se publique en Drive
 - [ ] (Fase 9) Subir a Drive directamente desde Parabellum, con la sesión de Google
 
+### Fase 8: Forge, NeoForge e importación
+- [x] **Instancias Forge y NeoForge** con su instalador oficial: bibliotecas y "processors" (las herramientas que preparan el juego parcheado), también para Minecraft 26; cambiar su versión desde la instancia
+- [x] Forge 1.17–1.20 y NeoForge arrancan sin el .jar original en el classpath (-DignoreList), como el launcher oficial
+- [x] **Modpacks de Forge y NeoForge**: .mrpack, de Modrinth y de Drive; los paquetes para Drive incluyen lo que Forge genera y no nombra en su JSON (juego parcheado, fmlcore, mapeos)
+- [x] **Importar de otro launcher**: CurseForge, Prism y MultiMC se encuentran solos (o se elige la carpeta); se copian mods, mundos y opciones y el loader lo instala Parabellum
+- [x] *Prueba:* Better MC BMC4 (Forge 47.4.20, 444 mods) llega al menú; desde cero, Forge 1.20.1, NeoForge 1.21.1, Forge 26.1.2 y NeoForge 26.1.2 se instalan y llegan al menú; Better MC [BMC6] (NeoForge, 228 mods) importado de CurseForge llega al menú; paquetes de Forge y NeoForge exportados e instalados en una carpeta vacía sin internet llegan al menú
+- [ ] (Opcional) CurseForge: requiere solicitar una clave de API y respetar qué autores permiten descargas externas
+- [ ] Probar Forge 1.12.2 (su instalador más nuevo no tiene processors; los muy antiguos usan otro formato)
+
 ### Diseño
 - [x] Interfaz al estilo de la app de Modrinth con identidad morada (tema oscuro y claro, fuente Inter)
 - [x] Biblioteca, continuar jugando, crear instancia por tipo, ajustes por secciones, página Servidores
 
 ## ⏭️ Pendiente, en orden
-
-### Fase 8: Forge, NeoForge e importación
-- [ ] Modpacks de Forge y NeoForge (.mrpack y de Modrinth)
-- [ ] (Opcional) CurseForge: requiere solicitar una clave de API y respetar qué autores permiten descargas externas
-- [ ] Instancias Forge y NeoForge (instaladores con "processors")
-- [ ] Importar instancias de CurseForge y Prism
-- [ ] *Prueba:* Better MC BMC4 (Forge 47.4.20, ya en la carpeta de Parabellum con sus mundos) llega al menú
 
 ### Fase 9: social
 - [ ] Servidor de sesión local: mundos LAN/e4mc de amigos sin "Invalid session" (ya probado en la versión C#)

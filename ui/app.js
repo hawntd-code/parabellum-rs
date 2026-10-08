@@ -436,7 +436,7 @@ function renderContent() {
       !none
         ? "Nada coincide con la búsqueda."
         : vanillaMods
-          ? "Las instancias vanilla no cargan mods. Crea una instancia con Fabric o Quilt para usarlos."
+          ? "Las instancias vanilla no cargan mods. Crea una instancia con un loader (Fabric, Quilt, Forge o NeoForge) para usarlos."
           : `Esta instancia no tiene ${kindNames[state.kind]}. Arrástralos a la ventana o usa "Agregar archivos".`
     }</div>`;
     return;
@@ -631,7 +631,7 @@ function openEdit(id) {
   $("#edit-ram").max = $("#ram").max || 16;
   $("#edit-ram").value = instance.ramGb ?? state.settings.ramGb;
   $("#edit-jvm").value = instance.jvmArgs.join(" ");
-  const usesLoader = ["Fabric", "Quilt"].includes(instance.loader);
+  const usesLoader = ["Fabric", "Quilt", "Forge", "NeoForge"].includes(instance.loader);
   $("#edit-loader-box").classList.toggle("hidden", !usesLoader);
   if (usesLoader) loadEditLoaderVersions(instance);
   updateEditTexts();
@@ -870,6 +870,7 @@ function closeModal(id) {
 function openCreate() {
   if (state.creating || state.importing) return openModal("#create-dialog");
   $("#create-step-import").classList.add("hidden");
+  $("#create-step-external").classList.add("hidden");
   $("#create-step-type").classList.remove("hidden");
   $("#create-step-custom").classList.add("hidden");
   $("#create-back").classList.add("hidden");
@@ -904,7 +905,7 @@ function updateCreateArt() {
   $("#create-art").outerHTML = art({ name: $("#new-name").value.trim() || "Nueva" }, "large").replace('class="art large"', 'class="art large" id="create-art"');
 }
 
-const loaderNames = { vanilla: "Vanilla", fabric: "Fabric", quilt: "Quilt" };
+const loaderNames = { vanilla: "Vanilla", fabric: "Fabric", quilt: "Quilt", forge: "Forge", neoforge: "NeoForge" };
 
 async function selectLoader(loader) {
   state.loader = loader;
@@ -1355,6 +1356,19 @@ function wireEvents() {
   $("#create-dialog").onmousedown = (event) => event.target.id === "create-dialog" && closeModal("#create-dialog");
   $("[data-type='custom']").onclick = showCustomStep;
   $("[data-type='import']").onclick = () => importModpack();
+  $("[data-type='external']").onclick = showExternalStep;
+  $("#external-list").onclick = (event) => {
+    const button = event.target.closest("[data-external]");
+    if (button) importExternal(state.externals[Number(button.dataset.external)]);
+  };
+  $("#external-pick").onclick = async () => {
+    try {
+      const picked = await invoke("elegir_instancia_externa");
+      if (picked) importExternal(picked);
+    } catch (error) {
+      toast(String(error), "error");
+    }
+  };
   $("[data-type='drive']").onclick = () => {
     closeModal("#create-dialog");
     state.explore.kind = "drive";
@@ -1646,12 +1660,12 @@ function renderExploreFilters() {
   for (const chip of $$("#explore-loaders [data-loader]")) chip.classList.toggle("active", e.loader === chip.dataset.loader);
   const note = $("#explore-instance-note");
   if (!instance) note.textContent = "Elige una instancia para ver solo lo compatible e instalar con un clic.";
-  else if (e.kind === "mod" && instance.loader === "Vanilla") note.textContent = "Es vanilla: no carga mods. Elige una con Fabric o Quilt.";
+  else if (e.kind === "mod" && instance.loader === "Vanilla") note.textContent = "Es vanilla: no carga mods. Elige una con un loader.";
   else if (e.kind === "datapack") note.textContent = `Se muestra solo lo compatible con Minecraft ${instance.minecraftVersion}. Al instalar eliges el mundo.`;
   else note.textContent = `Se muestra solo lo compatible con ${e.kind === "mod" ? instance.loader + " " : "Minecraft "}${instance.minecraftVersion}.`;
   const showNote = instance && e.kind === "mod" && instance.loader === "Vanilla";
   $("#explore-note").classList.toggle("hidden", !showNote);
-  $("#explore-note").textContent = showNote ? `${instance.name} es vanilla y no puede cargar mods. Crea una instancia con Fabric o Quilt, o explora resource packs y shaders.` : "";
+  $("#explore-note").textContent = showNote ? `${instance.name} es vanilla y no puede cargar mods. Crea una instancia con un loader, o explora resource packs y shaders.` : "";
 }
 
 async function loadExploreVersions() {
@@ -1999,7 +2013,7 @@ async function loadProjectVersions() {
   $("#project-versions").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
   $("#project-versions-note").textContent =
     kind === "modpack"
-      ? "Versiones para Fabric y Quilt. Cada una se instala como una instancia nueva."
+      ? "Cada versión se instala como una instancia nueva, con su loader."
       : instance
         ? `Versiones compatibles con ${instance.name} (${kind === "mod" ? instance.loader + " " : "Minecraft "}${instance.minecraftVersion}).`
         : "Todas las versiones. Elige una instancia en \"Instalar en\" para ver solo las compatibles.";
@@ -2272,6 +2286,67 @@ async function installDatapack(projectId, versionId = null) {
   });
 }
 
+/** Importar de otro launcher: lista lo que hay de CurseForge, Prism y MultiMC en este PC. */
+async function showExternalStep() {
+  $("#create-step-type").classList.add("hidden");
+  $("#create-step-external").classList.remove("hidden");
+  $("#create-back").classList.remove("hidden");
+  $("#create-title").textContent = "Importar de otro launcher";
+  $("#external-note").textContent = "Buscando instancias de CurseForge, Prism y MultiMC…";
+  $("#external-list").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
+  const found = await invoke("instancias_externas").catch(() => []);
+  $("#external-note").textContent = found.length
+    ? "Se copian con sus mods, mundos y opciones; el original no se toca. El loader lo instala Parabellum."
+    : "No se encontraron instancias en las carpetas de CurseForge, Prism ni MultiMC. Si están en otro lugar, elige su carpeta.";
+  $("#external-list").innerHTML = found.map(externalItem).join("");
+  state.externals = found;
+}
+
+function externalItem(e, index) {
+  const loader = e.loader === "Vanilla" ? "Vanilla" : `${e.loader} ${e.loaderVersion ?? ""}`.trim();
+  const details = [`Minecraft ${e.minecraft}`, loader];
+  if (e.mods) details.push(`${e.mods} mods`);
+  if (e.worlds) details.push(e.worlds === 1 ? "1 mundo" : `${e.worlds} mundos`);
+  const taken = state.instances.some((i) => i.name.toLowerCase() === e.name.toLowerCase());
+  return `<div class="external-item">
+    <div class="grow">
+      <b>${escapeHtml(e.name)}</b>
+      <span class="muted">${escapeHtml(details.join(" · "))}${taken ? " · ya tienes una con ese nombre" : ""}</span>
+    </div>
+    <span class="tag">${escapeHtml(e.launcher)}</span>
+    <button class="btn primary" data-external="${index}">Importar</button>
+  </div>`;
+}
+
+async function importExternal(external) {
+  if (state.importing) return toast("Ya se está instalando algo; espera a que termine.", "error");
+  state.importing = true;
+  $("#create-step-external").classList.add("hidden");
+  $("#create-step-import").classList.remove("hidden");
+  $("#create-back").classList.add("hidden");
+  $("#create-title").textContent = "Importar de otro launcher";
+  $("#import-title").textContent = external.name;
+  $("#import-status").textContent = "Preparando…";
+  $("#import-progress div").style.width = "2%";
+  $("#download-indicator").classList.remove("hidden");
+  $("#download-percent").textContent = "…";
+  try {
+    const result = await invoke("importar_externa", { carpeta: external.folder });
+    state.importing = false;
+    closeModal("#create-dialog");
+    await reloadInstances();
+    toast(`${result.name} está lista para jugar.`);
+    navigate("instance", result.id);
+  } catch (error) {
+    $("#import-title").textContent = "No se pudo importar";
+    $("#import-status").textContent = String(error);
+    $("#create-back").classList.remove("hidden");
+  } finally {
+    state.importing = false;
+    $("#download-indicator").classList.add("hidden");
+  }
+}
+
 /** Subir un modpack: .mrpack o paquete de Parabellum. Sin ruta, abre la ventana para elegirlo. */
 async function importModpack(path = null) {
   if (state.importing) return toast("Ya se está instalando un modpack; espera a que termine.", "error");
@@ -2473,7 +2548,6 @@ async function loadDriveCatalog(reload = false) {
 function driveAction(entry) {
   const drive = state.drive;
   if (drive.installing === entry.id) return `<button class="btn" disabled><span class="spinner tiny"></span>Instalando…</button>`;
-  if (entry.unsupported) return `<button class="btn" disabled title="${escapeHtml(entry.unsupported)}">Fase 8</button>`;
   const busy = drive.installing ? "disabled" : "";
   if (entry.kind === "base") {
     return entry.status === "instalado"
@@ -2537,9 +2611,7 @@ function renderDrive() {
   const bases = data.entries.filter((e) => e.kind === "base" && matches(e));
   // Primero lo que tiene versión nueva, luego lo no instalado.
   const order = { actualizar: 0, nuevo: 1, instalado: 2 };
-  // Lo que todavía no se puede instalar (Forge) va al final.
-  const rank = (e) => (e.unsupported ? 3 : order[e.status]);
-  modpacks.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, "es"));
+  modpacks.sort((a, b) => order[a.status] - order[b.status] || a.name.localeCompare(b.name, "es"));
   bases.sort((a, b) => b.minecraftVersion.localeCompare(a.minecraftVersion, "es", { numeric: true }));
   if (!modpacks.length && !bases.length) {
     $("#explore-results").innerHTML = `<div class="content-empty">${
@@ -2722,16 +2794,24 @@ function demoInvoke(command, args = {}) {
       ],
     },
   };
+  if (command === "instancias_externas")
+    return new Promise((r) => setTimeout(() => r([
+      { launcher: "CurseForge", name: "Better MC [BMC6]", folder: "C:\curseforge\Better MC [BMC6]", minecraft: "26.1.2", loader: "NeoForge", loaderVersion: "26.1.2.97", ramGb: null, mods: 228, worlds: 1 },
+      { launcher: "Prism", name: "Create Above and Beyond", folder: "C:\Prism\instances\CAB", minecraft: "1.16.5", loader: "Forge", loaderVersion: "36.2.39", ramGb: 6, mods: 187, worlds: 0 },
+    ]), 400));
+  if (command === "importar_externa") return new Promise((r) => setTimeout(() => r({ id: "Better MC [BMC6]", name: "Better MC [BMC6]", kind: "instancia", updated: false }), 1500));
   if (command === "versiones_compatibles")
     return new Promise((r) => setTimeout(() => r({ online: true, games: ["26.3", "26.3-pre2", "26.2", "26.1.2", "1.21.11", "1.21.1", "1.20.1"], message: null }), 300));
   if (command === "versiones_loader")
     return new Promise((r) =>
       setTimeout(() => r({
         online: true,
-        versions: args.loader === "quilt"
-          ? [{ version: "0.31.0-beta.4", stable: false }, { version: "0.30.1", stable: true }, { version: "0.29.2", stable: true }]
-          : [{ version: "0.19.5", stable: true }, { version: "0.19.4", stable: true }, { version: "0.18.2", stable: true }, { version: "0.16.14", stable: true }],
-        recommended: args.loader === "quilt" ? "0.30.1" : "0.19.5",
+        versions: {
+          quilt: [{ version: "0.31.0-beta.4", stable: false }, { version: "0.30.1", stable: true }, { version: "0.29.2", stable: true }],
+          forge: [{ version: "47.4.20", stable: true }, { version: "47.4.10", stable: true }, { version: "47.3.0", stable: true }],
+          neoforge: [{ version: "26.3.0.58-beta", stable: false }, { version: "21.1.77", stable: true }],
+        }[args.loader] ?? [{ version: "0.19.5", stable: true }, { version: "0.19.4", stable: true }, { version: "0.18.2", stable: true }, { version: "0.16.14", stable: true }],
+        recommended: { quilt: "0.30.1", forge: "47.4.20", neoforge: "21.1.77" }[args.loader] ?? "0.19.5",
         installed: args.minecraft === "26.1.2" && args.loader === "fabric" ? ["0.19.5"] : [],
         message: null,
       }), 300),

@@ -108,7 +108,7 @@ pub fn instance_loaders(instance: &Instance, kind: ContentType) -> Result<Vec<&'
             "Quilt" => Ok(vec!["quilt", "fabric"]),
             "Forge" => Ok(vec!["forge"]),
             "NeoForge" => Ok(vec!["neoforge"]),
-            _ => Err("Las instancias vanilla no cargan mods. Crea una con Fabric o Quilt.".into()),
+            _ => Err("Las instancias vanilla no cargan mods. Crea una con un loader (Fabric, Quilt, Forge o NeoForge).".into()),
         },
         ContentType::ResourcePack => Ok(vec!["minecraft"]),
         ContentType::Shader => Ok(vec![]),
@@ -1230,6 +1230,9 @@ pub struct ModpackDownload {
     pub version_number: String,
 }
 
+/// Loaders de los modpacks que se pueden instalar.
+pub const MODPACK_LOADERS: &[&str] = &["fabric", "quilt", "forge", "neoforge"];
+
 pub async fn download_modpack(project_id: &str, version_id: Option<&str>, temp_dir: &Path) -> Result<ModpackDownload, String> {
     let project = get(&format!("/project/{}", checked_id(project_id)?), &[]).await?;
     if project["project_type"].as_str() != Some("modpack") {
@@ -1238,9 +1241,9 @@ pub async fn download_modpack(project_id: &str, version_id: Option<&str>, temp_d
     let title = text(&project, "title");
     let chosen = match version_id {
         Some(id) => version(id).await?,
-        None => best(&project_versions(&text(&project, "id"), &["fabric", "quilt"], &[]).await?)
+        None => best(&project_versions(&text(&project, "id"), MODPACK_LOADERS, &[]).await?)
             .cloned()
-            .ok_or(format!("{title} no tiene versión para Fabric ni Quilt (los de Forge y NeoForge llegan más adelante)."))?,
+            .ok_or(format!("{title} no tiene versiones que Parabellum pueda instalar."))?,
     };
     if !chosen.filename.to_lowercase().ends_with(".mrpack") || !chosen.url.starts_with(CDN) {
         return Err("Esa versión no trae un archivo .mrpack.".into());

@@ -6,6 +6,8 @@ mod compat;
 mod config;
 mod content;
 mod download;
+mod externos;
+mod forge;
 mod instances;
 mod java;
 mod launch;
@@ -71,7 +73,7 @@ struct Versions {
     mojang: bool,
     releases: Vec<mojang::Release>,
     installed: Vec<String>,
-    /// Fabric y Quilt ya instalados (para crear instancias sin conexión).
+    /// Loaders ya instalados (para crear instancias sin conexión).
     loaders: Vec<loaders::Installed>,
     message: Option<String>,
 }
@@ -197,7 +199,7 @@ async fn install_vanilla(version: &str, paths: &Paths, progress: impl Fn(String,
     }
 }
 
-/// Instala Fabric o Quilt (la versión pedida o la recomendada). Devuelve (id de la versión, versión del loader).
+/// Instala el loader (la versión pedida o la recomendada). Devuelve (id de la versión, versión del loader).
 /// Sin conexión sirve si esa versión ya estaba instalada.
 async fn install_loader(
     loader: Loader,
@@ -275,14 +277,14 @@ async fn crear_instancia(
     instances::create(&nombre, &game, &paths)
 }
 
-/// Cambia la versión de Fabric o Quilt de una instancia (la descarga si hace falta).
+/// Cambia la versión del loader de una instancia (la descarga si hace falta).
 #[tauri::command]
 async fn cambiar_loader(app: AppHandle, state: State<'_, AppState>, id: String, version_loader: String) -> Result<Instance, String> {
     let instance = instance_or_error(&state, &id)?;
     if state.games.lock().unwrap().contains_key(&id) {
         return Err("Cierra el juego antes de cambiar la versión.".into());
     }
-    let loader = parse_loader(&instance.loader).map_err(|_| "Esta instancia no usa Fabric ni Quilt.".to_string())?;
+    let loader = parse_loader(&instance.loader).map_err(|_| "Esta instancia es vanilla: no tiene loader.".to_string())?;
     let paths = state.paths.clone();
     let emitter = app.clone();
     let (version_id, loader_version) =
@@ -517,9 +519,9 @@ async fn versiones_proyecto(
     tipo: String,
     instancia: Option<String>,
 ) -> Result<Vec<modrinth::Version>, String> {
-    // Los modpacks se instalan como instancia nueva: todas sus versiones de Fabric y Quilt.
+    // Los modpacks se instalan como instancia nueva: todas sus versiones, con el loader que sea.
     if tipo == "modpack" {
-        return modrinth::project_versions(&id, &["fabric", "quilt"], &[]).await;
+        return modrinth::project_versions(&id, modrinth::MODPACK_LOADERS, &[]).await;
     }
     match instancia {
         Some(instance_id) if tipo == "datapack" => {
@@ -692,11 +694,7 @@ async fn import_modpack(
 
     // .mrpack
     let info = mrpack::read(file)?.ok_or("No es un modpack: elige un .mrpack o un paquete de Parabellum (.zip con lanzador-pack.json).")?;
-    let loader = match &info.loader {
-        None => None,
-        Some((name, _)) if name == "Fabric" || name == "Quilt" => Some(parse_loader(name)?),
-        Some((name, _)) => return Err(format!("Los modpacks de {name} llegan más adelante; por ahora se pueden instalar los de Fabric, Quilt y vanilla.")),
-    };
+    let loader = info.loader.as_ref().map(|(name, _)| parse_loader(name)).transpose()?;
     let name = instances::unique_name(display_name.as_deref().unwrap_or(&info.name), paths)?;
     let report = progress.clone();
     let (version_id, loader_version) =
@@ -791,6 +789,62 @@ async fn importar_modpack(app: AppHandle, state: State<'_, AppState>, ruta: Opti
     import_modpack(&file, &state.paths, None, None, serde_json::json!({ "source": "archivo" }), &running, progress).await.map(Some)
 }
 
+/// Instancias de CurseForge, Prism y MultiMC encontradas en este PC.
+#[tauri::command]
+async fn instancias_externas() -> Vec<externos::External> {
+    tauri::async_runtime::spawn_blocking(externos::discover).await.unwrap_or_default()
+}
+
+/// Elegir a mano la carpeta de una instancia de otro launcher. None si se canceló.
+#[tauri::command]
+async fn elegir_instancia_externa(app: AppHandle) -> Result<Option<externos::External>, String> {
+    let dialog = app.dialog().file().set_title("Elige la carpeta de la instancia (CurseForge, Prism o MultiMC)");
+    let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder()).await.map_err(|e| e.to_string())?;
+    let Some(folder) = picked.and_then(|p| p.into_path().ok()) else { return Ok(None) };
+    externos::read(&folder)
+        .map(Some)
+        .ok_or("Esa carpeta no es una instancia de CurseForge, Prism ni MultiMC (no tiene minecraftinstance.json ni mmc-pack.json).".into())
+}
+
+/// Copia una instancia de otro launcher a Parabellum, con su loader instalado por Parabellum.
+async fn import_external(folder: &Path, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<Imported, String> {
+    let external = externos::read(folder).ok_or("Esa carpeta no es una instancia de CurseForge, Prism ni MultiMC.")?;
+    let loader = Some(external.loader.as_str()).filter(|l| *l != "Vanilla").map(parse_loader).transpose()?;
+    let name = instances::unique_name(&external.name, paths)?;
+    let report = progress.clone();
+    let (version_id, loader_version) =
+        install_game(&external.minecraft, loader, external.loader_version.as_deref(), paths, move |stage, f| report(stage, f * 0.5)).await?;
+    let game = GameVersion { version_id: &version_id, minecraft: &external.minecraft, loader: loader.map(|l| l.name()).zip(loader_version.as_deref()) };
+    let instance = instances::create(&name, &game, paths)?;
+    let (from, to, report) = (external.game_dir.clone(), instance.game_dir.clone(), progress.clone());
+    let copied = tauri::async_runtime::spawn_blocking(move || {
+        externos::copy_game(&from, &to, |done, total| {
+            report(format!("Copiando mods, mundos y opciones… {} de {} MB", done / 1048576, total / 1048576), 0.5 + 0.5 * done as f64 / total as f64)
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    if let Err(error) = copied {
+        // Una instancia a medias no sirve; es nueva, así que no tiene nada del jugador.
+        let _ = std::fs::remove_dir_all(&instance.folder);
+        return Err(error);
+    }
+    if external.ram_gb.is_some() || !external.jvm_args.is_empty() {
+        let _ = instances::update(&instance, &name, external.ram_gb, &external.jvm_args);
+    }
+    if let Some(bytes) = external.icon.as_ref().and_then(|icon| std::fs::read(icon).ok()) {
+        let _ = instances::set_icon_bytes(&instance, &bytes);
+    }
+    let _ = instances::set_field(&instance, "importadaDe", serde_json::json!({ "launcher": external.launcher, "carpeta": external.folder }));
+    progress("Listo".into(), 1.0);
+    Ok(Imported { id: Some(instance.id), name, kind: "instancia".into(), updated: false })
+}
+
+#[tauri::command]
+async fn importar_externa(app: AppHandle, state: State<'_, AppState>, carpeta: String) -> Result<Imported, String> {
+    import_external(Path::new(&carpeta), &state.paths, progress_emitter(&app, "importar")).await
+}
+
 /// Instala un modpack de Modrinth como instancia nueva.
 #[tauri::command]
 async fn instalar_modpack(app: AppHandle, state: State<'_, AppState>, proyecto: String, version: Option<String>) -> Result<Imported, String> {
@@ -870,9 +924,6 @@ async fn instalar_de_catalogo(app: AppHandle, state: State<'_, AppState>, id: St
         .find(|e| !e.is_launcher() && e.manifest.id.eq_ignore_ascii_case(&id))
         .ok_or("Ese paquete ya no está en el catálogo. Recárgalo.")?;
     let list = instances::list(&state.paths);
-    if let Some(reason) = catalog::view(entry, &list, &state.paths).unsupported {
-        return Err(reason);
-    }
     if let Some((instance, _)) = catalog::installed_instance(&entry.manifest, &list) {
         if state.games.lock().unwrap().contains_key(&instance.id) {
             return Err("Cierra el juego antes de actualizar este modpack.".into());
@@ -1027,7 +1078,7 @@ fn system_ram_gb() -> u32 {
 
 /// Modo sin ventana para diagnóstico (el resultado queda en datos\logs\comando.txt):
 ///   --comprobar <instancia>             qué falta para jugar
-///   --crear <nombre> <versión> [fabric|quilt] [versión del loader]
+///   --crear <nombre> <versión> [fabric|quilt|forge|neoforge] [versión]
 ///                                       descarga y crea la instancia
 ///   --cambiar-loader <instancia> <versión del loader>
 ///   --agregar <instancia> <archivo>...  agrega mods, packs, shaders o mundos
@@ -1039,6 +1090,8 @@ fn system_ram_gb() -> u32 {
 ///   --exportar <instancia> <carpeta> [con-mundos]   paquete para Drive/USB (con la base de Minecraft)
 ///   --exportar-mrpack <instancia> <archivo.mrpack>
 ///   --importar <archivo> [nombre]                   paquete de Parabellum o .mrpack
+///   --externas                                      instancias de CurseForge, Prism y MultiMC en este PC
+///   --importar-externa <carpeta>                    copia una de ellas a Parabellum
 ///   --instalar-modpack <proyecto> [versión]         modpack de Modrinth como instancia nueva
 ///   --instalar-datapack <instancia> <mundo> <proyecto>
 ///   --catalogo                                      modpacks y versiones de Drive y de la carpeta paquetes
@@ -1299,6 +1352,29 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             let result = tauri::async_runtime::block_on(mrpack::export(&instance, &file, &options, |_, _| {}))?;
             Ok(format!("{result:#?}"))
         }
+        "--externas" => Ok(externos::discover()
+            .iter()
+            .map(|e| {
+                format!(
+                    "{} [{}] Minecraft {} · {} {} · {} mods · {} mundos · {}
+",
+                    e.name,
+                    e.launcher,
+                    e.minecraft,
+                    e.loader,
+                    e.loader_version.as_deref().unwrap_or(""),
+                    e.mods,
+                    e.worlds,
+                    e.folder.display()
+                )
+            })
+            .collect()),
+        "--importar-externa" => {
+            let folder = PathBuf::from(args.get(1).ok_or("Falta la carpeta.")?);
+            let started = std::time::Instant::now();
+            let result = tauri::async_runtime::block_on(import_external(&folder, paths, |stage, _| eprintln!("{stage}")))?;
+            Ok(format!("{} -> carpeta {:?}, en {:.0} s", result.name, result.id, started.elapsed().as_secs_f64()))
+        }
         "--importar" => {
             let file = PathBuf::from(args.get(1).ok_or("Falta el archivo.")?);
             let started = std::time::Instant::now();
@@ -1349,7 +1425,7 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                 }
                 let view = catalog::view(entry, &list, paths);
                 out += &format!(
-                    "  {} [{}] {} · {} · {} MB · {:?} · {}{}\n",
+                    "  {} [{}] {} · {} · {} MB · {:?} · {}\n",
                     view.name,
                     view.kind,
                     view.minecraft_version,
@@ -1357,7 +1433,6 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                     view.size / 1048576,
                     view.source,
                     view.status,
-                    view.unsupported.map(|u| format!(" · {u}")).unwrap_or_default()
                 );
             }
             for warning in &catalog.warnings {
@@ -1456,6 +1531,9 @@ fn main() {
             contenido_exportable,
             exportar_modpack,
             importar_modpack,
+            instancias_externas,
+            elegir_instancia_externa,
+            importar_externa,
             instalar_modpack,
             instalar_datapack,
             mostrar_archivo,

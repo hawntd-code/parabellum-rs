@@ -373,11 +373,17 @@
             <span class="option-icon"><svg><use href="#i-upload"/></svg></span>
             <span class="grow"><b>Subir un modpack</b><span>Instala un .mrpack o un paquete .zip de Parabellum desde tu PC o una USB.</span></span>
           </button>
-          <button class="option" disabled>
+          <button class="option" data-type="external">
             <span class="option-icon"><svg><use href="#i-import"/></svg></span>
-            <span class="grow"><b>Importar instancia</b><span>Importa una instancia de CurseForge, Prism o similares.</span></span>
-            <span class="soon">Pronto</span>
+            <span class="grow"><b>Importar de otro launcher</b><span>Copia una instancia de CurseForge, Prism o MultiMC con sus mods, mundos y opciones.</span></span>
           </button>
+        </div>
+
+        <!-- Importar de otro launcher -->
+        <div id="create-step-external" class="hidden">
+          <p class="muted" id="external-note">Buscando instancias de CurseForge, Prism y MultiMC…</p>
+          <div class="external-list" id="external-list"></div>
+          <button class="btn" id="external-pick"><svg><use href="#i-folder"/></svg>Elegir otra carpeta…</button>
         </div>
 
         <!-- Subir un modpack -->
@@ -402,8 +408,8 @@
                 <button class="active" data-loader="vanilla">Vanilla</button>
                 <button data-loader="fabric">Fabric</button>
                 <button data-loader="quilt">Quilt</button>
-                <button disabled title="Muy pronto">Forge</button>
-                <button disabled title="Muy pronto">NeoForge</button>
+                <button data-loader="forge">Forge</button>
+                <button data-loader="neoforge">NeoForge</button>
               </div>
             </div>
           </div>

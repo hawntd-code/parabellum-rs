@@ -51,6 +51,10 @@ impl LaunchPlan {
     }
 }
 
+fn uses_ignore_list(version: &ResolvedVersion) -> bool {
+    version.jvm_arguments.iter().any(|a| a.as_str().is_some_and(|s| s.starts_with("-DignoreList=")))
+}
+
 fn supports_quick_play(version: &str) -> bool {
     let mut parts = version.split('.');
     match parts.next().and_then(|p| p.parse::<u32>().ok()) {
@@ -94,15 +98,18 @@ pub struct VersionFiles {
 pub fn version_files(version_id: &str, paths: &Paths) -> Result<VersionFiles, String> {
     let version = ResolvedVersion::resolve(version_id, paths)?;
     let mut files = Vec::new();
+    let mut generated = Vec::new();
     let mut next = Some(version_id.to_string());
     while let Some(id) = next.take().filter(|_| files.len() < 10) {
         let json = paths.version_json(&id);
-        next = std::fs::read_to_string(&json)
-            .ok()
-            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-            .and_then(|v| v["inheritsFrom"].as_str().filter(|s| !s.is_empty()).map(String::from));
+        let content = std::fs::read_to_string(&json).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
+        next = content.as_ref().and_then(|v| v["inheritsFrom"].as_str().filter(|s| !s.is_empty()).map(String::from));
+        if let Some(content) = &content {
+            generated.extend(crate::forge::generated_files(content, paths));
+        }
         files.push(json);
     }
+    files.extend(generated);
     let features = Features::new();
     for library in version.libraries.iter().filter(|l| rules_allow(l.get("rules"), &features)) {
         let (native, artifact) = library_paths(library, paths);
@@ -122,7 +129,8 @@ pub fn version_files(version_id: &str, paths: &Paths) -> Result<VersionFiles, St
         files.push(paths.assets.join("log_configs").join(id));
     }
     let mut seen = std::collections::HashSet::new();
-    files.retain(|f| seen.insert(f.to_string_lossy().to_lowercase()));
+    // La misma ruta puede llegar escrita con / (del JSON) y con \ (de la carpeta): cuenta como una.
+    files.retain(|f| seen.insert(f.components().collect::<PathBuf>().to_string_lossy().to_lowercase()));
     let java = java::select(&java::discover(paths), version.java_component.as_deref(), version.java_major).cloned();
     Ok(VersionFiles { files, java, root_id: version.root_id })
 }
@@ -168,7 +176,11 @@ pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<L
     if !client_jar.exists() {
         missing.push(format!("Juego: {}", client_jar.display()));
     }
-    classpath.push(client_jar);
+    // Forge (1.17–1.20) y NeoForge cargan el juego ya parcheado desde libraries y, con -DignoreList,
+    // esperan que el .jar original no esté en el classpath (si está, Java lo ve dos veces y no arranca).
+    if !uses_ignore_list(&version) {
+        classpath.push(client_jar);
+    }
 
     // Assets
     let asset_index = version.asset_index.clone().unwrap_or_else(|| "legacy".into());

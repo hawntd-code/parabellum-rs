@@ -23,7 +23,7 @@ pub struct Instance {
     pub version_id: String,
     pub minecraft_version: String,
     pub loader: String,
-    /// Versión de Fabric o Quilt (None en vanilla).
+    /// Versión del loader (None en vanilla).
     pub loader_version: Option<String>,
     #[serde(skip)]
     pub folder: PathBuf,
@@ -139,9 +139,7 @@ fn load(folder: &Path) -> Option<Instance> {
     let loader_version = json["loaderVersion"]
         .as_str()
         .map(String::from)
-        .or_else(|| ["fabric-loader-", "quilt-loader-"].iter().find_map(|prefix| {
-            version_id.strip_prefix(prefix)?.strip_suffix(&format!("-{minecraft_version}")).map(String::from)
-        }));
+        .or_else(|| loader_version_of(&version_id, &minecraft_version));
     let state = game_dir.join(STATE_DIR);
     let last_played = std::fs::read_to_string(state.join("ultima-partida.txt"))
         .ok()
@@ -193,6 +191,18 @@ fn stamp_date(stamp: &str) -> String {
     } else {
         stamp.to_string()
     }
+}
+
+/// Versión del loader según el id de la versión: "fabric-loader-0.19.5-1.21.1", "1.20.1-forge-47.4.20",
+/// "forge-47.4.20" (CurseForge) o "neoforge-21.1.77".
+fn loader_version_of(version_id: &str, minecraft: &str) -> Option<String> {
+    ["fabric-loader-", "quilt-loader-"]
+        .iter()
+        .find_map(|prefix| version_id.strip_prefix(prefix)?.strip_suffix(&format!("-{minecraft}")))
+        .or_else(|| version_id.strip_prefix(&format!("{minecraft}-forge-")))
+        .or_else(|| version_id.strip_prefix("forge-"))
+        .or_else(|| version_id.strip_prefix("neoforge-"))
+        .map(String::from)
 }
 
 /// Instancias de la versión anterior sin el campo "loader": se deduce del id de la versión.

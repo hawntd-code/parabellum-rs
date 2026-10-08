@@ -329,8 +329,6 @@ pub struct EntryView {
     pub status: String,
     /// Instancia donde está instalado.
     pub instance: Option<String>,
-    /// Por qué no se puede instalar todavía (Forge y NeoForge llegan en la fase 8).
-    pub unsupported: Option<String>,
 }
 
 /// La instancia instalada desde este paquete (o la original desde la que se exportó).
@@ -360,7 +358,6 @@ pub fn view(entry: &Entry, instances: &[Instance], paths: &Paths) -> EntryView {
             None => ("nuevo", None),
         }
     };
-    let loader = m.loader.split_whitespace().next().unwrap_or_default();
     EntryView {
         id: m.id.clone(),
         kind: m.kind.clone(),
@@ -378,7 +375,6 @@ pub fn view(entry: &Entry, instances: &[Instance], paths: &Paths) -> EntryView {
         location: entry.location.clone(),
         status: status.into(),
         instance,
-        unsupported: matches!(loader, "Forge" | "NeoForge").then(|| format!("Los modpacks de {loader} llegan en la fase 8.")),
     }
 }
 

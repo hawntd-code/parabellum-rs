@@ -1,12 +1,14 @@
-//! Loaders de mods Fabric y Quilt desde sus servidores (meta.fabricmc.net y meta.quiltmc.org).
-//! Cada uno es una versión "hija" (fabric-loader-0.19.5-1.21.1) que hereda de la vanilla con
-//! "inheritsFrom": solo añade sus bibliotecas y su clase principal.
+//! Loaders de mods. Fabric y Quilt vienen de sus servidores (meta.fabricmc.net y meta.quiltmc.org):
+//! cada uno es una versión "hija" (fabric-loader-0.19.5-1.21.1) que hereda de la vanilla con
+//! "inheritsFrom" y solo añade sus bibliotecas y su clase principal. Forge y NeoForge necesitan su
+//! instalador (ver forge.rs).
 
 use serde::Serialize;
 use serde_json::Value;
 use std::cmp::Ordering;
 
 use crate::download::{self, FileDownload};
+use crate::forge;
 use crate::paths::Paths;
 use crate::version::Maven;
 
@@ -14,6 +16,8 @@ use crate::version::Maven;
 pub enum Loader {
     Fabric,
     Quilt,
+    Forge,
+    NeoForge,
 }
 
 impl Loader {
@@ -21,6 +25,8 @@ impl Loader {
         match text.trim().to_ascii_lowercase().as_str() {
             "fabric" => Some(Self::Fabric),
             "quilt" => Some(Self::Quilt),
+            "forge" => Some(Self::Forge),
+            "neoforge" => Some(Self::NeoForge),
             _ => None,
         }
     }
@@ -29,21 +35,28 @@ impl Loader {
         match self {
             Self::Fabric => "Fabric",
             Self::Quilt => "Quilt",
+            Self::Forge => "Forge",
+            Self::NeoForge => "NeoForge",
         }
+    }
+
+    /// Forge y NeoForge se instalan con su instalador; Fabric y Quilt, con el perfil de su servidor.
+    pub fn uses_installer(self) -> bool {
+        matches!(self, Self::Forge | Self::NeoForge)
     }
 
     fn meta(self) -> &'static str {
         match self {
-            Self::Fabric => "https://meta.fabricmc.net/v2",
             Self::Quilt => "https://meta.quiltmc.org/v3",
+            _ => "https://meta.fabricmc.net/v2",
         }
     }
 
-    /// Los ids de versión empiezan así: "fabric-loader-0.19.5-1.21.1".
+    /// Los ids de versión de Fabric y Quilt empiezan así: "fabric-loader-0.19.5-1.21.1".
     fn prefix(self) -> &'static str {
         match self {
-            Self::Fabric => "fabric-loader-",
             Self::Quilt => "quilt-loader-",
+            _ => "fabric-loader-",
         }
     }
 
@@ -61,6 +74,9 @@ pub struct LoaderVersion {
 
 /// Versiones de Minecraft que el loader soporta (incluidas snapshots).
 pub async fn game_versions(loader: Loader) -> Result<Vec<String>, String> {
+    if loader.uses_installer() {
+        return forge::game_versions(loader).await;
+    }
     let text = download::get_text(&format!("{}/versions/game", loader.meta())).await.map_err(|_| loader.unavailable())?;
     let list: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
     Ok(list.as_array().into_iter().flatten().filter_map(|v| v["version"].as_str().map(String::from)).collect())
@@ -68,6 +84,9 @@ pub async fn game_versions(loader: Loader) -> Result<Vec<String>, String> {
 
 /// Versiones del loader para una versión de Minecraft, de la más nueva a la más vieja.
 pub async fn loader_versions(loader: Loader, minecraft: &str) -> Result<Vec<LoaderVersion>, String> {
+    if loader.uses_installer() {
+        return forge::loader_versions(loader, minecraft).await;
+    }
     let url = format!("{}/versions/loader/{}", loader.meta(), encode(minecraft));
     let text = download::get_text(&url).await.map_err(|_| loader.unavailable())?;
     let list: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
@@ -97,6 +116,9 @@ pub async fn install(
     paths: &Paths,
     progress: impl Fn(String, f64) + Send + Sync + 'static,
 ) -> Result<String, String> {
+    if loader.uses_installer() {
+        return forge::install(loader, minecraft, loader_version, paths, progress).await;
+    }
     let name = loader.name();
     progress(format!("Preparando {name} {loader_version}…"), 0.0);
     let url = format!("{}/versions/loader/{}/{}/profile/json", loader.meta(), encode(minecraft), encode(loader_version));
@@ -189,20 +211,29 @@ pub fn installed(paths: &Paths) -> Vec<Installed> {
     list
 }
 
-/// (loader, versión del loader, versión de Minecraft) de una versión instalada como "fabric-loader-0.19.5-1.21.1".
+/// (loader, versión del loader, versión de Minecraft) de una versión instalada como
+/// "fabric-loader-0.19.5-1.21.1" o "1.20.1-forge-47.4.20".
 pub fn describe(id: &str, paths: &Paths) -> Option<(Loader, String, String)> {
     let json: Value = serde_json::from_str(&std::fs::read_to_string(paths.version_json(id)).ok()?).ok()?;
     let minecraft = json["inheritsFrom"].as_str()?.to_string();
-    [Loader::Fabric, Loader::Quilt].into_iter().find_map(|loader| {
-        let version = id.strip_prefix(loader.prefix())?.strip_suffix(&format!("-{minecraft}"))?;
-        Some((loader, version.to_string(), minecraft.clone()))
-    })
+    [Loader::Fabric, Loader::Quilt]
+        .into_iter()
+        .find_map(|loader| {
+            let version = id.strip_prefix(loader.prefix())?.strip_suffix(&format!("-{minecraft}"))?;
+            Some((loader, version.to_string()))
+        })
+        .or_else(|| forge::describe(id, &json))
+        .map(|(loader, version)| (loader, version, minecraft))
 }
 
 /// Id de la versión instalada de ese loader, si ya está en este PC.
 pub fn installed_id(loader: Loader, minecraft: &str, loader_version: &str, paths: &Paths) -> Option<String> {
-    let id = format!("{}{loader_version}-{minecraft}", loader.prefix());
-    paths.version_json(&id).exists().then_some(id)
+    let ids = if loader.uses_installer() {
+        forge::candidate_ids(loader, minecraft, loader_version)
+    } else {
+        vec![format!("{}{loader_version}-{minecraft}", loader.prefix())]
+    };
+    ids.into_iter().find(|id| paths.version_json(id).exists())
 }
 
 /// Compara versiones como "0.16.10", "0.20.0-beta.9" o "0.4.8+build.155" (una beta va antes que su estable).

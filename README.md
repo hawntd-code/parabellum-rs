@@ -54,8 +54,8 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | Comando | Qué hace |
 |---|---|
 | `--comprobar <instancia>` | Qué falta para poder jugar |
-| `--crear <nombre> <versión> [fabric\|quilt] [versión del loader]` | Descarga y crea la instancia |
-| `--cambiar-loader <instancia> <versión>` | Cambia la versión de Fabric o Quilt |
+| `--crear <nombre> <versión> [fabric\|quilt\|forge\|neoforge] [versión del loader]` | Descarga y crea la instancia (Forge y NeoForge con su instalador oficial) |
+| `--cambiar-loader <instancia> <versión>` | Cambia la versión del loader |
 | `--agregar <instancia> <archivo>...` | Agrega mods, resource packs, shaders o mundos |
 | `--jugar <instancia> [servidor]` | Abre el juego (y entra al servidor) |
 | `--probar-juego <instancia> [segundos]` | Abre el juego, espera al menú principal, lo cierra y resume los mods cargados |
@@ -66,6 +66,8 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--exportar <instancia> <carpeta> [con-mundos]` | Paquete para Drive o USB (modpack + base de Minecraft) |
 | `--exportar-mrpack <instancia> <archivo.mrpack>` | Modpack en formato de Modrinth |
 | `--importar <archivo> [nombre]` | Instala un .mrpack o un paquete de Parabellum |
+| `--externas` | Instancias de CurseForge, Prism y MultiMC en este PC |
+| `--importar-externa <carpeta>` | Copia una de ellas a Parabellum, con su loader |
 | `--instalar-modpack <proyecto> [versión]` | Instala un modpack de Modrinth como instancia nueva |
 | `--instalar-datapack <instancia> <mundo> <proyecto>` | Instala un data pack de Modrinth en un mundo |
 | `--catalogo` | Modpacks y versiones de Drive y de la carpeta paquetes, con su estado |
