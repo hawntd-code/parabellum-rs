@@ -30,8 +30,17 @@ datos/        ajustes y registros
 
 ## Diagnóstico
 
-`Parabellum.exe --comprobar <instancia>`, `--crear <nombre> <versión>` y `--jugar <instancia> [servidor]`
-escriben el resultado en `datos/logs/comando.txt`.
+Sin ventana, con el resultado en `datos/logs/comando.txt`:
+
+| Comando | Qué hace |
+|---|---|
+| `--comprobar <instancia>` | Qué falta para poder jugar |
+| `--crear <nombre> <versión> [fabric\|quilt] [versión del loader]` | Descarga y crea la instancia |
+| `--cambiar-loader <instancia> <versión>` | Cambia la versión de Fabric o Quilt |
+| `--agregar <instancia> <archivo>...` | Agrega mods, resource packs, shaders o mundos |
+| `--jugar <instancia> [servidor]` | Abre el juego (y entra al servidor) |
+| `--probar-juego <instancia> [segundos]` | Abre el juego, espera al menú principal, lo cierra y resume los mods cargados |
+| `--contenido <instancia>` | Lista los mods, packs y mundos |
 
 ## Hoja de ruta
 

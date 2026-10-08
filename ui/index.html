@@ -165,6 +165,7 @@
                   <input id="content-search" placeholder="Buscar" autocomplete="off" spellcheck="false">
                 </div>
                 <button class="btn" id="content-folder"><svg><use href="#i-folder"/></svg>Abrir carpeta</button>
+                <button class="btn primary" id="content-add"><svg><use href="#i-plus"/></svg>Agregar archivos</button>
               </div>
               <div class="content-list" id="content-list"></div>
             </div>
@@ -251,6 +252,15 @@
     </div>
   </div>
 
+  <!-- ================= Soltar archivos sobre una instancia ================= -->
+  <div class="drop-overlay hidden" id="drop-overlay">
+    <div class="drop-box">
+      <svg><use href="#i-upload"/></svg>
+      <b id="drop-title">Suelta para agregar</b>
+      <span>Mods, resource packs, shaders y mundos: cada uno va a su lugar.</span>
+    </div>
+  </div>
+
   <!-- ================= Crear instancia ================= -->
   <div class="overlay hidden" id="create-dialog">
     <div class="modal">
@@ -294,7 +304,10 @@
               <label class="label">Loader</label>
               <div class="segmented" id="loader-choice">
                 <button class="active" data-loader="vanilla">Vanilla</button>
-                <button disabled title="Muy pronto">Fabric <span class="soon">Pronto</span></button>
+                <button data-loader="fabric">Fabric</button>
+                <button data-loader="quilt">Quilt</button>
+                <button disabled title="Muy pronto">Forge</button>
+                <button disabled title="Muy pronto">NeoForge</button>
               </div>
             </div>
           </div>
@@ -307,6 +320,10 @@
             <input id="new-search" placeholder="Buscar versión (p. ej. 1.21)" autocomplete="off" spellcheck="false">
           </div>
           <div class="version-list" id="new-versions"></div>
+          <div class="hidden" id="loader-version-box">
+            <label class="label" for="loader-version" id="loader-version-label">Versión de Fabric</label>
+            <select id="loader-version"></select>
+          </div>
           <div class="progress hidden" id="new-progress"><div></div></div>
           <p class="muted small-text" id="new-status"></p>
           <div class="modal-actions">
@@ -430,6 +447,11 @@
         <div id="edit-ram-box">
           <div class="label-row" style="margin-top:0"><span class="label">Memoria</span><span class="value-inline" id="edit-ram-value"></span></div>
           <input type="range" id="edit-ram" min="2" max="16" step="1">
+        </div>
+        <div class="hidden" id="edit-loader-box">
+          <label class="label" for="edit-loader" style="margin-top:18px" id="edit-loader-label">Versión de Fabric</label>
+          <select id="edit-loader"></select>
+          <p class="muted small-text" style="margin-top:6px" id="edit-loader-hint"></p>
         </div>
         <label class="label" for="edit-jvm" style="margin-top:18px">Argumentos de Java</label>
         <input id="edit-jvm" placeholder="Opcional, p. ej. -XX:+UseZGC" autocomplete="off" spellcheck="false">

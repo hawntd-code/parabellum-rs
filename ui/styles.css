@@ -565,3 +565,20 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
   font: 12.5px/1.5 "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; word-break: break-word; user-select: text; color: var(--text);
 }
 .menu button.danger, .menu button.danger svg { color: var(--danger); }
+
+/* ===================== Fase 4: loaders y agregar archivos ===================== */
+#loader-version-box { margin-top: 14px; }
+/* Con loader la lista es más baja para que el botón Crear siga a la vista. */
+#create-step-custom.with-loader .version-list { min-height: 150px; max-height: 200px; }
+.drop-overlay {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px;
+  background: color-mix(in srgb, var(--chrome) 72%, transparent); backdrop-filter: blur(3px); pointer-events: none;
+  animation: menu-in .16s var(--ease) both;
+}
+.drop-box {
+  display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; padding: 40px 56px; max-width: 520px;
+  border-radius: var(--r-xl); border: 2px dashed var(--accent); background: var(--accent-softer); box-shadow: 0 10px 40px var(--accent-glow);
+}
+.drop-box svg { width: 44px; height: 44px; color: var(--accent-fg); animation: bob 1.2s ease-in-out infinite; }
+.drop-box b { font-size: 18px; }
+.drop-box span { color: var(--muted); }

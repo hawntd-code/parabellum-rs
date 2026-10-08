@@ -32,6 +32,11 @@ const state = {
   contentFor: null,
   log: null,
   editing: null,
+  loader: "vanilla",
+  /** Versiones de Minecraft que soporta cada loader: { fabric: { online, games, message } } */
+  loaderGames: {},
+  /** Versiones de cada loader por versión de Minecraft: { "fabric:1.21.1": { online, versions, recommended, installed } } */
+  loaderVersions: {},
 };
 
 const pages = {
@@ -305,7 +310,7 @@ function renderInstance() {
     <span>${icon("play-outline")}${escapeHtml(state.running.has(i.id) ? "Jugando ahora" : ago(i.lastPlayed))}</span>`;
   $("#detail-rows").innerHTML = `
     <dt>Versión de Minecraft</dt><dd>${escapeHtml(i.minecraftVersion)}</dd>
-    <dt>Loader</dt><dd>${escapeHtml(i.loader)}</dd>
+    <dt>Loader</dt><dd>${escapeHtml(i.loader)}${i.loaderVersion ? " " + escapeHtml(i.loaderVersion) : ""}</dd>
     <dt>Versión del perfil</dt><dd>${escapeHtml(i.versionId)}</dd>
     <dt>Carpeta</dt><dd>instancias\\${escapeHtml(i.id)}</dd>
     <dt>Memoria</dt><dd>${i.ramGb ? `${i.ramGb} GB (propia de esta instancia)` : `${state.settings.ramGb} GB (la general de Ajustes)`}</dd>
@@ -360,8 +365,13 @@ function renderContent() {
   const items = content[state.kind].filter((i) => !query || `${i.name} ${i.file} ${i.authors ?? ""}`.toLowerCase().includes(query));
   if (!items.length) {
     const none = content[state.kind].length === 0;
+    const vanillaMods = state.kind === "mods" && state.current?.loader === "Vanilla";
     $("#content-list").innerHTML = `<div class="content-empty">${
-      none ? `Esta instancia no tiene ${kindNames[state.kind]}. Puedes copiarlos con "Abrir carpeta".` : "Nada coincide con la búsqueda."
+      !none
+        ? "Nada coincide con la búsqueda."
+        : vanillaMods
+          ? "Las instancias vanilla no cargan mods. Crea una instancia con Fabric o Quilt para usarlos."
+          : `Esta instancia no tiene ${kindNames[state.kind]}. Arrástralos a la ventana o usa "Agregar archivos".`
     }</div>`;
     return;
   }
@@ -405,6 +415,47 @@ async function removeContent(file) {
     await invoke("eliminar_contenido", { id: state.current.id, tipo: state.kind, archivo: file });
     state.content[state.kind] = state.content[state.kind].filter((i) => i.file !== file);
     renderContent();
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+// ---------- Agregar archivos (botón o arrastrando a la ventana) ----------
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+/** Avisa qué se agregó ("2 mods y 1 mundo") y qué no, y muestra la categoría donde quedó. */
+function reportAdded(added) {
+  const counts = { mods: ["mod", "mods"], resourcepacks: ["resource pack", "resource packs"], shaderpacks: ["shader", "shaders"], worlds: ["mundo", "mundos"] };
+  const parts = Object.entries(counts).filter(([kind]) => added[kind]).map(([kind, [one, many]]) => plural(added[kind], one, many));
+  const total = Object.keys(counts).reduce((sum, kind) => sum + added[kind], 0);
+  if (parts.length) toast(`Se ${total === 1 ? "agregó" : "agregaron"} ${parts.length > 1 ? `${parts.slice(0, -1).join(", ")} y ${parts.at(-1)}` : parts[0]}.`);
+  if (added.skipped.length) {
+    const more = added.skipped.length > 3 ? ` (y ${added.skipped.length - 3} más)` : "";
+    toast(`No se ${added.skipped.length === 1 ? "agregó" : "agregaron"}: ${added.skipped.slice(0, 3).join(" · ")}${more}`, "error");
+  }
+  if (!total) return;
+  if (!added[state.kind]) state.kind = Object.keys(counts).find((kind) => added[kind]);
+  state.content = null;
+  if (state.tab === "content") loadContent();
+  else selectTab("content");
+}
+
+async function addContentFiles(paths) {
+  const id = state.current?.id;
+  if (!id) return;
+  try {
+    reportAdded(await invoke("agregar_contenido", { id, rutas: paths, tipo: state.kind }));
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+async function pickContentFiles() {
+  const id = state.current?.id;
+  if (!id) return;
+  try {
+    const added = await invoke("elegir_contenido", { id, tipo: state.kind });
+    if (added) reportAdded(added);
   } catch (error) {
     toast(String(error), "error");
   }
@@ -497,8 +548,33 @@ function openEdit(id) {
   $("#edit-ram").max = $("#ram").max || 16;
   $("#edit-ram").value = instance.ramGb ?? state.settings.ramGb;
   $("#edit-jvm").value = instance.jvmArgs.join(" ");
+  const usesLoader = ["Fabric", "Quilt"].includes(instance.loader);
+  $("#edit-loader-box").classList.toggle("hidden", !usesLoader);
+  if (usesLoader) loadEditLoaderVersions(instance);
   updateEditTexts();
   openModal("#edit-dialog");
+}
+
+async function loadEditLoaderVersions(instance) {
+  const select = $("#edit-loader");
+  const loader = instance.loader.toLowerCase();
+  const current = instance.loaderVersion ?? "";
+  $("#edit-loader-label").textContent = `Versión de ${instance.loader}`;
+  $("#edit-loader-hint").textContent = "Algunos mods piden una versión más nueva del loader.";
+  select.innerHTML = `<option value="${escapeHtml(current)}">${escapeHtml(current)} (actual)</option>`;
+  select.disabled = true;
+  const key = `${loader}:${instance.minecraftVersion}`;
+  try {
+    state.loaderVersions[key] ??= await invoke("versiones_loader", { loader, minecraft: instance.minecraftVersion });
+  } catch (error) {
+    $("#edit-loader-hint").textContent = String(error);
+    return;
+  }
+  if (state.editing?.id !== instance.id) return;
+  const info = state.loaderVersions[key];
+  fillLoaderSelect(select, info, current);
+  select.disabled = false;
+  if (!info.online) $("#edit-loader-hint").textContent = `${info.message} Solo se muestran las versiones ya descargadas.`;
 }
 
 function updateEditTexts() {
@@ -531,7 +607,15 @@ function imageToPng(file) {
 
 async function saveEdit() {
   const { id, icon: newIcon, iconChanged } = state.editing;
+  const instance = state.instances.find((i) => i.id === id);
+  const wantedLoader = $("#edit-loader-box").classList.contains("hidden") ? "" : $("#edit-loader").value;
+  $("#edit-save").disabled = true;
   try {
+    if (wantedLoader && wantedLoader !== instance?.loaderVersion) {
+      $("#edit-loader-hint").textContent = `Preparando ${instance.loader} ${wantedLoader}…`;
+      await invoke("cambiar_loader", { id, versionLoader: wantedLoader });
+      state.loaderVersions = {};
+    }
     let updated = await invoke("editar_instancia", {
       id,
       nombre: $("#edit-name").value,
@@ -549,6 +633,8 @@ async function saveEdit() {
     toast("Cambios guardados.");
   } catch (error) {
     toast(String(error), "error");
+  } finally {
+    $("#edit-save").disabled = false;
   }
 }
 
@@ -713,6 +799,11 @@ async function showCustomStep() {
   $("#create-title").textContent = "Configuración personalizada";
   state.selectedVersion = null;
   state.nameEdited = false;
+  state.loader = "vanilla";
+  state.loaderVersions = {};
+  for (const button of $$("#loader-choice [data-loader]")) button.classList.toggle("active", button.dataset.loader === "vanilla");
+  $("#loader-version-box").classList.add("hidden");
+  $("#create-step-custom").classList.remove("with-loader");
   $("#new-name").value = "";
   $("#new-search").value = "";
   $("#new-status").textContent = "";
@@ -728,12 +819,53 @@ function updateCreateArt() {
   $("#create-art").outerHTML = art({ name: $("#new-name").value.trim() || "Nueva" }, "large").replace('class="art large"', 'class="art large" id="create-art"');
 }
 
+const loaderNames = { vanilla: "Vanilla", fabric: "Fabric", quilt: "Quilt" };
+
+async function selectLoader(loader) {
+  state.loader = loader;
+  for (const button of $$("#loader-choice [data-loader]")) button.classList.toggle("active", button.dataset.loader === loader);
+  $("#loader-version-box").classList.toggle("hidden", loader === "vanilla");
+  $("#create-step-custom").classList.toggle("with-loader", loader !== "vanilla");
+  $("#loader-version-label").textContent = `Versión de ${loaderNames[loader]}`;
+  if (loader !== "vanilla" && !state.loaderGames[loader]?.online) {
+    $("#new-versions").innerHTML = `<div class="version-empty">Buscando las versiones compatibles con ${loaderNames[loader]}…</div>`;
+    state.loaderGames[loader] = await invoke("versiones_compatibles", { loader });
+    if (state.loader !== loader) return;
+  }
+  // Se conserva la versión elegida si este loader también la soporta.
+  const previous = state.selectedVersion;
+  state.selectedVersion = null;
+  if (previous && versionOptions().some((o) => o.id === previous)) selectVersion(previous, false);
+  renderVersions();
+  if (!state.selectedVersion) {
+    $("#new-create").disabled = true;
+    $("#new-status").textContent = "";
+  }
+}
+
 function versionOptions() {
   const v = state.versions;
   if (!v) return [];
   const installed = new Set(v.installed);
-  if (!v.mojang) return v.installed.map((id) => ({ id, type: "release", releaseTime: null, installed: true }));
-  return v.releases.map((r) => ({ ...r, installed: installed.has(r.id) }));
+  let options = v.mojang
+    ? v.releases.map((r) => ({ ...r, installed: installed.has(r.id) }))
+    : v.installed.map((id) => ({ id, type: "release", releaseTime: null, installed: true }));
+  if (state.loader !== "vanilla") {
+    const games = state.loaderGames[state.loader];
+    // Sin conexión con el loader solo sirven las versiones donde ya está descargado.
+    const supported = new Set(
+      games?.online ? games.games : v.loaders.filter((l) => l.loader === loaderNames[state.loader]).map((l) => l.minecraft),
+    );
+    options = options.filter((o) => supported.has(o.id));
+  }
+  return options;
+}
+
+function emptyVersionsText() {
+  const games = state.loaderGames[state.loader];
+  if (state.loader !== "vanilla" && games && !games.online) return `${games.message} No hay ${loaderNames[state.loader]} descargado en este PC.`;
+  if (state.versions?.mojang === false && !state.versions.installed.length) return "No hay versiones descargadas en este PC.";
+  return "Ninguna versión coincide.";
 }
 
 function renderVersions() {
@@ -752,31 +884,98 @@ function renderVersions() {
           </div>`;
         })
         .join("")
-    : `<div class="version-empty">${state.versions?.mojang === false && !state.versions.installed.length ? "No hay versiones descargadas en este PC." : "Ninguna versión coincide."}</div>`;
+    : `<div class="version-empty">${escapeHtml(emptyVersionsText())}</div>`;
 }
 
 function selectVersion(id, rerender = true) {
   state.selectedVersion = id;
   if (!state.nameEdited) {
-    $("#new-name").value = `Minecraft ${id}`;
+    $("#new-name").value = `${state.loader === "vanilla" ? "Minecraft" : loaderNames[state.loader]} ${id}`;
     updateCreateArt();
   }
-  const option = versionOptions().find((o) => o.id === id);
-  if (!state.creating) $("#new-status").textContent = option?.installed ? "Ya está descargada: la instancia se crea al momento." : "Se descargará de los servidores de Mojang, con su Java.";
   $("#new-create").disabled = state.creating;
+  updateCreateStatus();
+  if (state.loader !== "vanilla") loadLoaderVersions(id);
   if (rerender) renderVersions();
+}
+
+/** Qué se va a descargar con lo elegido. */
+function updateCreateStatus() {
+  if (state.creating) return;
+  const option = versionOptions().find((o) => o.id === state.selectedVersion);
+  if (!option) return;
+  if (state.loader === "vanilla") {
+    $("#new-status").textContent = option.installed ? "Ya está descargada: la instancia se crea al momento." : "Se descargará de los servidores de Mojang, con su Java.";
+    return;
+  }
+  const name = loaderNames[state.loader];
+  const chosen = $("#loader-version").value;
+  if (!chosen) return;
+  const ready = state.loaderVersions[`${state.loader}:${option.id}`]?.installed.includes(chosen);
+  $("#new-status").textContent =
+    option.installed && ready
+      ? "Ya está descargada: la instancia se crea al momento."
+      : option.installed
+        ? `Se descargará ${name} ${chosen} (tarda unos segundos).`
+        : `Se descargará Minecraft ${option.id} con su Java y ${name} ${chosen}.`;
+}
+
+async function loadLoaderVersions(minecraft) {
+  const loader = state.loader;
+  const key = `${loader}:${minecraft}`;
+  const select = $("#loader-version");
+  if (!state.loaderVersions[key]) {
+    select.innerHTML = `<option value="">Cargando versiones…</option>`;
+    select.disabled = true;
+    $("#new-create").disabled = true;
+    try {
+      state.loaderVersions[key] = await invoke("versiones_loader", { loader, minecraft });
+    } catch (error) {
+      state.loaderVersions[key] = { online: false, versions: [], installed: [], recommended: null, message: String(error) };
+    }
+  }
+  if (state.loader !== loader || state.selectedVersion !== minecraft) return;
+  const info = state.loaderVersions[key];
+  fillLoaderSelect(select, info, null);
+  select.disabled = state.creating || !info.versions.length;
+  $("#new-create").disabled = state.creating || !select.value;
+  updateCreateStatus();
+  if (!info.versions.length) $("#new-status").textContent = info.message ?? `${loaderNames[loader]} todavía no está disponible para Minecraft ${minecraft}.`;
+}
+
+/** Lista de versiones del loader; marca la recomendada, las beta, las descargadas y la actual. */
+function fillLoaderSelect(select, info, current) {
+  const selected = current || info.recommended;
+  const versions = [...info.versions];
+  if (current && !versions.some((v) => v.version === current)) versions.unshift({ version: current, stable: !current.includes("-") });
+  select.innerHTML = versions.length
+    ? versions
+        .map((v) => {
+          const tags = [
+            v.version === current ? "actual" : "",
+            v.version === info.recommended ? "recomendada" : "",
+            v.stable ? "" : "beta",
+            info.installed.includes(v.version) ? "descargada" : "",
+          ].filter(Boolean);
+          return `<option value="${escapeHtml(v.version)}" ${v.version === selected ? "selected" : ""}>${escapeHtml(v.version)}${tags.length ? ` (${tags.join(", ")})` : ""}</option>`;
+        })
+        .join("")
+    : `<option value="">No disponible</option>`;
 }
 
 async function createInstance() {
   const name = $("#new-name").value.trim();
-  if (!name || !state.selectedVersion) return;
+  const loader = state.loader;
+  const versionLoader = loader === "vanilla" ? null : $("#loader-version").value;
+  if (!name || !state.selectedVersion || versionLoader === "") return;
   state.creating = true;
   $("#new-create").disabled = true;
+  $("#loader-version").disabled = true;
   $("#new-progress").classList.remove("hidden");
   $("#new-progress div").style.width = "2%";
   $("#download-indicator").classList.remove("hidden");
   try {
-    const instance = await invoke("crear_instancia", { nombre: name, version: state.selectedVersion });
+    const instance = await invoke("crear_instancia", { nombre: name, version: state.selectedVersion, loader, versionLoader });
     state.creating = false;
     closeModal("#create-dialog");
     await reloadInstances();
@@ -786,7 +985,9 @@ async function createInstance() {
     $("#new-status").textContent = String(error);
   } finally {
     state.creating = false;
+    state.loaderVersions = {};
     $("#new-create").disabled = false;
+    $("#loader-version").disabled = false;
     $("#new-progress").classList.add("hidden");
     $("#download-indicator").classList.add("hidden");
   }
@@ -952,6 +1153,7 @@ function wireEvents() {
     };
   }
   $("#content-search").oninput = renderContent;
+  $("#content-add").onclick = pickContentFiles;
   $("#content-folder").onclick = () => invoke("abrir_carpeta_contenido", { id: state.current.id, tipo: state.kind });
   $("#content-list").onchange = (event) => {
     const toggle = event.target.closest("[data-toggle]");
@@ -1048,6 +1250,11 @@ function wireEvents() {
   $("#create-dialog").onmousedown = (event) => event.target.id === "create-dialog" && closeModal("#create-dialog");
   $("[data-type='custom']").onclick = showCustomStep;
   $("#new-cancel").onclick = () => closeModal("#create-dialog");
+  $("#loader-choice").onclick = (event) => {
+    const button = event.target.closest("[data-loader]");
+    if (button && !button.disabled && !state.creating && button.dataset.loader !== state.loader) selectLoader(button.dataset.loader);
+  };
+  $("#loader-version").onchange = updateCreateStatus;
   $("#new-search").oninput = renderVersions;
   $("#new-snapshots").onchange = renderVersions;
   $("#new-versions").onclick = (event) => {
@@ -1111,7 +1318,23 @@ function wireEvents() {
   });
 
   listen("juego-cerrado", ({ payload }) => onGameClosed(payload));
+  // Arrastrar archivos a la ventana: se agregan a la instancia abierta.
+  tauri?.webview?.getCurrentWebview().onDragDropEvent(({ payload }) => {
+    const target = state.page === "instance" && state.current;
+    if (payload.type === "enter" && target) {
+      $("#drop-title").textContent = `Suelta para agregar a ${state.current.name}`;
+      $("#drop-overlay").classList.remove("hidden");
+    } else if (payload.type === "drop" || payload.type === "leave") {
+      $("#drop-overlay").classList.add("hidden");
+      if (payload.type === "drop" && target && payload.paths?.length) addContentFiles(payload.paths);
+    }
+  });
+
   listen("progreso", ({ payload }) => {
+    if (payload.task === "loader") {
+      $("#edit-loader-hint").textContent = payload.stage;
+      return;
+    }
     $("#new-status").textContent = payload.stage;
     const percent = Math.max(2, payload.fraction * 100);
     $("#new-progress div").style.width = `${percent}%`;
@@ -1146,7 +1369,7 @@ function demoInvoke(command, args = {}) {
     { id: "Vanilla 1.21.1", name: "Vanilla 1.21.1", versionId: "1.21.1", minecraftVersion: "1.21.1", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: now - 3600e3, created: now - 86400e3 * 4 },
     { id: "Survival con amigos", name: "Survival con amigos", versionId: "26.2", minecraftVersion: "26.2", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: null, created: now - 3600e3 },
     { id: "Better MC BMC4", name: "Better MC BMC4", versionId: "forge-47.4.20", minecraftVersion: "1.20.1", loader: "Forge", jvmArgs: [], icon: null, ramGb: 8, lastPlayed: now - 86400e3 * 2, created: now - 86400e3 * 10 },
-    { id: "Minecraft++", name: "Minecraft++", versionId: "fabric-loader-0.19.5-26.1.2", minecraftVersion: "26.1.2", loader: "Fabric", jvmArgs: [], icon: null, ramGb: null, lastPlayed: null, created: now - 86400e3 * 9 },
+    { id: "Minecraft++", name: "Minecraft++", versionId: "fabric-loader-0.19.5-26.1.2", minecraftVersion: "26.1.2", loader: "Fabric", loaderVersion: "0.19.5", jvmArgs: [], icon: null, ramGb: null, lastPlayed: null, created: now - 86400e3 * 9 },
     { id: "Creativo", name: "Creativo", versionId: "1.21.11", minecraftVersion: "1.21.11", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: now - 86400e3 * 6, created: now - 86400e3 * 20 },
     { id: "Skyblock", name: "Skyblock", versionId: "1.20.1", minecraftVersion: "1.20.1", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: now - 86400e3 * 15, created: now - 86400e3 * 30 },
   ];
@@ -1166,6 +1389,7 @@ function demoInvoke(command, args = {}) {
     listar_versiones: {
       mojang: true,
       installed: ["1.21.1", "26.1.2"],
+      loaders: [{ id: "fabric-loader-0.19.5-26.1.2", loader: "Fabric", loaderVersion: "0.19.5", minecraft: "26.1.2" }],
       releases: [
         { id: "26.3", type: "release", releaseTime: "2026-09-15T10:00:00+00:00" },
         { id: "26.3-pre2", type: "snapshot", releaseTime: "2026-09-08T10:00:00+00:00" },
@@ -1177,6 +1401,20 @@ function demoInvoke(command, args = {}) {
       ],
     },
   };
+  if (command === "versiones_compatibles")
+    return new Promise((r) => setTimeout(() => r({ online: true, games: ["26.3", "26.3-pre2", "26.2", "26.1.2", "1.21.11", "1.21.1", "1.20.1"], message: null }), 300));
+  if (command === "versiones_loader")
+    return new Promise((r) =>
+      setTimeout(() => r({
+        online: true,
+        versions: args.loader === "quilt"
+          ? [{ version: "0.31.0-beta.4", stable: false }, { version: "0.30.1", stable: true }, { version: "0.29.2", stable: true }]
+          : [{ version: "0.19.5", stable: true }, { version: "0.19.4", stable: true }, { version: "0.18.2", stable: true }, { version: "0.16.14", stable: true }],
+        recommended: args.loader === "quilt" ? "0.30.1" : "0.19.5",
+        installed: args.minecraft === "26.1.2" && args.loader === "fabric" ? ["0.19.5"] : [],
+        message: null,
+      }), 300),
+    );
   if (command === "contenido") {
     const mod = (name, version, authors, enabled = true) => ({ file: `${name.toLowerCase().replace(/\W+/g, "-")}-${version}.jar${enabled ? "" : ".disabled"}`, name, version, authors, enabled, size: 1e6, modified: now - 86400e3, icon: null });
     return new Promise((r) => setTimeout(() => r({
@@ -1192,7 +1430,7 @@ function demoInvoke(command, args = {}) {
     const instance = instances.find((i) => i.id === args.id);
     return Promise.resolve(Object.assign(instance, args.nombre ? { name: args.nombre, ramGb: args.ramGb, jvmArgs: args.jvmArgs } : { icon: args.png }));
   }
-  if (["duplicar_instancia", "eliminar_instancia", "activar_contenido", "eliminar_contenido", "detener"].includes(command))
+  if (["duplicar_instancia", "eliminar_instancia", "activar_contenido", "eliminar_contenido", "detener", "agregar_contenido", "elegir_contenido", "cambiar_loader"].includes(command))
     return Promise.reject("Modo demostración: esta acción solo funciona en Parabellum.exe.");
   if (command === "guardar_ajustes") return Promise.resolve(Object.assign(settings, args.ajustes));
   if (command === "jugar" || command === "crear_instancia") return Promise.reject("Modo demostración: abre Parabellum.exe para jugar.");

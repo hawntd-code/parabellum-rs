@@ -29,15 +29,18 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Seguir el proceso del juego, botón Detener y aviso con el motivo cuando se cierra con error
 - [x] *Prueba:* `--probar-gestion` (duplicar, editar, icono, activar/desactivar, papelera y motivo del error)
 
+### Fase 4: Fabric y Quilt
+- [x] Crear instancias Fabric o Quilt eligiendo la versión de Minecraft (solo las compatibles) y la del loader (la recomendada por defecto)
+- [x] Cambiar la versión del loader desde los ajustes de la instancia (algunos mods piden una más nueva)
+- [x] Sin conexión: se pueden crear instancias con loaders ya descargados
+- [x] Agregar archivos a una instancia con un botón o arrastrándolos a la ventana; cada uno va a su categoría y se rechazan los mods de otro loader
+- [x] *Prueba:* Fabric 0.19.5 y Quilt 0.30.1 en 1.21.1 con Fabric API y Mod Menu llegan al menú principal sin errores (`--probar-juego`)
+
 ### Diseño
 - [x] Interfaz al estilo de la app de Modrinth con identidad morada (tema oscuro y claro, fuente Inter)
 - [x] Biblioteca, continuar jugando, crear instancia por tipo, ajustes por secciones, página Servidores
 
 ## ⏭️ Pendiente, en orden
-
-### Fase 4: Fabric (y Quilt)
-- [ ] Instancias Fabric eligiendo versión de Minecraft y del loader (meta.fabricmc.net)
-- [ ] *Prueba:* Fabric con un mod sencillo arranca
 
 ### Fase 5: explorar e instalar mods (base de datos de mods)
 - [ ] Conexión con la API de **Modrinth** (abierta, sin clave, permite launchers de terceros)

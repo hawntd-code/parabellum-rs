@@ -23,6 +23,8 @@ pub struct Instance {
     pub version_id: String,
     pub minecraft_version: String,
     pub loader: String,
+    /// Versión de Fabric o Quilt (None en vanilla).
+    pub loader_version: Option<String>,
     #[serde(skip)]
     pub folder: PathBuf,
     #[serde(skip)]
@@ -72,17 +74,14 @@ fn load(folder: &Path) -> Option<Instance> {
         Some(relative) => folder.join(relative),
         None => folder.to_path_buf(),
     };
-    let loader = if version_id.contains("fabric") {
-        "Fabric"
-    } else if version_id.contains("quilt") {
-        "Quilt"
-    } else if version_id.contains("neoforge") {
-        "NeoForge"
-    } else if version_id.contains("forge") {
-        "Forge"
-    } else {
-        "Vanilla"
-    };
+    let minecraft_version = json["minecraftVersion"].as_str().unwrap_or(&version_id).to_string();
+    let loader = json["loader"].as_str().map(String::from).unwrap_or_else(|| guess_loader(&version_id).into());
+    let loader_version = json["loaderVersion"]
+        .as_str()
+        .map(String::from)
+        .or_else(|| ["fabric-loader-", "quilt-loader-"].iter().find_map(|prefix| {
+            version_id.strip_prefix(prefix)?.strip_suffix(&format!("-{minecraft_version}")).map(String::from)
+        }));
     let state = game_dir.join(STATE_DIR);
     let last_played = std::fs::read_to_string(state.join("ultima-partida.txt"))
         .ok()
@@ -102,8 +101,9 @@ fn load(folder: &Path) -> Option<Instance> {
         created,
         icon,
         name: json["name"].as_str().unwrap_or(&id).to_string(),
-        minecraft_version: json["minecraftVersion"].as_str().unwrap_or(&version_id).to_string(),
-        loader: loader.into(),
+        minecraft_version,
+        loader,
+        loader_version,
         ram_gb: json["ramGB"].as_u64().map(|v| v as u32),
         jvm_args: json["extraJvmArgs"].as_array().into_iter().flatten().filter_map(Value::as_str).map(String::from).collect(),
         folder: folder.to_path_buf(),
@@ -112,6 +112,46 @@ fn load(folder: &Path) -> Option<Instance> {
         version_id,
         id,
     })
+}
+
+/// Instancias de la versión anterior sin el campo "loader": se deduce del id de la versión.
+fn guess_loader(version_id: &str) -> &'static str {
+    if version_id.contains("fabric") {
+        "Fabric"
+    } else if version_id.contains("quilt") {
+        "Quilt"
+    } else if version_id.contains("neoforge") {
+        "NeoForge"
+    } else if version_id.contains("forge") {
+        "Forge"
+    } else {
+        "Vanilla"
+    }
+}
+
+/// Qué juego usa una instancia: la versión instalada a lanzar y de qué está hecha.
+pub struct GameVersion<'a> {
+    pub version_id: &'a str,
+    pub minecraft: &'a str,
+    /// ("Fabric", "0.19.5"); None en vanilla.
+    pub loader: Option<(&'a str, &'a str)>,
+}
+
+impl GameVersion<'_> {
+    fn write_to(&self, json: &mut Value) {
+        json["versionId"] = json!(self.version_id);
+        json["minecraftVersion"] = json!(self.minecraft);
+        match self.loader {
+            Some((loader, version)) => {
+                json["loader"] = json!(loader);
+                json["loaderVersion"] = json!(version);
+            }
+            None => {
+                json["loader"] = json!("Vanilla");
+                json.as_object_mut().map(|o| o.remove("loaderVersion"));
+            }
+        }
+    }
 }
 
 /// Carpeta para una instancia nueva con ese nombre (sin caracteres no válidos en Windows).
@@ -128,7 +168,7 @@ pub fn folder_for(name: &str, paths: &Paths) -> Result<PathBuf, String> {
     Ok(paths.instances.join(clean))
 }
 
-pub fn create(name: &str, version_id: &str, paths: &Paths) -> Result<Instance, String> {
+pub fn create(name: &str, game: &GameVersion, paths: &Paths) -> Result<Instance, String> {
     let folder = folder_for(name, paths)?;
     if folder.exists() {
         return Err(format!(
@@ -137,7 +177,8 @@ pub fn create(name: &str, version_id: &str, paths: &Paths) -> Result<Instance, S
         ));
     }
     std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
-    let json = json!({ "name": name.trim(), "versionId": version_id, "minecraftVersion": version_id });
+    let mut json = json!({ "name": name.trim() });
+    game.write_to(&mut json);
     std::fs::write(folder.join(INSTANCE_FILE), serde_json::to_vec_pretty(&json).unwrap()).map_err(|e| e.to_string())?;
     load(&folder).ok_or_else(|| "No se pudo leer la instancia recién creada.".into())
 }
@@ -162,9 +203,20 @@ pub fn update(instance: &Instance, name: &str, ram_gb: Option<u32>, jvm_args: &[
     } else {
         json["extraJvmArgs"] = json!(args);
     }
+    write_json(instance, &json)
+}
+
+/// Cambia la versión del juego o del loader (por ejemplo, Fabric 0.16 → 0.19).
+pub fn set_version(instance: &Instance, game: &GameVersion) -> Result<(), String> {
+    let mut json = read_json(&instance.folder).ok_or("No se pudo leer instancia.json.")?;
+    game.write_to(&mut json);
+    write_json(instance, &json)
+}
+
+fn write_json(instance: &Instance, json: &Value) -> Result<(), String> {
     let file = instance.folder.join(INSTANCE_FILE);
     let temp = file.with_extension("tmp");
-    std::fs::write(&temp, serde_json::to_vec_pretty(&json).unwrap()).map_err(|e| e.to_string())?;
+    std::fs::write(&temp, serde_json::to_vec_pretty(json).unwrap()).map_err(|e| e.to_string())?;
     std::fs::rename(temp, file).map_err(|e| e.to_string())
 }
 
@@ -207,7 +259,7 @@ pub fn duplicate(instance: &Instance, paths: &Paths) -> Result<Instance, String>
     load(&target).ok_or_else(|| "No se pudo leer la copia.".into())
 }
 
-fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+pub fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(to)?;
     for entry in std::fs::read_dir(from)? {
         let entry = entry?;

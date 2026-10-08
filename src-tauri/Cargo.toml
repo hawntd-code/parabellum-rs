@@ -30,6 +30,8 @@ thiserror = "2"
 # Borrar a la papelera de reciclaje (se puede deshacer)
 trash = "5"
 base64 = "0.22"
+# Ventana nativa de Windows para elegir archivos
+tauri-plugin-dialog = "2"
 
 [profile.release]
 opt-level = "s"

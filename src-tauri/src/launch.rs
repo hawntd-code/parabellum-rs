@@ -205,10 +205,11 @@ pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<L
         "-XX:G1HeapRegionSize=32M".into(),
     ];
     arguments.extend(instance.jvm_args.iter().cloned());
-    if version.jvm_arguments.is_empty() {
+    // Las versiones antiguas no traen argumentos de Java (y un loader encima puede traer solo los suyos).
+    let declares_classpath = version.jvm_arguments.iter().any(|a| a.to_string().contains("${classpath}"));
+    add(&mut arguments, &version.jvm_arguments);
+    if !declares_classpath {
         arguments.extend([format!("-Djava.library.path={}", natives_dir.display()), "-cp".into(), classpath_text]);
-    } else {
-        add(&mut arguments, &version.jvm_arguments);
     }
     if let Some(logging) = version.logging.as_ref().and_then(|l| l.get("client")) {
         if let (Some(id), Some(argument)) = (logging.pointer("/file/id").and_then(Value::as_str), logging["argument"].as_str()) {
