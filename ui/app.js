@@ -1156,6 +1156,14 @@ async function loadJava() {
 function wireEvents() {
   $("#win-min").onclick = () => appWindow?.minimize();
   $("#win-max").onclick = () => appWindow?.toggleMaximize();
+  // Se abre maximizada; el botón cambia entre maximizar y restaurar.
+  const updateMaxButton = async () => {
+    const maximized = await appWindow?.isMaximized();
+    $("#win-max use").setAttribute("href", maximized ? "#i-restore" : "#i-max");
+    $("#win-max").title = maximized ? "Restaurar" : "Maximizar";
+  };
+  updateMaxButton();
+  appWindow?.onResized(updateMaxButton);
   $("#win-close").onclick = () => appWindow?.close();
   $("#nav-back").onclick = goBack;
   $("#nav-forward").onclick = goForward;
