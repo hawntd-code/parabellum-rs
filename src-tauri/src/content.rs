@@ -107,9 +107,10 @@ fn worlds(instance: &Instance) -> Vec<ContentItem> {
                 .filter(|b| b.len() < 500_000)
                 .map(|b| format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(b)));
             let file = entry.file_name().to_string_lossy().to_string();
+            let datapacks = std::fs::read_dir(entry.path().join("datapacks")).into_iter().flatten().flatten().count();
             ContentItem {
                 name: file.clone(),
-                version: None,
+                version: (datapacks > 0).then(|| format!("{datapacks} data pack{}", if datapacks == 1 { "" } else { "s" })),
                 authors: None,
                 enabled: true,
                 size: 0,
@@ -204,7 +205,7 @@ fn toml_value(text: &str, key: &str) -> Option<String> {
 }
 
 /// Ruta segura de un elemento: solo nombres de archivo dentro de la carpeta de su categoría.
-fn item_path(instance: &Instance, kind: &str, file: &str) -> Result<PathBuf, String> {
+pub fn item_path(instance: &Instance, kind: &str, file: &str) -> Result<PathBuf, String> {
     if file.is_empty() || file.contains(['/', '\\']) || file == "." || file == ".." {
         return Err("Nombre de archivo no válido.".into());
     }
@@ -270,6 +271,8 @@ fn add_one(instance: &Instance, source: &Path, hint: Option<&str>) -> Result<&'s
         _ => None,
     });
     match kind.ok_or("no es un mod, resource pack, shader ni mundo")? {
+        Kind::Modpack => Err("es un modpack: para instalarlo suéltalo en Inicio o usa Crear instancia › Subir un modpack".into()),
+        Kind::Datapack => Err("es un data pack: va dentro de un mundo (instálalo desde Explorar › Data packs o cópialo a la carpeta datapacks del mundo)".into()),
         Kind::Mod(loaders) => {
             check_loader(instance, &loaders)?;
             copy_new(source, &folder(instance, "mods").unwrap().join(&name))?;
@@ -306,6 +309,8 @@ enum Kind {
     WorldFolder,
     /// Mundo comprimido; la carpeta interna donde está level.dat ("" si está en la raíz).
     WorldZip(String),
+    Modpack,
+    Datapack,
 }
 
 fn is_zip(path: &Path) -> bool {
@@ -325,6 +330,9 @@ fn classify(path: &Path) -> Option<Kind> {
         };
     }
     let extension = path.extension()?.to_string_lossy().to_lowercase();
+    if extension == "mrpack" {
+        return Some(Kind::Modpack);
+    }
     if extension != "jar" && extension != "zip" {
         return None;
     }
@@ -347,8 +355,14 @@ fn classify(path: &Path) -> Option<Kind> {
         }
         return Some(Kind::Mod(loaders));
     }
+    if has("modrinth.index.json") || has("lanzador-pack.json") {
+        return Some(Kind::Modpack);
+    }
     if has("pack.mcmeta") {
-        return Some(Kind::Pack("resourcepacks"));
+        // Un data pack trae data/ y no assets/.
+        let data = names.iter().any(|n| n.starts_with("data/"));
+        let assets = names.iter().any(|n| n.starts_with("assets/"));
+        return Some(if data && !assets { Kind::Datapack } else { Kind::Pack("resourcepacks") });
     }
     if names.iter().any(|n| n.starts_with("shaders/")) {
         return Some(Kind::Pack("shaderpacks"));

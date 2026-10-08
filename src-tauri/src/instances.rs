@@ -39,6 +39,8 @@ pub struct Instance {
     pub created: Option<i64>,
     /// Icono propio como data URL (data:image/png;base64,…), si lo tiene.
     pub icon: Option<String>,
+    /// De qué modpack viene ("Fabulously Optimized 6.5.0 · Modrinth"), si vino de uno.
+    pub modpack: Option<String>,
 }
 
 impl Instance {
@@ -49,7 +51,13 @@ impl Instance {
 
 pub fn list(paths: &Paths) -> Vec<Instance> {
     let Ok(entries) = std::fs::read_dir(&paths.instances) else { return Vec::new() };
-    let mut result: Vec<Instance> = entries.flatten().filter_map(|e| load(&e.path())).collect();
+    let mut result: Vec<Instance> = entries
+        .flatten()
+        .filter_map(|e| {
+            ensure_curseforge_version(&e.path(), paths);
+            load(&e.path())
+        })
+        .collect();
     result.sort_by(|a, b| b.last_played.cmp(&a.last_played).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     result
 }
@@ -59,11 +67,61 @@ pub fn find(paths: &Paths, id: &str) -> Option<Instance> {
     if id.is_empty() || id.contains(['/', '\\']) || id == "." || id == ".." {
         return None;
     }
+    ensure_curseforge_version(&paths.instances.join(id), paths);
     load(&paths.instances.join(id))
 }
 
+/// Instancias de CurseForge (como las que traen algunos paquetes de la versión C#).
+const CURSEFORGE_FILE: &str = "minecraftinstance.json";
+
 fn read_json(folder: &Path) -> Option<Value> {
-    serde_json::from_str(&std::fs::read_to_string(folder.join(INSTANCE_FILE)).ok()?).ok()
+    std::fs::read_to_string(folder.join(INSTANCE_FILE))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .or_else(|| read_curseforge(folder).map(|(json, _)| json))
+}
+
+/// minecraftinstance.json de CurseForge, traducido a los campos de instancia.json. También devuelve
+/// el JSON de la versión del loader, que CurseForge guarda como texto dentro del archivo.
+fn read_curseforge(folder: &Path) -> Option<(Value, Option<Value>)> {
+    let json: Value = serde_json::from_str(&std::fs::read_to_string(folder.join(CURSEFORGE_FILE)).ok()?).ok()?;
+    let game_version = json["gameVersion"].as_str()?.to_string();
+    let loader = &json["baseModLoader"];
+    let embedded = match &loader["versionJson"] {
+        Value::String(text) => serde_json::from_str::<Value>(text).ok(),
+        object @ Value::Object(_) => Some(object.clone()),
+        _ => None,
+    };
+    let version_id = embedded
+        .as_ref()
+        .and_then(|v| v["id"].as_str().map(String::from))
+        .or_else(|| loader["name"].as_str().map(String::from))
+        .unwrap_or_else(|| game_version.clone());
+    let mut result = json!({
+        "name": folder.file_name()?.to_string_lossy(),
+        "versionId": version_id,
+        "minecraftVersion": game_version,
+    });
+    if json["isMemoryOverride"].as_bool() == Some(true) {
+        if let Some(megabytes) = json["allocatedMemory"].as_f64() {
+            result["ramGB"] = json!(((megabytes / 1024.0).round() as u32).max(2));
+        }
+    }
+    Some((result, embedded))
+}
+
+/// Copia (una sola vez) el JSON del loader de una instancia de CurseForge a base/versions, para
+/// lanzarla como cualquier otra.
+fn ensure_curseforge_version(folder: &Path, paths: &Paths) {
+    if folder.join(INSTANCE_FILE).exists() {
+        return;
+    }
+    let Some((json, Some(embedded))) = read_curseforge(folder) else { return };
+    let Some(id) = json["versionId"].as_str().filter(|id| !id.contains(['/', '\\']) && !id.contains("..")) else { return };
+    let file = paths.version_json(id);
+    if !file.exists() && std::fs::create_dir_all(file.parent().unwrap()).is_ok() {
+        let _ = std::fs::write(&file, serde_json::to_vec_pretty(&embedded).unwrap());
+    }
 }
 
 fn load(folder: &Path) -> Option<Instance> {
@@ -96,10 +154,21 @@ fn load(folder: &Path) -> Option<Instance> {
     let icon = std::fs::read(state.join(ICON_FILE))
         .ok()
         .filter(|bytes| bytes.len() < 2_000_000)
-        .map(|bytes| format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)));
+        .and_then(|bytes| Some(format!("data:{};base64,{}", image_type(&bytes)?, base64::engine::general_purpose::STANDARD.encode(bytes))));
+    // Paquete de Parabellum (.lanzador/pack.json) o modpack de Modrinth/.mrpack (campo "modpack").
+    let modpack = std::fs::read_to_string(state.join("pack.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .and_then(|p| Some(format!("{} · paquete del {}", p["name"].as_str()?, stamp_date(p["version"].as_str().unwrap_or_default()))))
+        .or_else(|| {
+            let m = &json["modpack"];
+            let source = if m["source"] == "modrinth" { "Modrinth" } else { "archivo" };
+            Some(format!("{} {} · {source}", m["name"].as_str()?, m["version"].as_str().unwrap_or_default()))
+        });
     Some(Instance {
         created,
         icon,
+        modpack,
         name: json["name"].as_str().unwrap_or(&id).to_string(),
         minecraft_version,
         loader,
@@ -112,6 +181,15 @@ fn load(folder: &Path) -> Option<Instance> {
         version_id,
         id,
     })
+}
+
+/// "202610072130" -> "7/10/2026"
+fn stamp_date(stamp: &str) -> String {
+    if stamp.len() >= 8 && stamp.chars().all(|c| c.is_ascii_digit()) {
+        format!("{}/{}/{}", stamp[6..8].trim_start_matches('0'), stamp[4..6].trim_start_matches('0'), &stamp[..4])
+    } else {
+        stamp.to_string()
+    }
 }
 
 /// Instancias de la versión anterior sin el campo "loader": se deduce del id de la versión.
@@ -218,6 +296,47 @@ fn write_json(instance: &Instance, json: &Value) -> Result<(), String> {
     let temp = file.with_extension("tmp");
     std::fs::write(&temp, serde_json::to_vec_pretty(json).unwrap()).map_err(|e| e.to_string())?;
     std::fs::rename(temp, file).map_err(|e| e.to_string())
+}
+
+/// Tipo de imagen por su firma (los iconos de Modrinth suelen ser WebP).
+fn image_type(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else if bytes.len() > 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else if bytes.starts_with(b"GIF8") {
+        Some("image/gif")
+    } else {
+        None
+    }
+}
+
+/// Icono descargado (por ejemplo, el de un modpack de Modrinth). Se guarda con el nombre de siempre.
+pub fn set_icon_bytes(instance: &Instance, bytes: &[u8]) -> Result<(), String> {
+    image_type(bytes).ok_or("La imagen no es válida.")?;
+    std::fs::create_dir_all(instance.state_dir()).map_err(|e| e.to_string())?;
+    std::fs::write(instance.state_dir().join(ICON_FILE), bytes).map_err(|e| e.to_string())
+}
+
+/// Un nombre libre para una instancia nueva: "X", "X (2)", "X (3)"…
+pub fn unique_name(name: &str, paths: &Paths) -> Result<String, String> {
+    let base = name.trim();
+    let mut candidate = base.to_string();
+    let mut number = 2;
+    while folder_for(&candidate, paths)?.exists() {
+        candidate = format!("{base} ({number})");
+        number += 1;
+    }
+    Ok(candidate)
+}
+
+/// Guarda un dato extra en instancia.json (por ejemplo, de qué modpack viene).
+pub fn set_field(instance: &Instance, key: &str, value: Value) -> Result<(), String> {
+    let mut json = read_json(&instance.folder).ok_or("No se pudo leer instancia.json.")?;
+    json[key] = value;
+    write_json(instance, &json)
 }
 
 /// Guarda (PNG en base64) o quita (None) el icono propio.

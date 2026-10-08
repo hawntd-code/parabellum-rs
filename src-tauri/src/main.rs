@@ -10,13 +10,15 @@ mod launch;
 mod loaders;
 mod modrinth;
 mod mojang;
+mod mrpack;
+mod packs;
 mod paths;
 mod settings;
 mod version;
 
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -617,6 +619,182 @@ fn abrir_enlace(url: String) -> Result<(), String> {
     std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", &url]).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
+// ================= Modpacks: exportar, importar e instalar
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Imported {
+    /// Carpeta de la instancia creada o actualizada (None si era un paquete base).
+    id: Option<String>,
+    name: String,
+    /// "modpack" o "base"
+    kind: String,
+    /// Ya existía y se actualizó conservando mundos y opciones.
+    updated: bool,
+}
+
+/// Instala un modpack desde un archivo: paquete de Parabellum (Drive o USB) o .mrpack de Modrinth.
+async fn import_modpack(
+    file: &Path,
+    paths: &Paths,
+    display_name: Option<String>,
+    icon: Option<Vec<u8>>,
+    source: serde_json::Value,
+    running: &HashSet<String>,
+    progress: impl Fn(String, f64) + Send + Sync + Clone + 'static,
+) -> Result<Imported, String> {
+    // Paquete de Parabellum (también los de la versión C#)
+    if let Some(manifest) = packs::read_manifest(file)? {
+        progress("Comprobando que el archivo esté completo…".into(), 0.0);
+        let to_verify = file.to_path_buf();
+        tauri::async_runtime::spawn_blocking(move || packs::verify_sidecar(&to_verify)).await.map_err(|e| e.to_string())??;
+        if !manifest.is_base() {
+            if manifest.folder.as_ref().is_some_and(|f| running.contains(f)) {
+                return Err("Cierra el juego antes de actualizar este modpack.".into());
+            }
+            if !packs::base_available(&manifest.minecraft_version, paths) {
+                // Con internet, Minecraft se descarga de Mojang; sin internet hace falta el paquete base.
+                let report = progress.clone();
+                let _ = install_vanilla(&manifest.minecraft_version, paths, move |stage, f| report(stage, f * 0.5)).await;
+            }
+        }
+        let (file, paths, report) = (file.to_path_buf(), paths.clone(), progress.clone());
+        let installed = tauri::async_runtime::spawn_blocking(move || packs::install(&file, &paths, report)).await.map_err(|e| e.to_string())??;
+        return Ok(Imported { id: installed.folder, name: installed.name, kind: installed.kind, updated: installed.updated });
+    }
+
+    // .mrpack
+    let info = mrpack::read(file)?.ok_or("No es un modpack: elige un .mrpack o un paquete de Parabellum (.zip con lanzador-pack.json).")?;
+    let loader = match &info.loader {
+        None => None,
+        Some((name, _)) if name == "Fabric" || name == "Quilt" => Some(parse_loader(name)?),
+        Some((name, _)) => return Err(format!("Los modpacks de {name} llegan más adelante; por ahora se pueden instalar los de Fabric, Quilt y vanilla.")),
+    };
+    let name = instances::unique_name(display_name.as_deref().unwrap_or(&info.name), paths)?;
+    let report = progress.clone();
+    let (version_id, loader_version) =
+        install_game(&info.minecraft, loader, info.loader.as_ref().map(|(_, v)| v.as_str()), paths, move |stage, f| report(stage, f * 0.4))
+            .await?;
+    let game = GameVersion { version_id: &version_id, minecraft: &info.minecraft, loader: loader.map(|l| l.name()).zip(loader_version.as_deref()) };
+    let instance = instances::create(&name, &game, paths)?;
+    let report = progress.clone();
+    if let Err(error) = mrpack::install_files(&info, file, &instance.game_dir, move |stage, f| report(stage, 0.4 + f * 0.6)).await {
+        // Una instancia a medias no sirve; es nueva, así que no tiene nada del jugador.
+        let _ = std::fs::remove_dir_all(&instance.folder);
+        return Err(error);
+    }
+    let mut source = source;
+    source["name"] = serde_json::json!(info.name);
+    source["version"] = serde_json::json!(info.version);
+    let _ = instances::set_field(&instance, "modpack", source);
+    if let Some(bytes) = icon {
+        let _ = instances::set_icon_bytes(&instance, &bytes);
+    }
+    progress("Listo".into(), 1.0);
+    Ok(Imported { id: Some(instance.id), name, kind: "modpack".into(), updated: false })
+}
+
+fn progress_emitter(app: &AppHandle, task: &'static str) -> impl Fn(String, f64) + Send + Sync + Clone + 'static {
+    let emitter = app.clone();
+    move |stage, fraction| {
+        let _ = emitter.emit("progreso", Progress { task: task.into(), stage, fraction });
+    }
+}
+
+/// Lo que hay en la instancia para elegir qué incluir al exportar.
+#[tauri::command]
+fn contenido_exportable(state: State<AppState>, id: String) -> Result<Vec<packs::Entry>, String> {
+    Ok(packs::exportable(&instance_or_error(&state, &id)?))
+}
+
+/// Exporta un modpack: "drive" (paquete completo, también para USB) o "mrpack". None si se canceló.
+#[tauri::command]
+async fn exportar_modpack(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    formato: String,
+    opciones: packs::ExportOptions,
+) -> Result<Option<serde_json::Value>, String> {
+    let instance = instance_or_error(&state, &id)?;
+    let paths = state.paths.clone();
+    let progress = progress_emitter(&app, "exportar");
+    if formato == "mrpack" {
+        let name = Some(opciones.name.trim()).filter(|n| !n.is_empty()).unwrap_or(&instance.name).to_string();
+        let dialog = app
+            .dialog()
+            .file()
+            .set_title("Guardar el modpack (.mrpack)")
+            .set_file_name(format!("{} {}.mrpack", name.replace(['<', '>', ':', '"', '/', '\\', '|', '?', '*'], "_"), opciones.version.trim()))
+            .add_filter("Modpack de Modrinth", &["mrpack"]);
+        let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_save_file()).await.map_err(|e| e.to_string())?;
+        let Some(path) = picked.and_then(|p| p.into_path().ok()) else { return Ok(None) };
+        let result = mrpack::export(&instance, &path, &opciones, progress).await?;
+        return Ok(Some(serde_json::to_value(result).unwrap()));
+    }
+    let dialog = app.dialog().file().set_title("Carpeta donde guardar el paquete (por ejemplo, tu carpeta de Drive o una USB)");
+    let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder()).await.map_err(|e| e.to_string())?;
+    let Some(folder) = picked.and_then(|p| p.into_path().ok()) else { return Ok(None) };
+    let result = tauri::async_runtime::spawn_blocking(move || packs::export(&instance, &paths, &folder, &opciones, progress))
+        .await
+        .map_err(|e| e.to_string())??;
+    Ok(Some(serde_json::to_value(result).unwrap()))
+}
+
+/// Instala un modpack desde un archivo (sin ruta, abre la ventana para elegirlo). None si se canceló.
+#[tauri::command]
+async fn importar_modpack(app: AppHandle, state: State<'_, AppState>, ruta: Option<String>) -> Result<Option<Imported>, String> {
+    let file = match ruta {
+        Some(path) => PathBuf::from(path),
+        None => {
+            let dialog = app
+                .dialog()
+                .file()
+                .set_title("Elige un modpack")
+                .add_filter("Modpacks (.mrpack o paquete .zip)", &["mrpack", "zip"]);
+            let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file()).await.map_err(|e| e.to_string())?;
+            match picked.and_then(|p| p.into_path().ok()) {
+                Some(path) => path,
+                None => return Ok(None),
+            }
+        }
+    };
+    let running: HashSet<String> = state.games.lock().unwrap().keys().cloned().collect();
+    let progress = progress_emitter(&app, "importar");
+    import_modpack(&file, &state.paths, None, None, serde_json::json!({ "source": "archivo" }), &running, progress).await.map(Some)
+}
+
+/// Instala un modpack de Modrinth como instancia nueva.
+#[tauri::command]
+async fn instalar_modpack(app: AppHandle, state: State<'_, AppState>, proyecto: String, version: Option<String>) -> Result<Imported, String> {
+    let paths = state.paths.clone();
+    let progress = progress_emitter(&app, "importar");
+    progress("Descargando el modpack…".into(), 0.0);
+    let download = modrinth::download_modpack(&proyecto, version.as_deref(), &paths.data.join("temporal")).await?;
+    let icon = match &download.icon_url {
+        Some(url) => modrinth::download_icon(url).await,
+        None => None,
+    };
+    let source = serde_json::json!({
+        "source": "modrinth",
+        "projectId": download.project_id,
+        "versionId": download.version_id,
+        "versionNumber": download.version_number,
+    });
+    let running: HashSet<String> = state.games.lock().unwrap().keys().cloned().collect();
+    let result = import_modpack(&download.file, &paths, Some(download.title.clone()), icon, source, &running, progress).await;
+    let _ = std::fs::remove_file(&download.file);
+    result
+}
+
+/// Instala un data pack de Modrinth dentro de un mundo de la instancia.
+#[tauri::command]
+async fn instalar_datapack(state: State<'_, AppState>, id: String, mundo: String, proyecto: String, version: Option<String>) -> Result<String, String> {
+    let instance = instance_or_error(&state, &id)?;
+    let (title, number) = modrinth::install_datapack(&instance, &mundo, &proyecto, version.as_deref()).await?;
+    Ok(format!("Se instaló {title} {number} en el mundo «{mundo}»."))
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct JavaInfo {
@@ -685,6 +863,11 @@ fn system_ram_gb() -> u32 {
 ///   --buscar <texto> [mod|resourcepack|shader] [loader] [versión]   busca en Modrinth
 ///   --instalar <instancia> <proyecto> [versión]                     instala con dependencias
 ///   --actualizaciones <instancia> [aplicar]
+///   --exportar <instancia> <carpeta> [con-mundos]   paquete para Drive/USB (con la base de Minecraft)
+///   --exportar-mrpack <instancia> <archivo.mrpack>
+///   --importar <archivo> [nombre]                   paquete de Parabellum o .mrpack
+///   --instalar-modpack <proyecto> [versión]         modpack de Modrinth como instancia nueva
+///   --instalar-datapack <instancia> <mundo> <proyecto>
 fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<String, String> {
     match args[0].as_str() {
         "--comprobar" => {
@@ -922,6 +1105,62 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             }
             Ok(out)
         }
+        "--exportar" => {
+            // --exportar <instancia> <carpeta> [con-mundos]
+            let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
+            let folder = PathBuf::from(args.get(2).ok_or("Falta la carpeta.")?);
+            let with_worlds = args.get(3).is_some_and(|a| a == "con-mundos");
+            let include = packs::exportable(&instance).into_iter().filter(|e| e.checked || (with_worlds && e.name == "saves")).map(|e| e.name).collect();
+            let started = std::time::Instant::now();
+            let result = packs::export(&instance, paths, &folder, &packs::ExportOptions { include, ..Default::default() }, |_, _| {})?;
+            Ok(format!("{result:#?}\nen {:.0} s", started.elapsed().as_secs_f64()))
+        }
+        "--exportar-mrpack" => {
+            let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
+            let file = PathBuf::from(args.get(2).ok_or("Falta el archivo .mrpack.")?);
+            let include = packs::exportable(&instance).into_iter().filter(|e| e.checked).map(|e| e.name).collect();
+            let options = packs::ExportOptions { include, version: "1.0.0".into(), ..Default::default() };
+            let result = tauri::async_runtime::block_on(mrpack::export(&instance, &file, &options, |_, _| {}))?;
+            Ok(format!("{result:#?}"))
+        }
+        "--importar" => {
+            let file = PathBuf::from(args.get(1).ok_or("Falta el archivo.")?);
+            let started = std::time::Instant::now();
+            let result = tauri::async_runtime::block_on(import_modpack(
+                &file,
+                paths,
+                args.get(2).cloned(),
+                None,
+                serde_json::json!({ "source": "archivo" }),
+                &HashSet::new(),
+                |_, _| {},
+            ))?;
+            Ok(format!("{} ({}) carpeta {:?}, actualizada: {}, en {:.0} s", result.name, result.kind, result.id, result.updated, started.elapsed().as_secs_f64()))
+        }
+        "--instalar-modpack" => {
+            let project = args.get(1).ok_or("Falta el proyecto.")?;
+            let started = std::time::Instant::now();
+            let temp = paths.data.join("temporal");
+            let result = tauri::async_runtime::block_on(async {
+                let download = modrinth::download_modpack(project, args.get(2).map(String::as_str), &temp).await?;
+                let icon = match &download.icon_url {
+                    Some(url) => modrinth::download_icon(url).await,
+                    None => None,
+                };
+                let source = serde_json::json!({ "source": "modrinth", "projectId": download.project_id, "versionId": download.version_id });
+                let result = import_modpack(&download.file, paths, Some(download.title.clone()), icon, source, &HashSet::new(), |_, _| {}).await;
+                let _ = std::fs::remove_file(&download.file);
+                result
+            })?;
+            Ok(format!("{} -> carpeta {:?} en {:.0} s", result.name, result.id, started.elapsed().as_secs_f64()))
+        }
+        "--instalar-datapack" => {
+            let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
+            let world = args.get(2).ok_or("Falta el mundo.")?;
+            let project = args.get(3).ok_or("Falta el proyecto.")?;
+            let (title, number) = tauri::async_runtime::block_on(modrinth::install_datapack(&instance, world, project, None))?;
+            Ok(format!("{title} {number} instalado en {world}"))
+        }
         other => Err(format!("Comando desconocido: {other}")),
     }
 }
@@ -976,6 +1215,11 @@ fn main() {
             buscar_actualizaciones,
             actualizar_contenido,
             abrir_enlace,
+            contenido_exportable,
+            exportar_modpack,
+            importar_modpack,
+            instalar_modpack,
+            instalar_datapack,
             registro,
             abrir_registro,
             listar_java,

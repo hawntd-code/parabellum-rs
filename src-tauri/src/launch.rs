@@ -60,6 +60,73 @@ fn supports_quick_play(version: &str) -> bool {
     }
 }
 
+/// Rutas de una biblioteca: el .jar de nativos del formato antiguo (hasta 1.18) y el .jar normal, si los tiene.
+fn library_paths(library: &Value, paths: &Paths) -> (Option<PathBuf>, Option<PathBuf>) {
+    let Some(maven) = library["name"].as_str().and_then(Maven::parse) else { return (None, None) };
+    let mut native = None;
+    if let Some(classifier) = library.pointer("/natives/windows").and_then(Value::as_str) {
+        let classifier = classifier.replace("${arch}", "64");
+        let relative = library
+            .pointer(&format!("/downloads/classifiers/{classifier}/path"))
+            .and_then(Value::as_str)
+            .map(String::from)
+            .unwrap_or_else(|| Maven { classifier: Some(classifier.clone()), ..maven.clone() }.relative_path());
+        native = Some(paths.libraries.join(relative));
+        // Bibliotecas que solo traen nativos
+        if library.get("downloads").is_some() && library.pointer("/downloads/artifact").is_none() {
+            return (native, None);
+        }
+    }
+    let relative = library.pointer("/downloads/artifact/path").and_then(Value::as_str).map(String::from).unwrap_or_else(|| maven.relative_path());
+    (native, Some(paths.libraries.join(relative)))
+}
+
+/// Todo lo que usa una versión para jugarse: los JSON de su cadena (loader y vanilla), bibliotecas,
+/// el juego, sonidos y texturas y la configuración de registros, más el Java que pide. Sirve para
+/// empaquetarla y llevarla a donde Mojang está bloqueado.
+pub struct VersionFiles {
+    pub files: Vec<PathBuf>,
+    pub java: Option<JavaRuntime>,
+    /// La versión vanilla de la que hereda (la propia si es vanilla).
+    pub root_id: String,
+}
+
+pub fn version_files(version_id: &str, paths: &Paths) -> Result<VersionFiles, String> {
+    let version = ResolvedVersion::resolve(version_id, paths)?;
+    let mut files = Vec::new();
+    let mut next = Some(version_id.to_string());
+    while let Some(id) = next.take().filter(|_| files.len() < 10) {
+        let json = paths.version_json(&id);
+        next = std::fs::read_to_string(&json)
+            .ok()
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+            .and_then(|v| v["inheritsFrom"].as_str().filter(|s| !s.is_empty()).map(String::from));
+        files.push(json);
+    }
+    let features = Features::new();
+    for library in version.libraries.iter().filter(|l| rules_allow(l.get("rules"), &features)) {
+        let (native, artifact) = library_paths(library, paths);
+        files.extend(native);
+        files.extend(artifact);
+    }
+    files.push(paths.version_jar(&version.client_jar_id));
+    let asset_index = version.asset_index.clone().unwrap_or_else(|| "legacy".into());
+    let index_file = paths.assets.join("indexes").join(format!("{asset_index}.json"));
+    if let Some(index) = std::fs::read_to_string(&index_file).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
+        for hash in index["objects"].as_object().into_iter().flatten().filter_map(|(_, o)| o["hash"].as_str()).filter(|h| h.len() > 2) {
+            files.push(paths.assets.join("objects").join(&hash[..2]).join(hash));
+        }
+    }
+    files.push(index_file);
+    if let Some(id) = version.logging.as_ref().and_then(|l| l.pointer("/client/file/id")).and_then(Value::as_str) {
+        files.push(paths.assets.join("log_configs").join(id));
+    }
+    let mut seen = std::collections::HashSet::new();
+    files.retain(|f| seen.insert(f.to_string_lossy().to_lowercase()));
+    let java = java::select(&java::discover(paths), version.java_component.as_deref(), version.java_major).cloned();
+    Ok(VersionFiles { files, java, root_id: version.root_id })
+}
+
 pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<LaunchPlan, String> {
     let version = ResolvedVersion::resolve(&instance.version_id, paths)?;
     let natives_dir = paths.natives.join(&version.id);
@@ -80,36 +147,21 @@ pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<L
         if !rules_allow(library.get("rules"), &features) {
             continue;
         }
-        let Some(maven) = library["name"].as_str().and_then(Maven::parse) else { continue };
-        if let Some(classifier) = library.pointer("/natives/windows").and_then(Value::as_str) {
-            // Formato antiguo (hasta 1.18): los nativos vienen en un .jar que se descomprime.
-            let classifier = classifier.replace("${arch}", "64");
-            let relative = library
-                .pointer(&format!("/downloads/classifiers/{classifier}/path"))
-                .and_then(Value::as_str)
-                .map(String::from)
-                .unwrap_or_else(|| Maven { classifier: Some(classifier.clone()), ..maven.clone() }.relative_path());
-            let file = paths.libraries.join(relative);
+        let (native, artifact) = library_paths(library, paths);
+        if let Some(file) = native {
             if file.exists() {
                 native_archives.push(file);
             } else {
                 missing.push(format!("Biblioteca: {}", file.display()));
             }
-            if library.get("downloads").is_some() && library.pointer("/downloads/artifact").is_none() {
-                continue;
+        }
+        if let Some(file) = artifact {
+            if !file.exists() {
+                missing.push(format!("Biblioteca: {}", file.display()));
             }
-        }
-        let relative = library
-            .pointer("/downloads/artifact/path")
-            .and_then(Value::as_str)
-            .map(String::from)
-            .unwrap_or_else(|| maven.relative_path());
-        let file = paths.libraries.join(relative);
-        if !file.exists() {
-            missing.push(format!("Biblioteca: {}", file.display()));
-        }
-        if !classpath.contains(&file) {
-            classpath.push(file);
+            if !classpath.contains(&file) {
+                classpath.push(file);
+            }
         }
     }
     let client_jar = paths.version_jar(&version.client_jar_id);

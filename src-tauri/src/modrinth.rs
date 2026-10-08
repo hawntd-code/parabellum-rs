@@ -80,14 +80,6 @@ impl ContentType {
         }
     }
 
-    fn api(self) -> &'static str {
-        match self {
-            Self::Mod => "mod",
-            Self::ResourcePack => "resourcepack",
-            Self::Shader => "shader",
-        }
-    }
-
     /// Categoría de content.rs ("mods", "resourcepacks", "shaderpacks").
     pub fn kind(self) -> &'static str {
         match self {
@@ -171,8 +163,8 @@ pub struct SearchResults {
 pub const PAGE_SIZE: u32 = 20;
 
 pub async fn search(query: &SearchQuery) -> Result<SearchResults, String> {
-    let kind = ContentType::parse(&query.kind).ok_or("Tipo de contenido desconocido.")?;
-    let mut facets: Vec<Vec<String>> = vec![vec![format!("project_type:{}", kind.api())]];
+    let project_type = search_type(&query.kind).ok_or("Tipo de contenido desconocido.")?;
+    let mut facets: Vec<Vec<String>> = vec![vec![format!("project_type:{project_type}")]];
     let loaders: Vec<String> = query.loaders.iter().filter(|l| !l.trim().is_empty()).map(|l| format!("categories:{l}")).collect();
     if !loaders.is_empty() {
         // Dentro de un mismo grupo es "o": Quilt muestra mods de Quilt o de Fabric.
@@ -230,13 +222,14 @@ pub struct Category {
 }
 
 pub async fn categories(kind: &str) -> Result<Vec<Category>, String> {
-    let kind = ContentType::parse(kind).ok_or("Tipo de contenido desconocido.")?;
+    // Los data packs usan las categorías de los mods.
+    let kind = search_type(kind).map(|k| if k == "datapack" { "mod" } else { k }).ok_or("Tipo de contenido desconocido.")?;
     let list = get("/tag/category", &[]).await?;
     Ok(list
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|c| c["project_type"] == kind.api())
+        .filter(|c| c["project_type"] == kind)
         .map(|c| {
             // Como imagen suelta, un SVG sin xmlns no se dibuja.
             let svg = text(c, "icon");
@@ -1182,6 +1175,129 @@ pub async fn apply_updates(
     }
     install(instance, &files, progress).await?;
     Ok(held_back)
+}
+
+// ================= Modpacks y data packs
+
+/// Tipos que se pueden buscar: además de lo que va dentro de una instancia, modpacks y data packs.
+fn search_type(kind: &str) -> Option<&'static str> {
+    match kind {
+        "mod" => Some("mod"),
+        "resourcepack" => Some("resourcepack"),
+        "shader" => Some("shader"),
+        "modpack" => Some("modpack"),
+        "datapack" => Some("datapack"),
+        _ => None,
+    }
+}
+
+/// Un archivo de Modrinth encontrado por su SHA-1 (para exportar .mrpack con enlaces de descarga).
+#[derive(Clone, Debug)]
+pub struct RemoteFile {
+    pub url: String,
+    pub sha1: String,
+    pub sha512: String,
+    pub size: u64,
+}
+
+pub async fn files_by_hash(hashes: &[String]) -> Result<HashMap<String, RemoteFile>, String> {
+    let mut result = HashMap::new();
+    for chunk in hashes.chunks(500) {
+        let found = post("/version_files", &json!({ "hashes": chunk, "algorithm": "sha1" })).await?;
+        for (hash, version) in found.as_object().into_iter().flatten() {
+            let file = version["files"].as_array().into_iter().flatten().find(|f| f["hashes"]["sha1"].as_str() == Some(hash.as_str()));
+            if let Some(file) = file {
+                if let (Some(url), Some(sha512)) = (file["url"].as_str(), file["hashes"]["sha512"].as_str()) {
+                    result.insert(
+                        hash.clone(),
+                        RemoteFile { url: url.into(), sha1: hash.clone(), sha512: sha512.into(), size: file["size"].as_u64().unwrap_or(0) },
+                    );
+                }
+            }
+        }
+    }
+    Ok(result)
+}
+
+/// Un modpack de Modrinth descargado (su .mrpack) listo para instalarse como instancia.
+#[derive(Debug)]
+pub struct ModpackDownload {
+    pub file: std::path::PathBuf,
+    pub title: String,
+    pub icon_url: Option<String>,
+    pub project_id: String,
+    pub version_id: String,
+    pub version_number: String,
+}
+
+pub async fn download_modpack(project_id: &str, version_id: Option<&str>, temp_dir: &Path) -> Result<ModpackDownload, String> {
+    let project = get(&format!("/project/{}", checked_id(project_id)?), &[]).await?;
+    if project["project_type"].as_str() != Some("modpack") {
+        return Err("Ese proyecto no es un modpack.".into());
+    }
+    let title = text(&project, "title");
+    let chosen = match version_id {
+        Some(id) => version(id).await?,
+        None => best(&project_versions(&text(&project, "id"), &["fabric", "quilt"], &[]).await?)
+            .cloned()
+            .ok_or(format!("{title} no tiene versión para Fabric ni Quilt (los de Forge y NeoForge llegan más adelante)."))?,
+    };
+    if !chosen.filename.to_lowercase().ends_with(".mrpack") || !chosen.url.starts_with(CDN) {
+        return Err("Esa versión no trae un archivo .mrpack.".into());
+    }
+    let file = temp_dir.join(format!("{}.mrpack", chosen.sha1));
+    download::download_all(
+        vec![FileDownload { url: chosen.url.clone(), path: file.clone(), sha1: Some(chosen.sha1.clone()), size: Some(chosen.size) }],
+        |_, _, _, _| {},
+    )
+    .await?;
+    Ok(ModpackDownload {
+        file,
+        title,
+        icon_url: project["icon_url"].as_str().filter(|u| u.starts_with(CDN)).map(String::from),
+        project_id: text(&project, "id"),
+        version_id: chosen.id,
+        version_number: chosen.version_number,
+    })
+}
+
+/// Icono de un proyecto (solo del CDN de Modrinth y de tamaño razonable).
+pub async fn download_icon(url: &str) -> Option<Vec<u8>> {
+    if !url.starts_with(CDN) {
+        return None;
+    }
+    let response = download::client().get(url).header(reqwest::header::USER_AGENT, USER_AGENT).send().await.ok()?;
+    let bytes = response.error_for_status().ok()?.bytes().await.ok()?;
+    (bytes.len() < 2_000_000).then(|| bytes.to_vec())
+}
+
+/// Instala un data pack de Modrinth dentro de un mundo. Devuelve (nombre, versión).
+pub async fn install_datapack(instance: &Instance, world: &str, project_id: &str, version_id: Option<&str>) -> Result<(String, String), String> {
+    let world_dir = content::item_path(instance, "worlds", world).map_err(|_| format!("La instancia no tiene un mundo llamado «{world}»."))?;
+    let project = get(&format!("/project/{}", checked_id(project_id)?), &[]).await?;
+    let title = text(&project, "title");
+    let minecraft = instance.minecraft_version.as_str();
+    let chosen = match version_id {
+        Some(id) => version(id).await?,
+        None => best(&project_versions(&text(&project, "id"), &["datapack"], &[minecraft]).await?)
+            .cloned()
+            .ok_or(format!("{title} no tiene versión de data pack para Minecraft {minecraft}."))?,
+    };
+    let safe_name = !chosen.filename.contains(['/', '\\', ':']) && chosen.filename.to_lowercase().ends_with(".zip");
+    if !chosen.loaders.iter().any(|l| l == "datapack") || !safe_name || !chosen.url.starts_with(CDN) {
+        return Err("Esa versión no es un data pack.".into());
+    }
+    download::download_all(
+        vec![FileDownload {
+            url: chosen.url.clone(),
+            path: world_dir.join("datapacks").join(&chosen.filename),
+            sha1: Some(chosen.sha1.clone()),
+            size: Some(chosen.size),
+        }],
+        |_, _, _, _| {},
+    )
+    .await?;
+    Ok((title, chosen.version_number))
 }
 
 #[cfg(test)]
