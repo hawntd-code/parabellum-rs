@@ -65,6 +65,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] **Auto-actualización del launcher**: Acerca de › Publicar esta versión prepara _parabellum; los demás ven «Actualizar a X» y se reinicia solo
 - [x] Configuración integrada en el exe (config-integrada.json fuera del repositorio; lanzador-config.json junto al exe la sustituye)
 - [x] La ventana se abre maximizada
+- [x] **Versión C# retirada** (2026-10-08): sus instancias, mundos y bases pasaron a la carpeta de Parabellum; Parabellum lee sus ajustes (nombre, UUID fijo, memoria) y su actualizador lleva a quienes la usen a esta versión en cuanto se publique en Drive
 - [ ] (Fase 9) Subir a Drive directamente desde Parabellum, con la sesión de Google
 
 ### Diseño
@@ -77,7 +78,8 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] Modpacks de Forge y NeoForge (.mrpack y de Modrinth)
 - [ ] (Opcional) CurseForge: requiere solicitar una clave de API y respetar qué autores permiten descargas externas
 - [ ] Instancias Forge y NeoForge (instaladores con "processors")
-- [ ] Importar instancias de CurseForge, Prism y de la versión C# (por ejemplo Better MC)
+- [ ] Importar instancias de CurseForge y Prism
+- [ ] *Prueba:* Better MC BMC4 (Forge 47.4.20, ya en la carpeta de Parabellum con sus mundos) llega al menú
 
 ### Fase 9: social
 - [ ] Servidor de sesión local: mundos LAN/e4mc de amigos sin "Invalid session" (ya probado en la versión C#)

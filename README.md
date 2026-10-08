@@ -19,21 +19,33 @@ Tauri la interfaz usa datos de ejemplo.
 
 ## Carpeta portable
 
-Todo cuelga de la carpeta del .exe (o de `PARABELLUM_ROOT`), con la misma organización que la versión en C#:
+Todo cuelga de la carpeta del .exe (o de `PARABELLUM_ROOT`):
 
 ```
 Parabellum.exe
 instancias/   cada una con su instancia.json
 base/         versions, libraries, assets, java compartidos por todas las instancias
 datos/        ajustes y registros
+paquetes/     (opcional) zips de modpacks copiados de una USB
 ```
+
+### Desde la versión C# (retirada)
+
+La primera versión de Parabellum, en C#, quedó retirada el 2026-10-08 (repositorio archivado
+`parabellum-launcher`). Usaba la misma organización de carpetas, así que Parabellum.exe abre una
+de sus carpetas tal cual: instancias (también las de CurseForge), bases, mundos y, si aún no hay
+`datos/ajustes.json`, el nombre, el UUID fijo y la memoria de su `datos/config.json`.
+Su actualizador acepta cualquier versión nueva del catálogo, así que al publicar Parabellum en
+Drive (`_parabellum`) quienes sigan con la versión C# reciben esta en su lugar.
 
 ## Configuración
 
 La carpeta de Drive y las claves de Google y Firebase se integran al compilar desde
-`config-integrada.json` en la raíz del proyecto (no está en el repositorio; mismo formato que el
-`lanzador-config.json` de la versión C#). Sin ese archivo se compila igual, sin catálogo de Drive.
-Un `lanzador-config.json` junto al exe sustituye los valores que traiga.
+`config-integrada.json` en la raíz del proyecto (no está en el repositorio): `driveFolderId`,
+`driveApiKey`, `googleClientId`, `googleClientSecret`, `firebaseApiKey` y `firebaseDatabaseUrl`.
+Sin ese archivo se compila igual, sin catálogo de Drive. Un `lanzador-config.json` junto al exe
+sustituye los valores que traiga. Las reglas de la base de datos de Firebase están en
+`firebase-reglas.json`.
 
 ## Diagnóstico
 

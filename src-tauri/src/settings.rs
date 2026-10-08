@@ -48,12 +48,41 @@ impl Default for Settings {
     }
 }
 
+/// datos/config.json de la versión C# (retirada): al abrir Parabellum en una de sus carpetas se
+/// conservan el nombre, el UUID fijo (con el que sus mundos reconocen al jugador) y la memoria.
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct OldSettings {
+    username: Option<String>,
+    uuid: Option<String>,
+    #[serde(rename = "RamGB")]
+    ram_gb: Option<u32>,
+}
+
+fn from_old(text: &str) -> Option<Settings> {
+    let old: OldSettings = serde_json::from_str(text.trim_start_matches('\u{feff}')).ok()?;
+    let mut settings = Settings::default();
+    if let Some(name) = old.username.filter(|name| validate_username(name).is_none()) {
+        settings.username = name;
+    }
+    if let Some(uuid) = old.uuid.as_deref().and_then(parse_uuid) {
+        settings.uuid = dashed(&uuid);
+    }
+    if let Some(ram) = old.ram_gb {
+        settings.ram_gb = ram.clamp(1, 64);
+    }
+    Some(settings)
+}
+
 impl Settings {
     pub fn load(paths: &Paths) -> Self {
-        std::fs::read_to_string(paths.settings_file())
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
+        match std::fs::read_to_string(paths.settings_file()) {
+            Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
+            Err(_) => std::fs::read_to_string(paths.data.join("config.json"))
+                .ok()
+                .and_then(|text| from_old(&text))
+                .unwrap_or_default(),
+        }
     }
 
     pub fn save(&self, paths: &Paths) -> std::io::Result<()> {
@@ -112,6 +141,18 @@ mod tests {
     fn offline_uuid_matches_minecraft() {
         // Valor conocido: el UUID offline de "GxxseS" que vimos en el servidor de prueba.
         assert_eq!(dashed(&offline_uuid("GxxseS")), "8b67db88-c6fb-3d4d-bbee-71f84a0e752d");
+    }
+
+    #[test]
+    fn ajustes_de_la_version_csharp() {
+        let old = r#"{ "Username": "Steve_2", "Uuid": "0123456789ABCDEF0123456789abcdef", "RamGB": 6, "WindowWidth": 1280, "CloseToTray": true }"#;
+        let settings = from_old(old).unwrap();
+        assert_eq!(settings.username, "Steve_2");
+        assert_eq!(settings.uuid, "01234567-89ab-cdef-0123-456789abcdef");
+        assert_eq!(settings.ram_gb, 6);
+        assert_eq!(settings.theme, "oscuro");
+        // Un nombre que Minecraft no acepta no se copia.
+        assert_eq!(from_old(r#"{ "Username": "con espacio" }"#).unwrap().username, "Jugador");
     }
 
     #[test]
