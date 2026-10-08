@@ -374,13 +374,23 @@ pub fn crash_reason(instance: &Instance, since_ms: i64) -> Option<String> {
             return Some(lines[lines.len().saturating_sub(4)..].join("\n"));
         }
     }
-    None.or_else(|| {
-        let (_, log) = read_log(instance, 200_000);
-        log.lines()
-            .rev()
-            .find(|l| l.contains("Exception") || l.contains("Error:") || l.contains("/FATAL]") || l.contains("/ERROR]"))
-            .map(|l| l.trim().chars().take(400).collect())
-    })
+    let (_, log) = read_log(instance, 200_000);
+    let lines: Vec<&str> = log.lines().collect();
+    // El último error del registro con su explicación, sin la pila de llamadas ("at ..."). Así se ve,
+    // por ejemplo, el "Incompatible mods found!" de Fabric con qué mod necesita qué versión.
+    let is_frame = |l: &str| l.trim_start().starts_with("at ") || l.trim_start().starts_with("... ");
+    let start = lines
+        .iter()
+        .rposition(|l| l.contains("/FATAL]") || l.contains("/ERROR]"))
+        .or_else(|| lines.iter().rposition(|l| (l.contains("Exception") || l.contains("Error:")) && !is_frame(l)))?;
+    let block: Vec<String> = std::iter::once(lines[start])
+        .chain(lines[start + 1..].iter().copied().take_while(|l| !l.starts_with('[') && !is_frame(l)))
+        .filter(|l| !l.trim().is_empty())
+        .take(12)
+        .map(|l| l.trim().chars().take(300).collect())
+        .collect();
+    Some(block.join("
+"))
 }
 
 fn process_alive(pid: u32) -> bool {

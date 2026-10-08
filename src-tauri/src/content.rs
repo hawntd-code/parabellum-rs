@@ -24,6 +24,8 @@ pub struct ContentItem {
     pub size: u64,
     pub modified: Option<i64>,
     pub icon: Option<String>,
+    /// Proyecto de Modrinth, si se sabe (para abrir su página y buscar actualizaciones).
+    pub project_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -84,6 +86,7 @@ fn files(instance: &Instance, kind: &str, extensions: &[&str], read_mod: bool) -
                 enabled,
                 size: meta.len(),
                 modified: modified_ms(&meta),
+                project_id: None,
                 file,
             })
         })
@@ -112,6 +115,7 @@ fn worlds(instance: &Instance) -> Vec<ContentItem> {
                 size: 0,
                 modified: meta.as_ref().and_then(modified_ms),
                 icon,
+                project_id: None,
                 file,
             }
         })

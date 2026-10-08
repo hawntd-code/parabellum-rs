@@ -1,12 +1,14 @@
 // Sin ventana de consola en Windows.
 #![windows_subsystem = "windows"]
 
+mod compat;
 mod content;
 mod download;
 mod instances;
 mod java;
 mod launch;
 mod loaders;
+mod modrinth;
 mod mojang;
 mod paths;
 mod settings;
@@ -401,7 +403,19 @@ fn eliminar_instancia(state: State<AppState>, id: String) -> Result<(), String> 
 #[tauri::command]
 async fn contenido(state: State<'_, AppState>, id: String) -> Result<content::Content, String> {
     let instance = instance_or_error(&state, &id)?;
-    tauri::async_runtime::spawn_blocking(move || content::list(&instance)).await.map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut list = content::list(&instance);
+        let known = modrinth::known_projects(&instance);
+        for (kind, items) in [("mods", &mut list.mods), ("resourcepacks", &mut list.resourcepacks), ("shaderpacks", &mut list.shaderpacks)] {
+            for item in items.iter_mut() {
+                let base = item.file.strip_suffix(".disabled").unwrap_or(&item.file);
+                item.project_id = known.get(&format!("{kind}/{base}")).cloned();
+            }
+        }
+        list
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -465,6 +479,129 @@ fn abrir_registro(state: State<AppState>, id: String) -> Result<(), String> {
     let folder = instance.game_dir.join("logs");
     std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
     std::process::Command::new("explorer").arg(folder).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+// ================= Modrinth: explorar, instalar y actualizar contenido
+
+#[tauri::command]
+async fn buscar_contenido(busqueda: modrinth::SearchQuery) -> Result<modrinth::SearchResults, String> {
+    modrinth::search(&busqueda).await
+}
+
+#[tauri::command]
+async fn categorias(tipo: String) -> Result<Vec<modrinth::Category>, String> {
+    modrinth::categories(&tipo).await
+}
+
+#[tauri::command]
+async fn proyecto(id: String) -> Result<modrinth::Project, String> {
+    modrinth::project(&id).await
+}
+
+/// Versiones de un proyecto; con instancia, solo las compatibles con ella.
+#[tauri::command]
+async fn versiones_proyecto(
+    state: State<'_, AppState>,
+    id: String,
+    tipo: String,
+    instancia: Option<String>,
+) -> Result<Vec<modrinth::Version>, String> {
+    match instancia {
+        Some(instance_id) => {
+            let instance = instance_or_error(&state, &instance_id)?;
+            let kind = modrinth::ContentType::parse(&tipo).ok_or("Tipo de contenido desconocido.")?;
+            let loaders = modrinth::instance_loaders(&instance, kind)?;
+            modrinth::project_versions(&id, &loaders, &[instance.minecraft_version.as_str()]).await
+        }
+        None => modrinth::project_versions(&id, &[], &[]).await,
+    }
+}
+
+/// Proyectos de Modrinth instalados en la instancia (para marcar "Instalado" al explorar).
+#[tauri::command]
+async fn proyectos_instalados(state: State<'_, AppState>, id: String) -> Result<Vec<String>, String> {
+    let instance = instance_or_error(&state, &id)?;
+    let mut ids: Vec<String> = modrinth::identify(&instance).await.into_iter().filter_map(|f| f.project_id).collect();
+    ids.sort();
+    ids.dedup();
+    Ok(ids)
+}
+
+/// Qué se descargaría al instalar un proyecto (con sus dependencias) o por qué no se puede.
+#[tauri::command]
+async fn preparar_instalacion(
+    state: State<'_, AppState>,
+    id: String,
+    proyecto: String,
+    version: Option<String>,
+) -> Result<modrinth::Plan, String> {
+    let instance = instance_or_error(&state, &id)?;
+    modrinth::plan(&instance, &proyecto, version.as_deref()).await
+}
+
+#[tauri::command]
+async fn instalar_contenido(app: AppHandle, state: State<'_, AppState>, id: String, archivos: Vec<modrinth::PlannedFile>) -> Result<(), String> {
+    let instance = instance_or_error(&state, &id)?;
+    // Con el juego abierto Windows no deja quitar los archivos viejos y quedarían duplicados.
+    if archivos.iter().any(|f| f.replaces.is_some()) && state.games.lock().unwrap().contains_key(&id) {
+        return Err("Cierra el juego antes de actualizar o cambiar versiones.".into());
+    }
+    let name = match archivos.as_slice() {
+        [] => return Ok(()),
+        [only] => only.title.clone(),
+        many => format!("{} archivos", many.len()),
+    };
+    let emitter = app.clone();
+    modrinth::install(&instance, &archivos, move |count, total, bytes, total_bytes| {
+        let _ = emitter.emit(
+            "progreso",
+            Progress {
+                task: "instalar".into(),
+                stage: format!("Descargando {name}… {count} de {total}"),
+                fraction: bytes as f64 / total_bytes.max(1) as f64,
+            },
+        );
+    })
+    .await
+}
+
+#[tauri::command]
+async fn buscar_actualizaciones(state: State<'_, AppState>, id: String) -> Result<Vec<modrinth::PlannedFile>, String> {
+    let instance = instance_or_error(&state, &id)?;
+    modrinth::updates(&instance).await
+}
+
+/// Aplica actualizaciones; devuelve las que se dejaron fuera por no ser compatibles (con el motivo).
+#[tauri::command]
+async fn actualizar_contenido(app: AppHandle, state: State<'_, AppState>, id: String, archivos: Vec<modrinth::PlannedFile>) -> Result<Vec<String>, String> {
+    let instance = instance_or_error(&state, &id)?;
+    if state.games.lock().unwrap().contains_key(&id) {
+        return Err("Cierra el juego antes de actualizar.".into());
+    }
+    let emitter = app.clone();
+    modrinth::apply_updates(&instance, archivos, move |count, total, bytes, total_bytes| {
+        let _ = emitter.emit(
+            "progreso",
+            Progress {
+                task: "instalar".into(),
+                stage: format!("Actualizando… {count} de {total}"),
+                fraction: bytes as f64 / total_bytes.max(1) as f64,
+            },
+        );
+    })
+    .await
+}
+
+/// Abre en el navegador un enlace de la página de un proyecto (solo http y https).
+#[tauri::command]
+fn abrir_enlace(url: String) -> Result<(), String> {
+    let valid = (url.starts_with("https://") || url.starts_with("http://"))
+        && url.len() < 2048
+        && !url.chars().any(|c| c.is_whitespace() || c.is_control() || "\"<>^|`".contains(c));
+    if !valid {
+        return Err("Enlace no válido.".into());
+    }
+    std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", &url]).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
 #[derive(Serialize)]
@@ -532,6 +669,9 @@ fn system_ram_gb() -> u32 {
 ///   --agregar <instancia> <archivo>...  agrega mods, packs, shaders o mundos
 ///   --jugar <instancia> [servidor]      abre el juego (y entra al servidor)
 ///   --probar-juego <instancia> [seg]    abre el juego, espera al menú principal y lo cierra
+///   --buscar <texto> [mod|resourcepack|shader] [loader] [versión]   busca en Modrinth
+///   --instalar <instancia> <proyecto> [versión]                     instala con dependencias
+///   --actualizaciones <instancia> [aplicar]
 fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<String, String> {
     match args[0].as_str() {
         "--comprobar" => {
@@ -707,6 +847,68 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             }
             Ok(out)
         }
+        "--buscar" => {
+            let query = modrinth::SearchQuery {
+                query: args.get(1).cloned().unwrap_or_default(),
+                kind: args.get(2).cloned().unwrap_or_else(|| "mod".into()),
+                loaders: args.get(3).map(|l| vec![l.clone()]).unwrap_or_default(),
+                game_version: args.get(4).cloned(),
+                categories: Vec::new(),
+                sort: "relevance".into(),
+                offset: 0,
+            };
+            let results = tauri::async_runtime::block_on(modrinth::search(&query))?;
+            let mut out = format!("{} resultados\n", results.total);
+            for hit in results.hits.iter().take(10) {
+                out += &format!("  {} ({}) por {} · {} descargas · {:?}\n", hit.title, hit.slug, hit.author, hit.downloads, hit.categories);
+            }
+            Ok(out)
+        }
+        "--instalar" => {
+            let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
+            let project = args.get(2).ok_or("Falta el proyecto.")?;
+            let started = std::time::Instant::now();
+            let plan = tauri::async_runtime::block_on(modrinth::plan(&instance, project, args.get(3).map(String::as_str)))?;
+            let mut out = format!("{} {}\n", plan.title, plan.version_number);
+            for file in &plan.files {
+                out += &format!(
+                    "  {} {} {} ({}){}\n",
+                    if file.dependency { "dependencia" } else { "principal" },
+                    file.title,
+                    file.version_number,
+                    file.filename,
+                    file.replaces.as_ref().map(|r| format!(" reemplaza {r}")).unwrap_or_default()
+                );
+            }
+            if !plan.optional.is_empty() {
+                out += &format!("  opcionales: {}\n", plan.optional.iter().map(|o| o.title.as_str()).collect::<Vec<_>>().join(", "));
+            }
+            if plan.installed {
+                out += "  YA INSTALADA\n";
+            } else if let Some(problem) = &plan.problem {
+                out += &format!("  NO SE PUEDE: {problem}\n");
+            } else {
+                tauri::async_runtime::block_on(modrinth::install(&instance, &plan.files, |_, _, _, _| {}))?;
+                out += &format!("  INSTALADO en {:.1} s\n", started.elapsed().as_secs_f64());
+            }
+            Ok(out)
+        }
+        "--actualizaciones" => {
+            let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
+            let updates = tauri::async_runtime::block_on(modrinth::updates(&instance))?;
+            let mut out = format!("{} actualizaciones\n", updates.len());
+            for file in &updates {
+                out += &format!("  {}: {} -> {} ({})\n", file.title, file.replaces.as_deref().unwrap_or("?"), file.version_number, file.filename);
+            }
+            if args.get(2).is_some_and(|a| a == "aplicar") && !updates.is_empty() {
+                let held_back = tauri::async_runtime::block_on(modrinth::apply_updates(&instance, updates, |_, _, _, _| {}))?;
+                out += "  APLICADAS\n";
+                for reason in held_back {
+                    out += &format!("  SIN ACTUALIZAR {reason}\n");
+                }
+            }
+            Ok(out)
+        }
         other => Err(format!("Comando desconocido: {other}")),
     }
 }
@@ -751,6 +953,16 @@ fn main() {
             agregar_contenido,
             elegir_contenido,
             abrir_carpeta_contenido,
+            buscar_contenido,
+            categorias,
+            proyecto,
+            versiones_proyecto,
+            proyectos_instalados,
+            preparar_instalacion,
+            instalar_contenido,
+            buscar_actualizaciones,
+            actualizar_contenido,
+            abrir_enlace,
             registro,
             abrir_registro,
             listar_java,
