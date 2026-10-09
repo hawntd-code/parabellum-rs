@@ -1517,6 +1517,7 @@ function renderSettings() {
   renderGoogleBox();
   $("#minimize-on-launch").checked = s.minimizeOnLaunch;
   $("#close-to-tray").checked = s.closeToTray ?? true;
+  $("#notifications").checked = s.notifications ?? true;
   $("#ram").max = Math.max(4, Math.min(32, state.systemRam - 2));
   $("#ram").value = s.ramGb;
   $("#ram-max").textContent = `${$("#ram").max} GB`;
@@ -1576,6 +1577,7 @@ async function saveSettings(extra = {}) {
         windowHeight: Number($("#win-height").value) || state.settings.windowHeight,
         minimizeOnLaunch: $("#minimize-on-launch").checked,
         closeToTray: $("#close-to-tray").checked,
+        notifications: $("#notifications").checked,
         ...extra,
       },
     });
@@ -1881,6 +1883,7 @@ function wireEvents() {
   for (const input of [$("#win-width"), $("#win-height")]) input.onchange = () => saveSettings();
   $("#minimize-on-launch").onchange = () => saveSettings();
   $("#close-to-tray").onchange = () => saveSettings();
+  $("#notifications").onchange = () => saveSettings();
   for (const button of $$("#theme button")) {
     button.onclick = () => {
       applyTheme(button.dataset.theme);

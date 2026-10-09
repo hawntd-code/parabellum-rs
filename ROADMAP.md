@@ -91,7 +91,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] **Unirse** al mundo de un amigo con un clic (e4mc por Internet o LAN), con el mismo modpack
 - [x] Bandeja del sistema: con la sesión iniciada, la X deja Parabellum junto al reloj
 - [x] Cuentas de Parabellum: cambiar de jugador con un clic y UUID fijo
-- [ ] Avisos de Windows (solicitud nueva, un amigo abrió su mundo)
+- [x] Avisos de Windows (solicitud nueva, un amigo abrió su mundo) sin instalador: Parabellum se registra solo para el usuario; se pueden apagar en Comportamiento
 - [ ] *Prueba:* iniciar sesión, agregarse con un compañero y entrar a su mundo con Unirse
 - [ ] Subir a Drive directamente desde Parabellum (pide más permisos de Drive que los de ahora)
 

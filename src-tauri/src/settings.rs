@@ -26,6 +26,8 @@ pub struct Settings {
     pub accounts: Vec<Account>,
     /// Con la sesión de Google iniciada, la X deja Parabellum junto al reloj.
     pub close_to_tray: bool,
+    /// Avisos de Windows cuando un amigo te manda solicitud o abre su mundo.
+    pub notifications: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
@@ -58,6 +60,7 @@ impl Default for Settings {
             servers: Vec::new(),
             accounts: Vec::new(),
             close_to_tray: true,
+            notifications: true,
         }
     }
 }

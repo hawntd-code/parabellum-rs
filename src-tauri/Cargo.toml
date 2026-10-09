@@ -1,6 +1,6 @@
 [package]
 name = "parabellum"
-version = "0.9.2"
+version = "0.9.3"
 description = "Parabellum: launcher de Minecraft no premium"
 edition = "2021"
 publish = false
@@ -37,7 +37,9 @@ sha2 = "0.10"
 flate2 = "1"
 crc32fast = "1"
 # Sesión de Google cifrada para el usuario de Windows (DPAPI), como la versión C#
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Registry"] }
+# Avisos de Windows (notificaciones) sin instalador
+windows = { version = "0.62", features = ["Data_Xml_Dom", "UI_Notifications", "Foundation", "Foundation_Collections", "Win32_System_WinRT"] }
 getrandom = "0.2"
 
 [profile.release]

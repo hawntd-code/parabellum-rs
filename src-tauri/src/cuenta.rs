@@ -24,6 +24,16 @@ pub struct SocialState {
     profile_generation: AtomicU64,
     tracker: Mutex<(Option<String>, Tracker)>,
     tray_hint_shown: AtomicBool,
+    seen: Mutex<Seen>,
+}
+
+/// Lo que ya se conocía de los amigos, para avisar solo de lo nuevo.
+#[derive(Default)]
+struct Seen {
+    /// Al conectar llega todo lo que ya había: hasta este momento solo se anota, sin avisar.
+    quiet_until: Option<std::time::Instant>,
+    requests: std::collections::HashSet<String>,
+    open_worlds: std::collections::HashSet<String>,
 }
 
 #[derive(Default, Clone)]
@@ -202,6 +212,7 @@ async fn connect(app: &AppHandle) {
                 let state = changed.state::<AppState>();
                 state.social.status.lock().unwrap().warning = None;
                 emit(&changed);
+                notify_changes(&changed);
             },
             move |error| update_status(&failed, |s| s.warning = Some(error)),
         )
@@ -215,6 +226,8 @@ async fn connect(app: &AppHandle) {
                 update_status(app, |s| s.connecting = false);
                 return;
             }
+            *app.state::<AppState>().social.seen.lock().unwrap() =
+                Seen { quiet_until: Some(std::time::Instant::now() + Duration::from_secs(10)), ..Seen::default() };
             *app.state::<AppState>().social.social.lock().unwrap() = Some(social.clone());
             claim_name(app, &social).await;
             social.set_presence(current_presence(app).unwrap_or_else(Presence::online));
@@ -334,6 +347,46 @@ pub fn settings_changed(app: &AppHandle) {
             }
         }
     });
+}
+
+// ================= Avisos de Windows
+
+/// Avisa de solicitudes nuevas y de amigos que abren su mundo, si Parabellum no está al frente.
+fn notify_changes(app: &AppHandle) {
+    let Some(social) = social(app) else { return };
+    let view = social.view();
+    let requests: std::collections::HashSet<String> = view.requests.iter().map(|r| r.uid.clone()).collect();
+    let open_worlds: std::collections::HashSet<String> = view.friends.iter().filter(|f| f.world_open).map(|f| f.uid.clone()).collect();
+    let state = app.state::<AppState>();
+    let mut toasts = Vec::new();
+    {
+        let mut seen = state.social.seen.lock().unwrap();
+        let quiet = seen.quiet_until.is_none_or(|until| std::time::Instant::now() < until);
+        if !quiet {
+            for request in view.requests.iter().filter(|r| !seen.requests.contains(&r.uid)) {
+                toasts.push(("Solicitud de amistad".to_string(), format!("{} quiere ser tu amigo en Parabellum.", request.name)));
+            }
+            for friend in view.friends.iter().filter(|f| f.world_open && !seen.open_worlds.contains(&f.uid)) {
+                let pack = friend.presence.as_ref().and_then(|p| p.pack.clone()).unwrap_or_default();
+                toasts.push((format!("{} abrió su mundo", friend.name), format!("Está jugando {pack}. Abre Parabellum y pulsa Unirse.")));
+            }
+        }
+        seen.requests = requests;
+        seen.open_worlds = open_worlds;
+    }
+    let enabled = state.settings.lock().unwrap().notifications;
+    let in_front = app.get_webview_window("main").is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false));
+    if !enabled || in_front {
+        return;
+    }
+    for (title, body) in toasts {
+        let handle = app.clone();
+        // Los avisos usan WinRT: se muestran desde el hilo de la ventana, que ya lo tiene iniciado.
+        let _ = app.run_on_main_thread(move || {
+            let click = handle.clone();
+            let _ = crate::avisos::show(&title, &body, move || show_window(&click));
+        });
+    }
 }
 
 // ================= Presencia: a qué juegas y si tu mundo está abierto

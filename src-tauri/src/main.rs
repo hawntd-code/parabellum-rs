@@ -3,6 +3,7 @@
 
 mod actividad;
 mod amigos;
+mod avisos;
 mod catalog;
 mod compat;
 mod config;
@@ -1360,6 +1361,18 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             let result = tauri::async_runtime::block_on(mrpack::export(&instance, &file, &options, |_, _| {}))?;
             Ok(format!("{result:#?}"))
         }
+        "--probar-aviso" => {
+            // Muestra un aviso de Windows y dice si llegó al centro de notificaciones.
+            avisos::init_thread();
+            avisos::register(&paths.data.join("cache"));
+            let before = avisos::history_count().unwrap_or(0);
+            let title = args.get(1).map(String::as_str).unwrap_or("Parabellum");
+            let body = args.get(2).map(String::as_str).unwrap_or("Así se ven los avisos de tus amigos.");
+            avisos::show(title, body, || {}).map_err(|e| format!("No se pudo mostrar el aviso: {e}"))?;
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let after = avisos::history_count().unwrap_or(0);
+            Ok(format!("Avisos de Parabellum en el centro de notificaciones: {before} -> {after}"))
+        }
         "--externas" => Ok(externos::discover()
             .iter()
             .map(|e| {
@@ -1502,6 +1515,7 @@ fn main() {
         })
         .setup(|app| {
             adopt_running_games(app.handle());
+            avisos::register(&app.state::<AppState>().paths.data.join("cache"));
             cuenta::create_tray(app.handle())?;
             cuenta::startup(app.handle());
             Ok(())
