@@ -305,6 +305,7 @@ pub fn start(plan: &LaunchPlan, instance: &Instance) -> Result<std::process::Chi
         return Err(format!("Faltan archivos:\n{}", plan.missing.iter().take(5).cloned().collect::<Vec<_>>().join("\n")));
     }
     extract_natives(&plan.native_archives, &plan.natives_dir)?;
+    crate::actividad::prefer_e4mc_relay(&instance.game_dir);
     let state = instance.state_dir();
     std::fs::create_dir_all(&state).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&instance.game_dir).map_err(|e| e.to_string())?;

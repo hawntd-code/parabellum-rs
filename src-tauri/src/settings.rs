@@ -24,6 +24,8 @@ pub struct Settings {
     pub servers: Vec<SavedServer>,
     /// Otras cuentas guardadas para cambiar con un clic (la que se usa es username/uuid).
     pub accounts: Vec<Account>,
+    /// Con la sesión de Google iniciada, la X deja Parabellum junto al reloj.
+    pub close_to_tray: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
@@ -55,6 +57,7 @@ impl Default for Settings {
             minimize_on_launch: true,
             servers: Vec::new(),
             accounts: Vec::new(),
+            close_to_tray: true,
         }
     }
 }

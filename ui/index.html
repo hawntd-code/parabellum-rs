@@ -316,15 +316,29 @@
           </div>
         </div>
 
-        <div class="side-block">
-          <div class="friends-search">
-            <button class="circle-btn" title="Agregar amigo" disabled><svg><use href="#i-user-plus"/></svg></button>
-            <div class="search grow small">
-              <svg><use href="#i-search"/></svg>
-              <input placeholder="Buscar amigos…" disabled>
-            </div>
+        <div class="side-block" id="friends-block">
+          <div class="friends-head">
+            <h4>Amigos</h4>
+            <span class="faint" id="friends-count"></span>
           </div>
-          <p class="side-note"><span class="accent-text">Muy pronto:</span> inicia sesión con Google para agregar amigos y ver a qué están jugando.</p>
+          <div id="friends-signed-out">
+            <p class="side-note no-top" id="friends-note">Inicia sesión con Google para agregar amigos, ver a qué están jugando y entrar a sus mundos con un clic.</p>
+            <button class="btn primary small" id="friends-sign-in"><svg><use href="#i-user"/></svg><span>Iniciar sesión con Google</span></button>
+          </div>
+          <div id="friends-signed-in" class="hidden">
+            <div class="my-status" id="my-status"></div>
+            <p class="side-note friends-notice hidden" id="friends-notice"></p>
+            <div class="friends-search">
+              <div class="search grow small">
+                <svg><use href="#i-user-plus"/></svg>
+                <input id="add-friend" maxlength="16" placeholder="Nombre de tu amigo" autocomplete="off" spellcheck="false">
+              </div>
+              <button class="circle-btn" id="add-friend-button" title="Enviar solicitud de amistad"><svg><use href="#i-plus"/></svg></button>
+            </div>
+            <p class="side-note hidden" id="add-friend-message"></p>
+            <div class="friend-requests" id="friend-requests"></div>
+            <div class="friend-list" id="friend-list"></div>
+          </div>
         </div>
 
         <div class="side-block">
@@ -477,6 +491,10 @@
               <div class="grow"><b>Minimizar al abrir el juego</b><span>Parabellum se minimiza cuando Minecraft empieza a abrirse.</span></div>
               <label class="toggle big"><input type="checkbox" id="minimize-on-launch"><span></span></label>
             </div>
+            <div class="setting">
+              <div class="grow"><b>Seguir junto al reloj al cerrar</b><span>Con la sesión de Google iniciada, la X deja Parabellum junto al reloj para que tus amigos te vean y puedan entrar a tu mundo. Para cerrarlo del todo: clic derecho en su icono › Salir.</span></div>
+              <label class="toggle big"><input type="checkbox" id="close-to-tray"><span></span></label>
+            </div>
           </section>
           <section data-section="profile" class="hidden">
             <div class="profile">
@@ -504,6 +522,8 @@
               <button class="btn small" id="account-add"><svg><use href="#i-user-plus"/></svg>Añadir cuenta</button>
             </div>
             <div class="account-list" id="account-list"></div>
+            <div class="label-row"><span class="label">Cuenta de Google</span></div>
+            <div class="google-box" id="google-box"></div>
           </section>
           <section data-section="java" class="hidden">
             <div class="setting">

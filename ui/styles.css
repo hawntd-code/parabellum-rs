@@ -788,3 +788,36 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .account-row .head { width: 32px; height: 32px; border-radius: 6px; flex: none; image-rendering: pixelated; }
 .account-row .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .account-row .grow span { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+
+/* ===================== Fase 9: amigos ===================== */
+.friends-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.friends-head h4 { margin-bottom: 10px; }
+.side-note.no-top { margin-top: 0; margin-bottom: 12px; }
+.side-note.danger { color: var(--danger); }
+.side-note.warn { color: var(--text); }
+.side-note.accent { color: var(--accent-fg); }
+.my-status { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 12px; border-radius: var(--r); background: var(--field); font-size: 13px; }
+.my-status .grow { min-width: 0; overflow-wrap: anywhere; color: var(--muted); }
+.my-status b { color: var(--text); }
+.presence-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--faint); }
+.presence-dot.online { background: var(--success); }
+.presence-dot.playing { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.friends-notice { margin-top: 0; margin-bottom: 12px; }
+.friend-requests, .friend-list { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+.friend-requests:empty { display: none; }
+.friend { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: var(--r); }
+.friend:hover { background: var(--field); }
+.friend.request { background: var(--accent-soft); }
+.friend .head { width: 32px; height: 32px; border-radius: 6px; image-rendering: pixelated; flex: none; }
+.friend:not(.online):not(.request) .head { opacity: .55; filter: grayscale(.6); }
+.friend-head { position: relative; flex: none; display: flex; }
+.friend-head .presence-dot { position: absolute; right: -3px; bottom: -3px; width: 11px; height: 11px; border: 2px solid var(--panel); box-sizing: content-box; }
+.friend-head .presence-dot:not(.online):not(.playing) { display: none; }
+.friend .grow { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.friend .grow b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.friend .grow span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.google-box .account-row { margin-top: 2px; }
+.google-badge { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-fg); flex: none; }
+.google-badge svg { width: 17px; height: 17px; }
+.google-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }

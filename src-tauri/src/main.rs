@@ -1,13 +1,18 @@
 // Sin ventana de consola en Windows.
 #![windows_subsystem = "windows"]
 
+mod actividad;
+mod amigos;
 mod catalog;
 mod compat;
 mod config;
 mod content;
+mod cuenta;
 mod download;
 mod externos;
+mod firebase;
 mod forge;
+mod google;
 mod instances;
 mod java;
 mod launch;
@@ -18,6 +23,7 @@ mod mrpack;
 mod packs;
 mod paths;
 mod remote_zip;
+mod sesion_local;
 mod settings;
 mod version;
 
@@ -43,6 +49,8 @@ struct AppState {
     config: config::Config,
     /// Último catálogo leído de Drive y de la carpeta paquetes.
     catalog: Mutex<Option<Arc<catalog::Catalog>>>,
+    /// Cuenta de Google, amigos y servidor de sesión local.
+    social: cuenta::SocialState,
 }
 
 #[derive(Serialize)]
@@ -93,11 +101,12 @@ fn estado_inicial(state: State<AppState>) -> Initial {
 }
 
 #[tauri::command]
-fn guardar_ajustes(state: State<AppState>, mut ajustes: Settings) -> Result<Settings, String> {
+fn guardar_ajustes(app: AppHandle, state: State<AppState>, mut ajustes: Settings) -> Result<Settings, String> {
     ajustes.normalize()?;
     ajustes.ram_gb = ajustes.ram_gb.clamp(1, 64);
     ajustes.save(&state.paths).map_err(|e| format!("No se pudieron guardar los ajustes: {e}"))?;
     *state.settings.lock().unwrap() = ajustes.clone();
+    cuenta::settings_changed(&app);
     Ok(ajustes)
 }
 
@@ -316,8 +325,11 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
         return Err("Este juego ya está abierto.".into());
     }
     let launched = instance.clone();
+    let session = cuenta::session_arguments(&app);
     let mut child = tauri::async_runtime::spawn_blocking(move || {
         let mut plan = launch::plan(&launched, &settings, &paths)?;
+        // Mundos LAN y e4mc de amigos sin "Invalid session".
+        plan.add_jvm_arguments(session);
         if let Some(address) = servidor.filter(|s| !s.trim().is_empty()) {
             plan.join_server(address.trim(), &launched.minecraft_version);
         }
@@ -1146,7 +1158,9 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             // Abre el juego y espera a que llegue al menú principal (o falle); luego lo cierra.
             let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
             let limit = args.get(2).and_then(|s| s.parse::<u64>().ok()).unwrap_or(180);
-            let plan = launch::plan(&instance, settings, paths)?;
+            let mut plan = launch::plan(&instance, settings, paths)?;
+            let port = tauri::async_runtime::block_on(sesion_local::start(paths.logs.join("sesion-local.log"))).map_err(|e| e.to_string())?;
+            plan.add_jvm_arguments(sesion_local::jvm_arguments(port));
             let started_ms = chrono::Utc::now().timestamp_millis();
             let started = std::time::Instant::now();
             let mut child = launch::start(&plan, &instance)?;
@@ -1484,10 +1498,23 @@ fn main() {
             games: Mutex::default(),
             stopped: Mutex::default(),
             catalog: Mutex::default(),
+            social: cuenta::SocialState::default(),
         })
         .setup(|app| {
             adopt_running_games(app.handle());
+            cuenta::create_tray(app.handle())?;
+            cuenta::startup(app.handle());
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Con la sesión iniciada, la X deja Parabellum junto al reloj (los amigos te siguen viendo).
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if cuenta::should_hide_on_close(window.app_handle()) {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    cuenta::hid_to_tray(window.app_handle());
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             estado_inicial,
@@ -1528,6 +1555,14 @@ fn main() {
             instancias_externas,
             elegir_instancia_externa,
             importar_externa,
+            cuenta::estado_social,
+            cuenta::iniciar_sesion_google,
+            cuenta::cerrar_sesion_google,
+            cuenta::agregar_amigo,
+            cuenta::aceptar_solicitud,
+            cuenta::rechazar_solicitud,
+            cuenta::eliminar_amigo,
+            cuenta::reconectar_amigos,
             instalar_modpack,
             instalar_datapack,
             mostrar_archivo,
@@ -1544,6 +1579,12 @@ fn main() {
             listar_java,
             abrir_carpeta
         ])
-        .run(tauri::generate_context!())
-        .expect("no se pudo abrir Parabellum");
+        .build(tauri::generate_context!())
+        .expect("no se pudo abrir Parabellum")
+        .run(|app, event| {
+            // Al salir del todo: los amigos te ven desconectado al momento.
+            if let tauri::RunEvent::Exit = event {
+                cuenta::shutdown(app);
+            }
+        });
 }

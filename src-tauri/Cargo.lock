@@ -2265,6 +2265,7 @@ dependencies = [
  "crc32fast",
  "flate2",
  "futures",
+ "getrandom 0.2.17",
  "hex",
  "md-5",
  "regex",
@@ -2279,6 +2280,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "trash",
+ "windows-sys 0.61.2",
  "zip",
 ]
 

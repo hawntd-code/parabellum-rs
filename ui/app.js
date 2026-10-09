@@ -910,7 +910,7 @@ function renderSteps() {
   const steps = [
     { done: state.instances.length > 0, label: "Crea tu primera instancia", action: openCreate },
     { done: state.settings.username !== "Jugador", label: "Elige tu nombre de jugador", action: () => openSettings("profile") },
-    { done: false, label: "Inicia sesión con Google", disabled: true, soon: true },
+    { done: !!state.social?.signedIn, label: "Inicia sesión con Google", action: signInGoogle, disabled: state.social?.available === false },
   ];
   $("#steps-list").innerHTML = `<div>${steps
     .map(
@@ -919,6 +919,283 @@ function renderSteps() {
     )
     .join("")}</div>`;
   $$("#steps-list .step").forEach((button) => (button.onclick = () => steps[button.dataset.step].action?.()));
+}
+
+// ======================================================================
+// Amigos (sesión de Google)
+// ======================================================================
+function friendStatus(f) {
+  if (!f.online) return f.lastSeen ? `Desconectado · ${ago(f.lastSeen).toLowerCase()}` : "Desconectado";
+  const p = f.presence;
+  if (p?.state !== "playing") return "En línea";
+  if (f.worldOpen) return `Jugando ${p.pack} · mundo abierto`;
+  if (p.world === "server") return `Jugando ${p.pack} · en ${p.server}`;
+  if (p.world === "single") return `Jugando ${p.pack} · en su mundo`;
+  return `Jugando ${p.pack}`;
+}
+
+function renderFriends() {
+  const s = state.social;
+  const connected = !!(s?.signedIn && s.connected);
+  $("#friends-signed-out").classList.toggle("hidden", connected);
+  $("#friends-signed-in").classList.toggle("hidden", !connected);
+  renderSteps();
+  renderGoogleBox();
+  if (!connected) {
+    $("#friends-count").textContent = "";
+    let note = "Inicia sesión con Google para agregar amigos, ver a qué están jugando y entrar a sus mundos con un clic.";
+    let label = "Iniciar sesión con Google";
+    let show = true;
+    if (!s || s.available === false) {
+      note = "Los amigos no están disponibles en esta copia de Parabellum. Descarga la versión más reciente.";
+      show = false;
+    } else if (s.signingIn) {
+      note = "Se abrió tu navegador. Elige tu cuenta de Google y vuelve aquí…";
+      show = false;
+    } else if (s.connecting) {
+      note = "Conectando con tus amigos…";
+      show = false;
+    } else if (s.signedIn) {
+      note = `No se pudo conectar con el servidor de amigos${s.error ? `: ${s.error}` : "."}`;
+      label = "Reintentar";
+    } else if (s.error) {
+      note = `No se pudo iniciar sesión: ${s.error}`;
+    }
+    $("#friends-note").textContent = note;
+    $("#friends-sign-in span").textContent = label;
+    $("#friends-sign-in").classList.toggle("hidden", !show);
+    return;
+  }
+
+  // Tu estado
+  const me = s.me ?? { state: "online" };
+  const open = me.address || me.lan;
+  const myText =
+    me.state !== "playing"
+      ? "En línea"
+      : open
+        ? `Jugando ${me.pack} · mundo abierto en ${me.address ?? me.lan}`
+        : `Jugando ${me.pack}${me.world === "single" ? " · en tu mundo" : me.world === "server" ? ` · en ${me.server}` : ""}`;
+  $("#my-status").innerHTML = `<span class="presence-dot ${me.state === "playing" ? "playing" : "online"}"></span>
+    <span class="grow"><b>${escapeHtml(s.friends?.name ?? state.settings.username)}</b> · ${escapeHtml(myText)}</span>
+    ${open ? `<button class="circle-btn small" id="copy-my-address" title="Copiar la dirección de tu mundo">${icon("copy")}</button>` : ""}`;
+  const copyButton = $("#copy-my-address");
+  if (copyButton) copyButton.onclick = () => copyText(me.address ?? me.lan, "Dirección copiada.");
+
+  // Avisos: nombre ocupado, problemas de conexión y consejos para abrir tu mundo
+  let notice = null;
+  let kind = "";
+  if (s.nameConflict) {
+    notice = `El nombre "${s.nameConflict}" ya lo usa otro jugador de Parabellum. Cámbialo en Ajustes › Perfil: tus amigos no podrían encontrarte.`;
+    kind = "danger";
+  } else if (s.warning) {
+    notice = s.warning;
+    kind = "warn";
+  } else if (open && !me.address) {
+    notice = "Tu mundo está abierto en la red local. Si tus amigos están en otra red, el modpack necesita el mod e4mc.";
+  } else if (open && me.world === "single") {
+    notice = "Tus amigos ya pueden pulsar Unirse. Deben abrir el juego desde Parabellum.";
+  } else if (s.notice) {
+    notice = s.notice;
+  }
+  $("#friends-notice").textContent = notice ?? "";
+  $("#friends-notice").className = `side-note friends-notice ${kind} ${notice ? "" : "hidden"}`;
+
+  // Solicitudes y amigos
+  const view = s.friends ?? { friends: [], requests: [] };
+  $("#friend-requests").innerHTML = view.requests
+    .map(
+      (r) => `<div class="friend request">
+        <canvas width="8" height="8" class="head" data-head="${escapeHtml(r.name)}"></canvas>
+        <div class="grow"><b>${escapeHtml(r.name)}</b><span>Quiere ser tu amigo</span></div>
+        <button class="btn primary small" data-accept="${escapeHtml(r.uid)}">Aceptar</button>
+        <button class="circle-btn small" data-decline="${escapeHtml(r.uid)}" title="Rechazar">${icon("close")}</button>
+      </div>`,
+    )
+    .join("");
+  $("#friend-list").innerHTML = view.friends.length
+    ? view.friends
+        .map(
+          (f) => `<div class="friend ${f.online ? "online" : ""}">
+            <div class="friend-head"><canvas width="8" height="8" class="head" data-head="${escapeHtml(f.name)}"></canvas><span class="presence-dot ${f.online ? (f.presence?.state === "playing" ? "playing" : "online") : ""}"></span></div>
+            <div class="grow"><b>${escapeHtml(f.name)}</b><span>${escapeHtml(friendStatus(f))}</span></div>
+            ${f.worldOpen ? `<button class="btn primary small" data-join="${escapeHtml(f.uid)}">Unirse</button>` : ""}
+            <button class="circle-btn small" data-friend-menu="${escapeHtml(f.uid)}" title="Más">${icon("more")}</button>
+          </div>`,
+        )
+        .join("")
+    : `<p class="side-note">Todavía no tienes amigos en Parabellum. Escribe el nombre de jugador de un amigo y pulsa +.</p>`;
+  for (const canvas of $$("#friends-block canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
+  const online = view.friends.filter((f) => f.online).length;
+  $("#friends-count").textContent = view.friends.length ? `${online} en línea` : "";
+}
+
+function renderGoogleBox() {
+  const s = state.social;
+  const box = $("#google-box");
+  if (!box) return;
+  if (!s || s.available === false) {
+    box.innerHTML = `<p class="muted small-text">Esta copia de Parabellum no trae el inicio de sesión con Google.</p>`;
+    return;
+  }
+  if (s.signedIn) {
+    box.innerHTML = `<div class="account-row">
+        <span class="google-badge">${icon("user")}</span>
+        <div class="grow"><b>${escapeHtml(s.displayName || s.email)}</b><span>${escapeHtml(s.email)} · tu perfil se guarda en una carpeta oculta de tu Google Drive</span></div>
+        <button class="btn small" id="google-sign-out">Cerrar sesión</button>
+      </div>`;
+    $("#google-sign-out").onclick = signOutGoogle;
+    return;
+  }
+  box.innerHTML = `<p class="muted small-text">Para tener amigos, ver a qué juegan y que tu nombre sea solo tuyo. Parabellum solo ve tu correo y una carpeta oculta de tu Drive para guardar tu perfil.</p>
+    <div class="google-actions">
+      <label class="check"><input type="checkbox" id="google-remember" checked> Recordar en este PC (desmárcalo en una PC compartida)</label>
+      <button class="btn primary small" id="google-sign-in" ${s.signingIn ? "disabled" : ""}>${s.signingIn ? "Esperando al navegador…" : "Iniciar sesión con Google"}</button>
+    </div>`;
+  $("#google-sign-in").onclick = signInGoogle;
+}
+
+async function signInGoogle() {
+  const s = state.social;
+  if (s?.signedIn && !s.connected) {
+    state.social = await invoke("reconectar_amigos").catch(() => s);
+    return renderFriends();
+  }
+  if (s?.signingIn) return;
+  const remember = $("#google-remember")?.checked ?? true;
+  try {
+    state.social = await invoke("iniciar_sesion_google", { recordar: remember });
+    renderFriends();
+    if (state.social.notice) toast(state.social.notice);
+    else toast(`Sesión iniciada como ${state.social.email}.`);
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+async function signOutGoogle() {
+  const ok = await confirmAction({
+    title: "Cerrar la sesión de Google",
+    text: "Tus amigos te verán desconectado y no podrás entrar a sus mundos con un clic hasta que vuelvas a iniciarla. Tus instancias no cambian.",
+    ok: "Cerrar sesión",
+  });
+  if (!ok) return;
+  state.social = await invoke("cerrar_sesion_google");
+  renderFriends();
+}
+
+async function copyText(text, message) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(message);
+  } catch {
+    toast(text);
+  }
+}
+
+async function addFriend() {
+  const name = $("#add-friend").value.trim();
+  const message = $("#add-friend-message");
+  const show = (text, kind = "") => {
+    message.textContent = text;
+    message.className = `side-note ${kind}`;
+  };
+  if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) return show("Escribe su nombre de jugador (1 a 16 letras, números o guiones bajos).", "danger");
+  $("#add-friend-button").disabled = true;
+  try {
+    show(await invoke("agregar_amigo", { nombre: name }), "accent");
+    $("#add-friend").value = "";
+  } catch (error) {
+    show(String(error), "warn");
+  } finally {
+    $("#add-friend-button").disabled = false;
+  }
+}
+
+function findFriend(uid) {
+  return state.social?.friends?.friends.find((f) => f.uid === uid);
+}
+
+/** Abre el mismo modpack que tu amigo y entra directo a su mundo. */
+async function joinFriend(friend, address) {
+  const p = friend.presence ?? {};
+  const instance =
+    state.instances.find((i) => i.id.toLowerCase() === (p.packFolder ?? "").toLowerCase()) ??
+    state.instances.find((i) => i.name.toLowerCase() === (p.pack ?? "").toLowerCase());
+  if (!instance) {
+    toast(`${friend.name} está jugando ${p.pack} (Minecraft ${p.minecraft}) y tú no lo tienes. Búscalo en Explorar y vuelve a pulsar Unirse.`, "error");
+    return;
+  }
+  if (state.running.size) {
+    await copyText(address, `Ya tienes Minecraft abierto. Copié la dirección de ${friend.name}: en el juego ve a Multijugador › Conexión directa y pégala.`);
+    return;
+  }
+  play(instance.id, address);
+}
+
+function friendMenu(anchor, friend) {
+  const p = friend.presence ?? {};
+  const items = [];
+  if (friend.worldOpen) {
+    if (p.address) items.push({ icon: "globe", label: "Unirse por Internet (e4mc)", action: () => joinFriend(friend, p.address) });
+    if (p.lan) items.push({ icon: "server", label: "Unirse por red local", action: () => joinFriend(friend, p.lan) });
+    items.push({ icon: "copy", label: "Copiar dirección", action: () => copyText(p.address ?? p.lan, "Dirección copiada.") });
+  }
+  items.push({
+    icon: "trash",
+    label: "Eliminar amigo",
+    danger: true,
+    separator: items.length > 0,
+    action: async () => {
+      const ok = await confirmAction({ title: `Eliminar a ${friend.name}`, text: "Dejarán de verse en sus listas de amigos.", ok: "Eliminar" });
+      if (!ok) return;
+      try {
+        await invoke("eliminar_amigo", { uid: friend.uid });
+      } catch (error) {
+        toast(String(error), "error");
+      }
+    },
+  });
+  contextMenu(anchor, items);
+}
+
+function wireFriendsEvents() {
+  $("#friends-sign-in").onclick = signInGoogle;
+  $("#add-friend-button").onclick = addFriend;
+  $("#add-friend").onkeydown = (event) => event.key === "Enter" && addFriend();
+  $("#friend-requests").onclick = async (event) => {
+    const accept = event.target.closest("[data-accept]");
+    const decline = event.target.closest("[data-decline]");
+    try {
+      if (accept) await invoke("aceptar_solicitud", { uid: accept.dataset.accept });
+      if (decline) await invoke("rechazar_solicitud", { uid: decline.dataset.decline });
+    } catch (error) {
+      toast(String(error), "error");
+    }
+  };
+  $("#friend-list").onclick = (event) => {
+    const join = event.target.closest("[data-join]");
+    if (join) {
+      const friend = findFriend(join.dataset.join);
+      if (friend) joinFriend(friend, friend.presence.address ?? friend.presence.lan);
+      return;
+    }
+    const more = event.target.closest("[data-friend-menu]");
+    if (more) {
+      const friend = findFriend(more.dataset.friendMenu);
+      if (friend) friendMenu(more, friend);
+    }
+  };
+  listen("social", ({ payload }) => {
+    state.social = payload;
+    renderFriends();
+  });
+  listen("ajustes", ({ payload }) => {
+    state.settings = payload;
+    renderSidebar();
+    renderSettings();
+    renderSteps();
+  });
 }
 
 // ======================================================================
@@ -1209,7 +1486,9 @@ function renderSettings() {
   $("#uuid-input").value = s.uuid ?? "";
   $("#uuid-input").classList.toggle("hidden", !s.uuid);
   renderAccounts();
+  renderGoogleBox();
   $("#minimize-on-launch").checked = s.minimizeOnLaunch;
+  $("#close-to-tray").checked = s.closeToTray ?? true;
   $("#ram").max = Math.max(4, Math.min(32, state.systemRam - 2));
   $("#ram").value = s.ramGb;
   $("#ram-max").textContent = `${$("#ram").max} GB`;
@@ -1262,6 +1541,7 @@ async function saveSettings(extra = {}) {
         windowWidth: Number($("#win-width").value) || state.settings.windowWidth,
         windowHeight: Number($("#win-height").value) || state.settings.windowHeight,
         minimizeOnLaunch: $("#minimize-on-launch").checked,
+        closeToTray: $("#close-to-tray").checked,
         ...extra,
       },
     });
@@ -1295,7 +1575,25 @@ function wireEvents() {
   };
   updateMaxButton();
   appWindow?.onResized(updateMaxButton);
-  $("#win-close").onclick = () => appWindow?.close();
+  $("#win-close").onclick = async () => {
+    // La primera vez que la X lo deja junto al reloj, se explica cómo cerrarlo del todo.
+    let explained = true;
+    try {
+      explained = localStorage.getItem("bandeja-explicada") === "1";
+    } catch {}
+    if (state.social?.signedIn && state.settings.closeToTray && !explained) {
+      await confirmAction({
+        title: "Parabellum sigue abierto",
+        text: "Se queda junto al reloj para que tus amigos te vean y puedan entrar a tu mundo. Para cerrarlo del todo: clic derecho en su icono › Salir. Puedes cambiarlo en Ajustes › Comportamiento.",
+        ok: "Entendido",
+        primary: true,
+      });
+      try {
+        localStorage.setItem("bandeja-explicada", "1");
+      } catch {}
+    }
+    appWindow?.close();
+  };
   $("#nav-back").onclick = goBack;
   $("#nav-forward").onclick = goForward;
 
@@ -1530,6 +1828,7 @@ function wireEvents() {
   };
   for (const input of [$("#win-width"), $("#win-height")]) input.onchange = () => saveSettings();
   $("#minimize-on-launch").onchange = () => saveSettings();
+  $("#close-to-tray").onchange = () => saveSettings();
   for (const button of $$("#theme button")) {
     button.onclick = () => {
       applyTheme(button.dataset.theme);
@@ -1593,6 +1892,7 @@ function wireEvents() {
   wireExploreEvents();
   wireModpackEvents();
   wireDriveEvents();
+  wireFriendsEvents();
   listen("juego-cerrado", ({ payload }) => onGameClosed(payload));
   // Arrastrar archivos a la ventana: se agregan a la instancia abierta.
   // Fuera de una instancia (o con un .mrpack) lo que se suelta se instala como modpack.
@@ -1668,6 +1968,8 @@ async function init() {
   renderSteps();
   renderHome();
   renderServers();
+  state.social = await invoke("estado_social").catch(() => null);
+  renderFriends();
   navigate("home", null, false);
   pollRunning();
   setInterval(pollRunning, 3000);
@@ -2938,6 +3240,28 @@ function demoInvoke(command, args = {}) {
       ],
     },
   };
+  const soon = (value) => new Promise((resolve) => setTimeout(() => resolve(value), 300));
+  if (command === "estado_social" || command === "iniciar_sesion_google" || command === "reconectar_amigos") {
+    const now = Date.now();
+    return soon({
+      available: true, signedIn: true, email: "gxxses@uabc.edu.mx", displayName: "Juan", signingIn: false, connecting: false, connected: true,
+      error: null, warning: null, nameConflict: null, notice: null,
+      me: { state: "playing", pack: "Better MC BMC4", world: "single", address: "silly-cat.sa.e4mc.link", lan: "192.168.1.20:51234" },
+      friends: {
+        name: "GxxseS",
+        requests: [{ uid: "r1", name: "Steve_22" }],
+        friends: [
+          { uid: "f1", name: "Hawntd", online: true, worldOpen: true, lastSeen: now, presence: { state: "playing", pack: "Minecraft++", packFolder: "Minecraft++", minecraft: "26.1.2", world: "single", address: "happy-fox.sa.e4mc.link" } },
+          { uid: "f2", name: "Alex_mx", online: true, worldOpen: false, lastSeen: now, presence: { state: "playing", pack: "Fabulously Optimized", minecraft: "26.2", world: "server", server: "mc.universocraft.com" } },
+          { uid: "f3", name: "Dani", online: true, worldOpen: false, lastSeen: now, presence: { state: "online" } },
+          { uid: "f4", name: "Pepe_07", online: false, worldOpen: false, lastSeen: now - 86400e3 },
+        ],
+      },
+    });
+  }
+  if (command === "cerrar_sesion_google") return soon({ available: true, signedIn: false, connected: false });
+  if (command === "agregar_amigo") return soon(`Solicitud enviada a ${args.nombre}. Aparecerá en tu lista cuando la acepte.`);
+  if (["aceptar_solicitud", "rechazar_solicitud", "eliminar_amigo"].includes(command)) return soon(null);
   if (command === "instancias_externas")
     return new Promise((r) => setTimeout(() => r([
       { launcher: "CurseForge", name: "Better MC [BMC6]", folder: "C:\curseforge\Better MC [BMC6]", minecraft: "26.1.2", loader: "NeoForge", loaderVersion: "26.1.2.97", ramGb: null, mods: 228, worlds: 1 },

@@ -84,11 +84,16 @@ El orden importa: cada fase usa lo que construyó la anterior.
 ## ⏭️ Pendiente, en orden
 
 ### Fase 9: social
-- [ ] Servidor de sesión local: mundos LAN/e4mc de amigos sin "Invalid session" (ya probado en la versión C#)
-- [ ] Inicio de sesión con Google y nombres únicos
-- [ ] Amigos, solicitudes y presencia (a qué juegan, mundo abierto)
-- [ ] Unirse al mundo de un amigo con un clic (e4mc por el relé, LAN)
-- [ ] Bandeja del sistema y avisos
+- [x] **Servidor de sesión local**: mundos LAN/e4mc de amigos sin "Invalid session" (el juego arranca usándolo; e4mc siempre por su relé)
+- [x] **Inicio de sesión con Google** (la sesión guardada por la versión C# sigue valiendo) y **nombres únicos**: una cuenta de Google reserva los nombres de sus cuentas de Parabellum
+- [x] Perfil guardado en la cuenta (nombre, UUID, memoria y otras cuentas): se recupera en cualquier PC
+- [x] **Amigos**, solicitudes y presencia: a qué juegan, en qué servidor y si tienen el mundo abierto (leyendo el registro del juego, sin mods)
+- [x] **Unirse** al mundo de un amigo con un clic (e4mc por Internet o LAN), con el mismo modpack
+- [x] Bandeja del sistema: con la sesión iniciada, la X deja Parabellum junto al reloj
+- [x] Cuentas de Parabellum: cambiar de jugador con un clic y UUID fijo
+- [ ] Avisos de Windows (solicitud nueva, un amigo abrió su mundo)
+- [ ] *Prueba:* iniciar sesión, agregarse con un compañero y entrar a su mundo con Unirse
+- [ ] Subir a Drive directamente desde Parabellum (pide más permisos de Drive que los de ahora)
 
 ### Fase 10: chat
 - [ ] Mensajes con amigos, grupos e imágenes
