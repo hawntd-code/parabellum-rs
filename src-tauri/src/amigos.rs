@@ -206,6 +206,11 @@ impl Social {
         tasks.push(Listener(heartbeat));
     }
 
+    /// La base de datos y la sesión, para el chat.
+    pub fn database(&self) -> Arc<Database> {
+        self.db.clone()
+    }
+
     pub fn name(&self) -> Option<String> {
         self.inner.lock().unwrap().name.clone()
     }

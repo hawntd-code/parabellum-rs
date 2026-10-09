@@ -10,6 +10,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::actividad::{self, Tracker};
 use crate::amigos::{ClaimError, Presence, Social, View};
+use crate::chat::{self, Chat};
 use crate::google::{self, GoogleAccount, Profile};
 use crate::settings::{self, Account, Settings};
 use crate::{instances, sesion_local, AppState};
@@ -18,6 +19,7 @@ use crate::{instances, sesion_local, AppState};
 pub struct SocialState {
     google: Mutex<Option<Arc<GoogleAccount>>>,
     social: Mutex<Option<Arc<Social>>>,
+    chat: Mutex<Option<Arc<Chat>>>,
     status: Mutex<Status>,
     /// Puerto del servidor de sesión local (None si no se pudo abrir).
     pub session_port: Mutex<Option<u16>>,
@@ -232,6 +234,7 @@ async fn connect(app: &AppHandle) {
             claim_name(app, &social).await;
             social.set_presence(current_presence(app).unwrap_or_else(Presence::online));
             social.start();
+            start_chat(app, &social);
             update_status(app, |s| s.connecting = false);
         }
         Err(error) => update_status(app, |s| {
@@ -242,6 +245,10 @@ async fn connect(app: &AppHandle) {
 }
 
 async fn disconnect(app: &AppHandle) {
+    if let Some(chat) = app.state::<AppState>().social.chat.lock().unwrap().take() {
+        chat.stop();
+    }
+    let _ = app.emit("chats", Vec::<chat::Summary>::new());
     let social = app.state::<AppState>().social.social.lock().unwrap().take();
     if let Some(social) = social {
         social.go_offline().await;
@@ -341,12 +348,159 @@ pub fn settings_changed(app: &AppHandle) {
                 claim_name(&app, &social).await;
             }
         }
+        if let Some(chat) = chat_service(&app) {
+            chat.set_my_name(&settings.username);
+        }
         if let Some(account) = google_account(&app) {
             if let Err(error) = account.save_profile(&current_profile(&settings)).await {
                 update_status(&app, |s| s.notice = Some(format!("No se pudo guardar tu perfil en la cuenta: {error}")));
             }
         }
     });
+}
+
+// ================= Chat
+
+fn chat_service(app: &AppHandle) -> Option<Arc<Chat>> {
+    app.state::<AppState>().social.chat.lock().unwrap().clone()
+}
+
+fn chat_ready(app: &AppHandle) -> Result<Arc<Chat>, String> {
+    chat_service(app).ok_or("Primero inicia sesión con Google.".into())
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ChatMessages {
+    chat: String,
+    messages: Vec<chat::Message>,
+}
+
+fn start_chat(app: &AppHandle, social: &Arc<Social>) {
+    let (list, arrived, messages) = (app.clone(), app.clone(), app.clone());
+    let name = app.state::<AppState>().settings.lock().unwrap().username.clone();
+    let images = app.state::<AppState>().paths.data.join("cache").join("chat");
+    let service = Chat::new(
+        social.database(),
+        name,
+        images,
+        move || {
+            if let Some(chat) = chat_service(&list) {
+                let _ = list.emit("chats", chat.list());
+            }
+        },
+        move |summary| notify_message(&arrived, summary),
+        move |chat, list| {
+            let _ = messages.emit("chat-mensajes", ChatMessages { chat, messages: list });
+        },
+    );
+    service.start();
+    *app.state::<AppState>().social.chat.lock().unwrap() = Some(service);
+}
+
+/// Aviso de Windows de un mensaje nuevo, salvo que esa conversación esté a la vista.
+fn notify_message(app: &AppHandle, summary: chat::Summary) {
+    if !app.state::<AppState>().settings.lock().unwrap().notifications {
+        return;
+    }
+    let in_front = app.get_webview_window("main").is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false));
+    let open = chat_service(app).and_then(|c| c.open_chat());
+    if in_front && open.as_deref() == Some(summary.id.as_str()) {
+        return;
+    }
+    let title = if summary.kind == "grupo" { summary.name.clone() } else { format!("Mensaje de {}", summary.name) };
+    let body = if summary.kind == "grupo" { format!("{}: {}", summary.last_name, summary.last_text) } else { summary.last_text.clone() };
+    let (handle, id) = (app.clone(), summary.id.clone());
+    let _ = app.run_on_main_thread(move || {
+        let click = handle.clone();
+        let _ = crate::avisos::show(&title, &body, move || {
+            show_window(&click);
+            let _ = click.emit("abrir-chat", id.clone());
+        });
+    });
+}
+
+/// Una imagen del PC (soltada en la ventana) como data URL, para reducirla y enviarla.
+#[tauri::command]
+pub fn leer_imagen(ruta: String) -> Result<String, String> {
+    use base64::Engine;
+    let path = std::path::PathBuf::from(&ruta);
+    let extension = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let mime = match extension.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        _ => return Err("Eso no es una imagen (PNG, JPG, GIF, WEBP o BMP).".into()),
+    };
+    if path.metadata().map(|m| m.len()).unwrap_or(0) > 25 * 1024 * 1024 {
+        return Err("La imagen pesa más de 25 MB.".into());
+    }
+    let bytes = std::fs::read(&path).map_err(|e| format!("No se pudo leer la imagen: {e}"))?;
+    Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
+#[tauri::command]
+pub fn chats(app: AppHandle) -> Vec<chat::Summary> {
+    chat_service(&app).map(|c| c.list()).unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn abrir_chat(app: AppHandle, chat: String) -> Result<(), String> {
+    chat_ready(&app)?.open(&chat)
+}
+
+#[tauri::command]
+pub fn cerrar_chat(app: AppHandle) {
+    if let Some(chat) = chat_service(&app) {
+        chat.close();
+    }
+}
+
+#[tauri::command]
+pub async fn marcar_leido(app: AppHandle, chat: String) -> Result<(), String> {
+    chat_ready(&app)?.mark_read(&chat).await
+}
+
+#[tauri::command]
+pub async fn enviar_mensaje(app: AppHandle, chat: String, texto: String) -> Result<(), String> {
+    chat_ready(&app)?.send_text(&chat, &texto).await
+}
+
+#[tauri::command]
+pub async fn enviar_imagen(app: AppHandle, chat: String, datos: String, ancho: u32, alto: u32) -> Result<(), String> {
+    chat_ready(&app)?.send_image(&chat, &datos, ancho, alto).await
+}
+
+#[tauri::command]
+pub async fn imagen_chat(app: AppHandle, chat: String, mensaje: String) -> Result<String, String> {
+    chat_ready(&app)?.image(&chat, &mensaje).await
+}
+
+#[tauri::command]
+pub async fn chat_con_amigo(app: AppHandle, uid: String) -> Result<String, String> {
+    chat_ready(&app)?.direct(&uid).await
+}
+
+#[tauri::command]
+pub async fn crear_grupo(app: AppHandle, nombre: String, amigos: Vec<String>) -> Result<String, String> {
+    chat_ready(&app)?.create_group(&nombre, &amigos).await
+}
+
+#[tauri::command]
+pub async fn agregar_al_grupo(app: AppHandle, chat: String, amigos: Vec<String>) -> Result<(), String> {
+    chat_ready(&app)?.add_members(&chat, &amigos).await
+}
+
+#[tauri::command]
+pub async fn renombrar_grupo(app: AppHandle, chat: String, nombre: String) -> Result<(), String> {
+    chat_ready(&app)?.rename_group(&chat, &nombre).await
+}
+
+#[tauri::command]
+pub async fn salir_del_chat(app: AppHandle, chat: String) -> Result<(), String> {
+    chat_ready(&app)?.leave(&chat).await
 }
 
 // ================= Avisos de Windows

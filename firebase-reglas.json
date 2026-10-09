@@ -12,9 +12,15 @@
         ".read": "auth != null",
         ".write": "auth != null && auth.uid === $uid",
         ".validate": "newData.child('name').isString() && newData.parent().parent().child('names').child(newData.child('name').val().toLowerCase()).val() === auth.uid",
-        "name": { ".validate": "newData.val().matches(/^[A-Za-z0-9_]{1,16}$/)" },
-        "uuid": { ".validate": "newData.isString() && newData.val().length <= 36" },
-        "$other": { ".validate": false }
+        "name": {
+          ".validate": "newData.val().matches(/^[A-Za-z0-9_]{1,16}$/)"
+        },
+        "uuid": {
+          ".validate": "newData.isString() && newData.val().length <= 36"
+        },
+        "$other": {
+          ".validate": false
+        }
       }
     },
     "requests": {
@@ -41,7 +47,110 @@
         ".read": "auth != null && (auth.uid === $uid || root.child('friends').child($uid).child(auth.uid).exists())",
         ".write": "auth != null && auth.uid === $uid",
         ".validate": "newData.child('state').isString() && newData.child('updated').isNumber()",
-        "$field": { ".validate": "newData.isNumber() || (newData.isString() && newData.val().length <= 200)" }
+        "$field": {
+          ".validate": "newData.isNumber() || (newData.isString() && newData.val().length <= 200)"
+        }
+      }
+    },
+    "chats": {
+      "$chat": {
+        ".read": "auth != null && data.child('members').child(auth.uid).val() === true",
+        "members": {
+          "$member": {
+            ".write": "auth != null && ((!newData.exists() && $member === auth.uid) || (newData.val() === true && ($member === auth.uid || root.child('friends').child(auth.uid).child($member).val() === true) && (!data.parent().exists() || data.parent().child(auth.uid).val() === true)))",
+            ".validate": "newData.val() === true"
+          }
+        },
+        "meta": {
+          ".write": "auth != null && newData.parent().child('members').child(auth.uid).val() === true",
+          "kind": {
+            ".validate": "newData.val() === 'directo' || newData.val() === 'grupo'"
+          },
+          "name": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "created": {
+            ".validate": "newData.isNumber()"
+          },
+          "lastText": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "lastName": {
+            ".validate": "newData.isString() && newData.val().length <= 16"
+          },
+          "lastUid": {
+            ".validate": "newData.isString() && newData.val().length <= 128"
+          },
+          "lastAt": {
+            ".validate": "newData.isNumber()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "messages": {
+      "$chat": {
+        ".read": "auth != null && root.child('chats').child($chat).child('members').child(auth.uid).val() === true",
+        "$msg": {
+          ".write": "auth != null && !data.exists() && root.child('chats').child($chat).child('members').child(auth.uid).val() === true",
+          ".validate": "newData.child('from').val() === auth.uid && newData.child('at').isNumber() && (newData.child('text').isString() || newData.child('image').val() === true)",
+          "from": {
+            ".validate": "newData.isString()"
+          },
+          "name": {
+            ".validate": "newData.isString() && newData.val().length <= 16"
+          },
+          "text": {
+            ".validate": "newData.isString() && newData.val().length <= 2000"
+          },
+          "image": {
+            ".validate": "newData.val() === true"
+          },
+          "w": {
+            ".validate": "newData.isNumber()"
+          },
+          "h": {
+            ".validate": "newData.isNumber()"
+          },
+          "at": {
+            ".validate": "newData.isNumber()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "images": {
+      "$chat": {
+        ".read": "auth != null && root.child('chats').child($chat).child('members').child(auth.uid).val() === true",
+        "$msg": {
+          ".write": "auth != null && !data.exists() && root.child('chats').child($chat).child('members').child(auth.uid).val() === true",
+          ".validate": "newData.isString() && newData.val().length <= 450000 && newData.val().beginsWith('data:image/')"
+        }
+      }
+    },
+    "userChats": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$chat": {
+          ".write": "auth != null && (auth.uid === $uid || (newData.parent().parent().parent().child('chats').child($chat).child('members').child(auth.uid).val() === true && newData.parent().parent().parent().child('chats').child($chat).child('members').child($uid).val() === true))",
+          ".validate": "newData.val() === true"
+        }
+      }
+    },
+    "reads": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "$chat": {
+          ".validate": "newData.isNumber()"
+        }
       }
     }
   }

@@ -96,7 +96,11 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] Subir a Drive directamente desde Parabellum (pide más permisos de Drive que los de ahora)
 
 ### Fase 10: chat
-- [ ] Mensajes con amigos, grupos e imágenes
+- [x] **Mensajes** con amigos y **grupos** (crear, agregar amigos, cambiar nombre, salir); página Mensajes con conversaciones recientes y marca de no leídos
+- [x] **Imágenes** reducidas en la propia base de datos (máx. 1280 px y ~330 KB en JPEG): botón, pegar una captura o soltarla en la ventana; se guardan aparte de los mensajes y se descargan solo al verlas
+- [x] Avisos de Windows de mensajes nuevos (salvo que esa conversación esté a la vista)
+- [x] Reglas de Firebase: solo los miembros leen y escriben cada conversación; solo se puede meter a amigos; tamaños limitados
+- [ ] *Prueba:* publicar las reglas nuevas en Firebase y chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
 ### Fase 11: pulido

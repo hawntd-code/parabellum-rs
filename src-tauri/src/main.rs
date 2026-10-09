@@ -5,6 +5,7 @@ mod actividad;
 mod amigos;
 mod avisos;
 mod catalog;
+mod chat;
 mod compat;
 mod config;
 mod content;
@@ -1577,6 +1578,19 @@ fn main() {
             cuenta::rechazar_solicitud,
             cuenta::eliminar_amigo,
             cuenta::reconectar_amigos,
+            cuenta::chats,
+            cuenta::abrir_chat,
+            cuenta::cerrar_chat,
+            cuenta::marcar_leido,
+            cuenta::enviar_mensaje,
+            cuenta::enviar_imagen,
+            cuenta::imagen_chat,
+            cuenta::chat_con_amigo,
+            cuenta::crear_grupo,
+            cuenta::agregar_al_grupo,
+            cuenta::renombrar_grupo,
+            cuenta::salir_del_chat,
+            cuenta::leer_imagen,
             instalar_modpack,
             instalar_datapack,
             mostrar_archivo,

@@ -74,6 +74,7 @@ const pages = {
   explore: { title: "Explorar", icon: "compass", sidebar: false },
   project: { title: "Proyecto", icon: "compass", sidebar: false },
   servers: { title: "Servidores", icon: "server", sidebar: true },
+  chat: { title: "Mensajes", icon: "chat", sidebar: false },
   instance: { title: "", icon: "cubes", sidebar: false },
 };
 
@@ -228,6 +229,8 @@ function navigate(page, param = null, record = true) {
     else renderProjectInstall();
   }
   if (page === "explore") enterExplore();
+  if (page === "chat") enterChat();
+  else if (state.chatOpen) closeChat();
   for (const section of $$(".page")) {
     const active = section.id === `page-${page}`;
     section.classList.toggle("hidden", !active);
@@ -1161,7 +1164,7 @@ async function joinFriend(friend, address) {
 
 function friendMenu(anchor, friend) {
   const p = friend.presence ?? {};
-  const items = [];
+  const items = [{ icon: "chat", label: "Enviar mensaje", action: () => messageFriend(friend.uid) }];
   if (friend.worldOpen) {
     if (p.address) items.push({ icon: "globe", label: "Unirse por Internet (e4mc)", action: () => joinFriend(friend, p.address) });
     if (p.lan) items.push({ icon: "server", label: "Unirse por red local", action: () => joinFriend(friend, p.lan) });
@@ -1171,7 +1174,7 @@ function friendMenu(anchor, friend) {
     icon: "trash",
     label: "Eliminar amigo",
     danger: true,
-    separator: items.length > 0,
+    separator: true,
     action: async () => {
       const ok = await confirmAction({ title: `Eliminar a ${friend.name}`, text: "Dejarán de verse en sus listas de amigos.", ok: "Eliminar" });
       if (!ok) return;
@@ -1217,12 +1220,415 @@ function wireFriendsEvents() {
   listen("social", ({ payload }) => {
     state.social = payload;
     renderFriends();
+    if (state.page === "chat") renderChatList();
   });
   listen("ajustes", ({ payload }) => {
     state.settings = payload;
     renderSidebar();
     renderSettings();
     renderSteps();
+  });
+}
+
+// ======================================================================
+// Mensajes (chat con amigos y grupos)
+// ======================================================================
+function chatTime(ms) {
+  if (!ms) return "";
+  const date = new Date(ms);
+  const today = new Date();
+  if (date.toDateString() === today.toDateString()) return date.toLocaleTimeString("es-MX", { hour: "numeric", minute: "2-digit" });
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return "Ayer";
+  return date.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+}
+
+function chatAvatar(chat) {
+  if (chat.kind === "grupo") return `<span class="group-avatar">${icon("chat")}</span>`;
+  return `<canvas width="8" height="8" class="head" data-head="${escapeHtml(chat.name)}"></canvas>`;
+}
+
+function updateChatBadge() {
+  const unread = (state.chats ?? []).filter((c) => c.unread).length;
+  $("#chat-badge").textContent = unread > 9 ? "9+" : String(unread);
+  $("#chat-badge").classList.toggle("hidden", unread === 0);
+}
+
+function enterChat() {
+  renderChatList();
+  if (state.social?.connected) invoke("chats").then((list) => {
+    state.chats = list;
+    renderChatList();
+  });
+}
+
+function renderChatList() {
+  updateChatBadge();
+  const connected = !!state.social?.connected;
+  $("#chat-new-group").classList.toggle("hidden", !connected);
+  if (!connected) {
+    $("#chat-list").innerHTML = "";
+    showChatEmpty(
+      state.social?.signedIn
+        ? "Conectando con tus amigos…"
+        : "Inicia sesión con Google para chatear con tus amigos y sus grupos.",
+      !state.social?.signedIn,
+    );
+    return;
+  }
+  const chats = state.chats ?? [];
+  const friends = state.social?.friends?.friends ?? [];
+  // Amigos con los que todavía no hay conversación: para empezar una.
+  const talking = new Set(chats.filter((c) => c.kind === "directo").flatMap((c) => c.members.map((m) => m.uid)));
+  const others = friends.filter((f) => !talking.has(f.uid));
+  $("#chat-list").innerHTML =
+    chats
+      .map(
+        (c) => `<button class="chat-item ${c.id === state.chatOpen ? "active" : ""} ${c.unread ? "unread" : ""}" data-chat="${escapeHtml(c.id)}">
+          ${chatAvatar(c)}
+          <span class="grow">
+            <span class="chat-item-top"><b>${escapeHtml(c.name)}</b><small>${escapeHtml(chatTime(c.lastAt))}</small></span>
+            <span class="chat-item-last">${escapeHtml(c.lastText ? (c.kind === "grupo" && c.lastName ? `${c.lastName}: ${c.lastText}` : c.lastText) : c.kind === "grupo" ? "Grupo nuevo" : "Sin mensajes todavía")}</span>
+          </span>
+          ${c.unread ? `<span class="unread-dot"></span>` : ""}
+        </button>`,
+      )
+      .join("") +
+    (others.length
+      ? `<p class="chat-list-label">Escribir a un amigo</p>` +
+        others
+          .map(
+            (f) => `<button class="chat-item" data-chat-friend="${escapeHtml(f.uid)}">
+              <canvas width="8" height="8" class="head" data-head="${escapeHtml(f.name)}"></canvas>
+              <span class="grow"><span class="chat-item-top"><b>${escapeHtml(f.name)}</b></span><span class="chat-item-last">${escapeHtml(friendStatus(f))}</span></span>
+            </button>`,
+          )
+          .join("")
+      : "") ||
+    `<p class="side-note">Todavía no tienes conversaciones. Agrega amigos en el panel de Inicio para escribirles.</p>`;
+  for (const canvas of $$("#chat-list canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
+  if (!state.chatOpen) showChatEmpty(chats.length ? "Elige una conversación." : "Escríbele a un amigo para empezar.", false);
+  else renderChatHeader();
+}
+
+function showChatEmpty(text, withSignIn) {
+  $("#chat-conversation").classList.add("hidden");
+  $("#chat-empty").classList.remove("hidden");
+  $("#chat-empty").innerHTML = `<span class="chat-empty-icon">${icon("chat")}</span><p>${escapeHtml(text)}</p>${
+    withSignIn ? `<button class="btn primary" id="chat-sign-in">Iniciar sesión con Google</button>` : ""
+  }`;
+  const button = $("#chat-sign-in");
+  if (button) button.onclick = signInGoogle;
+}
+
+function currentChat() {
+  return (state.chats ?? []).find((c) => c.id === state.chatOpen);
+}
+
+function renderChatHeader() {
+  const chat = currentChat();
+  if (!chat) return;
+  $("#chat-avatar").innerHTML = chatAvatar(chat);
+  const canvas = $("#chat-avatar canvas");
+  if (canvas) drawHead(canvas, canvas.dataset.head);
+  $("#chat-title").textContent = chat.name;
+  if (chat.kind === "grupo") {
+    $("#chat-subtitle").textContent = chat.members.map((m) => m.name).join(", ");
+  } else {
+    const friend = (state.social?.friends?.friends ?? []).find((f) => chat.members.some((m) => m.uid === f.uid));
+    $("#chat-subtitle").textContent = friend ? friendStatus(friend) : "";
+  }
+}
+
+async function openChat(id) {
+  if (state.page !== "chat") navigate("chat");
+  state.chatOpen = id;
+  state.chatMessages = null;
+  $("#chat-empty").classList.add("hidden");
+  $("#chat-conversation").classList.remove("hidden");
+  $("#chat-messages").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
+  renderChatList();
+  renderChatHeader();
+  try {
+    await invoke("abrir_chat", { chat: id });
+    invoke("marcar_leido", { chat: id }).catch(() => {});
+  } catch (error) {
+    toast(String(error), "error");
+  }
+  setTimeout(() => $("#chat-input").focus(), 50);
+}
+
+function closeChat() {
+  state.chatOpen = null;
+  state.chatMessages = null;
+  invoke("cerrar_chat").catch(() => {});
+}
+
+function renderMessages() {
+  const box = $("#chat-messages");
+  const messages = state.chatMessages ?? [];
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+  if (!messages.length) {
+    box.innerHTML = `<p class="chat-hint">Todavía no hay mensajes. ¡Saluda!</p>`;
+    return;
+  }
+  const group = currentChat()?.kind === "grupo";
+  let html = "";
+  let previous = null;
+  for (const m of messages) {
+    const day = new Date(m.at).toDateString();
+    if (!previous || new Date(previous.at).toDateString() !== day) {
+      html += `<div class="chat-day">${escapeHtml(new Date(m.at).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" }))}</div>`;
+    }
+    const continued = previous && previous.from === m.from && m.at - previous.at < 5 * 60000 && new Date(previous.at).toDateString() === day;
+    const author = group && !m.mine && !continued ? `<span class="bubble-author">${escapeHtml(m.name)}</span>` : "";
+    const body = m.image
+      ? `<button class="bubble-image" data-image="${escapeHtml(m.id)}" style="aspect-ratio:${m.width || 4}/${m.height || 3}">${
+          state.chatImages?.[m.id] ? `<img src="${state.chatImages[m.id]}" alt="">` : `<span class="spinner tiny"></span>`
+        }</button>`
+      : `<span class="bubble-text">${escapeHtml(m.text ?? "")}</span>`;
+    html += `<div class="bubble-row ${m.mine ? "mine" : ""} ${continued ? "continued" : ""}">
+      <div class="bubble">${author}${body}<span class="bubble-time">${escapeHtml(new Date(m.at).toLocaleTimeString("es-MX", { hour: "numeric", minute: "2-digit" }))}</span></div>
+    </div>`;
+    previous = m;
+  }
+  box.innerHTML = html;
+  if (nearBottom || !state.chatScrolled) box.scrollTop = box.scrollHeight;
+  state.chatScrolled = true;
+  loadChatImages();
+}
+
+async function loadChatImages() {
+  state.chatImages ??= {};
+  for (const button of $$("#chat-messages [data-image]")) {
+    const id = button.dataset.image;
+    if (state.chatImages[id] || state.chatImageLoading?.has(id)) continue;
+    (state.chatImageLoading ??= new Set()).add(id);
+    const chat = state.chatOpen;
+    invoke("imagen_chat", { chat, mensaje: id })
+      .then((data) => {
+        state.chatImages[id] = data;
+        const target = $(`#chat-messages [data-image="${CSS.escape(id)}"]`);
+        if (target) target.innerHTML = `<img src="${data}" alt="">`;
+      })
+      .catch(() => {
+        const target = $(`#chat-messages [data-image="${CSS.escape(id)}"]`);
+        if (target) target.innerHTML = `<span class="muted small-text">No se pudo cargar</span>`;
+      })
+      .finally(() => state.chatImageLoading.delete(id));
+  }
+}
+
+async function sendChatText() {
+  const input = $("#chat-input");
+  const text = input.value.trim();
+  if (!text || !state.chatOpen) return;
+  input.value = "";
+  autoGrow(input);
+  try {
+    await invoke("enviar_mensaje", { chat: state.chatOpen, texto: text });
+  } catch (error) {
+    input.value = text;
+    toast(String(error), "error");
+  }
+}
+
+function autoGrow(textarea) {
+  textarea.style.height = "auto";
+  textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+}
+
+/** Reduce una imagen (máx. 1280 px y ~330 KB en JPEG) para enviarla por el chat. */
+async function reduceImage(source) {
+  const image = new Image();
+  image.src = source;
+  await image.decode();
+  let scale = Math.min(1, 1280 / Math.max(image.naturalWidth, image.naturalHeight));
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff"; // las transparencias quedan en blanco (JPEG no tiene)
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(image, 0, 0, width, height);
+    for (const quality of [0.82, 0.72, 0.6]) {
+      const data = canvas.toDataURL("image/jpeg", quality);
+      if (data.length <= 440000) return { data, width, height };
+    }
+    scale *= 0.75;
+  }
+  throw new Error("No se pudo reducir la imagen lo suficiente.");
+}
+
+async function sendChatImage(source) {
+  if (!state.chatOpen) return toast("Primero abre una conversación.", "error");
+  const chat = state.chatOpen;
+  try {
+    toast("Enviando imagen…");
+    const { data, width, height } = await reduceImage(source);
+    await invoke("enviar_imagen", { chat, datos: data, ancho: width, alto: height });
+  } catch (error) {
+    toast(String(error.message ?? error), "error");
+  }
+}
+
+async function messageFriend(uid) {
+  try {
+    const id = await invoke("chat_con_amigo", { uid });
+    openChat(id);
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+function openGroupDialog(mode) {
+  const chat = currentChat();
+  state.groupDialog = mode;
+  const inGroup = new Set(mode === "add" ? chat?.members.map((m) => m.uid) : []);
+  const friends = (state.social?.friends?.friends ?? []).filter((f) => !inGroup.has(f.uid));
+  $("#group-title").textContent = mode === "add" ? "Agregar amigos al grupo" : mode === "rename" ? "Cambiar nombre del grupo" : "Nuevo grupo";
+  $("#group-ok").textContent = mode === "add" ? "Agregar" : mode === "rename" ? "Guardar" : "Crear grupo";
+  $("#group-name-box").classList.toggle("hidden", mode === "add");
+  $("#group-friends").classList.toggle("hidden", mode === "rename");
+  $("#group-friends-label").classList.toggle("hidden", mode === "rename");
+  $("#group-name").value = mode === "rename" ? chat?.name ?? "" : "";
+  $("#group-error").classList.add("hidden");
+  $("#group-friends").innerHTML = friends.length
+    ? friends
+        .map(
+          (f) => `<label class="group-friend"><input type="checkbox" value="${escapeHtml(f.uid)}"><canvas width="8" height="8" class="head" data-head="${escapeHtml(f.name)}"></canvas><span>${escapeHtml(f.name)}</span></label>`,
+        )
+        .join("")
+    : `<p class="muted small-text">${mode === "add" ? "Todos tus amigos ya están en el grupo." : "Primero agrega amigos."}</p>`;
+  for (const canvas of $$("#group-friends canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
+  openModal("#group-dialog");
+  setTimeout(() => (mode === "add" ? null : $("#group-name").focus()), 60);
+}
+
+async function confirmGroupDialog() {
+  const mode = state.groupDialog;
+  const name = $("#group-name").value.trim();
+  const picked = $$("#group-friends input:checked").map((i) => i.value);
+  const fail = (text) => {
+    $("#group-error").textContent = text;
+    $("#group-error").classList.remove("hidden");
+  };
+  try {
+    if (mode === "create") {
+      if (!name) return fail("Ponle un nombre al grupo.");
+      if (!picked.length) return fail("Elige al menos un amigo.");
+      const id = await invoke("crear_grupo", { nombre: name, amigos: picked });
+      closeModal("#group-dialog");
+      openChat(id);
+    } else if (mode === "add") {
+      if (!picked.length) return fail("Elige al menos un amigo.");
+      await invoke("agregar_al_grupo", { chat: state.chatOpen, amigos: picked });
+      closeModal("#group-dialog");
+    } else {
+      if (!name) return fail("Ponle un nombre al grupo.");
+      await invoke("renombrar_grupo", { chat: state.chatOpen, nombre: name });
+      closeModal("#group-dialog");
+    }
+  } catch (error) {
+    fail(String(error));
+  }
+}
+
+function chatMenu(anchor) {
+  const chat = currentChat();
+  if (!chat) return;
+  const items =
+    chat.kind === "grupo"
+      ? [
+          { icon: "user-plus", label: "Agregar amigos", action: () => openGroupDialog("add") },
+          { icon: "brush", label: "Cambiar nombre del grupo", action: () => openGroupDialog("rename") },
+          { icon: "close", label: "Salir del grupo", danger: true, separator: true, action: () => leaveChat(chat, "Salir del grupo", "Dejarás de ver sus mensajes. Alguien del grupo puede volver a agregarte.") },
+        ]
+      : [{ icon: "close", label: "Ocultar conversación", action: () => leaveChat(chat, "Ocultar conversación", "Desaparece de tu lista; vuelve si te escribe de nuevo.") }];
+  contextMenu(anchor, items);
+}
+
+async function leaveChat(chat, title, text) {
+  const ok = await confirmAction({ title, text, ok: title.split(" ")[0] });
+  if (!ok) return;
+  try {
+    await invoke("salir_del_chat", { chat: chat.id });
+    closeChat();
+    renderChatList();
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+function wireChatEvents() {
+  $("#chat-list").onclick = (event) => {
+    const chat = event.target.closest("[data-chat]");
+    if (chat) return openChat(chat.dataset.chat);
+    const friend = event.target.closest("[data-chat-friend]");
+    if (friend) messageFriend(friend.dataset.chatFriend);
+  };
+  $("#chat-send").onclick = sendChatText;
+  $("#chat-input").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      sendChatText();
+    }
+  });
+  $("#chat-input").addEventListener("input", (event) => autoGrow(event.target));
+  // Pegar una imagen (por ejemplo una captura) la envía.
+  $("#chat-input").addEventListener("paste", (event) => {
+    const file = [...(event.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"))?.getAsFile();
+    if (!file) return;
+    event.preventDefault();
+    sendChatImage(URL.createObjectURL(file));
+  });
+  $("#chat-attach").onclick = () => $("#chat-file").click();
+  $("#chat-file").onchange = () => {
+    const file = $("#chat-file").files[0];
+    $("#chat-file").value = "";
+    if (file) sendChatImage(URL.createObjectURL(file));
+  };
+  $("#chat-messages").onclick = (event) => {
+    const image = event.target.closest("[data-image] img");
+    if (!image) return;
+    $("#lightbox-image").src = image.src;
+    $("#lightbox-caption").textContent = "";
+    $("#lightbox").classList.remove("hidden");
+  };
+  $("#chat-more").onclick = (event) => chatMenu(event.currentTarget);
+  $("#chat-new-group").onclick = () => openGroupDialog("create");
+  $("#group-ok").onclick = confirmGroupDialog;
+  $("#group-cancel").onclick = () => closeModal("#group-dialog");
+  $("#group-name").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") confirmGroupDialog();
+  });
+  listen("chats", ({ payload }) => {
+    state.chats = payload;
+    if (state.chatOpen && !payload.some((c) => c.id === state.chatOpen)) closeChat();
+    if (state.page === "chat") renderChatList();
+    else updateChatBadge();
+  });
+  listen("chat-mensajes", ({ payload }) => {
+    if (payload.chat !== state.chatOpen) return;
+    state.chatMessages = payload.messages;
+    renderMessages();
+    // Leído si la conversación está a la vista.
+    if (state.page === "chat" && document.hasFocus()) invoke("marcar_leido", { chat: payload.chat }).catch(() => {});
+  });
+  listen("abrir-chat", ({ payload }) => openChat(payload));
+  if (!tauri) {
+    window.addEventListener("demo-mensajes", ({ detail }) => {
+      if (detail.chat !== state.chatOpen) return;
+      state.chatMessages = detail.messages;
+      renderMessages();
+    });
+  }
+  window.addEventListener("focus", () => {
+    if (state.page === "chat" && state.chatOpen && currentChat()?.unread) invoke("marcar_leido", { chat: state.chatOpen }).catch(() => {});
   });
 }
 
@@ -1952,11 +2358,18 @@ function wireEvents() {
   wireModpackEvents();
   wireDriveEvents();
   wireFriendsEvents();
+  wireChatEvents();
   listen("juego-cerrado", ({ payload }) => onGameClosed(payload));
   // Arrastrar archivos a la ventana: se agregan a la instancia abierta.
   // Fuera de una instancia (o con un .mrpack) lo que se suelta se instala como modpack.
   const dropsModpack = (paths) => !(state.page === "instance" && state.current) || (paths ?? []).some((p) => /\.mrpack$/i.test(p));
   tauri?.webview?.getCurrentWebview().onDragDropEvent(({ payload }) => {
+    if (state.page === "chat") {
+      if (payload.type === "drop" && payload.paths?.length && state.chatOpen) {
+        invoke("leer_imagen", { ruta: payload.paths[0] }).then(sendChatImage, (error) => toast(String(error), "error"));
+      }
+      return;
+    }
     if (payload.type === "enter") {
       const modpack = dropsModpack(payload.paths);
       $("#drop-title").textContent = modpack ? "Suelta para instalar el modpack" : `Suelta para agregar a ${state.current.name}`;
@@ -2029,6 +2442,8 @@ async function init() {
   renderServers();
   state.social = await invoke("estado_social").catch(() => null);
   renderFriends();
+  state.chats = await invoke("chats").catch(() => []);
+  updateChatBadge();
   navigate("home", null, false);
   pollRunning();
   setInterval(pollRunning, 3000);
@@ -3323,6 +3738,33 @@ function demoInvoke(command, args = {}) {
     });
   }
   if (command === "cerrar_sesion_google") return soon({ available: true, signedIn: false, connected: false });
+  if (command === "chats") {
+    const now = Date.now();
+    return soon([
+      { id: "d_a_f1", kind: "directo", name: "Hawntd", members: [{ uid: "me", name: "GxxseS" }, { uid: "f1", name: "Hawntd" }], lastText: "¿Abres tu mundo? Ya tengo el modpack", lastName: "Hawntd", lastAt: now - 120e3, unread: true },
+      { id: "g_demo", kind: "grupo", name: "Los del salón", members: [{ uid: "me", name: "GxxseS" }, { uid: "f2", name: "Alex_mx" }, { uid: "f3", name: "Dani" }], lastText: "📷 Imagen", lastName: "Dani", lastAt: now - 3600e3, unread: false },
+    ]);
+  }
+  if (command === "abrir_chat") {
+    const now = Date.now();
+    const messages = args.chat === "g_demo"
+      ? [
+          { id: "1", from: "f2", name: "Alex_mx", text: "¿Quién juega hoy en la tarde?", at: now - 7200e3, mine: false, image: false },
+          { id: "2", from: "me", name: "GxxseS", text: "Yo, a las 5 abro mi mundo de Better MC", at: now - 7000e3, mine: true, image: false },
+          { id: "3", from: "f3", name: "Dani", text: null, image: true, width: 640, height: 360, at: now - 3600e3, mine: false },
+        ]
+      : [
+          { id: "1", from: "f1", name: "Hawntd", text: "Oye, ¿ya instalaste Minecraft++?", at: now - 600e3, mine: false, image: false },
+          { id: "2", from: "me", name: "GxxseS", text: "Sí, ya lo tengo", at: now - 500e3, mine: true, image: false },
+          { id: "3", from: "f1", name: "Hawntd", text: "¿Abres tu mundo? Ya tengo el modpack", at: now - 120e3, mine: false, image: false },
+        ];
+    setTimeout(() => window.dispatchEvent(new CustomEvent("demo-mensajes", { detail: { chat: args.chat, messages } })), 300);
+    return soon(null);
+  }
+  if (command === "imagen_chat") return soon(`data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#6d4bd8"/><text x="320" y="190" font-size="40" text-anchor="middle" fill="white">Captura</text></svg>')}`);
+  if (["cerrar_chat", "marcar_leido", "enviar_mensaje", "enviar_imagen", "salir_del_chat", "agregar_al_grupo", "renombrar_grupo"].includes(command)) return soon(null);
+  if (command === "chat_con_amigo") return soon("d_a_f1");
+  if (command === "crear_grupo") return soon("g_demo");
   if (command === "agregar_amigo") return soon(`Solicitud enviada a ${args.nombre}. Aparecerá en tu lista cuando la acepte.`);
   if (["aceptar_solicitud", "rechazar_solicitud", "eliminar_amigo"].includes(command)) return soon(null);
   if (command === "instancias_externas")
