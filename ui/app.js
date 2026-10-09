@@ -1188,7 +1188,9 @@ function friendMenu(anchor, friend) {
 function wireFriendsEvents() {
   $("#friends-sign-in").onclick = signInGoogle;
   $("#add-friend-button").onclick = addFriend;
-  $("#add-friend").onkeydown = (event) => event.key === "Enter" && addFriend();
+  $("#add-friend").onkeydown = (event) => {
+    if (event.key === "Enter") addFriend();
+  };
   $("#friend-requests").onclick = async (event) => {
     const accept = event.target.closest("[data-accept]");
     const decline = event.target.closest("[data-decline]");
@@ -1749,7 +1751,9 @@ function wireEvents() {
   // Ajustes de la instancia
   $("#edit-close").onclick = () => closeModal("#edit-dialog");
   $("#edit-cancel").onclick = () => closeModal("#edit-dialog");
-  $("#edit-dialog").onmousedown = (event) => event.target.id === "edit-dialog" && closeModal("#edit-dialog");
+  $("#edit-dialog").onmousedown = (event) => {
+    if (event.target.id === "edit-dialog") closeModal("#edit-dialog");
+  };
   $("#edit-name").oninput = updateEditTexts;
   $("#edit-ram-own").onchange = updateEditTexts;
   $("#edit-ram").oninput = updateEditTexts;
@@ -1772,10 +1776,14 @@ function wireEvents() {
     updateEditTexts();
   };
   $("#edit-save").onclick = saveEdit;
-  $("#edit-name").onkeydown = (event) => event.key === "Enter" && saveEdit();
+  $("#edit-name").onkeydown = (event) => {
+    if (event.key === "Enter") saveEdit();
+  };
 
   // Confirmación y error del juego
-  $("#confirm-dialog").onmousedown = (event) => event.target.id === "confirm-dialog" && state.confirmCancel?.();
+  $("#confirm-dialog").onmousedown = (event) => {
+    if (event.target.id === "confirm-dialog") state.confirmCancel?.();
+  };
   for (const id of ["#crash-close", "#crash-dismiss"]) $(id).onclick = () => closeModal("#crash-dialog");
   $("#crash-logs").onclick = () => {
     closeModal("#crash-dialog");
@@ -1787,7 +1795,9 @@ function wireEvents() {
     if (!address) return toast("Escribe la dirección del servidor.", "error");
     play(state.current.id, address);
   };
-  $("#detail-server").onkeydown = (event) => event.key === "Enter" && $("#detail-join").click();
+  $("#detail-server").onkeydown = (event) => {
+    if (event.key === "Enter") $("#detail-join").click();
+  };
 
   // Servidores
   $("#server-add").onclick = () => {
@@ -1812,7 +1822,9 @@ function wireEvents() {
   // Crear instancia
   $("#create-close").onclick = () => closeModal("#create-dialog");
   $("#create-back").onclick = () => !state.creating && !state.importing && openCreate();
-  $("#create-dialog").onmousedown = (event) => event.target.id === "create-dialog" && closeModal("#create-dialog");
+  $("#create-dialog").onmousedown = (event) => {
+    if (event.target.id === "create-dialog") closeModal("#create-dialog");
+  };
   $("[data-type='custom']").onclick = showCustomStep;
   $("[data-type='import']").onclick = () => importModpack();
   $("[data-type='external']").onclick = showExternalStep;
@@ -1854,7 +1866,9 @@ function wireEvents() {
 
   // Ajustes
   $("#settings-close").onclick = () => closeModal("#settings-dialog");
-  $("#settings-dialog").onmousedown = (event) => event.target.id === "settings-dialog" && closeModal("#settings-dialog");
+  $("#settings-dialog").onmousedown = (event) => {
+    if (event.target.id === "settings-dialog") closeModal("#settings-dialog");
+  };
   for (const button of $$(".settings-nav button")) button.onclick = () => selectSettingsSection(button.dataset.section);
   $("#username").oninput = () => {
     updateSettingsTexts();
@@ -1894,7 +1908,11 @@ function wireEvents() {
   };
   $("#account-ok").onclick = addAccount;
   $("#account-cancel").onclick = () => closeModal("#account-dialog");
-  for (const input of [$("#account-name"), $("#account-uuid")]) input.onkeydown = (event) => event.key === "Enter" && addAccount();
+  for (const input of [$("#account-name"), $("#account-uuid")]) {
+    input.onkeydown = (event) => {
+      if (event.key === "Enter") addAccount();
+    };
+  }
   $("#uuid-copy").onclick = async () => {
     await navigator.clipboard.writeText($("#uuid-text").textContent);
     toast("UUID copiado.");
@@ -2671,7 +2689,9 @@ function wireExploreEvents() {
 
   // Ventana de instalar
   for (const id of ["#install-close", "#install-secondary"]) $(id).onclick = () => closeModal("#install-dialog");
-  $("#install-dialog").onmousedown = (event) => event.target.id === "install-dialog" && closeModal("#install-dialog");
+  $("#install-dialog").onmousedown = (event) => {
+    if (event.target.id === "install-dialog") closeModal("#install-dialog");
+  };
 
   // Contenido: agregar, actualizar y abrir el proyecto de un mod
   $("#content-add").onclick = (event) => {
@@ -3003,7 +3023,9 @@ function wireModpackEvents() {
   $("#export-list").onchange = updateExportSize;
   $("#export-ok").onclick = runExport;
   for (const id of ["#export-close", "#export-cancel"]) $(id).onclick = () => !state.exporting?.busy && closeModal("#export-dialog");
-  $("#export-dialog").onmousedown = (event) => event.target.id === "export-dialog" && !state.exporting?.busy && closeModal("#export-dialog");
+  $("#export-dialog").onmousedown = (event) => {
+    if (event.target.id === "export-dialog" && !state.exporting?.busy) closeModal("#export-dialog");
+  };
 }
 
 // ======================================================================
