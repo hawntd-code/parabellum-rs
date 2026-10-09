@@ -503,6 +503,7 @@
                 <label class="label" for="username">Nombre de jugador</label>
                 <input id="username" maxlength="16" autocomplete="off" spellcheck="false">
                 <p class="field-error hidden" id="username-error"></p>
+                <p class="saved-hint hidden" id="username-saved">Guardado</p>
                 <p class="muted small-text" style="margin-top:8px">Con tu nombre se genera tu identidad (UUID), igual que en los servidores no premium. Si juegas con amigos, usen nombres distintos.</p>
               </div>
             </div>
@@ -687,13 +688,16 @@
   <div class="overlay hidden" id="account-dialog">
     <div class="modal small">
       <div class="modal-head">
-        <h2>Añadir cuenta</h2>
+        <h2 id="account-title">Añadir cuenta</h2>
       </div>
       <div class="modal-body">
         <label class="label" for="account-name">Nombre de jugador</label>
         <input id="account-name" maxlength="16" autocomplete="off" spellcheck="false">
-        <label class="label" for="account-uuid">UUID fijo (opcional)</label>
-        <input id="account-uuid" maxlength="36" autocomplete="off" spellcheck="false" placeholder="Vacío: el que sale de su nombre">
+        <p class="muted small-text hidden" id="account-rename-hint">Es el nombre que verán en el juego y tus amigos. Tus mundos e instancias no cambian.</p>
+        <div id="account-uuid-box">
+          <label class="label" for="account-uuid">UUID fijo (opcional)</label>
+          <input id="account-uuid" maxlength="36" autocomplete="off" spellcheck="false" placeholder="Vacío: el que sale de su nombre">
+        </div>
         <p class="field-error hidden" id="account-error"></p>
         <div class="modal-actions">
           <button class="btn" id="account-cancel">Cancelar</button>

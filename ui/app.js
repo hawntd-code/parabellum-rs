@@ -817,7 +817,8 @@ function openAccountMenu(anchor) {
   contextMenu(anchor, [
     { head: s.username, label: s.username, sub: s.uuid ? "En uso · UUID fijo" : "En uso", checked: true, action: () => {} },
     ...s.accounts.map((a, i) => ({ head: a.username, label: a.username, sub: a.uuid ? "UUID fijo" : "", action: () => switchAccount(i) })),
-    { icon: "user-plus", label: "Añadir cuenta", separator: true, action: openAccountDialog },
+    { icon: "brush", label: "Cambiar nombre", separator: true, action: () => openAccountDialog("rename") },
+    { icon: "user-plus", label: "Añadir cuenta", action: () => openAccountDialog("add") },
     { icon: "settings", label: "Administrar cuentas", action: () => openSettings("profile") },
   ], { matchWidth: true });
 }
@@ -859,13 +860,26 @@ async function removeAccount(index) {
   }
 }
 
-function openAccountDialog() {
-  $("#account-name").value = "";
+/** "add": otra cuenta (y pasar a usarla); "rename": cambiar el nombre de la cuenta en uso. */
+function openAccountDialog(mode = "add") {
+  state.accountDialog = mode;
+  const rename = mode === "rename";
+  $("#account-title").textContent = rename ? "Cambiar nombre de jugador" : "Añadir cuenta";
+  $("#account-ok").textContent = rename ? "Guardar" : "Añadir y usar";
+  $("#account-uuid-box").classList.toggle("hidden", rename);
+  $("#account-rename-hint").classList.toggle("hidden", !rename);
+  $("#account-name").value = rename ? state.settings.username : "";
   $("#account-uuid").value = "";
   $("#account-error").classList.add("hidden");
   openModal("#account-dialog");
-  setTimeout(() => $("#account-name").focus(), 60);
+  setTimeout(() => {
+    $("#account-name").focus();
+    $("#account-name").select();
+  }, 60);
 }
+
+/** Otra cuenta guardada con ese nombre (sin contar la que está en uso). */
+const otherAccountNamed = (name) => (state.settings.accounts ?? []).some((a) => a.username.toLowerCase() === name.toLowerCase());
 
 const validUuid = (text) => /^[0-9a-f]{32}$/i.test(text.replaceAll("-", ""));
 
@@ -878,6 +892,18 @@ async function addAccount() {
     $("#account-error").classList.remove("hidden");
   };
   if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) return fail("El nombre debe tener de 1 a 16 letras, números o guiones bajos (sin espacios ni acentos).");
+  if (state.accountDialog === "rename") {
+    if (name === s.username) return closeModal("#account-dialog");
+    if (otherAccountNamed(name)) return fail("Ya tienes otra cuenta con ese nombre: cámbiate a ella desde «Jugando como».");
+    try {
+      await saveAccounts({ username: name });
+      closeModal("#account-dialog");
+      toast(`Ahora te llamas ${name}.`);
+    } catch (error) {
+      fail(String(error));
+    }
+    return;
+  }
   if (uuid && !validUuid(uuid)) return fail("El UUID tiene 32 letras y números (0–9, a–f), con o sin guiones. Déjalo vacío si no lo necesitas.");
   if ([s.username, ...s.accounts.map((a) => a.username)].some((n) => n.toLowerCase() === name.toLowerCase())) return fail("Ya tienes una cuenta con ese nombre.");
   try {
@@ -909,12 +935,12 @@ function renderAccounts() {
 function renderSteps() {
   const steps = [
     { done: state.instances.length > 0, label: "Crea tu primera instancia", action: openCreate },
-    { done: state.settings.username !== "Jugador", label: "Elige tu nombre de jugador", action: () => openSettings("profile") },
+    { done: state.settings.username !== "Jugador", label: "Elige tu nombre de jugador", action: () => openAccountDialog("rename"), always: true },
     { done: !!state.social?.signedIn, label: "Inicia sesión con Google", action: signInGoogle, disabled: state.social?.available === false },
   ];
   $("#steps-list").innerHTML = `<div>${steps
     .map(
-      (s, i) => `<button class="step ${s.done ? "done" : ""}" data-step="${i}" ${s.done || s.disabled ? "disabled" : ""}>
+      (s, i) => `<button class="step ${s.done ? "done" : ""}" data-step="${i}" ${(s.done && !s.always) || s.disabled ? "disabled" : ""}>
         ${icon(s.done ? "check-circle" : "circle")}<span class="grow">${s.label}</span>${s.soon ? `<span class="soon">Pronto</span>` : ""}</button>`,
     )
     .join("")}</div>`;
@@ -986,7 +1012,7 @@ function renderFriends() {
   let notice = null;
   let kind = "";
   if (s.nameConflict) {
-    notice = `El nombre "${s.nameConflict}" ya lo usa otro jugador de Parabellum. Cámbialo en Ajustes › Perfil: tus amigos no podrían encontrarte.`;
+    notice = `El nombre "${s.nameConflict}" ya lo usa otro jugador de Parabellum. Cámbialo con «Jugando como» › Cambiar nombre: tus amigos no podrían encontrarte.`;
     kind = "danger";
   } else if (s.warning) {
     notice = s.warning;
@@ -1528,6 +1554,12 @@ function queueSave() {
 async function saveSettings(extra = {}) {
   const name = $("#username").value.trim();
   if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) return;
+  if (name !== state.settings.username && otherAccountNamed(name)) {
+    $("#username-error").textContent = "Ya tienes otra cuenta con ese nombre: cámbiate a ella desde «Jugando como».";
+    $("#username-error").classList.remove("hidden");
+    return;
+  }
+  const renamed = name !== state.settings.username;
   // Con "UUID fijo" a medio escribir se conserva el que había.
   const typed = $("#uuid-input").value.trim();
   const uuid = !$("#uuid-fixed").checked ? "" : validUuid(typed) ? typed : state.settings.uuid;
@@ -1547,6 +1579,12 @@ async function saveSettings(extra = {}) {
     });
     renderSidebar();
     renderSteps();
+    if (renamed) {
+      // Se guarda solo al escribir: se avisa para que se note.
+      $("#username-saved").classList.remove("hidden");
+      clearTimeout(state.savedHintTimer);
+      state.savedHintTimer = setTimeout(() => $("#username-saved").classList.add("hidden"), 2200);
+    }
   } catch (error) {
     toast(String(error), "error");
   }
@@ -1847,7 +1885,7 @@ function wireEvents() {
     updateSettingsTexts();
     queueSave();
   };
-  $("#account-add").onclick = openAccountDialog;
+  $("#account-add").onclick = () => openAccountDialog("add");
   $("#account-list").onclick = (event) => {
     const use = event.target.closest("[data-use-account]");
     if (use) return switchAccount(Number(use.dataset.useAccount));

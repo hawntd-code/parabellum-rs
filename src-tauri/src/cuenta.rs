@@ -300,6 +300,15 @@ async fn apply_profile(app: &AppHandle, account: &GoogleAccount, announce: bool)
     update_status(app, |s| s.notice = notice);
 }
 
+/// Al abrir Parabellum con la sesión ya guardada manda lo de este PC: el nombre que el jugador
+/// eligió aquí no lo cambia el perfil de la cuenta (que podía venir de una versión anterior).
+async fn upload_profile(app: &AppHandle, account: &GoogleAccount) {
+    let profile = current_profile(&app.state::<AppState>().settings.lock().unwrap());
+    if let Err(error) = account.save_profile(&profile).await {
+        update_status(app, |s| s.notice = Some(format!("No se pudo guardar tu perfil en la cuenta: {error}")));
+    }
+}
+
 /// Tras cambiar el nombre o la cuenta en uso: se reserva el nombre y se guarda el perfil en la
 /// cuenta (2 s después del último cambio, para no hacerlo en cada tecla).
 pub fn settings_changed(app: &AppHandle) {
@@ -378,7 +387,7 @@ pub fn startup(app: &AppHandle) {
                     Ok(account) => {
                         let account = Arc::new(account);
                         *app.state::<AppState>().social.google.lock().unwrap() = Some(account.clone());
-                        apply_profile(&app, &account, false).await;
+                        upload_profile(&app, &account).await;
                         connect(&app).await;
                     }
                     Err(error) => update_status(&app, |s| {
