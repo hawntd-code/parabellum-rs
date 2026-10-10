@@ -148,70 +148,71 @@ async function disableTunnelMod(index) {
   loadTunnelMods();
 }
 
-// ---------- Tarjeta de playit.gg ----------
+// ---------- Tarjeta de playit.gg (compacta) ----------
+function tunnelRow({ iconHtml, kind = "", title, address = null, detail = "", error = false, actions = "" }) {
+  const pill = address
+    ? `<span class="host-address-line"><span class="address-text">${escapeHtml(address)}</span><button class="circle-btn small" data-copy-address="${escapeHtml(address)}" title="${t("Copiar dirección", "Copy address")}">${icon("copy")}</button></span>`
+    : "";
+  return `<div class="tunnel-row">
+      <div class="tunnel-icon ${kind}">${iconHtml}</div>
+      <div class="grow">
+        <div class="tunnel-title"><h3>${escapeHtml(title)}</h3>${pill}</div>
+        ${detail ? `<p class="${error ? "tunnel-error" : "muted"}">${escapeHtml(detail)}</p>` : ""}
+      </div>
+      ${actions}
+    </div>`;
+}
+
 function renderTunnel() {
   const p = host.view.playit;
   const box = $("#host-tunnel");
-  const address = p.address
-    ? `<div class="host-address-line"><span class="address-text">${escapeHtml(p.address)}</span><button class="circle-btn small" data-copy-address="${escapeHtml(p.address)}" title="${t("Copiar dirección", "Copy address")}">${icon("copy")}</button></div>`
-    : "";
+  const spinner = `<div class="spinner small"></div>`;
   const account =
     p.account === "guest"
-      ? `<p class="muted small-text">${t("Cuenta de invitado de playit.gg: entra a playit.gg y crea tu cuenta gratis para no perder tu dirección.", "playit.gg guest account: go to playit.gg and create your free account so you do not lose your address.")}</p>`
+      ? t(" Cuenta de invitado: crea tu cuenta gratis en playit.gg para no perder la dirección.", " Guest account: create your free account on playit.gg so you do not lose the address.")
       : p.account === "email-not-verified"
-        ? `<p class="muted small-text">${t("playit.gg pide verificar tu correo.", "playit.gg asks you to verify your email.")}</p>`
+        ? t(" playit.gg pide verificar tu correo.", " playit.gg asks you to verify your email.")
         : "";
   if (p.claimUrl) {
-    box.innerHTML = `<div class="tunnel-row">
-        <div class="tunnel-icon busy"><div class="spinner small"></div></div>
-        <div class="grow"><h3>${t("Acepta en tu navegador", "Accept in your browser")}</h3>
-          <p class="muted">${t("Se abrió playit.gg. Inicia sesión o crea una cuenta gratis (también puedes entrar como invitado) y pulsa «Add agent» / «Agregar». Luego vuelve aquí.", "playit.gg opened. Sign in or create a free account (you can also continue as a guest) and press «Add agent». Then come back here.")}</p></div>
-        <button class="btn" id="tunnel-reopen">${icon("external")}${t("Abrir de nuevo", "Open again")}</button>
-        <button class="btn" id="tunnel-cancel">${t("Cancelar", "Cancel")}</button>
-      </div>`;
+    box.innerHTML = tunnelRow({
+      iconHtml: spinner,
+      kind: "busy",
+      title: t("Acepta en tu navegador", "Accept in your browser"),
+      detail: t("Inicia sesión en playit.gg (o entra como invitado), pulsa «Add agent» y vuelve aquí.", "Sign in to playit.gg (or continue as a guest), press «Add agent» and come back here."),
+      actions: `<button class="btn small" id="tunnel-reopen">${icon("external")}${t("Abrir de nuevo", "Open again")}</button><button class="btn small" id="tunnel-cancel">${t("Cancelar", "Cancel")}</button>`,
+    });
     return;
   }
   if (!p.connected) {
-    box.innerHTML = `<div class="tunnel-row">
-        <div class="tunnel-icon">${icon("globe")}</div>
-        <div class="grow"><h3>${t("Dirección pública: sin conectar", "Public address: not connected")}</h3>
-          <p class="muted">${
-            host.connecting
-              ? escapeHtml(p.message ?? t("Preparando playit.gg…", "Preparing playit.gg…"))
-              : t("Conecta una cuenta gratis de playit.gg (solo una vez) para que tus amigos entren desde cualquier red. Sin conectarla, solo entran los que están en tu misma red (LAN).", "Connect a free playit.gg account (only once) so your friends can join from any network. Without it, only people on your same network (LAN) can join.")
-          }</p>
-          ${p.state === "error" && p.message ? `<p class="tunnel-error">${escapeHtml(p.message)}</p>` : ""}</div>
-        <button class="btn primary" id="tunnel-connect" ${host.connecting ? "disabled" : ""}>${icon("globe")}${t("Conectar playit.gg", "Connect playit.gg")}</button>
-      </div>`;
+    const failed = p.state === "error" && p.message;
+    box.innerHTML = tunnelRow({
+      iconHtml: icon("globe"),
+      title: t("playit.gg sin conectar", "playit.gg not connected"),
+      detail: failed ? p.message : host.connecting ? (p.message ?? t("Preparando playit.gg…", "Preparing playit.gg…")) : t("Conéctalo una vez para que tus amigos entren desde cualquier red.", "Connect it once so your friends can join from any network."),
+      error: !!failed,
+      actions: `<button class="btn primary small" id="tunnel-connect" ${host.connecting ? "disabled" : ""}>${icon("globe")}${t("Conectar playit.gg", "Connect playit.gg")}</button>`,
+    });
     return;
   }
-  const target = p.target === "world" ? t("tu mundo abierto", "your open world") : hostServer(p.target)?.name ?? "";
-  const title =
-    p.state === "on"
-      ? t(`Activa: lleva a ${target}`, `Active: leads to ${target}`)
-      : p.state === "starting"
-        ? t("Abriendo tu dirección pública…", "Opening your public address…")
-        : p.state === "error"
-          ? t("La dirección pública no se pudo abrir", "The public address could not be opened")
-          : t("playit.gg conectado", "playit.gg connected");
-  const detail =
-    p.state === "error"
-      ? `<p class="tunnel-error">${escapeHtml(p.message ?? "")}</p>`
-      : p.state === "starting"
-        ? `<p class="muted">${escapeHtml(p.message ?? "")}</p>`
-        : p.state === "on"
-          ? `<p class="muted">${t("Tus amigos entran con esta dirección (no cambia). Los invitados de Parabellum la ven solos.", "Your friends join with this address (it does not change). Parabellum guests see it on their own.")}</p>`
-          : `<p class="muted">${
-              p.address
-                ? t("Esta es tu dirección fija: se activa cuando enciendes un servidor o abres tu mundo en LAN.", "This is your fixed address: it turns on when you start a server or open your world to LAN.")
-                : t("Tendrás una dirección fija en cuanto enciendas un servidor o abras tu mundo en LAN.", "You will get a fixed address as soon as you start a server or open your world to LAN.")
-            }</p>`;
-  box.innerHTML = `<div class="tunnel-row">
-      <div class="tunnel-icon ${p.state}">${p.state === "starting" ? `<div class="spinner small"></div>` : icon(p.state === "error" ? "alert" : "globe")}</div>
-      <div class="grow"><h3>${escapeHtml(title)}</h3>${address}${detail}${account}</div>
-      ${p.state === "error" ? `<button class="btn" id="tunnel-retry">${icon("refresh")}${t("Reintentar", "Retry")}</button>` : ""}
-      <button class="circle-btn" id="tunnel-menu" title="${t("Más", "More")}">${icon("more")}</button>
-    </div>`;
+  const target = p.target === "world" ? t("tu mundo", "your world") : hostServer(p.target)?.name ?? "";
+  const menu = `<button class="circle-btn" id="tunnel-menu" title="${t("Más", "More")}">${icon("more")}</button>`;
+  const states = {
+    on: { kind: "on", iconHtml: icon("globe"), title: t(`playit.gg activo · ${target}`, `playit.gg active · ${target}`), detail: account.trim() },
+    starting: { kind: "starting", iconHtml: spinner, title: t("Abriendo tu dirección…", "Opening your address…"), detail: p.message ?? "" },
+    error: { kind: "error", iconHtml: icon("alert"), title: t("La dirección no se pudo abrir", "The address could not be opened"), detail: p.message ?? "", error: true },
+    off: {
+      kind: "",
+      iconHtml: icon("globe"),
+      title: t("playit.gg conectado", "playit.gg connected"),
+      detail: (p.address ? t("Se activa al encender un servidor o abrir tu mundo.", "It turns on when you start a server or open your world.") : t("Tendrás una dirección fija al encender un servidor o abrir tu mundo.", "You will get a fixed address when you start a server or open your world.")) + account,
+    },
+  };
+  const current = states[p.state] ?? states.off;
+  box.innerHTML = tunnelRow({
+    ...current,
+    address: p.address,
+    actions: (p.state === "error" ? `<button class="btn small" id="tunnel-retry">${icon("refresh")}${t("Reintentar", "Retry")}</button>` : "") + menu,
+  });
 }
 
 async function connectPlayit() {

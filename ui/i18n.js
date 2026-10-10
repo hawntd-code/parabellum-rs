@@ -137,6 +137,8 @@ const HTML_EN = {
   "Octubre 2026": "October 2026",
   "Hostea partidas con tus amigos": "Host games with your friends",
   "Leer el EULA": "Read the EULA",
+  "Pausa › Abrir en LAN": "Pause › Open to LAN",
+  "Ocultar el panel (Ctrl+B)": "Hide the panel (Ctrl+B)",
   "Crea un servidor con tu modpack o abre tu mundo a tus amigos, con una dirección fija y sin abrir puertos. Lo encuentras en «Hostear partida».": "Create a server with your modpack or open your world to your friends, with a fixed address and without opening ports. You will find it in «Host a game».",
   "Suelta para agregar": "Drop to add",
   "Mods, resource packs, shaders y mundos: cada uno va a su lugar.": "Mods, resource packs, shaders and worlds: each one goes to its place.",

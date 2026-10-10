@@ -278,13 +278,44 @@ function navigate(page, param = null, record = true) {
   }
   const railPage = page === "project" ? "explore" : page === "hosted" ? "host" : page;
   for (const button of $$(".rail-btn[data-page]")) button.classList.toggle("active", button.dataset.page === railPage);
-  $(".workspace").classList.toggle("no-sidebar", !pages[page].sidebar);
+  updateSidebar();
   $("#crumb-icon").innerHTML = `<use href="#i-${pages[page].icon}"/>`;
   $("#crumb-text").textContent =
     page === "instance" ? state.current.name : page === "project" ? (state.projectData?.title ?? pages.project.title) : page === "hosted" ? hostedTitle(param) : pages[page].title;
   $("#nav-back").disabled = state.back.length === 0;
   $("#nav-forward").disabled = state.forward.length === 0;
   renderRail();
+}
+
+/** El panel de la derecha: lo usan algunas páginas y el jugador lo puede ocultar (se recuerda). */
+function updateSidebar() {
+  const allowed = !!pages[state.page]?.sidebar;
+  const hidden = !!state.settings?.sidebarHidden;
+  $(".workspace").classList.toggle("no-sidebar", !allowed || hidden);
+  const button = $("#sidebar-toggle");
+  button.classList.toggle("hidden", !allowed);
+  button.classList.toggle("active", allowed && !hidden);
+  const label = hidden ? t("Mostrar el panel (Ctrl+B)", "Show the panel (Ctrl+B)") : t("Ocultar el panel (Ctrl+B)", "Hide the panel (Ctrl+B)");
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.setAttribute("aria-pressed", String(!hidden));
+}
+
+async function toggleSidebar() {
+  if (!pages[state.page]?.sidebar) return;
+  state.settings.sidebarHidden = !state.settings.sidebarHidden;
+  updateSidebar();
+  if (!state.settings.sidebarHidden) {
+    const sidebar = $("#sidebar");
+    sidebar.classList.remove("enter");
+    void sidebar.offsetWidth;
+    sidebar.classList.add("enter");
+  }
+  try {
+    await invoke("panel_lateral", { oculto: state.settings.sidebarHidden });
+  } catch (error) {
+    toast(String(error), "error");
+  }
 }
 
 function goBack() {
@@ -2477,6 +2508,7 @@ function wireEvents() {
     }
     appWindow?.close();
   };
+  $("#sidebar-toggle").onclick = () => toggleSidebar();
   $("#nav-back").onclick = goBack;
   $("#nav-forward").onclick = goForward;
 
@@ -2797,6 +2829,11 @@ function wireEvents() {
   for (const button of $$("#ui-scale button")) button.onclick = () => setScale(Number(button.dataset.scale));
   for (const button of $$("#language button")) button.onclick = () => setLanguage(button.dataset.language);
   document.addEventListener("keydown", (event) => {
+    if (event.ctrlKey && !event.altKey && !event.shiftKey && (event.key === "b" || event.key === "B") && !isTyping()) {
+      event.preventDefault();
+      toggleSidebar();
+      return;
+    }
     if (event.ctrlKey && !event.altKey && ["+", "=", "-", "0"].includes(event.key)) {
       event.preventDefault();
       stepScale(event.key === "0" ? 0 : event.key === "-" ? -1 : 1);

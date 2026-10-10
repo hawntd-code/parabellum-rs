@@ -56,7 +56,8 @@ se crean desde Ajustes › Comportamiento.
   Minecraft en el mismo idioma (`lang:` de `options.txt`).
 - Todo se puede usar con el teclado: foco visible, diálogos que no dejan escapar el foco, menús con
   flechas y Escape, tarjetas con Enter. Avisos anunciados al lector de pantalla, contraste suficiente
-  en los dos temas y tamaño de la interfaz de 90 a 150 % (Ctrl + / Ctrl − / Ctrl 0).
+  en los dos temas y tamaño de la interfaz de 90 a 150 % (Ctrl + / Ctrl − / Ctrl 0). El panel de la derecha se oculta y
+  se muestra con el botón de arriba o con Ctrl B.
 
 ## Hostear partida
 

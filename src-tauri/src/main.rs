@@ -137,6 +137,14 @@ fn guardar_ajustes(app: AppHandle, state: State<AppState>, mut ajustes: Settings
     Ok(ajustes)
 }
 
+/// Mostrar u ocultar el panel de la derecha (se guarda aparte: no hace falta subir el perfil).
+#[tauri::command]
+fn panel_lateral(state: State<AppState>, oculto: bool) -> Result<(), String> {
+    let mut settings = state.settings.lock().unwrap();
+    settings.sidebar_hidden = oculto;
+    settings.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))
+}
+
 #[tauri::command]
 fn uuid_offline(nombre: String) -> String {
     settings::dashed(&settings::offline_uuid(nombre.trim()))
@@ -2306,6 +2314,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             estado_inicial,
             guardar_ajustes,
+            panel_lateral,
             uuid_offline,
             listar_instancias,
             listar_versiones,

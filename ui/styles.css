@@ -930,11 +930,6 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .tunnel-error { color: var(--danger); font-weight: 600; font-size: 13.5px; }
 .host-address-line { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; padding: 4px 4px 4px 12px; border-radius: 999px; background: var(--field); border: 1px solid var(--border); }
 .address-text { font: 600 14px "Cascadia Mono", Consolas, monospace; color: var(--accent-fg); user-select: text; }
-.host-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.host-modes .option { margin-bottom: 0; height: 100%; }
-.host-modes .option .chev { width: 18px; height: 18px; color: var(--muted); flex: none; }
-.option.host-world { cursor: default; }
-.option.host-world:hover { border-color: transparent; background: var(--card); }
 .host-world-status { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 12px 16px; border-radius: var(--r-lg); background: var(--accent-softer); border: 1px solid var(--accent-soft); }
 .host-world-status > svg { width: 20px; height: 20px; color: var(--accent-fg); flex: none; }
 .host-card { cursor: pointer; transition: background .15s, border-color .15s; }
@@ -1024,7 +1019,7 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .spinner.small { width: 18px; height: 18px; border-width: 2px; flex: none; }
 @media (max-width: 1100px) {
   .hosted-top { grid-template-columns: 1fr; }
-  .host-columns, .host-modes { grid-template-columns: 1fr; }
+  .host-columns { grid-template-columns: 1fr; }
 }
 
 .host-e4mc { display: flex; gap: 12px; margin-top: 12px; padding: 14px 16px; border-radius: var(--r-lg); background: color-mix(in srgb, #e8a33d 9%, var(--panel)); border: 1px solid color-mix(in srgb, #e8a33d 40%, var(--border)); }
@@ -1046,3 +1041,25 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .eula-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .eula-line .link-btn { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-fg); font-size: 13px; }
 .eula-line .link-btn svg { width: 14px; height: 14px; }
+
+/* ---------- Hostear compacto y panel derecho (0.13.2) ---------- */
+.host-tunnel { padding: 12px 16px; margin-bottom: 12px; }
+.host-tunnel .tunnel-row { gap: 12px; }
+.host-tunnel .tunnel-icon { width: 38px; height: 38px; border-radius: 11px; }
+.host-tunnel .tunnel-icon svg { width: 20px; height: 20px; }
+.tunnel-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tunnel-title h3 { font-size: 15px; margin: 0; }
+.host-tunnel .tunnel-row p { margin: 2px 0 0; font-size: 13px; }
+.host-tunnel .host-address-line { margin-top: 0; padding: 2px 2px 2px 10px; }
+.host-tunnel .address-text { font-size: 13px; }
+.host-tunnel .btn.small + .btn.small { margin-left: -4px; }
+.host-bar { display: flex; align-items: center; gap: 12px; padding: 4px 2px; }
+.host-share { color: var(--text); font-size: 14px; }
+.host-share-hint { flex: 1; }
+.host-bar #host-new-server { margin-left: auto; }
+.host-bar + .host-world-status, .host-bar ~ .host-e4mc { margin-top: 10px; }
+#page-host .host-subtitle { margin-top: 20px; }
+.sidebar-toggle.active { color: var(--accent-fg); background: var(--accent-softer); border-color: var(--accent-soft); }
+.sidebar.enter { animation: sidebar-in .25s var(--ease) both; }
+@keyframes sidebar-in { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+@media (max-width: 1150px) { .sidebar-toggle { display: none; } }

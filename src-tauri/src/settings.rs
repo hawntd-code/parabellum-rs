@@ -32,6 +32,8 @@ pub struct Settings {
     pub ui_scale: f64,
     /// "es" o "en"; vacío hasta el primer arranque, que toma el de Windows.
     pub language: String,
+    /// El panel de la derecha (jugador, amigos, novedades) está oculto.
+    pub sidebar_hidden: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
@@ -67,6 +69,7 @@ impl Default for Settings {
             notifications: true,
             ui_scale: 1.0,
             language: String::new(),
+            sidebar_hidden: false,
         }
     }
 }
