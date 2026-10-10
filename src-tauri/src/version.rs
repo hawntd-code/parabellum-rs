@@ -122,11 +122,11 @@ impl ResolvedVersion {
         let mut next = Some(version_id.to_string());
         while let Some(id) = next {
             if ids.contains(&id) {
-                return Err(format!("Herencia circular en la versión {id}."));
+                return Err(t!("Herencia circular en la versión {id}.", "Circular inheritance in version {id}."));
             }
             let file = paths.version_json(&id);
-            let text = std::fs::read_to_string(&file).map_err(|_| format!("Falta la versión \"{id}\" ({}).", file.display()))?;
-            let json: Value = serde_json::from_str(&text).map_err(|e| format!("El JSON de la versión {id} está dañado: {e}"))?;
+            let text = std::fs::read_to_string(&file).map_err(|_| t!("Falta la versión \"{id}\" ({}).", "Version \"{id}\" is missing ({}).", file.display()))?;
+            let json: Value = serde_json::from_str(&text).map_err(|e| t!("El JSON de la versión {id} está dañado: {e}", "The JSON of version {id} is damaged: {e}"))?;
             next = json.get("inheritsFrom").and_then(Value::as_str).filter(|s| !s.is_empty()).map(String::from);
             ids.push(json.get("id").and_then(Value::as_str).unwrap_or(&id).to_string());
             chain.push(json);
@@ -161,7 +161,7 @@ impl ResolvedVersion {
         Ok(Self {
             id: ids[0].clone(),
             root_id: ids.last().unwrap().clone(),
-            main_class: first_str("mainClass").ok_or("La versión no define mainClass.")?,
+            main_class: first_str("mainClass").ok_or(t!("La versión no define mainClass.", "The version does not define mainClass."))?,
             libraries,
             jvm_arguments: jvm,
             game_arguments: game,

@@ -39,7 +39,7 @@ fn u64_at(data: &[u8], at: usize) -> Result<u64, String> {
 }
 
 fn damaged() -> String {
-    "El zip remoto está dañado o incompleto.".into()
+    t!("El zip remoto está dañado o incompleto.", "The remote zip is damaged or incomplete.")
 }
 
 impl RemoteZip {
@@ -64,11 +64,11 @@ impl RemoteZip {
             .get(&self.url)
             .header(reqwest::header::RANGE, format!("bytes={start}-{end}"))
             .send()
-            .map_err(|e| format!("No se pudo conectar: {e}"))?;
+            .map_err(|e| t!("No se pudo conectar: {e}", "Could not connect: {e}"))?;
         if response.status() != reqwest::StatusCode::PARTIAL_CONTENT {
             return Err(NO_RANGES.into());
         }
-        let bytes = response.bytes().map_err(|e| format!("La descarga se cortó: {e}"))?;
+        let bytes = response.bytes().map_err(|e| t!("La descarga se cortó: {e}", "The download was interrupted: {e}"))?;
         if bytes.len() as u64 != end - start + 1 {
             return Err(damaged());
         }
@@ -225,10 +225,10 @@ impl RemoteZip {
                 flate2::read::DeflateDecoder::new(raw).read_to_end(&mut out).map_err(|_| damaged())?;
                 out
             }
-            _ => return Err(format!("{} usa una compresión que Parabellum no conoce.", entry.name)),
+            _ => return Err(t!("{} usa una compresión que Parabellum no conoce.", "{} uses a compression Parabellum does not know.", entry.name)),
         };
         if bytes.len() as u64 != entry.size || crc32fast::hash(&bytes) != entry.crc32 {
-            return Err(format!("{} llegó dañado.", entry.name));
+            return Err(t!("{} llegó dañado.", "{} arrived damaged.", entry.name));
         }
         Ok(Some(bytes))
     }

@@ -21,17 +21,22 @@ const API: &str = "https://api.modrinth.com/v2";
 const USER_AGENT: &str = concat!("juanrojasgarcialin/parabellum/", env!("CARGO_PKG_VERSION"));
 const CDN: &str = "https://cdn.modrinth.com/";
 const INDEX_FILE: &str = "modrinth.json";
-pub const UNAVAILABLE: &str = "No se puede conectar con Modrinth (en algunas redes, como la de la escuela, está bloqueado).";
+pub fn unavailable() -> String {
+    t!(
+        "No se puede conectar con Modrinth (en algunas redes, como la de la escuela, está bloqueado).",
+        "Cannot connect to Modrinth (on some networks, like the school's, it is blocked)."
+    )
+}
 
 // ================= HTTP
 
 async fn send(request: reqwest::RequestBuilder) -> Result<Value, String> {
-    let response = request.header(reqwest::header::USER_AGENT, USER_AGENT).send().await.map_err(|_| UNAVAILABLE.to_string())?;
+    let response = request.header(reqwest::header::USER_AGENT, USER_AGENT).send().await.map_err(|_| unavailable())?;
     match response.status() {
-        status if status.is_success() => response.json().await.map_err(|e| format!("Modrinth respondió algo inesperado: {e}")),
-        reqwest::StatusCode::NOT_FOUND => Err("Modrinth no tiene ese proyecto o versión.".into()),
-        reqwest::StatusCode::TOO_MANY_REQUESTS => Err("Modrinth pide esperar un momento. Vuelve a intentarlo en un minuto.".into()),
-        status => Err(format!("Modrinth respondió {status}. Vuelve a intentarlo más tarde.")),
+        status if status.is_success() => response.json().await.map_err(|e| t!("Modrinth respondió algo inesperado: {e}", "Modrinth answered something unexpected: {e}")),
+        reqwest::StatusCode::NOT_FOUND => Err(t!("Modrinth no tiene ese proyecto o versión.", "Modrinth does not have that project or version.")),
+        reqwest::StatusCode::TOO_MANY_REQUESTS => Err(t!("Modrinth pide esperar un momento. Vuelve a intentarlo en un minuto.", "Modrinth asks to wait a moment. Try again in a minute.")),
+        status => Err(t!("Modrinth respondió {status}. Vuelve a intentarlo más tarde.", "Modrinth answered {status}. Try again later.")),
     }
 }
 
@@ -48,7 +53,7 @@ fn checked_id(id: &str) -> Result<&str, String> {
     if !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) && id != "." && id != ".." {
         Ok(id)
     } else {
-        Err("Identificador de Modrinth no válido.".into())
+        Err(t!("Identificador de Modrinth no válido.", "Invalid Modrinth identifier."))
     }
 }
 
@@ -108,7 +113,7 @@ pub fn instance_loaders(instance: &Instance, kind: ContentType) -> Result<Vec<&'
             "Quilt" => Ok(vec!["quilt", "fabric"]),
             "Forge" => Ok(vec!["forge"]),
             "NeoForge" => Ok(vec!["neoforge"]),
-            _ => Err("Las instancias vanilla no cargan mods. Crea una con un loader (Fabric, Quilt, Forge o NeoForge).".into()),
+            _ => Err(t!("Las instancias vanilla no cargan mods. Crea una con un loader (Fabric, Quilt, Forge o NeoForge).", "Vanilla instances do not load mods. Create one with a loader (Fabric, Quilt, Forge or NeoForge).")),
         },
         ContentType::ResourcePack => Ok(vec!["minecraft"]),
         ContentType::Shader => Ok(vec![]),
@@ -163,7 +168,7 @@ pub struct SearchResults {
 pub const PAGE_SIZE: u32 = 20;
 
 pub async fn search(query: &SearchQuery) -> Result<SearchResults, String> {
-    let project_type = search_type(&query.kind).ok_or("Tipo de contenido desconocido.")?;
+    let project_type = search_type(&query.kind).ok_or(t!("Tipo de contenido desconocido.", "Unknown content type."))?;
     let mut facets: Vec<Vec<String>> = vec![vec![format!("project_type:{project_type}")]];
     let loaders: Vec<String> = query.loaders.iter().filter(|l| !l.trim().is_empty()).map(|l| format!("categories:{l}")).collect();
     if !loaders.is_empty() {
@@ -223,7 +228,7 @@ pub struct Category {
 
 pub async fn categories(kind: &str) -> Result<Vec<Category>, String> {
     // Los data packs usan las categorías de los mods.
-    let kind = search_type(kind).map(|k| if k == "datapack" { "mod" } else { k }).ok_or("Tipo de contenido desconocido.")?;
+    let kind = search_type(kind).map(|k| if k == "datapack" { "mod" } else { k }).ok_or(t!("Tipo de contenido desconocido.", "Unknown content type."))?;
     let list = get("/tag/category", &[]).await?;
     Ok(list
         .as_array()
@@ -294,7 +299,7 @@ pub async fn project(id: &str) -> Result<Project, String> {
         members.ok().and_then(|m| m.as_array().cloned()).unwrap_or_default().iter().take(3).map(|m| text(&m["user"], "username")).collect::<Vec<_>>().join(", ")
     });
     let mut links = Vec::new();
-    for (label, key) in [("Código fuente", "source_url"), ("Reportar errores", "issues_url"), ("Wiki", "wiki_url"), ("Discord", "discord_url")] {
+    for (label, key) in [(t!("Código fuente", "Source code"), "source_url"), (t!("Reportar errores", "Report issues"), "issues_url"), ("Wiki".into(), "wiki_url"), ("Discord".into(), "discord_url")] {
         if let Some(url) = p[key].as_str().filter(|u| u.starts_with("https://")) {
             links.push((label.to_string(), url.to_string()));
         }
@@ -412,7 +417,7 @@ pub async fn project_versions(id: &str, loaders: &[&str], game_versions: &[&str]
 }
 
 async fn version(id: &str) -> Result<Version, String> {
-    parse_version(&get(&format!("/version/{}", checked_id(id)?), &[]).await?).ok_or_else(|| "La versión no tiene archivos.".into())
+    parse_version(&get(&format!("/version/{}", checked_id(id)?), &[]).await?).ok_or_else(|| t!("La versión no tiene archivos.", "The version has no files."))
 }
 
 /// La versión a instalar: la estable más nueva; si no hay, la beta más nueva; si no, la alpha.
@@ -713,7 +718,7 @@ fn clean_candidates(instance: &Instance) {
 /// Lo que declara un mod del plan (lo descarga a la carpeta temporal si hace falta).
 async fn planned_meta(instance: &Instance, file: &PlannedFile) -> Result<Vec<ModMeta>, String> {
     if !file.url.starts_with(CDN) || file.sha1.len() != 40 || !file.sha1.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(format!("El archivo {} no es válido.", file.filename));
+        return Err(t!("El archivo {} no es válido.", "The file {} is not valid.", file.filename));
     }
     let path = candidates_dir(instance).join(format!("{}.jar", file.sha1));
     download::download_all(
@@ -841,7 +846,7 @@ async fn repair(
             return Ok(Some(problem.describe(&names)));
         }
     }
-    Ok(Some("No se encontró una combinación de versiones que funcione junta.".into()))
+    Ok(Some(t!("No se encontró una combinación de versiones que funcione junta.", "No combination of versions that works together was found.")))
 }
 
 pub async fn plan(instance: &Instance, project_id: &str, version_id: Option<&str>) -> Result<Plan, String> {
@@ -873,8 +878,8 @@ async fn plan_version(instance: &Instance, project_id: &str, version_id: Option<
     let project_id = text(&project, "id");
     let title = text(&project, "title");
     let kind = ContentType::parse(project["project_type"].as_str().unwrap_or_default()).ok_or_else(|| match project["project_type"].as_str() {
-        Some("modpack") => "Los modpacks se instalan como una instancia nueva (llega en la siguiente fase).".to_string(),
-        _ => "Este tipo de contenido todavía no se puede instalar.".to_string(),
+        Some("modpack") => t!("Los modpacks se instalan como una instancia nueva (llega en la siguiente fase).", "Modpacks are installed as a new instance."),
+        _ => t!("Este tipo de contenido todavía no se puede instalar.", "This type of content cannot be installed yet."),
     })?;
     let loaders = instance_loaders(instance, kind)?;
     let minecraft = instance.minecraft_version.as_str();
@@ -888,7 +893,7 @@ async fn plan_version(instance: &Instance, project_id: &str, version_id: Option<
         Some(id) => version(id).await?,
         None => best(&project_versions(&project_id, &loaders, &[minecraft]).await?)
             .cloned()
-            .ok_or(format!("{title} no tiene ninguna versión para {target}."))?,
+            .ok_or(t!("{title} no tiene ninguna versión para {target}.", "{title} has no version for {target}."))?,
     };
     let current = installed_by_project.get(project_id.as_str());
     if current.is_some_and(|f| f.version_id.as_deref() == Some(main.id.as_str())) {
@@ -988,9 +993,9 @@ async fn plan_version(instance: &Instance, project_id: &str, version_id: Option<
         }
     }
     let problem = if let Some((who, needs)) = missing.first() {
-        Some(format!("{} necesita {}, que no tiene versión para {target}.", name(who), name(needs)))
+        Some(t!("{} necesita {}, que no tiene versión para {target}.", "{} needs {}, which has no version for {target}.", name(who), name(needs)))
     } else if let Some((a, b)) = conflicts.first() {
-        Some(format!("{} no es compatible con {} (ya instalado).", name(a), name(b)))
+        Some(t!("{} no es compatible con {} (ya instalado).", "{} is not compatible with {} (already installed).", name(a), name(b)))
     } else {
         compat_problem
     };
@@ -1018,14 +1023,14 @@ pub async fn install(
     let mut downloads = Vec::new();
     let mut targets = Vec::new();
     for file in files {
-        let kind = ContentType::parse(&file.kind).ok_or("Categoría desconocida.")?;
+        let kind = ContentType::parse(&file.kind).ok_or(t!("Categoría desconocida.", "Unknown category."))?;
         // Solo archivos del CDN de Modrinth con un nombre simple de la extensión esperada.
         let safe_name = !file.filename.is_empty()
             && !file.filename.contains(['/', '\\', ':'])
             && !file.filename.starts_with('.')
             && file.filename.to_lowercase().ends_with(kind.extension());
         if !file.url.starts_with(CDN) || !safe_name || file.sha1.len() != 40 {
-            return Err(format!("El archivo {} no es válido.", file.filename));
+            return Err(t!("El archivo {} no es válido.", "The file {} is not valid.", file.filename));
         }
         let folder = content::folder(instance, kind.kind()).unwrap();
         // Al actualizar un mod desactivado, la versión nueva también queda desactivada.
@@ -1237,17 +1242,17 @@ pub const MODPACK_LOADERS: &[&str] = &["fabric", "quilt", "forge", "neoforge"];
 pub async fn download_modpack(project_id: &str, version_id: Option<&str>, temp_dir: &Path) -> Result<ModpackDownload, String> {
     let project = get(&format!("/project/{}", checked_id(project_id)?), &[]).await?;
     if project["project_type"].as_str() != Some("modpack") {
-        return Err("Ese proyecto no es un modpack.".into());
+        return Err(t!("Ese proyecto no es un modpack.", "That project is not a modpack."));
     }
     let title = text(&project, "title");
     let chosen = match version_id {
         Some(id) => version(id).await?,
         None => best(&project_versions(&text(&project, "id"), MODPACK_LOADERS, &[]).await?)
             .cloned()
-            .ok_or(format!("{title} no tiene versiones que Parabellum pueda instalar."))?,
+            .ok_or(t!("{title} no tiene versiones que Parabellum pueda instalar.", "{title} has no versions Parabellum can install."))?,
     };
     if !chosen.filename.to_lowercase().ends_with(".mrpack") || !chosen.url.starts_with(CDN) {
-        return Err("Esa versión no trae un archivo .mrpack.".into());
+        return Err(t!("Esa versión no trae un archivo .mrpack.", "That version has no .mrpack file."));
     }
     let file = temp_dir.join(format!("{}.mrpack", chosen.sha1));
     download::download_all(
@@ -1277,7 +1282,7 @@ pub async fn download_icon(url: &str) -> Option<Vec<u8>> {
 
 /// Instala un data pack de Modrinth dentro de un mundo. Devuelve (nombre, versión).
 pub async fn install_datapack(instance: &Instance, world: &str, project_id: &str, version_id: Option<&str>) -> Result<(String, String), String> {
-    let world_dir = content::item_path(instance, "worlds", world).map_err(|_| format!("La instancia no tiene un mundo llamado «{world}»."))?;
+    let world_dir = content::item_path(instance, "worlds", world).map_err(|_| t!("La instancia no tiene un mundo llamado «{world}».", "The instance has no world named «{world}»."))?;
     let project = get(&format!("/project/{}", checked_id(project_id)?), &[]).await?;
     let title = text(&project, "title");
     let minecraft = instance.minecraft_version.as_str();
@@ -1285,11 +1290,11 @@ pub async fn install_datapack(instance: &Instance, world: &str, project_id: &str
         Some(id) => version(id).await?,
         None => best(&project_versions(&text(&project, "id"), &["datapack"], &[minecraft]).await?)
             .cloned()
-            .ok_or(format!("{title} no tiene versión de data pack para Minecraft {minecraft}."))?,
+            .ok_or(t!("{title} no tiene versión de data pack para Minecraft {minecraft}.", "{title} has no data pack version for Minecraft {minecraft}."))?,
     };
     let safe_name = !chosen.filename.contains(['/', '\\', ':']) && chosen.filename.to_lowercase().ends_with(".zip");
     if !chosen.loaders.iter().any(|l| l == "datapack") || !safe_name || !chosen.url.starts_with(CDN) {
-        return Err("Esa versión no es un data pack.".into());
+        return Err(t!("Esa versión no es un data pack.", "That version is not a data pack."));
     }
     download::download_all(
         vec![FileDownload {

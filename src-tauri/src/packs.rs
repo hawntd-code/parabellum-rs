@@ -183,7 +183,7 @@ impl ZipOut {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        let file = std::fs::File::create(path).map_err(|e| format!("No se pudo crear {}: {e}", path.display()))?;
+        let file = std::fs::File::create(path).map_err(|e| t!("No se pudo crear {}: {e}", "Could not create {}: {e}", path.display()))?;
         Ok(Self { writer: zip::ZipWriter::new(std::io::BufWriter::with_capacity(1 << 20, file)), written: 0 })
     }
 
@@ -198,7 +198,7 @@ impl ZipOut {
         let method = if already_compressed(source) { zip::CompressionMethod::Stored } else { zip::CompressionMethod::Deflated };
         let options = SimpleFileOptions::default().compression_method(method).large_file(size >= u32::MAX as u64);
         self.writer.start_file(name.replace('\\', "/"), options).map_err(|e| e.to_string())?;
-        let mut input = std::fs::File::open(source).map_err(|e| format!("No se pudo leer {}: {e}", source.display()))?;
+        let mut input = std::fs::File::open(source).map_err(|e| t!("No se pudo leer {}: {e}", "Could not read {}: {e}", source.display()))?;
         std::io::copy(&mut input, &mut self.writer).map_err(|e| e.to_string())?;
         self.written += size;
         Ok(())
@@ -260,14 +260,14 @@ pub struct ExportResult {
 /// Exporta la instancia como paquete para Drive/USB en `<salida>/<versión>/`:
 /// base-minecraft-<versión>.zip/.json y <Modpack>/<Modpack>.zip/.json/.png.
 pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &ExportOptions, progress: impl Fn(String, f64)) -> Result<ExportResult, String> {
-    progress("Revisando la instancia…".into(), 0.0);
+    progress(t!("Revisando la instancia…", "Checking the instance…"), 0.0);
     let plan = launch::plan(instance, &Settings::default(), paths)?;
     if !plan.missing.is_empty() {
-        return Err(format!("A la instancia le faltan archivos y no se puede exportar:\n{}", plan.missing.iter().take(5).cloned().collect::<Vec<_>>().join("\n")));
+        return Err(t!("A la instancia le faltan archivos y no se puede exportar:\n{}", "The instance is missing files and cannot be exported:\n{}", plan.missing.iter().take(5).cloned().collect::<Vec<_>>().join("\n")));
     }
     let version = launch::version_files(&instance.version_id, paths)?;
     let vanilla = launch::version_files(&version.root_id, paths)?;
-    let java = vanilla.java.as_ref().or(version.java.as_ref()).ok_or("No hay Java para esta versión.")?;
+    let java = vanilla.java.as_ref().or(version.java.as_ref()).ok_or(t!("No hay Java para esta versión.", "There is no Java for this version."))?;
 
     // Base: Minecraft puro + Java. Lo demás que use la versión (el loader) viaja con el modpack.
     let mut base_files: Vec<PathBuf> = vanilla.files.iter().filter(|f| f.is_file()).cloned().collect();
@@ -294,7 +294,7 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
     let mut done = 0u64;
     let mut report = |stage: &str, bytes: u64| {
         done += bytes;
-        progress(format!("{stage} {:.0} de {:.0} MB…", done as f64 / 1048576.0, total as f64 / 1048576.0), done as f64 / total as f64);
+        progress(t!("{stage} {:.0} de {:.0} MB…", "{stage} {:.0} of {:.0} MB…", done as f64 / 1048576.0, total as f64 / 1048576.0), done as f64 / total as f64);
     };
 
     if !base_reused {
@@ -315,7 +315,7 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
         };
         let entries: Vec<(PathBuf, String)> =
             base_files.iter().filter_map(|f| Some((f.clone(), format!("base/{}", relative(&paths.base, f)?)))).collect();
-        write_archive(&base_zip, &manifest, &entries, |bytes| report("Empaquetando Minecraft", bytes))?;
+        write_archive(&base_zip, &manifest, &entries, |bytes| report(&t!("Empaquetando Minecraft", "Packing Minecraft"), bytes))?;
         write_sidecar(&base_zip, &base_json, manifest)?;
     }
 
@@ -358,9 +358,9 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
         manifest.icon = Some(format!("{pack_name}.png"));
         entries.push((icon, format!("instancia/{STATE_DIR}/icono.png")));
     }
-    write_archive(&pack_zip, &manifest, &entries, |bytes| report("Empaquetando el modpack", bytes))?;
+    write_archive(&pack_zip, &manifest, &entries, |bytes| report(&t!("Empaquetando el modpack", "Packing the modpack"), bytes))?;
     write_sidecar(&pack_zip, &pack_dir.join(format!("{pack_name}.json")), manifest)?;
-    progress("Listo".into(), 1.0);
+    progress(t!("Listo", "Done"), 1.0);
     Ok(ExportResult {
         folder: version_dir.display().to_string(),
         modpack: pack_zip.display().to_string(),
@@ -400,12 +400,12 @@ fn write_sidecar(zip_path: &Path, json_path: &Path, mut manifest: Manifest) -> R
 // ================= Instalar
 
 pub fn read_manifest(zip_path: &Path) -> Result<Option<Manifest>, String> {
-    let file = std::fs::File::open(zip_path).map_err(|e| format!("No se pudo abrir el archivo: {e}"))?;
-    let mut zip = zip::ZipArchive::new(file).map_err(|_| "El archivo no es un zip válido.".to_string())?;
+    let file = std::fs::File::open(zip_path).map_err(|e| t!("No se pudo abrir el archivo: {e}", "Could not open the file: {e}"))?;
+    let mut zip = zip::ZipArchive::new(file).map_err(|_| t!("El archivo no es un zip válido.", "The file is not a valid zip."))?;
     let Ok(mut entry) = zip.by_name(MANIFEST_IN_ARCHIVE) else { return Ok(None) };
     let mut text = String::new();
     entry.read_to_string(&mut text).map_err(|e| e.to_string())?;
-    serde_json::from_str(&text).map(Some).map_err(|e| format!("El manifiesto del paquete está dañado: {e}"))
+    serde_json::from_str(&text).map(Some).map_err(|e| t!("El manifiesto del paquete está dañado: {e}", "The package manifest is damaged: {e}"))
 }
 
 /// Si junto al zip está su .json (como en Drive), comprueba que el zip llegó completo (SHA-256).
@@ -420,7 +420,7 @@ pub fn verify_sidecar(zip_path: &Path) -> Result<bool, String> {
     };
     let actual = sha256_file(zip_path).map_err(|e| e.to_string())?;
     if !actual.eq_ignore_ascii_case(&expected) {
-        return Err("El archivo está dañado o incompleto (su huella SHA-256 no coincide). Vuelve a copiarlo o descargarlo.".into());
+        return Err(t!("El archivo está dañado o incompleto (su huella SHA-256 no coincide). Vuelve a copiarlo o descargarlo.", "The file is damaged or incomplete (its SHA-256 fingerprint does not match). Copy or download it again."));
     }
     Ok(true)
 }
@@ -463,16 +463,16 @@ pub fn valid_folder_name(name: &str) -> bool {
 
 /// Instala un paquete (base o modpack). `progress`: (texto, fracción).
 pub fn install(zip_path: &Path, paths: &Paths, progress: impl Fn(String, f64)) -> Result<Installed, String> {
-    let manifest = read_manifest(zip_path)?.ok_or("El zip no es un paquete de Parabellum (no tiene lanzador-pack.json).")?;
+    let manifest = read_manifest(zip_path)?.ok_or(t!("El zip no es un paquete de Parabellum (no tiene lanzador-pack.json).", "The zip is not a Parabellum package (it has no lanzador-pack.json)."))?;
     if !manifest.is_base() && !base_available(&manifest.minecraft_version, paths) {
-        return Err(format!(
-            "Falta Minecraft {mc} en este PC. Instala primero «base-minecraft-{mc}.zip» (va junto al modpack) o crea una instancia de {mc} con internet.",
+        return Err(t!(
+            "Falta Minecraft {mc} en este PC. Instala primero «base-minecraft-{mc}.zip» (va junto al modpack) o crea una instancia de {mc} con internet.", "Minecraft {mc} is missing on this PC. First install «base-minecraft-{mc}.zip» (it goes next to the modpack) or create a {mc} instance with internet.",
             mc = manifest.minecraft_version
         ));
     }
     let folder = manifest.folder.clone().filter(|f| !f.is_empty()).unwrap_or_else(|| manifest.name.clone());
     if !manifest.is_base() && !valid_folder_name(&folder) {
-        return Err("El nombre de carpeta del paquete no es válido.".into());
+        return Err(t!("El nombre de carpeta del paquete no es válido.", "The package folder name is not valid."));
     }
 
     let mut zip = zip::ZipArchive::new(std::fs::File::open(zip_path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
@@ -506,12 +506,12 @@ pub fn install(zip_path: &Path, paths: &Paths, progress: impl Fn(String, f64)) -
                 let temp = PathBuf::from(format!("{}.parte", target.display()));
                 let mut out = std::fs::File::create(&temp).map_err(|e| e.to_string())?;
                 // Al leer hasta el final, zip comprueba el CRC32: un archivo dañado da error aquí.
-                std::io::copy(&mut entry, &mut out).map_err(|e| format!("El paquete está dañado ({}): {e}", name.display()))?;
+                std::io::copy(&mut entry, &mut out).map_err(|e| t!("El paquete está dañado ({}): {e}", "The package is damaged ({}): {e}", name.display()))?;
                 drop(out);
                 std::fs::rename(&temp, &target).map_err(|e| e.to_string())?;
             }
             done += size;
-            progress(format!("Instalando {:.0} de {:.0} MB…", done as f64 / 1048576.0, total as f64 / 1048576.0), done as f64 / total as f64);
+            progress(t!("Instalando {:.0} de {:.0} MB…", "Installing {:.0} of {:.0} MB…", done as f64 / 1048576.0, total as f64 / 1048576.0), done as f64 / total as f64);
         }
         if manifest.is_base() {
             register(paths, &manifest.id, &manifest.version);
@@ -525,7 +525,7 @@ pub fn install(zip_path: &Path, paths: &Paths, progress: impl Fn(String, f64)) -
         let updated = destination.exists();
         if updated {
             let backup = paths.data.join("temporal").join(format!("respaldo-{}", chrono::Utc::now().timestamp_millis()));
-            replace_keeping_player_data(&destination, &staging, &backup).map_err(|e| format!("No se pudo actualizar la instancia: {e}"))?;
+            replace_keeping_player_data(&destination, &staging, &backup).map_err(|e| t!("No se pudo actualizar la instancia: {e}", "Could not update the instance: {e}"))?;
         } else {
             std::fs::create_dir_all(&paths.instances).map_err(|e| e.to_string())?;
             std::fs::rename(&staging, &destination).map_err(|e| e.to_string())?;

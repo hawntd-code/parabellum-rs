@@ -159,10 +159,10 @@ fn load(folder: &Path) -> Option<Instance> {
     let modpack = std::fs::read_to_string(state.join("pack.json"))
         .ok()
         .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-        .and_then(|p| Some(format!("{} · paquete del {}", p["name"].as_str()?, stamp_date(p["version"].as_str().unwrap_or_default()))))
+        .and_then(|p| Some(t!("{} · paquete del {}", "{} · package from {}", p["name"].as_str()?, stamp_date(p["version"].as_str().unwrap_or_default()))))
         .or_else(|| {
             let m = &json["modpack"];
-            let source = if m["source"] == "modrinth" { "Modrinth" } else { "archivo" };
+            let source = if m["source"] == "modrinth" { "Modrinth".to_string() } else { t!("archivo", "file") };
             Some(format!("{} {} · {source}", m["name"].as_str()?, m["version"].as_str().unwrap_or_default()))
         });
     Some(Instance {
@@ -254,7 +254,7 @@ pub fn folder_for(name: &str, paths: &Paths) -> Result<PathBuf, String> {
         .collect();
     let clean = clean.trim_matches(['.', ' ']).to_string();
     if clean.is_empty() {
-        return Err("Escribe un nombre para la instancia.".into());
+        return Err(t!("Escribe un nombre para la instancia.", "Type a name for the instance."));
     }
     Ok(paths.instances.join(clean))
 }
@@ -262,8 +262,8 @@ pub fn folder_for(name: &str, paths: &Paths) -> Result<PathBuf, String> {
 pub fn create(name: &str, game: &GameVersion, paths: &Paths) -> Result<Instance, String> {
     let folder = folder_for(name, paths)?;
     if folder.exists() {
-        return Err(format!(
-            "Ya tienes una instancia llamada \"{}\". Elige otro nombre.",
+        return Err(t!(
+            "Ya tienes una instancia llamada \"{}\". Elige otro nombre.", "You already have an instance named \"{}\". Choose another name.",
             folder.file_name().unwrap().to_string_lossy()
         ));
     }
@@ -271,16 +271,40 @@ pub fn create(name: &str, game: &GameVersion, paths: &Paths) -> Result<Instance,
     let mut json = json!({ "name": name.trim() });
     game.write_to(&mut json);
     std::fs::write(folder.join(INSTANCE_FILE), serde_json::to_vec_pretty(&json).unwrap()).map_err(|e| e.to_string())?;
-    load(&folder).ok_or_else(|| "No se pudo leer la instancia recién creada.".into())
+    set_game_language(&folder);
+    load(&folder).ok_or_else(|| t!("No se pudo leer la instancia recién creada.", "Could not read the newly created instance."))
+}
+
+/// Minecraft abre en el idioma de Parabellum: se anota en options.txt. Si ya dice otro idioma se
+/// respeta, salvo el inglés de EE. UU., que es el que trae Minecraft (y casi todos los modpacks) por defecto.
+pub fn set_game_language(game_dir: &Path) {
+    let code = if crate::idioma::english() { "en_us" } else { "es_mx" };
+    let file = game_dir.join("options.txt");
+    let text = std::fs::read_to_string(&file).unwrap_or_default();
+    let mut found = false;
+    let mut lines: Vec<String> = text
+        .lines()
+        .map(|line| match line.strip_prefix("lang:") {
+            Some(value) => {
+                found = true;
+                if value.trim().eq_ignore_ascii_case("en_us") { format!("lang:{code}") } else { line.to_string() }
+            }
+            None => line.to_string(),
+        })
+        .collect();
+    if !found {
+        lines.push(format!("lang:{code}"));
+    }
+    let _ = std::fs::write(&file, lines.join("\n") + "\n");
 }
 
 /// Cambia nombre visible, memoria propia y argumentos de Java (la carpeta no cambia).
 /// Conserva el resto de campos de instancia.json.
 pub fn update(instance: &Instance, name: &str, ram_gb: Option<u32>, jvm_args: &[String]) -> Result<(), String> {
     if name.trim().is_empty() {
-        return Err("El nombre no puede quedar vacío.".into());
+        return Err(t!("El nombre no puede quedar vacío.", "The name cannot be empty."));
     }
-    let mut json = read_json(&instance.folder).ok_or("No se pudo leer instancia.json.")?;
+    let mut json = read_json(&instance.folder).ok_or(t!("No se pudo leer instancia.json.", "Could not read instancia.json."))?;
     json["name"] = json!(name.trim());
     match ram_gb {
         Some(ram) => json["ramGB"] = json!(ram.clamp(1, 64)),
@@ -299,7 +323,7 @@ pub fn update(instance: &Instance, name: &str, ram_gb: Option<u32>, jvm_args: &[
 
 /// Cambia la versión del juego o del loader (por ejemplo, Fabric 0.16 → 0.19).
 pub fn set_version(instance: &Instance, game: &GameVersion) -> Result<(), String> {
-    let mut json = read_json(&instance.folder).ok_or("No se pudo leer instancia.json.")?;
+    let mut json = read_json(&instance.folder).ok_or(t!("No se pudo leer instancia.json.", "Could not read instancia.json."))?;
     game.write_to(&mut json);
     write_json(instance, &json)
 }
@@ -328,7 +352,7 @@ pub fn image_type(bytes: &[u8]) -> Option<&'static str> {
 
 /// Icono descargado (por ejemplo, el de un modpack de Modrinth). Se guarda con el nombre de siempre.
 pub fn set_icon_bytes(instance: &Instance, bytes: &[u8]) -> Result<(), String> {
-    image_type(bytes).ok_or("La imagen no es válida.")?;
+    image_type(bytes).ok_or(t!("La imagen no es válida.", "The image is not valid."))?;
     std::fs::create_dir_all(instance.state_dir()).map_err(|e| e.to_string())?;
     std::fs::write(instance.state_dir().join(ICON_FILE), bytes).map_err(|e| e.to_string())
 }
@@ -347,7 +371,7 @@ pub fn unique_name(name: &str, paths: &Paths) -> Result<String, String> {
 
 /// Guarda un dato extra en instancia.json (por ejemplo, de qué modpack viene).
 pub fn set_field(instance: &Instance, key: &str, value: Value) -> Result<(), String> {
-    let mut json = read_json(&instance.folder).ok_or("No se pudo leer instancia.json.")?;
+    let mut json = read_json(&instance.folder).ok_or(t!("No se pudo leer instancia.json.", "Could not read instancia.json."))?;
     json[key] = value;
     write_json(instance, &json)
 }
@@ -358,9 +382,9 @@ pub fn set_icon(instance: &Instance, png_base64: Option<&str>) -> Result<(), Str
     match png_base64 {
         Some(data) => {
             let data = data.split_once(',').map(|(_, d)| d).unwrap_or(data);
-            let bytes = base64::engine::general_purpose::STANDARD.decode(data).map_err(|_| "La imagen no es válida.")?;
+            let bytes = base64::engine::general_purpose::STANDARD.decode(data).map_err(|_| t!("La imagen no es válida.", "The image is not valid."))?;
             if !bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
-                return Err("La imagen debe ser PNG.".into());
+                return Err(t!("La imagen debe ser PNG.", "The image must be a PNG."));
             }
             std::fs::create_dir_all(instance.state_dir()).map_err(|e| e.to_string())?;
             std::fs::write(file, bytes).map_err(|e| e.to_string())
@@ -381,14 +405,14 @@ pub fn duplicate(instance: &Instance, paths: &Paths) -> Result<Instance, String>
         number += 1;
     }
     let target = folder_for(&name, paths)?;
-    copy_dir(&instance.folder, &target).map_err(|e| format!("No se pudo copiar la instancia: {e}"))?;
+    copy_dir(&instance.folder, &target).map_err(|e| t!("No se pudo copiar la instancia: {e}", "Could not copy the instance: {e}"))?;
     // Lo que describe la partida anterior no se copia.
     for file in ["juego.pid", "ultima-partida.txt", "salida-java.log", "java-argumentos.txt"] {
         let _ = std::fs::remove_file(target.join(STATE_DIR).join(file));
     }
-    let copy = load(&target).ok_or("No se pudo leer la copia.")?;
+    let copy = load(&target).ok_or(t!("No se pudo leer la copia.", "Could not read the copy."))?;
     update(&copy, &name, copy.ram_gb, &copy.jvm_args)?;
-    load(&target).ok_or_else(|| "No se pudo leer la copia.".into())
+    load(&target).ok_or_else(|| t!("No se pudo leer la copia.", "Could not read the copy."))
 }
 
 pub fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
@@ -407,5 +431,30 @@ pub fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
 
 /// Manda la carpeta a la papelera de reciclaje (se puede recuperar).
 pub fn delete(instance: &Instance) -> Result<(), String> {
-    trash::delete(&instance.folder).map_err(|e| format!("No se pudo mandar a la papelera: {e}"))
+    trash::delete(&instance.folder).map_err(|e| t!("No se pudo mandar a la papelera: {e}", "Could not move it to the Recycle Bin: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn minecraft_en_el_idioma_de_parabellum() {
+        let dir = std::env::temp_dir().join(format!("parabellum-idioma-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let options = dir.join("options.txt");
+        let read = || std::fs::read_to_string(&options).unwrap();
+        // Sin options.txt: se crea con el idioma.
+        set_game_language(&dir);
+        assert_eq!(read(), "lang:es_mx\n");
+        // El inglés de EE. UU. (el de casi todos los modpacks) se cambia; lo demás queda igual.
+        std::fs::write(&options, "version:3955\nlang:en_us\nfov:0.0\n").unwrap();
+        set_game_language(&dir);
+        assert_eq!(read(), "version:3955\nlang:es_mx\nfov:0.0\n");
+        // Otro idioma elegido a propósito se respeta.
+        std::fs::write(&options, "lang:pt_br\n").unwrap();
+        set_game_language(&dir);
+        assert_eq!(read(), "lang:pt_br\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

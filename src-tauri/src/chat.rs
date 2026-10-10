@@ -111,7 +111,7 @@ fn safe(id: &str) -> Result<&str, String> {
     if !id.is_empty() && id.len() <= 200 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
         Ok(id)
     } else {
-        Err("Conversación no válida.".into())
+        Err(t!("Conversación no válida.", "Invalid conversation."))
     }
 }
 
@@ -411,7 +411,7 @@ impl Chat {
             return Ok(());
         }
         if text.chars().count() > MAX_TEXT {
-            return Err(format!("El mensaje es muy largo (máximo {MAX_TEXT} letras)."));
+            return Err(t!("El mensaje es muy largo (máximo {MAX_TEXT} letras).", "The message is too long (maximum {MAX_TEXT} characters)."));
         }
         let name = self.my_name.lock().unwrap().clone();
         let message = json!({ "from": self.uid, "name": name, "text": text, "at": firebase::server_timestamp() });
@@ -422,10 +422,10 @@ impl Chat {
     pub async fn send_image(&self, id: &str, data: &str, width: u32, height: u32) -> Result<(), String> {
         let id = safe(id)?;
         if !data.starts_with("data:image/") || !data.contains(";base64,") {
-            return Err("La imagen no es válida.".into());
+            return Err(t!("La imagen no es válida.", "The image is not valid."));
         }
         if data.len() > MAX_IMAGE {
-            return Err("La imagen es muy pesada incluso reducida.".into());
+            return Err(t!("La imagen es muy pesada incluso reducida.", "The image is too large even after shrinking it."));
         }
         let message_id = message_id();
         let name = self.my_name.lock().unwrap().clone();
@@ -443,7 +443,7 @@ impl Chat {
             return Ok(data);
         }
         let data = self.db.get(&format!("images/{id}/{message}")).await.map_err(|e| e.to_string())?;
-        let data = data.as_str().filter(|d| d.starts_with("data:image/")).ok_or("La imagen ya no está.")?.to_string();
+        let data = data.as_str().filter(|d| d.starts_with("data:image/")).ok_or(t!("La imagen ya no está.", "The image is no longer available."))?.to_string();
         let _ = std::fs::create_dir_all(&self.images);
         let _ = std::fs::write(&cached, &data);
         Ok(data)
@@ -470,10 +470,10 @@ impl Chat {
     pub async fn create_group(&self, name: &str, friends: &[String]) -> Result<String, String> {
         let name = name.trim();
         if name.is_empty() || name.chars().count() > 40 {
-            return Err("El nombre del grupo debe tener de 1 a 40 letras.".into());
+            return Err(t!("El nombre del grupo debe tener de 1 a 40 letras.", "The group name must have 1 to 40 characters."));
         }
         if friends.is_empty() {
-            return Err("Elige al menos un amigo.".into());
+            return Err(t!("Elige al menos un amigo.", "Choose at least one friend."));
         }
         let id = format!("g_{}", random_text(16));
         let mut update = Map::new();
@@ -506,7 +506,7 @@ impl Chat {
         let id = safe(id)?;
         let name = name.trim();
         if name.is_empty() || name.chars().count() > 40 {
-            return Err("El nombre del grupo debe tener de 1 a 40 letras.".into());
+            return Err(t!("El nombre del grupo debe tener de 1 a 40 letras.", "The group name must have 1 to 40 characters."));
         }
         self.db.put(&format!("chats/{id}/meta/name"), &json!(name)).await.map(|_| ()).map_err(|e| e.to_string())
     }

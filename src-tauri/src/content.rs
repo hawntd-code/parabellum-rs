@@ -325,11 +325,11 @@ fn toml_value(text: &str, key: &str) -> Option<String> {
 /// Ruta segura de un elemento: solo nombres de archivo dentro de la carpeta de su categoría.
 pub fn item_path(instance: &Instance, kind: &str, file: &str) -> Result<PathBuf, String> {
     if file.is_empty() || file.contains(['/', '\\']) || file == "." || file == ".." {
-        return Err("Nombre de archivo no válido.".into());
+        return Err(t!("Nombre de archivo no válido.", "Invalid file name."));
     }
-    let path = folder(instance, kind).ok_or("Categoría desconocida.")?.join(file);
+    let path = folder(instance, kind).ok_or(t!("Categoría desconocida.", "Unknown category."))?.join(file);
     if !path.exists() {
-        return Err("Ese archivo ya no existe.".into());
+        return Err(t!("Ese archivo ya no existe.", "That file no longer exists."));
     }
     Ok(path)
 }
@@ -339,14 +339,14 @@ pub fn set_enabled(instance: &Instance, kind: &str, file: &str, enabled: bool) -
     let path = item_path(instance, kind, file)?;
     let new_name = if enabled { file.trim_end_matches(DISABLED).to_string() } else if file.ends_with(DISABLED) { file.to_string() } else { format!("{file}{DISABLED}") };
     if new_name != file {
-        std::fs::rename(&path, path.with_file_name(&new_name)).map_err(|e| format!("No se pudo cambiar: {e}"))?;
+        std::fs::rename(&path, path.with_file_name(&new_name)).map_err(|e| t!("No se pudo cambiar: {e}", "Could not change it: {e}"))?;
     }
     Ok(new_name)
 }
 
 /// Manda un elemento (o un mundo entero) a la papelera.
 pub fn delete(instance: &Instance, kind: &str, file: &str) -> Result<(), String> {
-    trash::delete(item_path(instance, kind, file)?).map_err(|e| format!("No se pudo mandar a la papelera: {e}"))?;
+    trash::delete(item_path(instance, kind, file)?).map_err(|e| t!("No se pudo mandar a la papelera: {e}", "Could not move it to the Recycle Bin: {e}"))?;
     // Si venía con un modpack, ya no se repone al jugar.
     if kind != "worlds" {
         crate::integridad::forget(instance, &format!("{kind}/{file}"));
@@ -384,18 +384,18 @@ pub fn add(instance: &Instance, sources: &[PathBuf], hint: Option<&str>) -> Adde
 }
 
 fn add_one(instance: &Instance, source: &Path, hint: Option<&str>) -> Result<&'static str, String> {
-    let name = source.file_name().ok_or("no es un archivo")?.to_string_lossy().to_string();
+    let name = source.file_name().ok_or(t!("no es un archivo", "it is not a file"))?.to_string_lossy().to_string();
     if !source.exists() {
-        return Err("no se encontró".into());
+        return Err(t!("no se encontró", "not found"));
     }
     let kind = classify(source).or_else(|| match hint {
         Some("resourcepacks") if is_zip(source) => Some(Kind::Pack("resourcepacks")),
         Some("shaderpacks") if is_zip(source) => Some(Kind::Pack("shaderpacks")),
         _ => None,
     });
-    match kind.ok_or("no es un mod, resource pack, shader ni mundo")? {
-        Kind::Modpack => Err("es un modpack: para instalarlo suéltalo en Inicio o usa Crear instancia › Subir un modpack".into()),
-        Kind::Datapack => Err("es un data pack: va dentro de un mundo (instálalo desde Explorar › Data packs o cópialo a la carpeta datapacks del mundo)".into()),
+    match kind.ok_or(t!("no es un mod, resource pack, shader ni mundo", "it is not a mod, resource pack, shader or world"))? {
+        Kind::Modpack => Err(t!("es un modpack: para instalarlo suéltalo en Inicio o usa Crear instancia › Subir un modpack", "it is a modpack: to install it, drop it on Home or use Create instance › Upload a modpack")),
+        Kind::Datapack => Err(t!("es un data pack: va dentro de un mundo (instálalo desde Explorar › Data packs o cópialo a la carpeta datapacks del mundo)", "it is a data pack: it goes inside a world (install it from Explore › Data packs or copy it to the world's datapacks folder)")),
         Kind::Mod(loaders) => {
             check_loader(instance, &loaders)?;
             copy_new(source, &folder(instance, "mods").unwrap().join(&name))?;
@@ -503,7 +503,7 @@ fn classify(path: &Path) -> Option<Kind> {
 /// Un mod de otro loader no cargaría: mejor avisar que copiarlo.
 fn check_loader(instance: &Instance, loaders: &[&str]) -> Result<(), String> {
     let accepted: &[&str] = match instance.loader.as_str() {
-        "Vanilla" => return Err("esta instancia es vanilla y no carga mods (crea una con Fabric)".into()),
+        "Vanilla" => return Err(t!("esta instancia es vanilla y no carga mods (crea una con Fabric)", "this instance is vanilla and does not load mods (create one with Fabric)")),
         // Quilt también carga los mods de Fabric.
         "Quilt" => &["Quilt", "Fabric"],
         "Fabric" => &["Fabric"],
@@ -515,28 +515,28 @@ fn check_loader(instance: &Instance, loaders: &[&str]) -> Result<(), String> {
     if loaders.is_empty() || loaders.iter().any(|l| accepted.contains(l)) {
         Ok(())
     } else {
-        Err(format!("es un mod de {} y esta instancia es {}", loaders.join(" / "), instance.loader))
+        Err(t!("es un mod de {} y esta instancia es {}", "it is a {} mod and this instance is {}", loaders.join(" / "), instance.loader))
     }
 }
 
 fn copy_new(source: &Path, target: &Path) -> Result<(), String> {
     if target.exists() {
-        return Err("ya está en la instancia".into());
+        return Err(t!("ya está en la instancia", "it is already in the instance"));
     }
     std::fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
-    std::fs::copy(source, target).map(|_| ()).map_err(|e| format!("no se pudo copiar ({e})"))
+    std::fs::copy(source, target).map(|_| ()).map_err(|e| t!("no se pudo copiar ({e})", "could not copy it ({e})"))
 }
 
 fn copy_dir_new(source: &Path, target: &Path) -> Result<(), String> {
     if target.exists() {
-        return Err("ya está en la instancia".into());
+        return Err(t!("ya está en la instancia", "it is already in the instance"));
     }
-    crate::instances::copy_dir(source, target).map_err(|e| format!("no se pudo copiar ({e})"))
+    crate::instances::copy_dir(source, target).map_err(|e| t!("no se pudo copiar ({e})", "could not copy it ({e})"))
 }
 
 fn extract_world(source: &Path, prefix: &str, target: &Path) -> Result<(), String> {
     if target.exists() {
-        return Err("ya hay un mundo con ese nombre".into());
+        return Err(t!("ya hay un mundo con ese nombre", "there is already a world with that name"));
     }
     let mut zip = zip::ZipArchive::new(std::fs::File::open(source).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     for i in 0..zip.len() {

@@ -22,7 +22,7 @@ const NEOFORGE_VERSIONS: &str = "https://maven.neoforged.net/api/maven/versions/
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 fn unavailable(loader: Loader) -> String {
-    format!("No se puede conectar con los servidores de {} (en algunas redes, como la de la escuela, están bloqueados).", loader.name())
+    t!("No se puede conectar con los servidores de {} (en algunas redes, como la de la escuela, están bloqueados).", "Cannot connect to the {} servers (on some networks, like the school's, they are blocked).", loader.name())
 }
 
 /// (versión de Minecraft, versión del loader) de todo lo publicado.
@@ -107,11 +107,11 @@ pub async fn install(
     if let Some(id) = installed(loader, minecraft, version, paths) {
         return Ok(id);
     }
-    progress(format!("Descargando el instalador de {name} {version}…"), 0.0);
+    progress(t!("Descargando el instalador de {name} {version}…", "Downloading the {name} {version} installer…"), 0.0);
     let url = installer_url(loader, minecraft, version);
     let sha1 = match download::get_text(&format!("{url}.sha1")).await {
         Ok(text) => Some(text.trim().to_string()).filter(|s| s.len() == 40),
-        Err(e) if e.is_status() => return Err(format!("{name} no tiene la versión {version} para Minecraft {minecraft}.")),
+        Err(e) if e.is_status() => return Err(t!("{name} no tiene la versión {version} para Minecraft {minecraft}.", "{name} has no version {version} for Minecraft {minecraft}.")),
         Err(_) => return Err(unavailable(loader)),
     };
     let installer = paths.data.join("descargas").join(url.rsplit('/').next().unwrap_or("instalador.jar"));
@@ -126,7 +126,7 @@ pub async fn install(
     let stage = progress.clone();
     let label = format!("{name} {version}");
     download::download_all(files, move |count, total, _, _| {
-        stage(format!("Descargando {label}… {count} de {total} archivos"), 0.05 + 0.45 * count as f64 / total.max(1) as f64);
+        stage(t!("Descargando {label}… {count} de {total} archivos", "Downloading {label}… {count} of {total} files"), 0.05 + 0.45 * count as f64 / total.max(1) as f64);
     })
     .await?;
 
@@ -164,19 +164,19 @@ fn installed(loader: Loader, minecraft: &str, version: &str, paths: &Paths) -> O
 /// install_profile.json, version.json y las bibliotecas que faltan (las que trae el instalador
 /// dentro, en maven/, se copian directamente).
 fn read_installer(loader: Loader, installer: &Path, paths: &Paths) -> Result<(Value, Value, Vec<FileDownload>), String> {
-    let damaged = |e: &dyn std::fmt::Display| format!("El instalador de {} está dañado: {e}", loader.name());
+    let damaged = |e: &dyn std::fmt::Display| t!("El instalador de {} está dañado: {e}", "The {} installer is damaged: {e}", loader.name());
     let mut zip = zip::ZipArchive::new(std::fs::File::open(installer).map_err(|e| damaged(&e))?).map_err(|e| damaged(&e))?;
-    let profile: Value = serde_json::from_str(&read_entry(&mut zip, "install_profile.json").ok_or_else(|| damaged(&"falta install_profile.json"))?)
+    let profile: Value = serde_json::from_str(&read_entry(&mut zip, "install_profile.json").ok_or_else(|| damaged(&t!("falta install_profile.json", "install_profile.json is missing")))?)
         .map_err(|e| damaged(&e))?;
     if profile.get("versionInfo").is_some() {
-        return Err(format!(
-            "Esta versión de {} es de las más antiguas y usa otro tipo de instalador que Parabellum no maneja. Elige una más nueva.",
+        return Err(t!(
+            "Esta versión de {} es de las más antiguas y usa otro tipo de instalador que Parabellum no maneja. Elige una más nueva.", "This {} version is one of the oldest and uses another kind of installer that Parabellum does not handle. Choose a newer one.",
             loader.name()
         ));
     }
     let json_name = profile["json"].as_str().unwrap_or("/version.json").trim_start_matches('/');
     let version: Value =
-        serde_json::from_str(&read_entry(&mut zip, json_name).ok_or_else(|| damaged(&"falta version.json"))?).map_err(|e| damaged(&e))?;
+        serde_json::from_str(&read_entry(&mut zip, json_name).ok_or_else(|| damaged(&t!("falta version.json", "version.json is missing")))?).map_err(|e| damaged(&e))?;
 
     let features = Features::new();
     let mut files = Vec::new();
@@ -229,7 +229,7 @@ fn extract_entry(zip: &mut zip::ZipArchive<std::fs::File>, name: &str, target: &
 }
 
 fn library(coordinate: &str, paths: &Paths) -> Result<PathBuf, String> {
-    Maven::parse(coordinate).map(|m| paths.libraries.join(m.relative_path())).ok_or(format!("Biblioteca con nombre no válido: {coordinate}"))
+    Maven::parse(coordinate).map(|m| paths.libraries.join(m.relative_path())).ok_or(t!("Biblioteca con nombre no válido: {coordinate}", "Library with an invalid name: {coordinate}"))
 }
 
 /// Sustituye {DATO} por su valor y [grupo:artefacto:versión] por la ruta de la biblioteca.
@@ -243,7 +243,7 @@ fn expand(text: &str, data: &HashMap<String, String>, paths: &Paths) -> Result<S
         let Some(length) = rest[start..].find('}') else { break };
         let key = &rest[start + 1..start + length];
         out.push_str(&rest[..start]);
-        out.push_str(data.get(key).ok_or(format!("El instalador pide un dato que no conoce: {key}."))?);
+        out.push_str(data.get(key).ok_or(t!("El instalador pide un dato que no conoce: {key}.", "The installer asks for a value it does not know: {key}."))?);
         rest = &rest[start + length + 1..];
     }
     out.push_str(rest);
@@ -251,16 +251,16 @@ fn expand(text: &str, data: &HashMap<String, String>, paths: &Paths) -> Result<S
 }
 
 fn main_class(jar: &Path) -> Result<String, String> {
-    let file = std::fs::File::open(jar).map_err(|_| format!("Falta {}.", jar.display()))?;
+    let file = std::fs::File::open(jar).map_err(|_| t!("Falta {}.", "{} is missing.", jar.display()))?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
-    let manifest = read_entry(&mut zip, "META-INF/MANIFEST.MF").ok_or(format!("{} no tiene MANIFEST.", jar.display()))?;
+    let manifest = read_entry(&mut zip, "META-INF/MANIFEST.MF").ok_or(t!("{} no tiene MANIFEST.", "{} has no MANIFEST.", jar.display()))?;
     // Las líneas largas del manifiesto siguen en la siguiente, empezando con un espacio.
     let joined = manifest.replace("\r\n", "\n").replace("\n ", "");
     joined
         .lines()
         .find_map(|l| l.strip_prefix("Main-Class:"))
         .map(|c| c.trim().to_string())
-        .ok_or(format!("{} no dice su clase principal.", jar.display()))
+        .ok_or(t!("{} no dice su clase principal.", "{} does not state its main class.", jar.display()))
 }
 
 fn sha1_of(path: &Path) -> Option<String> {
@@ -303,7 +303,7 @@ fn run_processors(
     let vanilla = ResolvedVersion::resolve(minecraft, paths)?;
     let runtimes = java::discover(paths);
     let runtime = java::select(&runtimes, vanilla.java_component.as_deref(), vanilla.java_major)
-        .ok_or(format!("Falta Java {} para instalar {name}.", vanilla.java_major))?;
+        .ok_or(t!("Falta Java {} para instalar {name}.", "Java {} is missing to install {name}.", vanilla.java_major))?;
     let java_exe = runtime.home.join("bin").join("java.exe");
 
     let temp = paths.data.join("temporal").join(format!("instalador-{}", name.to_lowercase()));
@@ -327,7 +327,7 @@ fn run_processors(
             // Un archivo del instalador (p. ej. los parches binarios)
             let target = temp.join(inner);
             if !extract_entry(&mut zip, inner, &target)? {
-                return Err(format!("Al instalador de {name} le falta {inner}."));
+                return Err(t!("Al instalador de {name} le falta {inner}.", "The {name} installer is missing {inner}."));
             }
             target.display().to_string()
         } else {
@@ -344,8 +344,8 @@ fn run_processors(
         .map_err(|e| e.to_string())?;
     let total = processors.len();
     for (index, processor) in processors.into_iter().enumerate() {
-        progress(format!("Preparando {name}… paso {} de {total}", index + 1), 0.5 + 0.5 * index as f64 / total as f64);
-        let jar = library(processor["jar"].as_str().ok_or("Processor sin jar.")?, paths)?;
+        progress(t!("Preparando {name}… paso {} de {total}", "Preparing {name}… step {} of {total}", index + 1), 0.5 + 0.5 * index as f64 / total as f64);
+        let jar = library(processor["jar"].as_str().ok_or_else(|| t!("El instalador trae un paso sin programa.", "The installer has a step without a program."))?, paths)?;
         let mut classpath = vec![jar.clone()];
         for entry in processor["classpath"].as_array().into_iter().flatten().filter_map(Value::as_str) {
             classpath.push(library(entry, paths)?);
@@ -382,16 +382,16 @@ fn run_processors(
             .stderr(log.try_clone().map_err(|e| e.to_string())?)
             .creation_flags(CREATE_NO_WINDOW)
             .status()
-            .map_err(|e| format!("No se pudo abrir Java: {e}"))?;
+            .map_err(|e| t!("No se pudo abrir Java: {e}", "Could not start Java: {e}"))?;
         let step = arguments.iter().position(|a| a == "--task").and_then(|i| arguments.get(i + 1)).cloned().unwrap_or(main);
         if !status.success() {
-            return Err(format!(
-                "Falló un paso del instalador de {name} ({step}). Si es por la conexión, vuelve a intentarlo; los detalles quedan en datos/logs/instalador-{}.log.",
+            return Err(t!(
+                "Falló un paso del instalador de {name} ({step}). Si es por la conexión, vuelve a intentarlo; los detalles quedan en datos/logs/instalador-{}.log.", "A step of the {name} installer failed ({step}). If it is the connection, try again; the details are in datos/logs/instalador-{}.log.",
                 name.to_lowercase()
             ));
         }
         if !done(&outputs) {
-            return Err(format!("El instalador de {name} generó un archivo distinto del esperado ({step}). Vuelve a intentarlo."));
+            return Err(t!("El instalador de {name} generó un archivo distinto del esperado ({step}). Vuelve a intentarlo.", "The {name} installer produced a different file than expected ({step}). Try again."));
         }
     }
     let _ = std::fs::remove_dir_all(&temp);
@@ -403,7 +403,7 @@ fn write_version(version: &Value, paths: &Paths) -> Result<String, String> {
     let id = version["id"]
         .as_str()
         .filter(|id| !id.is_empty() && !id.contains(['/', '\\']) && !id.contains(".."))
-        .ok_or("La versión del instalador no tiene id.")?
+        .ok_or(t!("La versión del instalador no tiene id.", "The installer version has no id."))?
         .to_string();
     let file = paths.version_json(&id);
     std::fs::create_dir_all(file.parent().unwrap()).map_err(|e| e.to_string())?;

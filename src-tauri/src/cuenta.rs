@@ -122,7 +122,7 @@ pub async fn iniciar_sesion_google(app: AppHandle, recordar: bool) -> Result<Soc
     let config = {
         let state = app.state::<AppState>();
         if !available(&state) {
-            return Err("Esta copia de Parabellum no trae las claves de Google. Descarga la versión más reciente.".into());
+            return Err(t!("Esta copia de Parabellum no trae las claves de Google. Descarga la versión más reciente.", "This copy of Parabellum does not include the Google keys. Download the latest version."));
         }
         state.config.clone()
     };
@@ -164,7 +164,7 @@ pub async fn reconectar_amigos(app: AppHandle) -> SocialView {
 }
 
 fn connected(app: &AppHandle) -> Result<Arc<Social>, String> {
-    social(app).ok_or("Primero inicia sesión con Google.".into())
+    social(app).ok_or(t!("Primero inicia sesión con Google.", "Sign in with Google first."))
 }
 
 #[tauri::command]
@@ -265,7 +265,7 @@ async fn claim_name(app: &AppHandle, social: &Arc<Social>) {
     match social.claim_name(&settings.username, &uuid).await {
         Ok(()) => update_status(app, |s| s.name_conflict = None),
         Err(ClaimError::Taken) => update_status(app, |s| s.name_conflict = Some(settings.username.clone())),
-        Err(ClaimError::Other(error)) => update_status(app, |s| s.warning = Some(format!("No se pudo reservar tu nombre: {error}"))),
+        Err(ClaimError::Other(error)) => update_status(app, |s| s.warning = Some(t!("No se pudo reservar tu nombre: {error}", "Could not reserve your name: {error}"))),
     }
 }
 
@@ -305,17 +305,17 @@ async fn apply_profile(app: &AppHandle, account: &GoogleAccount, announce: bool)
                 let _ = current.save(&state.paths);
                 *state.settings.lock().unwrap() = current.clone();
                 let _ = app.emit("ajustes", current);
-                announce.then(|| format!("Se cargó tu perfil guardado: ahora juegas como {}.", remote.username))
+                announce.then(|| t!("Se cargó tu perfil guardado: ahora juegas como {}.", "Your saved profile was loaded: you now play as {}.", remote.username))
             }
         }
         Ok(_) => {
             let profile = current_profile(&app.state::<AppState>().settings.lock().unwrap());
             match account.save_profile(&profile).await {
-                Ok(()) => announce.then(|| "Tu perfil de este PC quedó guardado en tu cuenta.".to_string()),
-                Err(error) => Some(format!("Sesión iniciada, pero no se pudo guardar tu perfil: {error}")),
+                Ok(()) => announce.then(|| t!("Tu perfil de este PC quedó guardado en tu cuenta.", "Your profile on this PC was saved to your account.")),
+                Err(error) => Some(t!("Sesión iniciada, pero no se pudo guardar tu perfil: {error}", "Signed in, but your profile could not be saved: {error}")),
             }
         }
-        Err(error) => Some(format!("Sesión iniciada, pero no se pudo leer tu perfil: {error}")),
+        Err(error) => Some(t!("Sesión iniciada, pero no se pudo leer tu perfil: {error}", "Signed in, but your profile could not be read: {error}")),
     };
     update_status(app, |s| s.notice = notice);
 }
@@ -325,7 +325,7 @@ async fn apply_profile(app: &AppHandle, account: &GoogleAccount, announce: bool)
 async fn upload_profile(app: &AppHandle, account: &GoogleAccount) {
     let profile = current_profile(&app.state::<AppState>().settings.lock().unwrap());
     if let Err(error) = account.save_profile(&profile).await {
-        update_status(app, |s| s.notice = Some(format!("No se pudo guardar tu perfil en la cuenta: {error}")));
+        update_status(app, |s| s.notice = Some(t!("No se pudo guardar tu perfil en la cuenta: {error}", "Could not save your profile to your account: {error}")));
     }
 }
 
@@ -353,7 +353,7 @@ pub fn settings_changed(app: &AppHandle) {
         }
         if let Some(account) = google_account(&app) {
             if let Err(error) = account.save_profile(&current_profile(&settings)).await {
-                update_status(&app, |s| s.notice = Some(format!("No se pudo guardar tu perfil en la cuenta: {error}")));
+                update_status(&app, |s| s.notice = Some(t!("No se pudo guardar tu perfil en la cuenta: {error}", "Could not save your profile to your account: {error}")));
             }
         }
     });
@@ -366,7 +366,7 @@ fn chat_service(app: &AppHandle) -> Option<Arc<Chat>> {
 }
 
 fn chat_ready(app: &AppHandle) -> Result<Arc<Chat>, String> {
-    chat_service(app).ok_or("Primero inicia sesión con Google.".into())
+    chat_service(app).ok_or(t!("Primero inicia sesión con Google.", "Sign in with Google first."))
 }
 
 #[derive(Serialize, Clone)]
@@ -408,7 +408,7 @@ fn notify_message(app: &AppHandle, summary: chat::Summary) {
     if in_front && open.as_deref() == Some(summary.id.as_str()) {
         return;
     }
-    let title = if summary.kind == "grupo" { summary.name.clone() } else { format!("Mensaje de {}", summary.name) };
+    let title = if summary.kind == "grupo" { summary.name.clone() } else { t!("Mensaje de {}", "Message from {}", summary.name) };
     let body = if summary.kind == "grupo" { format!("{}: {}", summary.last_name, summary.last_text) } else { summary.last_text.clone() };
     let (handle, id) = (app.clone(), summary.id.clone());
     let _ = app.run_on_main_thread(move || {
@@ -432,12 +432,12 @@ pub fn leer_imagen(ruta: String) -> Result<String, String> {
         "gif" => "image/gif",
         "webp" => "image/webp",
         "bmp" => "image/bmp",
-        _ => return Err("Eso no es una imagen (PNG, JPG, GIF, WEBP o BMP).".into()),
+        _ => return Err(t!("Eso no es una imagen (PNG, JPG, GIF, WEBP o BMP).", "That is not an image (PNG, JPG, GIF, WEBP or BMP).")),
     };
     if path.metadata().map(|m| m.len()).unwrap_or(0) > 25 * 1024 * 1024 {
-        return Err("La imagen pesa más de 25 MB.".into());
+        return Err(t!("La imagen pesa más de 25 MB.", "The image is larger than 25 MB."));
     }
-    let bytes = std::fs::read(&path).map_err(|e| format!("No se pudo leer la imagen: {e}"))?;
+    let bytes = std::fs::read(&path).map_err(|e| t!("No se pudo leer la imagen: {e}", "Could not read the image: {e}"))?;
     Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
 }
 
@@ -518,11 +518,11 @@ fn notify_changes(app: &AppHandle) {
         let quiet = seen.quiet_until.is_none_or(|until| std::time::Instant::now() < until);
         if !quiet {
             for request in view.requests.iter().filter(|r| !seen.requests.contains(&r.uid)) {
-                toasts.push(("Solicitud de amistad".to_string(), format!("{} quiere ser tu amigo en Parabellum.", request.name)));
+                toasts.push((t!("Solicitud de amistad", "Friend request"), t!("{} quiere ser tu amigo en Parabellum.", "{} wants to be your friend on Parabellum.", request.name)));
             }
             for friend in view.friends.iter().filter(|f| f.world_open && !seen.open_worlds.contains(&f.uid)) {
                 let pack = friend.presence.as_ref().and_then(|p| p.pack.clone()).unwrap_or_default();
-                toasts.push((format!("{} abrió su mundo", friend.name), format!("Está jugando {pack}. Abre Parabellum y pulsa Unirse.")));
+                toasts.push((t!("{} abrió su mundo", "{} opened their world", friend.name), t!("Está jugando {pack}. Abre Parabellum y pulsa Unirse.", "They are playing {pack}. Open Parabellum and press Join.")));
             }
         }
         seen.requests = requests;
@@ -599,7 +599,7 @@ pub fn startup(app: &AppHandle) {
                     }
                     Err(error) => update_status(&app, |s| {
                         s.connecting = false;
-                        s.error = Some(format!("No se pudo recuperar tu sesión de Google ({error}). Puedes volver a iniciarla."));
+                        s.error = Some(t!("No se pudo recuperar tu sesión de Google ({error}). Puedes volver a iniciarla.", "Your Google session could not be restored ({error}). You can sign in again."));
                     }),
                 }
             }
@@ -639,12 +639,19 @@ pub fn show_window(app: &AppHandle) {
     }
 }
 
+/// Al cambiar de idioma: el icono junto al reloj se rehace con los textos nuevos.
+pub fn rebuild_tray(app: &AppHandle) {
+    if app.remove_tray_by_id("principal").is_some() {
+        let _ = create_tray(app);
+    }
+}
+
 /// Icono junto al reloj: clic para abrir, menú para salir del todo.
 pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-    let open = MenuItemBuilder::with_id("abrir", "Abrir Parabellum").build(app)?;
-    let quit = MenuItemBuilder::with_id("salir", "Salir").build(app)?;
+    let open = MenuItemBuilder::with_id("abrir", t!("Abrir Parabellum", "Open Parabellum")).build(app)?;
+    let quit = MenuItemBuilder::with_id("salir", t!("Salir", "Quit")).build(app)?;
     let menu = MenuBuilder::new(app).item(&open).separator().item(&quit).build()?;
     let mut builder = TrayIconBuilder::with_id("principal").tooltip("Parabellum").menu(&menu).show_menu_on_left_click(false);
     if let Some(icon) = app.default_window_icon() {

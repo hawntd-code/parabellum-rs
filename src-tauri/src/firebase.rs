@@ -22,14 +22,14 @@ fn stream_http() -> &'static reqwest::Client {
 
 fn explain(error: Option<&str>) -> String {
     match error {
-        None => "Firebase no respondió como se esperaba.".into(),
-        Some(e) if e.starts_with("OPERATION_NOT_ALLOWED") => "En Firebase falta activar el acceso con Google.".into(),
+        None => t!("Firebase no respondió como se esperaba.", "Firebase did not answer as expected."),
+        Some(e) if e.starts_with("OPERATION_NOT_ALLOWED") => t!("En Firebase falta activar el acceso con Google.", "Google sign-in is not enabled in Firebase."),
         Some(e) if e.starts_with("INVALID_IDP_RESPONSE") || e.to_lowercase().contains("audience") => {
-            format!("Firebase no acepta el inicio de sesión de Parabellum (falta su ID de cliente en la lista de permitidos). Detalle: {e}")
+            t!("Firebase no acepta el inicio de sesión de Parabellum (falta su ID de cliente en la lista de permitidos). Detalle: {e}", "Firebase does not accept Parabellum's sign-in (its client ID is missing from the allowed list). Detail: {e}")
         }
-        Some(e) if e.starts_with("API_KEY") => "La clave de API de Firebase no es válida.".into(),
-        Some(e) if e.starts_with("USER_DISABLED") => "Esta cuenta está desactivada en Parabellum.".into(),
-        Some(e) => format!("Firebase rechazó el inicio de sesión ({e})."),
+        Some(e) if e.starts_with("API_KEY") => t!("La clave de API de Firebase no es válida.", "The Firebase API key is not valid."),
+        Some(e) if e.starts_with("USER_DISABLED") => t!("Esta cuenta está desactivada en Parabellum.", "This account is disabled in Parabellum."),
+        Some(e) => t!("Firebase rechazó el inicio de sesión ({e}).", "Firebase rejected the sign-in ({e})."),
     }
 }
 
@@ -59,7 +59,7 @@ impl Session {
             .json(&body)
             .send()
             .await
-            .map_err(|_| "No se pudo conectar con el servidor de amigos.".to_string())?;
+            .map_err(|_| t!("No se pudo conectar con el servidor de amigos.", "Could not connect to the friends server."))?;
         let ok = response.status().is_success();
         let json: Value = response.json().await.unwrap_or_default();
         if !ok {
@@ -89,7 +89,7 @@ impl Session {
             .form(&[("grant_type", "refresh_token"), ("refresh_token", token.refresh.as_str())])
             .send()
             .await
-            .map_err(|_| "No se pudo conectar con el servidor de amigos.".to_string())?;
+            .map_err(|_| t!("No se pudo conectar con el servidor de amigos.", "Could not connect to the friends server."))?;
         let ok = response.status().is_success();
         let json: Value = response.json().await.unwrap_or_default();
         if !ok {
@@ -115,7 +115,10 @@ pub enum DbError {
 impl std::fmt::Display for DbError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DbError::Permission(path) => write!(f, "Sin permiso para \"{path}\" (revisa las reglas de la base de datos)."),
+            DbError::Permission(path) => f.write_str(&t!(
+                "Sin permiso para \"{path}\" (revisa las reglas de la base de datos).",
+                "No permission for \"{path}\" (check the database rules)."
+            )),
             DbError::Other(message) => f.write_str(message),
         }
     }
@@ -153,7 +156,7 @@ impl Database {
         if let Some(body) = body {
             request = request.json(body);
         }
-        let response = request.send().await.map_err(|_| DbError::Other("Sin conexión con el servidor de amigos.".into()))?;
+        let response = request.send().await.map_err(|_| DbError::Other(t!("Sin conexión con el servidor de amigos.", "No connection with the friends server.")))?;
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
         if status == reqwest::StatusCode::UNAUTHORIZED {
@@ -161,7 +164,7 @@ impl Database {
         }
         if !status.is_success() {
             let detail = serde_json::from_str::<Value>(&text).ok().and_then(|v| v["error"].as_str().map(String::from)).unwrap_or(text);
-            return Err(DbError::Other(format!("La base de datos respondió {}: {detail}", status.as_u16())));
+            return Err(DbError::Other(t!("La base de datos respondió {}: {detail}", "The database answered {}: {detail}", status.as_u16())));
         }
         Ok(serde_json::from_str(&text).unwrap_or(Value::Null))
     }
@@ -214,7 +217,7 @@ impl Database {
             .header("Accept", "text/event-stream")
             .send()
             .await
-            .map_err(|_| "Sin conexión con el servidor de amigos. Se reintentará solo.".to_string())?;
+            .map_err(|_| t!("Sin conexión con el servidor de amigos. Se reintentará solo.", "No connection with the friends server. It will retry on its own."))?;
         if response.status() == reqwest::StatusCode::UNAUTHORIZED {
             return Err(DbError::Permission(path.to_string()).to_string());
         }

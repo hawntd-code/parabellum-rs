@@ -331,7 +331,7 @@ pub async fn repair(game_dir: &Path, deep: bool, progress: impl Fn(String, f64) 
     let total = record.len().max(1);
     for (i, tracked) in record.iter().enumerate() {
         if deep && i % 25 == 0 {
-            progress(format!("Verificando archivos… {i} de {total}"), 0.5 * i as f64 / total as f64);
+            progress(t!("Verificando archivos… {i} de {total}", "Checking files… {i} of {total}"), 0.5 * i as f64 / total as f64);
         }
         report.checked += 1;
         let Some(relative) = safe_relative(&tracked.path) else { continue };
@@ -366,7 +366,7 @@ pub async fn repair(game_dir: &Path, deep: bool, progress: impl Fn(String, f64) 
         }
     }
     for (name, folder) in unknown {
-        report.fail(Some(&folder), format!("{name}: el modpack lo pide pero no dice de dónde bajarlo"));
+        report.fail(Some(&folder), t!("{name}: el modpack lo pide pero no dice de dónde bajarlo", "{name}: the modpack asks for it but does not say where to download it from"));
     }
     if downloads.is_empty() {
         return report;
@@ -375,18 +375,18 @@ pub async fn repair(game_dir: &Path, deep: bool, progress: impl Fn(String, f64) 
     let report_progress = progress.clone();
     let files: Vec<FileDownload> = downloads.iter().map(|(d, _, _, _)| d.clone()).collect();
     let result = download::download_all(files, move |count, total, _, _| {
-        report_progress(format!("Bajando lo que le falta al modpack… {count} de {total}"), 0.5 + 0.5 * count as f64 / total.max(1) as f64)
+        report_progress(t!("Bajando lo que le falta al modpack… {count} de {total}", "Downloading what the modpack is missing… {count} of {total}"), 0.5 + 0.5 * count as f64 / total.max(1) as f64)
     })
     .await;
     for (download, name, relative, unverified) in downloads {
         if !download.path.is_file() {
-            let reason = if result.is_err() { "no se pudo descargar (¿hay internet?)" } else { "no se descargó" };
+            let reason = if result.is_err() { t!("no se pudo descargar (¿hay internet?)", "could not be downloaded (is there internet?)") } else { t!("no se descargó", "was not downloaded") };
             report.fail(Some(&relative), format!("{name}: {reason}"));
             continue;
         }
         if unverified && !readable_zip(&download.path) {
             let _ = std::fs::remove_file(&download.path);
-            report.fail(Some(&relative), format!("{name}: no se bajó bien (no es un .jar ni un .zip)"));
+            report.fail(Some(&relative), t!("{name}: no se bajó bien (no es un .jar ni un .zip)", "{name}: did not download correctly (it is not a .jar or a .zip)"));
             continue;
         }
         report.repaired.push(name);
@@ -402,7 +402,7 @@ pub async fn repair(game_dir: &Path, deep: bool, progress: impl Fn(String, f64) 
     if !checker.is_empty() {
         save(game_dir, record);
     }
-    progress("Listo".into(), 1.0);
+    progress(t!("Listo", "Done"), 1.0);
     report
 }
 
@@ -426,7 +426,7 @@ pub fn restore_from_mrpack(zip_path: &Path, game_dir: &Path, wanted: &[Tracked])
             std::fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
             let temp = PathBuf::from(format!("{}.parte", target.display()));
             let mut out = std::fs::File::create(&temp).map_err(|e| e.to_string())?;
-            std::io::copy(&mut entry, &mut out).map_err(|e| format!("El modpack está dañado ({rest}): {e}"))?;
+            std::io::copy(&mut entry, &mut out).map_err(|e| t!("El modpack está dañado ({rest}): {e}", "The modpack is damaged ({rest}): {e}"))?;
             drop(out);
             std::fs::rename(&temp, target).map_err(|e| e.to_string())?;
             restored.push(file_name(&rest));

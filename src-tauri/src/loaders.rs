@@ -61,7 +61,7 @@ impl Loader {
     }
 
     fn unavailable(self) -> String {
-        format!("No se puede conectar con los servidores de {} (en algunas redes, como la de la escuela, están bloqueados).", self.name())
+        t!("No se puede conectar con los servidores de {} (en algunas redes, como la de la escuela, están bloqueados).", "Cannot connect to the {} servers (on some networks, like the school's, they are blocked).", self.name())
     }
 }
 
@@ -120,20 +120,20 @@ pub async fn install(
         return forge::install(loader, minecraft, loader_version, paths, progress).await;
     }
     let name = loader.name();
-    progress(format!("Preparando {name} {loader_version}…"), 0.0);
+    progress(t!("Preparando {name} {loader_version}…", "Preparing {name} {loader_version}…"), 0.0);
     let url = format!("{}/versions/loader/{}/{}/profile/json", loader.meta(), encode(minecraft), encode(loader_version));
     let text = download::get_text(&url).await.map_err(|e| {
         if e.is_status() {
-            format!("{name} no tiene la versión {loader_version} para Minecraft {minecraft}.")
+            t!("{name} no tiene la versión {loader_version} para Minecraft {minecraft}.", "{name} has no version {loader_version} for Minecraft {minecraft}.")
         } else {
             loader.unavailable()
         }
     })?;
-    let mut profile: Value = serde_json::from_str(&text).map_err(|e| format!("El perfil de {name} llegó dañado: {e}"))?;
+    let mut profile: Value = serde_json::from_str(&text).map_err(|e| t!("El perfil de {name} llegó dañado: {e}", "The {name} profile arrived damaged: {e}"))?;
     let id = profile["id"]
         .as_str()
         .filter(|id| !id.is_empty() && !id.contains(['/', '\\']) && !id.contains(".."))
-        .ok_or(format!("El perfil de {name} no tiene id."))?
+        .ok_or(t!("El perfil de {name} no tiene id.", "The {name} profile has no id."))?
         .to_string();
     if loader == Loader::Quilt {
         prefer_intermediary(&mut profile);
@@ -142,7 +142,7 @@ pub async fn install(
     let files = library_files(&profile, paths);
     let loader_version = loader_version.to_string();
     download::download_all(files, move |count, total, _, _| {
-        progress(format!("Descargando {name} {loader_version}… {count} de {total} archivos"), count as f64 / total.max(1) as f64);
+        progress(t!("Descargando {name} {loader_version}… {count} de {total} archivos", "Downloading {name} {loader_version}… {count} of {total} files"), count as f64 / total.max(1) as f64);
     })
     .await?;
 

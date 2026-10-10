@@ -82,7 +82,7 @@ pub async fn load(paths: &Paths, config: &Config) -> Catalog {
     let local = paths.root.join(LOCAL_FOLDER);
     if let Ok((entries, warnings)) = tauri::async_runtime::spawn_blocking(move || load_local(&local)).await {
         catalog.entries.extend(entries);
-        catalog.warnings.extend(warnings.into_iter().map(|w| format!("Carpeta paquetes: {w}")));
+        catalog.warnings.extend(warnings.into_iter().map(|w| t!("Carpeta paquetes: {w}", "Packages folder: {w}")));
     }
     if config.has_drive() {
         match load_drive(paths, config).await {
@@ -108,7 +108,7 @@ fn load_local(folder: &Path) -> (Vec<Entry>, Vec<String>) {
     for json in packs::walk(folder).into_iter().filter(|f| f.extension().is_some_and(|e| e.eq_ignore_ascii_case("json"))) {
         let Ok(text) = std::fs::read_to_string(&json) else { continue };
         let Ok(manifest) = serde_json::from_str::<Manifest>(&text) else {
-            warnings.push(format!("{} no es un paquete válido.", json.display()));
+            warnings.push(t!("{} no es un paquete válido.", "{} is not a valid package.", json.display()));
             continue;
         };
         let dir = json.parent().unwrap();
@@ -165,7 +165,7 @@ async fn load_drive(paths: &Paths, config: &Config) -> Result<(Vec<Entry>, Vec<S
                 continue;
             }
             let Some(zip) = by_name.get(&manifest.archive.to_lowercase()).filter(|z| z["id"].as_str().is_some_and(valid_id)) else {
-                warnings.push(format!("{path}{name}: falta «{}» en la misma carpeta.", manifest.archive));
+                warnings.push(t!("{path}{name}: falta «{}» en la misma carpeta.", "{path}{name}: «{}» is missing from the same folder.", manifest.archive));
                 continue;
             };
             let icon = match manifest.icon.as_ref().and_then(|n| by_name.get(&n.to_lowercase())) {
@@ -215,7 +215,7 @@ async fn list_children(folder_id: &str, api_key: &str) -> Result<Vec<Value>, Str
 }
 
 fn unavailable() -> String {
-    "No se puede conectar con Google Drive.".into()
+    t!("No se puede conectar con Google Drive.", "Cannot connect to Google Drive.")
 }
 
 /// Los errores de la API de Drive, explicados.
@@ -229,14 +229,14 @@ fn drive_error(status: reqwest::StatusCode, body: &Value) -> String {
         .unwrap_or_default();
     let message = error["message"].as_str().unwrap_or_default();
     match reason {
-        "API_KEY_SERVICE_BLOCKED" => "La clave de API no tiene permiso para usar la Google Drive API.".into(),
-        "SERVICE_DISABLED" | "accessNotConfigured" => "La Google Drive API no está habilitada en el proyecto de Google Cloud.".into(),
-        "API_KEY_INVALID" | "keyInvalid" => "La clave de API de Google configurada no es válida.".into(),
-        "userRateLimitExceeded" | "rateLimitExceeded" => "Demasiadas solicitudes a Google Drive. Espera un minuto y vuelve a intentarlo.".into(),
+        "API_KEY_SERVICE_BLOCKED" => t!("La clave de API no tiene permiso para usar la Google Drive API.", "The API key is not allowed to use the Google Drive API."),
+        "SERVICE_DISABLED" | "accessNotConfigured" => t!("La Google Drive API no está habilitada en el proyecto de Google Cloud.", "The Google Drive API is not enabled in the Google Cloud project."),
+        "API_KEY_INVALID" | "keyInvalid" => t!("La clave de API de Google configurada no es válida.", "The configured Google API key is not valid."),
+        "userRateLimitExceeded" | "rateLimitExceeded" => t!("Demasiadas solicitudes a Google Drive. Espera un minuto y vuelve a intentarlo.", "Too many requests to Google Drive. Wait a minute and try again."),
         _ if status == reqwest::StatusCode::NOT_FOUND => {
-            "No se encontró la carpeta de Drive. Comprueba que esté compartida como «Cualquier persona con el enlace».".into()
+            t!("No se encontró la carpeta de Drive. Comprueba que esté compartida como «Cualquier persona con el enlace».", "The Drive folder was not found. Check that it is shared as «Anyone with the link».")
         }
-        _ => format!("Google Drive respondió {status}: {message}"),
+        _ => t!("Google Drive respondió {status}: {message}", "Google Drive answered {status}: {message}"),
     }
 }
 
@@ -249,13 +249,13 @@ async fn check_download(response: reqwest::Response) -> Result<reqwest::Response
     let status = response.status();
     let body = response.text().await.unwrap_or_default().to_lowercase();
     Err(if body.contains("quota") || body.contains("cuota") {
-        "Google Drive limitó por hoy las descargas de este archivo por exceso de uso. Prueba más tarde o instálalo desde una USB.".into()
+        t!("Google Drive limitó por hoy las descargas de este archivo por exceso de uso. Prueba más tarde o instálalo desde una USB.", "Google Drive limited downloads of this file for today due to heavy use. Try later or install it from a USB drive.")
     } else if status == reqwest::StatusCode::NOT_FOUND {
-        "No se encontró el archivo en Google Drive. Comprueba que siga en la carpeta.".into()
+        t!("No se encontró el archivo en Google Drive. Comprueba que siga en la carpeta.", "The file was not found in Google Drive. Check that it is still in the folder.")
     } else if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::UNAUTHORIZED {
-        "Google Drive no permitió descargar el archivo. Comprueba que la carpeta esté compartida como «Cualquier persona con el enlace».".into()
+        t!("Google Drive no permitió descargar el archivo. Comprueba que la carpeta esté compartida como «Cualquier persona con el enlace».", "Google Drive did not allow downloading the file. Check that the folder is shared as «Anyone with the link».")
     } else {
-        "Google Drive devolvió una página en lugar del archivo (puede que la descarga esté limitada). Prueba más tarde.".into()
+        t!("Google Drive devolvió una página en lugar del archivo (puede que la descarga esté limitada). Prueba más tarde.", "Google Drive returned a page instead of the file (the download may be limited). Try later.")
     })
 }
 
@@ -398,7 +398,7 @@ pub async fn fetch(entry: &Entry, paths: &Paths, progress: impl Fn(String, f64) 
         match download_part(entry, &partial, &progress).await {
             Ok(()) => break,
             Err((error, retry)) if retry && attempt < 4 => {
-                progress(format!("Se cortó la conexión, reintentando ({attempt}/3)…"), 0.0);
+                progress(t!("Se cortó la conexión, reintentando ({attempt}/3)…", "The connection dropped, retrying ({attempt}/3)…"), 0.0);
                 tokio::time::sleep(std::time::Duration::from_secs(3 * attempt)).await;
                 attempt += 1;
                 let _ = error;
@@ -419,7 +419,7 @@ async fn download_part(entry: &Entry, partial: &Path, progress: &(impl Fn(String
     if existing > 0 {
         request = request.header(reqwest::header::RANGE, format!("bytes={existing}-"));
     }
-    let response = request.send().await.map_err(|e| (format!("No se pudo conectar con Google Drive: {e}"), true))?;
+    let response = request.send().await.map_err(|e| (t!("No se pudo conectar con Google Drive: {e}", "Could not connect to Google Drive: {e}"), true))?;
     let mut response = check_download(response).await.map_err(|e| (e, false))?;
     if existing > 0 && response.status() != reqwest::StatusCode::PARTIAL_CONTENT {
         existing = 0; // Drive ignoró el rango: se empieza de nuevo
@@ -433,15 +433,15 @@ async fn download_part(entry: &Entry, partial: &Path, progress: &(impl Fn(String
     let started = std::time::Instant::now();
     let mut done = existing;
     let mut last = std::time::Instant::now() - std::time::Duration::from_secs(1);
-    while let Some(chunk) = response.chunk().await.map_err(|e| (format!("La descarga se cortó: {e}"), true))? {
+    while let Some(chunk) = response.chunk().await.map_err(|e| (t!("La descarga se cortó: {e}", "The download was interrupted: {e}"), true))? {
         file.write_all(&chunk).await.map_err(|e| (e.to_string(), false))?;
         done += chunk.len() as u64;
         if last.elapsed().as_millis() >= 250 {
             last = std::time::Instant::now();
             let speed = (done - existing) as f64 / started.elapsed().as_secs_f64().max(0.5) / 1048576.0;
             progress(
-                format!(
-                    "Descargando {}: {:.0} de {:.0} MB · {speed:.1} MB/s",
+                t!(
+                    "Descargando {}: {:.0} de {:.0} MB · {speed:.1} MB/s", "Downloading {}: {:.0} of {:.0} MB · {speed:.1} MB/s",
                     entry.manifest.name,
                     done as f64 / 1048576.0,
                     entry.size as f64 / 1048576.0
@@ -452,7 +452,7 @@ async fn download_part(entry: &Entry, partial: &Path, progress: &(impl Fn(String
     }
     file.flush().await.map_err(|e| (e.to_string(), false))?;
     if entry.size > 0 && done != entry.size {
-        return Err(("La descarga quedó incompleta.".into(), true));
+        return Err((t!("La descarga quedó incompleta.", "The download is incomplete."), true));
     }
     Ok(())
 }
@@ -462,7 +462,7 @@ async fn verify(zip: &Path, manifest: &Manifest) -> Result<(), String> {
     let file = zip.to_path_buf();
     let actual = tauri::async_runtime::spawn_blocking(move || packs::sha256_file(&file)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?;
     if !actual.eq_ignore_ascii_case(&expected) {
-        return Err("El archivo descargado está dañado (su huella SHA-256 no coincide). Vuelve a intentarlo.".into());
+        return Err(t!("El archivo descargado está dañado (su huella SHA-256 no coincide). Vuelve a intentarlo.", "The downloaded file is damaged (its SHA-256 fingerprint does not match). Try again."));
     }
     Ok(())
 }
@@ -470,7 +470,7 @@ async fn verify(zip: &Path, manifest: &Manifest) -> Result<(), String> {
 /// Descarga, verifica e instala un paquete completo.
 async fn install_full(entry: &Entry, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<Installed, String> {
     let (zip, is_copy) = fetch(entry, paths, progress.clone()).await?;
-    progress(format!("Comprobando {}…", entry.manifest.name), 1.0);
+    progress(t!("Comprobando {}…", "Checking {}…", entry.manifest.name), 1.0);
     if let Err(error) = verify(&zip, &entry.manifest).await {
         if is_copy {
             let _ = std::fs::remove_file(&zip);
@@ -508,13 +508,13 @@ pub async fn install(
     progress: impl Fn(String, f64) + Send + Sync + Clone + 'static,
 ) -> Result<CatalogInstall, String> {
     if entry.is_launcher() {
-        return Err("Eso es una actualización del launcher, no un modpack.".into());
+        return Err(t!("Eso es una actualización del launcher, no un modpack.", "That is a launcher update, not a modpack."));
     }
     let manifest = &entry.manifest;
     if !manifest.is_base() && !packs::base_available(&manifest.minecraft_version, paths) {
         let base_id = manifest.base_id.clone().unwrap_or_else(|| packs::base_id(&manifest.minecraft_version));
-        let base = catalog.iter().find(|e| e.manifest.is_base() && e.manifest.id.eq_ignore_ascii_case(&base_id)).ok_or(format!(
-            "Este modpack necesita Minecraft {}, pero «base-{base_id}» no está en el catálogo. Súbela a la carpeta de Drive.",
+        let base = catalog.iter().find(|e| e.manifest.is_base() && e.manifest.id.eq_ignore_ascii_case(&base_id)).ok_or(t!(
+            "Este modpack necesita Minecraft {}, pero «base-{base_id}» no está en el catálogo. Súbela a la carpeta de Drive.", "This modpack needs Minecraft {}, but «base-{base_id}» is not in the catalog. Upload it to the Drive folder.",
             manifest.minecraft_version
         ))?;
         install_full(base, paths, progress.clone()).await?;
@@ -562,15 +562,15 @@ pub struct DeltaStats {
 /// Actualiza una instancia instalada desde un paquete bajando del zip remoto solo lo que cambió
 /// (compara tamaño y CRC32). Conserva lo del jugador como la actualización completa.
 fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress: &(dyn Fn(String, f64) + Send + Sync)) -> Result<DeltaStats, String> {
-    progress("Comparando con la versión de Drive…".into(), 0.0);
+    progress(t!("Comparando con la versión de Drive…", "Comparing with the Drive version…"), 0.0);
     let folder_name = manifest.folder.clone().filter(|f| !f.is_empty()).unwrap_or_else(|| manifest.name.clone());
     if !packs::valid_folder_name(&folder_name) {
-        return Err("El nombre de carpeta del paquete no es válido.".into());
+        return Err(t!("El nombre de carpeta del paquete no es válido.", "The package folder name is not valid."));
     }
     let folder = paths.instances.join(&folder_name);
     let entries = remote.entries()?;
     if !entries.iter().any(|e| e.name == packs::MANIFEST_IN_ARCHIVE) {
-        return Err("El zip no es un paquete de Parabellum.".into());
+        return Err(t!("El zip no es un paquete de Parabellum.", "The zip is not a Parabellum package."));
     }
     let preserved = |rest: &str| {
         let rest = rest.to_lowercase();
@@ -586,10 +586,10 @@ fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress
     for entry in entries.iter().filter(|e| !e.name.ends_with('/')) {
         checked += 1;
         if checked % 200 == 0 {
-            progress(format!("Comparando archivos… {checked} de {}", entries.len()), 0.0);
+            progress(t!("Comparando archivos… {checked} de {}", "Comparing files… {checked} of {}", entries.len()), 0.0);
         }
         if let Some(rest) = entry.name.strip_prefix("instancia/") {
-            let relative = crate::mrpack::safe_relative(rest).ok_or(format!("El paquete trae una ruta no permitida: {rest}"))?;
+            let relative = crate::mrpack::safe_relative(rest).ok_or(t!("El paquete trae una ruta no permitida: {rest}", "The package contains a path that is not allowed: {rest}"))?;
             if preserved(rest) {
                 continue;
             }
@@ -635,7 +635,7 @@ fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress
         done += bytes.len() as u64;
         count += 1;
         progress(
-            format!("Actualizando {}: {count} de {} archivos ({:.0} de {:.0} MB)", manifest.name, wanted.len(), done as f64 / 1048576.0, total as f64 / 1048576.0),
+            t!("Actualizando {}: {count} de {} archivos ({:.0} de {:.0} MB)", "Updating {}: {count} of {} files ({:.0} of {:.0} MB)", manifest.name, wanted.len(), done as f64 / 1048576.0, total as f64 / 1048576.0),
             done as f64 / total as f64,
         );
         Ok(())
@@ -659,7 +659,7 @@ fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress
             let _ = trash::delete(file);
         }
     } else {
-        progress(format!("Se dejaron {} archivos que el paquete no trae (eran demasiados para quitarlos sin revisar).", leftovers.len()), 1.0);
+        progress(t!("Se dejaron {} archivos que el paquete no trae (eran demasiados para quitarlos sin revisar).", "{} files the package no longer has were left in place (too many to remove without checking).", leftovers.len()), 1.0);
     }
     packs::keep_local_settings(&old_settings, &folder.join(INSTANCE_FILE));
     let _ = std::fs::remove_file(&old_settings);
@@ -670,7 +670,7 @@ fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress
         .collect();
     crate::integridad::save_package(&folder, &listed);
     std::fs::write(folder.join(STATE_DIR).join(packs::INSTALLED_MANIFEST), serde_json::to_vec_pretty(manifest).unwrap()).map_err(|e| e.to_string())?;
-    progress("Listo".into(), 1.0);
+    progress(t!("Listo", "Done"), 1.0);
     Ok(DeltaStats { files: wanted.len(), bytes: done })
 }
 
@@ -705,10 +705,10 @@ pub async fn apply_launcher_update(entry: &Entry, paths: &Paths, progress: impl 
     let fresh = staging.join("Parabellum.nuevo.exe");
     {
         let mut archive = zip::ZipArchive::new(std::fs::File::open(&zip).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-        let name = archive.file_names().find(|n| n.to_lowercase().ends_with(".exe")).map(String::from).ok_or("La actualización no trae el ejecutable.")?;
+        let name = archive.file_names().find(|n| n.to_lowercase().ends_with(".exe")).map(String::from).ok_or(t!("La actualización no trae el ejecutable.", "The update does not contain the executable."))?;
         let mut source = archive.by_name(&name).map_err(|e| e.to_string())?;
         let mut out = std::fs::File::create(&fresh).map_err(|e| e.to_string())?;
-        std::io::copy(&mut source, &mut out).map_err(|e| format!("La actualización está dañada: {e}"))?;
+        std::io::copy(&mut source, &mut out).map_err(|e| t!("La actualización está dañada: {e}", "The update is damaged: {e}"))?;
     }
     if is_copy {
         let _ = std::fs::remove_file(&zip);
@@ -717,11 +717,11 @@ pub async fn apply_launcher_update(entry: &Entry, paths: &Paths, progress: impl 
     let old = PathBuf::from(format!("{}.old", current.display()));
     let _ = std::fs::remove_file(&old);
     std::fs::rename(&current, &old).map_err(|_| {
-        "No hay permiso para cambiar la carpeta del launcher. Cópialo a una carpeta tuya (Escritorio, USB…) y actualiza desde ahí.".to_string()
+        t!("No hay permiso para cambiar la carpeta del launcher. Cópialo a una carpeta tuya (Escritorio, USB…) y actualiza desde ahí.", "There is no permission to change the launcher folder. Copy it to a folder of yours (Desktop, USB…) and update from there.")
     })?;
     if let Err(error) = std::fs::rename(&fresh, &current).or_else(|_| std::fs::copy(&fresh, &current).map(|_| ())) {
         let _ = std::fs::rename(&old, &current); // deshacer: todo queda como estaba
-        return Err(format!("No se pudo instalar la actualización: {error}"));
+        return Err(t!("No se pudo instalar la actualización: {error}", "Could not install the update: {error}"));
     }
     Ok(current)
 }
@@ -729,7 +729,7 @@ pub async fn apply_launcher_update(entry: &Entry, paths: &Paths, progress: impl 
 /// Prepara la carpeta "_parabellum" con este mismo exe para subirla a Drive (solo la versión final).
 pub fn publish_launcher(out_dir: &Path, notes: &str) -> Result<PathBuf, String> {
     if cfg!(debug_assertions) {
-        return Err("Este Parabellum es una compilación de desarrollo: publica desde el Parabellum.exe final.".into());
+        return Err(t!("Este Parabellum es una compilación de desarrollo: publica desde el Parabellum.exe final.", "This Parabellum is a development build: publish from the final Parabellum.exe."));
     }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let folder = out_dir.join("_parabellum");
@@ -760,7 +760,34 @@ pub fn publish_launcher(out_dir: &Path, notes: &str) -> Result<PathBuf, String> 
         ..Default::default()
     };
     std::fs::write(folder.join(format!("Parabellum-{version}.json")), serde_json::to_vec_pretty(&manifest).unwrap()).map_err(|e| e.to_string())?;
+    // Para quien lo baja por primera vez desde Drive (el catálogo solo lee los .json).
+    let _ = std::fs::write(folder.join("LEEME.txt"), readme(version));
     Ok(folder)
+}
+
+/// Instrucciones de la primera vez: el exe no lleva firma de pago, así que Windows avisa al abrirlo.
+fn readme(version: &str) -> String {
+    format!(
+        "PARABELLUM {version} — CÓMO EMPEZAR\r\n\
+         \r\n\
+         1. Descarga Parabellum-{version}.zip y descomprímelo en una carpeta tuya (Escritorio, Documentos o una USB).\r\n\
+         \x20  No se instala nada: todo queda en esa carpeta.\r\n\
+         2. Abre Parabellum.exe. Si Windows muestra «Windows protegió tu PC», pulsa «Más información» y luego\r\n\
+         \x20  «Ejecutar de todas formas». Sale porque el programa no tiene una firma de pago; solo pasa la primera vez.\r\n\
+         3. Desde ahí Parabellum se actualiza solo cuando se publica una versión nueva en esta carpeta.\r\n\
+         \x20  Para tenerlo a mano: Ajustes › Comportamiento › Acceso directo en el Escritorio o en el menú Inicio.\r\n\
+         \r\n\
+         ---\r\n\
+         \r\n\
+         PARABELLUM {version} — GETTING STARTED\r\n\
+         \r\n\
+         1. Download Parabellum-{version}.zip and unzip it into a folder of yours (Desktop, Documents or a USB drive).\r\n\
+         \x20  Nothing is installed: everything stays in that folder.\r\n\
+         2. Open Parabellum.exe. If Windows shows «Windows protected your PC», click «More info» and then\r\n\
+         \x20  «Run anyway». It appears because the program has no paid signature; it only happens the first time.\r\n\
+         3. From then on Parabellum updates itself when a new version is published in this folder.\r\n\
+         \x20  To keep it handy: Settings › Behavior › Desktop or Start menu shortcut.\r\n"
+    )
 }
 
 #[cfg(test)]

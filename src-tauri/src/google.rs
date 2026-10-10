@@ -62,7 +62,7 @@ fn http() -> &'static reqwest::Client {
 }
 
 fn unavailable() -> String {
-    "No se pudo conectar con Google. Revisa tu conexión a internet.".into()
+    t!("No se pudo conectar con Google. Revisa tu conexión a internet.", "Could not connect to Google. Check your internet connection.")
 }
 
 fn random_text(bytes: usize) -> String {
@@ -117,18 +117,18 @@ impl GoogleAccount {
                 respond(
                     &mut stream,
                     200,
-                    if ok {
-                        "Sesión iniciada. Ya puedes volver a Parabellum y cerrar esta pestaña."
+                    &if ok {
+                        t!("Sesión iniciada. Ya puedes volver a Parabellum y cerrar esta pestaña.", "Signed in. You can go back to Parabellum and close this tab.")
                     } else {
-                        "No se completó el inicio de sesión. Vuelve a Parabellum e inténtalo de nuevo."
+                        t!("No se completó el inicio de sesión. Vuelve a Parabellum e inténtalo de nuevo.", "The sign-in was not completed. Go back to Parabellum and try again.")
                     },
                 )
                 .await;
                 if !ok {
                     return Err(if get("error").as_deref() == Some("access_denied") {
-                        "Se canceló el inicio de sesión.".to_string()
+                        t!("Se canceló el inicio de sesión.", "The sign-in was cancelled.")
                     } else {
-                        "Google no devolvió un código de acceso válido.".to_string()
+                        t!("Google no devolvió un código de acceso válido.", "Google did not return a valid access code.")
                     });
                 }
                 return Ok(get("code").unwrap_or_default());
@@ -136,7 +136,7 @@ impl GoogleAccount {
         };
         let code = tokio::time::timeout(Duration::from_secs(300), wait)
             .await
-            .map_err(|_| "No se completó el inicio de sesión a tiempo. Vuelve a intentarlo.".to_string())??;
+            .map_err(|_| t!("No se completó el inicio de sesión a tiempo. Vuelve a intentarlo.", "The sign-in was not completed in time. Try again."))??;
 
         let token = post_form(&[
             ("code", code.as_str()),
@@ -147,7 +147,7 @@ impl GoogleAccount {
             ("code_verifier", &verifier),
         ])
         .await?;
-        let refresh = token["refresh_token"].as_str().ok_or("Google no devolvió un token de actualización.")?.to_string();
+        let refresh = token["refresh_token"].as_str().ok_or(t!("Google no devolvió un token de actualización.", "Google did not return a refresh token."))?.to_string();
         let mut account = Self::new(config, refresh);
         account.accept(&token).await?;
         account.load_user_info().await?;
@@ -173,7 +173,7 @@ impl GoogleAccount {
     }
 
     async fn accept(&self, token: &Value) -> Result<(), String> {
-        let access = token["access_token"].as_str().ok_or("Google no devolvió un token de acceso.")?.to_string();
+        let access = token["access_token"].as_str().ok_or(t!("Google no devolvió un token de acceso.", "Google did not return an access token."))?.to_string();
         let seconds = token["expires_in"].as_u64().unwrap_or(3600).saturating_sub(60);
         let mut current = self.token.lock().await;
         let id = token["id_token"].as_str().map(String::from).or_else(|| current.as_ref().and_then(|t| t.id.clone()));
@@ -207,7 +207,7 @@ impl GoogleAccount {
             return Ok(id);
         }
         self.refresh().await?;
-        self.token.lock().await.as_ref().and_then(|t| t.id.clone()).ok_or("Google no devolvió un token de identidad.".into())
+        self.token.lock().await.as_ref().and_then(|t| t.id.clone()).ok_or(t!("Google no devolvió un token de identidad.", "Google did not return an identity token."))
     }
 
     async fn load_user_info(&mut self) -> Result<(), String> {
@@ -236,7 +236,7 @@ impl GoogleAccount {
             .await
             .map_err(|_| unavailable())?
             .error_for_status()
-            .map_err(|e| format!("Google Drive respondió {}", e.status().map(|s| s.as_u16()).unwrap_or(0)))?
+            .map_err(|e| t!("Google Drive respondió {}", "Google Drive answered {}", e.status().map(|s| s.as_u16()).unwrap_or(0)))?
             .json()
             .await
             .map_err(|e| e.to_string())?;
@@ -290,7 +290,7 @@ impl GoogleAccount {
             .await
             .map_err(|_| unavailable())?
             .error_for_status()
-            .map_err(|e| format!("Google Drive respondió {}", e.status().map(|s| s.as_u16()).unwrap_or(0)))?;
+            .map_err(|e| t!("Google Drive respondió {}", "Google Drive answered {}", e.status().map(|s| s.as_u16()).unwrap_or(0)))?;
         Ok(())
     }
 }
@@ -302,9 +302,9 @@ async fn post_form(form: &[(&str, &str)]) -> Result<Value, String> {
     if !ok {
         let error = body["error"].as_str().unwrap_or("desconocido");
         return Err(if error == "invalid_grant" {
-            "La sesión de Google caducó o se revocó. Vuelve a iniciar sesión.".into()
+            t!("La sesión de Google caducó o se revocó. Vuelve a iniciar sesión.", "The Google session expired or was revoked. Sign in again.")
         } else {
-            format!("Google rechazó el inicio de sesión ({error}).")
+            t!("Google rechazó el inicio de sesión ({error}).", "Google rejected the sign-in ({error}).")
         });
     }
     Ok(body)
@@ -344,7 +344,7 @@ async fn respond(stream: &mut tokio::net::TcpStream, status: u16, message: &str)
 // ================= Sesión guardada (cifrada con DPAPI para el usuario de Windows)
 
 pub fn save_session(paths: &Paths, refresh_token: &str) -> Result<(), String> {
-    let data = dpapi(refresh_token.as_bytes(), true).ok_or("No se pudo cifrar la sesión.")?;
+    let data = dpapi(refresh_token.as_bytes(), true).ok_or(t!("No se pudo cifrar la sesión.", "Could not encrypt the session."))?;
     std::fs::write(paths.data.join(SESSION_FILE), data).map_err(|e| e.to_string())
 }
 

@@ -95,9 +95,9 @@ pub fn status(exe: &Path) -> Status {
 
 /// Crea (o rehace) el acceso directo a `exe`.
 pub fn create(place: Place, exe: &Path) -> Result<(), String> {
-    let path = link_path(place).ok_or("No se encontró la carpeta de Windows para el acceso directo.")?;
+    let path = link_path(place).ok_or(t!("No se encontró la carpeta de Windows para el acceso directo.", "Windows' folder for the shortcut was not found."))?;
     init_com();
-    let failed = |e: windows::core::Error| format!("No se pudo crear el acceso directo: {}", e.message());
+    let failed = |e: windows::core::Error| t!("No se pudo crear el acceso directo: {}", "Could not create the shortcut: {}", e.message());
     // SAFETY: llamadas COM con interfaces válidas y cadenas que viven durante cada llamada.
     unsafe {
         let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(failed)?;
@@ -106,7 +106,7 @@ pub fn create(place: Place, exe: &Path) -> Result<(), String> {
             link.SetWorkingDirectory(&HSTRING::from(dir.as_os_str())).map_err(failed)?;
         }
         link.SetIconLocation(&HSTRING::from(exe.as_os_str()), 0).map_err(failed)?;
-        link.SetDescription(&HSTRING::from("Launcher de Minecraft")).map_err(failed)?;
+        link.SetDescription(&HSTRING::from(t!("Launcher de Minecraft", "Minecraft launcher"))).map_err(failed)?;
         link.cast::<IPersistFile>().map_err(failed)?.Save(&HSTRING::from(path.as_os_str()), true).map_err(failed)
     }
 }
@@ -114,7 +114,7 @@ pub fn create(place: Place, exe: &Path) -> Result<(), String> {
 /// Quita el acceso directo (a la papelera, como todo lo que borra Parabellum).
 pub fn remove(place: Place) -> Result<(), String> {
     match link_path(place).filter(|p| p.exists()) {
-        Some(path) => trash::delete(path).map_err(|e| format!("No se pudo quitar el acceso directo: {e}")),
+        Some(path) => trash::delete(path).map_err(|e| t!("No se pudo quitar el acceso directo: {e}", "Could not remove the shortcut: {e}")),
         None => Ok(()),
     }
 }

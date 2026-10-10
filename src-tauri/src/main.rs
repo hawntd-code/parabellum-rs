@@ -1,6 +1,8 @@
 // Sin ventana de consola en Windows.
 #![windows_subsystem = "windows"]
 
+#[macro_use]
+mod idioma;
 mod accesos;
 mod actividad;
 mod amigos;
@@ -109,13 +111,20 @@ fn guardar_ajustes(app: AppHandle, state: State<AppState>, mut ajustes: Settings
     ajustes.normalize()?;
     ajustes.ram_gb = ajustes.ram_gb.clamp(1, 64);
     ajustes.ui_scale = if ajustes.ui_scale.is_finite() { ajustes.ui_scale.clamp(0.8, 1.5) } else { 1.0 };
+    ajustes.language = idioma::normalize(&ajustes.language);
+    let language_changed = ajustes.language != state.settings.lock().unwrap().language;
     if (ajustes.ui_scale - state.settings.lock().unwrap().ui_scale).abs() > f64::EPSILON {
         if let Some(window) = app.get_webview_window("main") {
             let _ = window.set_zoom(ajustes.ui_scale);
         }
     }
-    ajustes.save(&state.paths).map_err(|e| format!("No se pudieron guardar los ajustes: {e}"))?;
+    ajustes.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
     *state.settings.lock().unwrap() = ajustes.clone();
+    if language_changed {
+        idioma::set(&ajustes.language);
+        // El menú del icono junto al reloj se vuelve a crear con los textos nuevos.
+        cuenta::rebuild_tray(&app);
+    }
     cuenta::settings_changed(&app);
     Ok(ajustes)
 }
@@ -203,7 +212,7 @@ async fn install_vanilla(version: &str, paths: &Paths, progress: impl Fn(String,
     let installed = mojang::installed_versions(paths).iter().any(|v| v == version);
     match mojang::list().await {
         Ok(releases) => {
-            let release = releases.into_iter().find(|r| r.id == version).ok_or(format!("Mojang no tiene la versión {version}."))?;
+            let release = releases.into_iter().find(|r| r.id == version).ok_or(t!("Mojang no tiene la versión {version}.", "Mojang does not have version {version}."))?;
             // Se ejecuta siempre: si ya estaba descargada termina al momento y completa lo que faltara.
             mojang::install(&release, paths, progress).await
         }
@@ -225,7 +234,7 @@ async fn install_loader(
         Some(version) => version.to_string(),
         None => match loaders::loader_versions(loader, minecraft).await {
             Ok(versions) => loaders::recommended(&versions)
-                .ok_or(format!("{} todavía no está disponible para Minecraft {minecraft}.", loader.name()))?
+                .ok_or(t!("{} todavía no está disponible para Minecraft {minecraft}.", "{} is not available for Minecraft {minecraft} yet.", loader.name()))?
                 .version
                 .clone(),
             Err(message) => loaders::installed(paths)
@@ -274,7 +283,7 @@ async fn crear_instancia(
 ) -> Result<Instance, String> {
     let paths = state.paths.clone();
     instances::folder_for(&nombre, &paths).and_then(|folder| {
-        if folder.exists() { Err(format!("Ya tienes una instancia llamada \"{}\".", nombre.trim())) } else { Ok(()) }
+        if folder.exists() { Err(t!("Ya tienes una instancia llamada \"{}\".", "You already have an instance named \"{}\".", nombre.trim())) } else { Ok(()) }
     })?;
     let loader = loader.as_deref().filter(|l| !l.eq_ignore_ascii_case("vanilla")).map(parse_loader).transpose()?;
     let emitter = app.clone();
@@ -295,9 +304,9 @@ async fn crear_instancia(
 async fn cambiar_loader(app: AppHandle, state: State<'_, AppState>, id: String, version_loader: String) -> Result<Instance, String> {
     let instance = instance_or_error(&state, &id)?;
     if state.games.lock().unwrap().contains_key(&id) {
-        return Err("Cierra el juego antes de cambiar la versión.".into());
+        return Err(t!("Cierra el juego antes de cambiar la versión.", "Close the game before changing the version."));
     }
-    let loader = parse_loader(&instance.loader).map_err(|_| "Esta instancia es vanilla: no tiene loader.".to_string())?;
+    let loader = parse_loader(&instance.loader).map_err(|_| t!("Esta instancia es vanilla: no tiene loader.", "This instance is vanilla: it has no loader."))?;
     let paths = state.paths.clone();
     let emitter = app.clone();
     let (version_id, loader_version) =
@@ -328,11 +337,11 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
     let paths = state.paths.clone();
     let settings = state.settings.lock().unwrap().clone();
     if let Some(problem) = settings::validate_username(&settings.username) {
-        return Err(format!("{problem} Cámbialo en Ajustes."));
+        return Err(t!("{problem} Cámbialo en Ajustes.", "{problem} Change it in Settings."));
     }
-    let instance = instances::find(&paths, &id).ok_or("No se encontró la instancia.")?;
+    let instance = instances::find(&paths, &id).ok_or(t!("No se encontró la instancia.", "The instance was not found."))?;
     if state.games.lock().unwrap().contains_key(&id) {
-        return Err("Este juego ya está abierto.".into());
+        return Err(t!("Este juego ya está abierto.", "This game is already open."));
     }
     // Que el modpack esté completo: lo que falte se baja (o se repone) antes de abrir el juego.
     let cached = state.catalog.lock().unwrap().clone();
@@ -340,12 +349,19 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
     let missing_mods = &completed.missing_mods;
     if !missing_mods.is_empty() {
         let shown: Vec<&str> = missing_mods.iter().take(4).map(String::as_str).collect();
-        return Err(format!(
-            "{} del modpack y no se {} reponer:\n{}\nConéctate a internet o usa «Verificar y reparar archivos» en el menú ⋯ de la instancia.",
-            missing_count(missing_mods.len(), "mod", "mods"),
-            if missing_mods.len() == 1 { "pudo" } else { "pudieron" },
-            shown.join("\n")
-        ));
+        let shown = shown.join("\n");
+        return Err(if missing_mods.len() == 1 {
+            t!(
+                "Falta 1 mod del modpack y no se pudo reponer:\n{shown}\nConéctate a internet o usa «Verificar y reparar archivos» en el menú ⋯ de la instancia.",
+                "1 mod of the modpack is missing and could not be restored:\n{shown}\nConnect to the internet or use «Check and repair files» in the instance's ⋯ menu."
+            )
+        } else {
+            t!(
+                "Faltan {} mods del modpack y no se pudieron reponer:\n{shown}\nConéctate a internet o usa «Verificar y reparar archivos» en el menú ⋯ de la instancia.",
+                "{} mods of the modpack are missing and could not be restored:\n{shown}\nConnect to the internet or use «Check and repair files» in the instance's ⋯ menu.",
+                missing_mods.len()
+            )
+        });
     }
     let launched = instance.clone();
     let session = cuenta::session_arguments(&app);
@@ -379,7 +395,7 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
 
 #[tauri::command]
 fn detener(state: State<AppState>, id: String) -> Result<(), String> {
-    let pid = *state.games.lock().unwrap().get(&id).ok_or("Ese juego no está abierto.")?;
+    let pid = *state.games.lock().unwrap().get(&id).ok_or(t!("Ese juego no está abierto.", "That game is not open."))?;
     state.stopped.lock().unwrap().insert(id);
     launch::kill(pid);
     Ok(())
@@ -410,7 +426,7 @@ fn adopt_running_games(app: &AppHandle) {
 // ================= Gestión de instancias
 
 fn instance_or_error(state: &AppState, id: &str) -> Result<Instance, String> {
-    instances::find(&state.paths, id).ok_or_else(|| "No se encontró la instancia.".into())
+    instances::find(&state.paths, id).ok_or_else(|| t!("No se encontró la instancia.", "The instance was not found."))
 }
 
 #[tauri::command]
@@ -437,7 +453,7 @@ async fn duplicar_instancia(state: State<'_, AppState>, id: String) -> Result<In
 #[tauri::command]
 fn eliminar_instancia(state: State<AppState>, id: String) -> Result<(), String> {
     if state.games.lock().unwrap().contains_key(&id) {
-        return Err("Cierra el juego antes de eliminar la instancia.".into());
+        return Err(t!("Cierra el juego antes de eliminar la instancia.", "Close the game before deleting the instance."));
     }
     instances::delete(&instance_or_error(&state, &id)?)
 }
@@ -482,11 +498,11 @@ async fn agregar_contenido(state: State<'_, AppState>, id: String, rutas: Vec<St
 #[tauri::command]
 async fn elegir_contenido(app: AppHandle, state: State<'_, AppState>, id: String, tipo: String) -> Result<Option<content::Added>, String> {
     let instance = instance_or_error(&state, &id)?;
-    let (title, filter, extensions): (&str, &str, &[&str]) = match tipo.as_str() {
-        "mods" => ("Agregar mods", "Mods de Minecraft", &["jar"]),
-        "resourcepacks" => ("Agregar resource packs", "Resource packs", &["zip"]),
-        "shaderpacks" => ("Agregar shaders", "Shaders", &["zip"]),
-        _ => ("Agregar mundos", "Mundos comprimidos", &["zip"]),
+    let (title, filter, extensions): (String, String, &[&str]) = match tipo.as_str() {
+        "mods" => (t!("Agregar mods", "Add mods"), t!("Mods de Minecraft", "Minecraft mods"), &["jar"]),
+        "resourcepacks" => (t!("Agregar resource packs", "Add resource packs"), "Resource packs".into(), &["zip"]),
+        "shaderpacks" => (t!("Agregar shaders", "Add shaders"), "Shaders".into(), &["zip"]),
+        _ => (t!("Agregar mundos", "Add worlds"), t!("Mundos comprimidos", "Compressed worlds"), &["zip"]),
     };
     let dialog = app.dialog().file().set_title(title).add_filter(filter, extensions);
     let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_files()).await.map_err(|e| e.to_string())?;
@@ -505,7 +521,7 @@ async fn accesos_directos() -> Result<accesos::Status, String> {
 /// Crea (o rehace) o quita un acceso directo: `lugar` es "escritorio" o "inicio".
 #[tauri::command]
 async fn acceso_directo(lugar: String, crear: bool) -> Result<accesos::Status, String> {
-    let place = accesos::Place::parse(&lugar).ok_or("Lugar desconocido.")?;
+    let place = accesos::Place::parse(&lugar).ok_or(t!("Lugar desconocido.", "Unknown place."))?;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     tauri::async_runtime::spawn_blocking(move || {
         if crear { accesos::create(place, &exe) } else { accesos::remove(place) }?;
@@ -517,7 +533,7 @@ async fn acceso_directo(lugar: String, crear: bool) -> Result<accesos::Status, S
 
 #[tauri::command]
 fn abrir_carpeta_contenido(state: State<AppState>, id: String, tipo: String) -> Result<(), String> {
-    let folder = content::folder(&instance_or_error(&state, &id)?, &tipo).ok_or("Categoría desconocida.")?;
+    let folder = content::folder(&instance_or_error(&state, &id)?, &tipo).ok_or(t!("Categoría desconocida.", "Unknown category."))?;
     std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
     std::process::Command::new("explorer").arg(folder).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
@@ -579,7 +595,7 @@ async fn versiones_proyecto(
         }
         Some(instance_id) => {
             let instance = instance_or_error(&state, &instance_id)?;
-            let kind = modrinth::ContentType::parse(&tipo).ok_or("Tipo de contenido desconocido.")?;
+            let kind = modrinth::ContentType::parse(&tipo).ok_or(t!("Tipo de contenido desconocido.", "Unknown content type."))?;
             let loaders = modrinth::instance_loaders(&instance, kind)?;
             modrinth::project_versions(&id, &loaders, &[instance.minecraft_version.as_str()]).await
         }
@@ -622,7 +638,7 @@ async fn instalar_contenido(app: AppHandle, state: State<'_, AppState>, id: Stri
     let instance = instance_or_error(&state, &id)?;
     // Con el juego abierto Windows no deja quitar los archivos viejos y quedarían duplicados.
     if archivos.iter().any(|f| f.replaces.is_some()) && state.games.lock().unwrap().contains_key(&id) {
-        return Err("Cierra el juego antes de actualizar o cambiar versiones.".into());
+        return Err(t!("Cierra el juego antes de actualizar o cambiar versiones.", "Close the game before updating or changing versions."));
     }
     let name = match archivos.as_slice() {
         [] => return Ok(()),
@@ -635,7 +651,7 @@ async fn instalar_contenido(app: AppHandle, state: State<'_, AppState>, id: Stri
             "progreso",
             Progress {
                 task: "instalar".into(),
-                stage: format!("Descargando {name}… {count} de {total}"),
+                stage: t!("Descargando {name}… {count} de {total}", "Downloading {name}… {count} of {total}"),
                 fraction: bytes as f64 / total_bytes.max(1) as f64,
             },
         );
@@ -659,7 +675,7 @@ async fn actualizar_contenido(
 ) -> Result<Vec<modrinth::HeldBack>, String> {
     let instance = instance_or_error(&state, &id)?;
     if state.games.lock().unwrap().contains_key(&id) {
-        return Err("Cierra el juego antes de actualizar.".into());
+        return Err(t!("Cierra el juego antes de actualizar.", "Close the game before updating."));
     }
     let emitter = app.clone();
     modrinth::apply_updates(&instance, archivos, move |count, total, bytes, total_bytes| {
@@ -667,7 +683,7 @@ async fn actualizar_contenido(
             "progreso",
             Progress {
                 task: "instalar".into(),
-                stage: format!("Actualizando… {count} de {total}"),
+                stage: t!("Actualizando… {count} de {total}", "Updating… {count} of {total}"),
                 fraction: bytes as f64 / total_bytes.max(1) as f64,
             },
         );
@@ -680,7 +696,7 @@ async fn actualizar_contenido(
 fn mostrar_archivo(ruta: String) -> Result<(), String> {
     let path = PathBuf::from(&ruta);
     if !path.exists() {
-        return Err("Ese archivo ya no existe.".into());
+        return Err(t!("Ese archivo ya no existe.", "That file no longer exists."));
     }
     std::process::Command::new("explorer").arg(format!("/select,{}", path.display())).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
@@ -692,7 +708,7 @@ fn abrir_enlace(url: String) -> Result<(), String> {
         && url.len() < 2048
         && !url.chars().any(|c| c.is_whitespace() || c.is_control() || "\"<>^|`".contains(c));
     if !valid {
-        return Err("Enlace no válido.".into());
+        return Err(t!("Enlace no válido.", "Invalid link."));
     }
     std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", &url]).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
@@ -719,13 +735,13 @@ fn missing_warning(report: &integridad::Report) -> Option<String> {
         return None;
     }
     let shown: Vec<&str> = report.failed.iter().take(4).map(String::as_str).collect();
-    let more = if report.failed.len() > shown.len() { format!("\n…y {} más", report.failed.len() - shown.len()) } else { String::new() };
-    Some(format!("{} del modpack:\n{}{more}", missing_count(report.failed.len(), "archivo", "archivos"), shown.join("\n")))
-}
-
-/// "Falta 1 mod" o "Faltan 3 mods".
-fn missing_count(n: usize, one: &str, many: &str) -> String {
-    if n == 1 { format!("Falta 1 {one}") } else { format!("Faltan {n} {many}") }
+    let more = if report.failed.len() > shown.len() { t!("\n…y {} más", "\n…and {} more", report.failed.len() - shown.len()) } else { String::new() };
+    let shown = shown.join("\n");
+    Some(if report.failed.len() == 1 {
+        t!("Falta 1 archivo del modpack:\n{shown}{more}", "1 file of the modpack is missing:\n{shown}{more}")
+    } else {
+        t!("Faltan {} archivos del modpack:\n{shown}{more}", "{} files of the modpack are missing:\n{shown}{more}", report.failed.len())
+    })
 }
 
 /// Deja la instancia completa: baja lo que falte (con `deep`, también lo dañado) y lo que el modpack
@@ -748,7 +764,7 @@ async fn ensure_complete(
     // Instalada antes de que existiera la lista: se arma con el modpack original, o se repara desde Drive.
     if deep && integridad::load(&instance.game_dir).is_none() {
         if let Some((project, version)) = &modrinth_source {
-            progress("Descargando el modpack original para comparar…".into(), 0.0);
+            progress(t!("Descargando el modpack original para comparar…", "Downloading the original modpack to compare…"), 0.0);
             match modrinth::download_modpack(project, Some(version), &temp).await {
                 Ok(download) => {
                     if let Ok(Some(info)) = mrpack::read(&download.file) {
@@ -756,7 +772,7 @@ async fn ensure_complete(
                     }
                     let _ = std::fs::remove_file(&download.file);
                 }
-                Err(error) => early_failure = Some(format!("No se pudo bajar el modpack original para comparar: {error}")),
+                Err(error) => early_failure = Some(t!("No se pudo bajar el modpack original para comparar: {error}", "Could not download the original modpack to compare: {error}")),
             }
         } else if let Some(manifest) = &package {
             drive = Some(drive_repair(manifest, paths, config, catalog.clone(), progress.clone()).await);
@@ -776,7 +792,7 @@ async fn ensure_complete(
     if !pending.is_empty() {
         let pending_paths: Vec<&str> = pending.iter().map(|t| t.path.as_str()).collect();
         if let Some((project, version)) = &modrinth_source {
-            progress("Descargando el modpack para reponer lo que traía dentro…".into(), 0.5);
+            progress(t!("Descargando el modpack para reponer lo que traía dentro…", "Downloading the modpack to restore what it included…"), 0.5);
             match modrinth::download_modpack(project, Some(version), &temp).await {
                 Ok(download) => {
                     let (file, game_dir, wanted) = (download.file.clone(), instance.game_dir.clone(), pending.clone());
@@ -785,12 +801,12 @@ async fn ensure_complete(
                     match restored.map_err(|e| e.to_string()).and_then(|r| r) {
                         Ok((done, absent)) => {
                             report.repaired.extend(done);
-                            fail_each(&mut report, &absent.iter().map(String::as_str).collect::<Vec<_>>(), "el modpack ya no lo trae");
+                            fail_each(&mut report, &absent.iter().map(String::as_str).collect::<Vec<_>>(), &t!("el modpack ya no lo trae", "the modpack no longer includes it"));
                         }
                         Err(error) => fail_each(&mut report, &pending_paths, &error),
                     }
                 }
-                Err(error) => fail_each(&mut report, &pending_paths, &format!("no se pudo bajar el modpack ({error})")),
+                Err(error) => fail_each(&mut report, &pending_paths, &t!("no se pudo bajar el modpack ({error})", "the modpack could not be downloaded ({error})")),
             }
         } else if let Some(manifest) = &package {
             if drive.is_none() {
@@ -800,13 +816,13 @@ async fn ensure_complete(
             match drive.take() {
                 Some(Ok(text)) => {
                     report.repaired.push(text);
-                    fail_each(&mut report, &still, "el paquete ya no lo trae");
+                    fail_each(&mut report, &still, &t!("el paquete ya no lo trae", "the package no longer includes it"));
                 }
                 Some(Err(error)) => fail_each(&mut report, &still, &error),
                 None => {}
             }
         } else {
-            fail_each(&mut report, &pending_paths, "venía dentro del modpack; vuelve a instalarlo para reponerlo");
+            fail_each(&mut report, &pending_paths, &t!("venía dentro del modpack; vuelve a instalarlo para reponerlo", "it came inside the modpack; reinstall it to restore it"));
         }
     }
     match drive {
@@ -814,7 +830,7 @@ async fn ensure_complete(
         Some(Err(error)) => report.fail(None, error),
         None => {}
     }
-    progress("Listo".into(), 1.0);
+    progress(t!("Listo", "Done"), 1.0);
     report
 }
 
@@ -834,13 +850,13 @@ async fn drive_repair(
         .entries
         .iter()
         .find(|e| !e.is_launcher() && !e.manifest.is_base() && e.manifest.id.eq_ignore_ascii_case(&manifest.id))
-        .ok_or(format!("«{}» no está en el catálogo de Drive ni en la carpeta paquetes, y venía dentro de su paquete.", manifest.name))?;
+        .ok_or(t!("«{}» no está en el catálogo de Drive ni en la carpeta paquetes, y venía dentro de su paquete.", "«{}» is not in the Drive catalog or the packages folder, and it came inside its package.", manifest.name))?;
     let list = instances::list(paths);
     let result = catalog::install(entry, &catalog.entries, paths, &list, true, progress).await?;
     Ok(match result.downloaded_files {
-        Some(0) => format!("Se comparó con el paquete «{}» de Drive: estaba todo bien", manifest.name),
-        Some(files) => format!("Se repusieron {files} archivos desde el paquete «{}»", manifest.name),
-        None => format!("Se reinstaló el paquete «{}» (se conservaron mundos y opciones)", manifest.name),
+        Some(0) => t!("Se comparó con el paquete «{}» de Drive: estaba todo bien", "Compared with the «{}» Drive package: everything was fine", manifest.name),
+        Some(files) => t!("Se repusieron {files} archivos desde el paquete «{}»", "{files} files were restored from the «{}» package", manifest.name),
+        None => t!("Se reinstaló el paquete «{}» (se conservaron mundos y opciones)", "The «{}» package was reinstalled (worlds and options were kept)", manifest.name),
     })
 }
 
@@ -856,12 +872,12 @@ async fn import_modpack(
 ) -> Result<Imported, String> {
     // Paquete de Parabellum (también los de la versión C#)
     if let Some(manifest) = packs::read_manifest(file)? {
-        progress("Comprobando que el archivo esté completo…".into(), 0.0);
+        progress(t!("Comprobando que el archivo esté completo…", "Checking that the file is complete…"), 0.0);
         let to_verify = file.to_path_buf();
         tauri::async_runtime::spawn_blocking(move || packs::verify_sidecar(&to_verify)).await.map_err(|e| e.to_string())??;
         if !manifest.is_base() {
             if manifest.folder.as_ref().is_some_and(|f| running.contains(f)) {
-                return Err("Cierra el juego antes de actualizar este modpack.".into());
+                return Err(t!("Cierra el juego antes de actualizar este modpack.", "Close the game before updating this modpack."));
             }
             if !packs::base_available(&manifest.minecraft_version, paths) {
                 // Con internet, Minecraft se descarga de Mojang; sin internet hace falta el paquete base.
@@ -880,7 +896,7 @@ async fn import_modpack(
     }
 
     // .mrpack
-    let info = mrpack::read(file)?.ok_or("No es un modpack: elige un .mrpack o un paquete de Parabellum (.zip con lanzador-pack.json).")?;
+    let info = mrpack::read(file)?.ok_or(t!("No es un modpack: elige un .mrpack o un paquete de Parabellum (.zip con lanzador-pack.json).", "It is not a modpack: choose a .mrpack or a Parabellum package (.zip with lanzador-pack.json)."))?;
     let loader = info.loader.as_ref().map(|(name, _)| parse_loader(name)).transpose()?;
     let name = instances::unique_name(display_name.as_deref().unwrap_or(&info.name), paths)?;
     let report = progress.clone();
@@ -895,6 +911,8 @@ async fn import_modpack(
         let _ = std::fs::remove_dir_all(&instance.folder);
         return Err(error);
     }
+    // Las opciones del modpack suelen venir en inglés: Minecraft abre en el idioma de Parabellum.
+    instances::set_game_language(&instance.game_dir);
     let mut source = source;
     source["name"] = serde_json::json!(info.name);
     source["version"] = serde_json::json!(info.version);
@@ -905,7 +923,7 @@ async fn import_modpack(
     // Lo que el modpack no puede traer de Modrinth y pide a CurseForge (Missing Mods Checker).
     let report = progress.clone();
     let completed = integridad::repair(&instance.game_dir, false, move |stage, f| report(stage, 0.95 + f * 0.05)).await;
-    progress("Listo".into(), 1.0);
+    progress(t!("Listo", "Done"), 1.0);
     Ok(Imported { id: Some(instance.id), name, kind: "modpack".into(), updated: false, warning: missing_warning(&completed) })
 }
 
@@ -939,23 +957,27 @@ async fn exportar_modpack(
     let missing_mods = &completed.missing_mods;
     if !missing_mods.is_empty() {
         let shown = missing_mods.iter().take(4).cloned().collect::<Vec<_>>().join("\n");
-        return Err(format!("El modpack está incompleto y saldría así. {}:\n{shown}", missing_count(missing_mods.len(), "mod", "mods")));
+        return Err(t!(
+            "El modpack está incompleto y saldría así. Faltan {} mods:\n{shown}",
+            "The modpack is incomplete and would be exported that way. {} mods are missing:\n{shown}",
+            missing_mods.len()
+        ));
     }
     if formato == "mrpack" {
         let name = Some(opciones.name.trim()).filter(|n| !n.is_empty()).unwrap_or(&instance.name).to_string();
         let dialog = app
             .dialog()
             .file()
-            .set_title("Guardar el modpack (.mrpack)")
+            .set_title(t!("Guardar el modpack (.mrpack)", "Save the modpack (.mrpack)"))
             .set_file_name(format!("{} {}.mrpack", name.replace(['<', '>', ':', '"', '/', '\\', '|', '?', '*'], "_"), opciones.version.trim()))
-            .add_filter("Modpack de Modrinth", &["mrpack"]);
+            .add_filter(t!("Modpack de Modrinth", "Modrinth modpack"), &["mrpack"]);
         let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_save_file()).await.map_err(|e| e.to_string())?;
         let Some(path) = picked.and_then(|p| p.into_path().ok()) else { return Ok(None) };
         let result = mrpack::export(&instance, &path, &opciones, progress).await?;
         return Ok(Some(serde_json::to_value(result).unwrap()));
     }
-    let title = "Carpeta donde guardar el paquete (la de tus paquetes para Drive, o una USB)";
-    let Some(folder) = export_folder(&app, &paths, elegir, title).await? else { return Ok(None) };
+    let title = t!("Carpeta donde guardar el paquete (la de tus paquetes para Drive, o una USB)", "Folder to save the package in (your Drive packages folder, or a USB drive)");
+    let Some(folder) = export_folder(&app, &paths, elegir, &title).await? else { return Ok(None) };
     let result = tauri::async_runtime::spawn_blocking(move || packs::export(&instance, &paths, &folder, &opciones, progress))
         .await
         .map_err(|e| e.to_string())??;
@@ -971,8 +993,8 @@ async fn importar_modpack(app: AppHandle, state: State<'_, AppState>, ruta: Opti
             let dialog = app
                 .dialog()
                 .file()
-                .set_title("Elige un modpack")
-                .add_filter("Modpacks (.mrpack o paquete .zip)", &["mrpack", "zip"]);
+                .set_title(t!("Elige un modpack", "Choose a modpack"))
+                .add_filter(t!("Modpacks (.mrpack o paquete .zip)", "Modpacks (.mrpack or .zip package)"), &["mrpack", "zip"]);
             let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file()).await.map_err(|e| e.to_string())?;
             match picked.and_then(|p| p.into_path().ok()) {
                 Some(path) => path,
@@ -994,17 +1016,17 @@ async fn instancias_externas() -> Vec<externos::External> {
 /// Elegir a mano la carpeta de una instancia de otro launcher. None si se canceló.
 #[tauri::command]
 async fn elegir_instancia_externa(app: AppHandle) -> Result<Option<externos::External>, String> {
-    let dialog = app.dialog().file().set_title("Elige la carpeta de la instancia (CurseForge, Prism o MultiMC)");
+    let dialog = app.dialog().file().set_title(t!("Elige la carpeta de la instancia (CurseForge, Prism o MultiMC)", "Choose the instance folder (CurseForge, Prism or MultiMC)"));
     let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_folder()).await.map_err(|e| e.to_string())?;
     let Some(folder) = picked.and_then(|p| p.into_path().ok()) else { return Ok(None) };
     externos::read(&folder)
         .map(Some)
-        .ok_or("Esa carpeta no es una instancia de CurseForge, Prism ni MultiMC (no tiene minecraftinstance.json ni mmc-pack.json).".into())
+        .ok_or(t!("Esa carpeta no es una instancia de CurseForge, Prism ni MultiMC (no tiene minecraftinstance.json ni mmc-pack.json).", "That folder is not a CurseForge, Prism or MultiMC instance (it has no minecraftinstance.json or mmc-pack.json)."))
 }
 
 /// Copia una instancia de otro launcher a Parabellum, con su loader instalado por Parabellum.
 async fn import_external(folder: &Path, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<Imported, String> {
-    let external = externos::read(folder).ok_or("Esa carpeta no es una instancia de CurseForge, Prism ni MultiMC.")?;
+    let external = externos::read(folder).ok_or(t!("Esa carpeta no es una instancia de CurseForge, Prism ni MultiMC.", "That folder is not a CurseForge, Prism or MultiMC instance."))?;
     let loader = Some(external.loader.as_str()).filter(|l| *l != "Vanilla").map(parse_loader).transpose()?;
     let name = instances::unique_name(&external.name, paths)?;
     let report = progress.clone();
@@ -1015,7 +1037,7 @@ async fn import_external(folder: &Path, paths: &Paths, progress: impl Fn(String,
     let (from, to, report) = (external.game_dir.clone(), instance.game_dir.clone(), progress.clone());
     let copied = tauri::async_runtime::spawn_blocking(move || {
         externos::copy_game(&from, &to, |done, total| {
-            report(format!("Copiando mods, mundos y opciones… {} de {} MB", done / 1048576, total / 1048576), 0.5 + 0.5 * done as f64 / total as f64)
+            report(t!("Copiando mods, mundos y opciones… {} de {} MB", "Copying mods, worlds and options… {} of {} MB", done / 1048576, total / 1048576), 0.5 + 0.5 * done as f64 / total as f64)
         })
     })
     .await
@@ -1033,7 +1055,7 @@ async fn import_external(folder: &Path, paths: &Paths, progress: impl Fn(String,
     }
     let _ = instances::set_field(&instance, "importadaDe", serde_json::json!({ "launcher": external.launcher, "carpeta": external.folder }));
     let completed = integridad::repair(&instance.game_dir, false, progress.clone()).await;
-    progress("Listo".into(), 1.0);
+    progress(t!("Listo", "Done"), 1.0);
     Ok(Imported { id: Some(instance.id), name, kind: "instancia".into(), updated: false, warning: missing_warning(&completed) })
 }
 
@@ -1047,7 +1069,7 @@ async fn importar_externa(app: AppHandle, state: State<'_, AppState>, carpeta: S
 async fn instalar_modpack(app: AppHandle, state: State<'_, AppState>, proyecto: String, version: Option<String>) -> Result<Imported, String> {
     let paths = state.paths.clone();
     let progress = progress_emitter(&app, "importar");
-    progress("Descargando el modpack…".into(), 0.0);
+    progress(t!("Descargando el modpack…", "Downloading the modpack…"), 0.0);
     let download = modrinth::download_modpack(&proyecto, version.as_deref(), &paths.data.join("temporal")).await?;
     let icon = match &download.icon_url {
         Some(url) => modrinth::download_icon(url).await,
@@ -1070,7 +1092,7 @@ async fn instalar_modpack(app: AppHandle, state: State<'_, AppState>, proyecto: 
 async fn verificar_instancia(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<integridad::Report, String> {
     let instance = instance_or_error(&state, &id)?;
     if state.games.lock().unwrap().contains_key(&id) {
-        return Err("Cierra el juego antes de verificar sus archivos.".into());
+        return Err(t!("Cierra el juego antes de verificar sus archivos.", "Close the game before checking its files."));
     }
     let cached = state.catalog.lock().unwrap().clone();
     Ok(ensure_complete(&instance, &state.paths, &state.config, cached, true, progress_emitter(&app, "verificar")).await)
@@ -1081,7 +1103,7 @@ async fn verificar_instancia(app: AppHandle, state: State<'_, AppState>, id: Str
 async fn instalar_datapack(state: State<'_, AppState>, id: String, mundo: String, proyecto: String, version: Option<String>) -> Result<String, String> {
     let instance = instance_or_error(&state, &id)?;
     let (title, number) = modrinth::install_datapack(&instance, &mundo, &proyecto, version.as_deref()).await?;
-    Ok(format!("Se instaló {title} {number} en el mundo «{mundo}»."))
+    Ok(t!("Se instaló {title} {number} en el mundo «{mundo}».", "{title} {number} was installed in the world «{mundo}»."))
 }
 
 // ================= Catálogo de Drive, publicar y actualizar el launcher
@@ -1130,11 +1152,11 @@ async fn instalar_de_catalogo(app: AppHandle, state: State<'_, AppState>, id: St
         .entries
         .iter()
         .find(|e| !e.is_launcher() && e.manifest.id.eq_ignore_ascii_case(&id))
-        .ok_or("Ese paquete ya no está en el catálogo. Recárgalo.")?;
+        .ok_or(t!("Ese paquete ya no está en el catálogo. Recárgalo.", "That package is no longer in the catalog. Reload it."))?;
     let list = instances::list(&state.paths);
     if let Some((instance, _)) = catalog::installed_instance(&entry.manifest, &list) {
         if state.games.lock().unwrap().contains_key(&instance.id) {
-            return Err("Cierra el juego antes de actualizar este modpack.".into());
+            return Err(t!("Cierra el juego antes de actualizar este modpack.", "Close the game before updating this modpack."));
         }
     }
     catalog::install(entry, &catalog.entries, &state.paths, &list, reparar.unwrap_or(false), progress_emitter(&app, "catalogo")).await
@@ -1163,9 +1185,9 @@ async fn actualizacion_launcher(state: State<'_, AppState>, recargar: bool) -> R
 #[tauri::command]
 async fn aplicar_actualizacion(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let catalog = catalog_snapshot(&state, false).await;
-    let entry = catalog::launcher_update(&catalog.entries).ok_or("No hay una versión nueva.")?.clone();
+    let entry = catalog::launcher_update(&catalog.entries).ok_or(t!("No hay una versión nueva.", "There is no new version."))?.clone();
     let exe = catalog::apply_launcher_update(&entry, &state.paths, progress_emitter(&app, "actualizacion")).await?;
-    std::process::Command::new(&exe).arg("--reiniciar").spawn().map_err(|e| format!("Se actualizó, pero no se pudo reabrir: {e}"))?;
+    std::process::Command::new(&exe).arg("--reiniciar").spawn().map_err(|e| t!("Se actualizó, pero no se pudo reabrir: {e}", "It was updated, but could not be reopened: {e}"))?;
     app.exit(0);
     Ok(())
 }
@@ -1206,8 +1228,8 @@ async fn export_folder(app: &AppHandle, paths: &Paths, choose: bool, title: &str
 /// Elegir (y recordar) la carpeta donde se guardan los paquetes para Drive.
 #[tauri::command]
 async fn elegir_carpeta_exportar(app: AppHandle, state: State<'_, AppState>) -> Result<Option<String>, String> {
-    let title = "Carpeta de tus paquetes para Drive";
-    Ok(export_folder(&app, &state.paths, true, title).await?.map(|p| p.display().to_string()))
+    let title = t!("Carpeta de tus paquetes para Drive", "Your Drive packages folder");
+    Ok(export_folder(&app, &state.paths, true, &title).await?.map(|p| p.display().to_string()))
 }
 
 /// La carpeta "paquetes" junto a Parabellum (zips copiados de una USB, por ejemplo).
@@ -1221,8 +1243,8 @@ fn abrir_carpeta_paquetes(state: State<AppState>) -> Result<(), String> {
 /// Prepara la carpeta _parabellum con esta versión para subirla a Drive. None si se canceló.
 #[tauri::command]
 async fn publicar_launcher(app: AppHandle, state: State<'_, AppState>, notas: String, elegir: bool) -> Result<Option<String>, String> {
-    let title = "Carpeta de tus paquetes para Drive (donde va la carpeta _parabellum)";
-    let Some(folder) = export_folder(&app, &state.paths, elegir, title).await? else { return Ok(None) };
+    let title = t!("Carpeta de tus paquetes para Drive (donde va la carpeta _parabellum)", "Your Drive packages folder (where the _parabellum folder goes)");
+    let Some(folder) = export_folder(&app, &state.paths, elegir, &title).await? else { return Ok(None) };
     let result = tauri::async_runtime::spawn_blocking(move || catalog::publish_launcher(&folder, &notas)).await.map_err(|e| e.to_string())??;
     Ok(Some(result.display().to_string()))
 }
@@ -1249,7 +1271,7 @@ fn listar_java(state: State<AppState>) -> Vec<JavaInfo> {
 #[tauri::command]
 fn abrir_carpeta(state: State<AppState>, id: Option<String>) -> Result<(), String> {
     let folder = match id {
-        Some(id) => instances::find(&state.paths, &id).ok_or("No se encontró la instancia.")?.game_dir,
+        Some(id) => instances::find(&state.paths, &id).ok_or(t!("No se encontró la instancia.", "The instance was not found."))?.game_dir,
         None => state.paths.root.clone(),
     };
     std::process::Command::new("explorer").arg(folder).spawn().map(|_| ()).map_err(|e| e.to_string())
@@ -1349,7 +1371,7 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                 tauri::async_runtime::block_on(install_game(&instance.minecraft_version, Some(loader), Some(wanted), paths, |_, _| {}))?;
             let game = GameVersion { version_id: &version_id, minecraft: &instance.minecraft_version, loader: Some((loader.name(), wanted)) };
             instances::set_version(&instance, &game)?;
-            let changed = instances::find(paths, &instance.id).ok_or("No se encontró la instancia.")?;
+            let changed = instances::find(paths, &instance.id).ok_or(t!("No se encontró la instancia.", "The instance was not found."))?;
             Ok(format!("{}: {} {} ({})", changed.name, changed.loader, changed.loader_version.unwrap_or_default(), changed.version_id))
         }
         "--agregar" => {
@@ -1708,7 +1730,13 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
 fn main() {
     let paths = Paths::detect();
     let _ = paths.ensure_created();
-    let settings = Settings::load(&paths);
+    let mut settings = Settings::load(&paths);
+    // La primera vez, Parabellum habla el idioma de Windows; después, el que se elija en Ajustes.
+    if settings.language.is_empty() {
+        settings.language = idioma::detect().to_string();
+        let _ = settings.save(&paths);
+    }
+    idioma::set(&settings.language);
     let args: Vec<String> = std::env::args().skip(1).collect();
     // Tras actualizarse, la versión nueva espera a que la anterior termine de cerrarse.
     let restarting = args.first().is_some_and(|a| a == "--reiniciar");

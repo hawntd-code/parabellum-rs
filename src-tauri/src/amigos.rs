@@ -275,28 +275,28 @@ impl Social {
 
     /// Envía una solicitud al jugador con ese nombre. Si él ya te la había enviado, se hacen amigos.
     pub async fn send_request(&self, name: &str) -> Result<String, String> {
-        let my_name = self.name().ok_or("Primero necesitas tu nombre reservado (revisa el aviso de Amigos).")?;
+        let my_name = self.name().ok_or(t!("Primero necesitas tu nombre reservado (revisa el aviso de Amigos).", "First you need your name reserved (check the notice in Friends)."))?;
         let target = self.db.get(&format!("names/{}", name.to_lowercase())).await.map_err(|e| e.to_string())?;
-        let target = target.as_str().ok_or(format!("No hay ningún jugador de Parabellum llamado \"{name}\"."))?.to_string();
+        let target = target.as_str().ok_or(t!("No hay ningún jugador de Parabellum llamado \"{name}\".", "There is no Parabellum player named \"{name}\"."))?.to_string();
         if target == self.uid {
-            return Err("Ese nombre es tuyo.".into());
+            return Err(t!("Ese nombre es tuyo.", "That name is yours."));
         }
         let (already, they_asked) = {
             let inner = self.inner.lock().unwrap();
             (inner.friend_ids.contains(&target), inner.requests.iter().any(|r| r.uid == target))
         };
         if already {
-            return Ok(format!("{name} ya es tu amigo."));
+            return Ok(t!("{name} ya es tu amigo.", "{name} is already your friend."));
         }
         if they_asked {
             self.accept(&target).await?;
-            return Ok(format!("{name} ya te había enviado una solicitud: ahora son amigos."));
+            return Ok(t!("{name} ya te había enviado una solicitud: ahora son amigos.", "{name} had already sent you a request: you are now friends."));
         }
         self.db
             .put(&format!("requests/{target}/{}", self.uid), &json!({ "name": my_name, "at": firebase::server_timestamp() }))
             .await
             .map_err(|e| e.to_string())?;
-        Ok(format!("Solicitud enviada a {name}. Aparecerá en tu lista cuando la acepte."))
+        Ok(t!("Solicitud enviada a {name}. Aparecerá en tu lista cuando la acepte.", "Request sent to {name}. They will appear in your list when they accept it."))
     }
 
     pub async fn accept(&self, uid: &str) -> Result<(), String> {

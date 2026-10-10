@@ -96,8 +96,8 @@ pub async fn download_all(
     if errors.is_empty() {
         Ok(())
     } else {
-        Err(format!(
-            "No se pudieron descargar {} archivos. Vuelve a intentarlo: se continúa donde quedó.\n{}",
+        Err(t!(
+            "No se pudieron descargar {} archivos. Vuelve a intentarlo: se continúa donde quedó.\n{}", "{} files could not be downloaded. Try again: it continues where it stopped.\n{}",
             errors.len(),
             errors.iter().take(3).cloned().collect::<Vec<_>>().join("\n")
         ))
@@ -110,7 +110,7 @@ async fn download_file(file: &FileDownload) -> Result<(), String> {
     }
     let mut response = client().get(&file.url).send().await.map_err(|e| e.to_string())?;
     if !response.status().is_success() {
-        return Err(format!("el servidor respondió {}", response.status()));
+        return Err(t!("el servidor respondió {}", "the server answered {}", response.status()));
     }
     // java.exe y java.dll comparten nombre base: el temporal conserva la extensión original.
     let mut temp = file.path.clone().into_os_string();
@@ -127,7 +127,7 @@ async fn download_file(file: &FileDownload) -> Result<(), String> {
     if let Some(expected) = &file.sha1 {
         if !hex::encode(hasher.finalize()).eq_ignore_ascii_case(expected) {
             let _ = tokio::fs::remove_file(&temp).await;
-            return Err("archivo dañado (SHA-1 distinto)".into());
+            return Err(t!("archivo dañado (SHA-1 distinto)", "damaged file (different SHA-1)"));
         }
     }
     tokio::fs::rename(&temp, &file.path).await.map_err(|e| e.to_string())

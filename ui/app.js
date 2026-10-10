@@ -70,11 +70,11 @@ const state = {
 };
 
 const pages = {
-  home: { title: "Inicio", icon: "home", sidebar: true },
-  explore: { title: "Explorar", icon: "compass", sidebar: false },
-  project: { title: "Proyecto", icon: "compass", sidebar: false },
-  servers: { title: "Servidores", icon: "server", sidebar: true },
-  chat: { title: "Mensajes", icon: "chat", sidebar: false },
+  home: { title: t("Inicio", "Home"), icon: "home", sidebar: true },
+  explore: { title: t("Explorar", "Explore"), icon: "compass", sidebar: false },
+  project: { title: t("Proyecto", "Project"), icon: "compass", sidebar: false },
+  servers: { title: t("Servidores", "Servers"), icon: "server", sidebar: true },
+  chat: { title: t("Mensajes", "Messages"), icon: "chat", sidebar: false },
   instance: { title: "", icon: "cubes", sidebar: false },
 };
 
@@ -88,14 +88,14 @@ function hashOf(text) {
 }
 
 function ago(ms) {
-  if (!ms) return "Nunca jugada";
+  if (!ms) return t("Nunca jugada", "Never played");
   const minutes = (Date.now() - ms) / 60000;
-  if (minutes < 1) return "Hace un momento";
-  if (minutes < 60) return `Hace ${Math.floor(minutes)} min`;
-  if (minutes < 1440) return `Hace ${Math.floor(minutes / 60)} h`;
-  if (minutes < 2880) return "Ayer";
-  if (minutes < 43200) return `Hace ${Math.floor(minutes / 1440)} días`;
-  return new Date(ms).toLocaleDateString("es-MX");
+  if (minutes < 1) return t("Hace un momento", "Just now");
+  if (minutes < 60) return t(`Hace ${Math.floor(minutes)} min`, `${Math.floor(minutes)} min ago`);
+  if (minutes < 1440) return t(`Hace ${Math.floor(minutes / 60)} h`, `${Math.floor(minutes / 60)} h ago`);
+  if (minutes < 2880) return t("Ayer", "Yesterday");
+  if (minutes < 43200) return t(`Hace ${Math.floor(minutes / 1440)} días`, `${Math.floor(minutes / 1440)} days ago`);
+  return new Date(ms).toLocaleDateString(locale());
 }
 
 const escapeHtml = (text) =>
@@ -334,11 +334,11 @@ function renderHome() {
       return `<div class="jump" data-open="${escapeHtml(i.id)}" style="animation-delay:${index * 40}ms">
         ${art(i, "small")}
         <div class="grow">
-          <div class="title">${escapeHtml(i.name)}${isNew(i) ? `<span class="badge-new">${icon("sparkle")}Nueva instancia</span>` : ""}</div>
-          <div class="sub">${escapeHtml(subtitle(i))}<i></i>${running ? "Jugando ahora" : escapeHtml(ago(i.lastPlayed))}</div>
+          <div class="title">${escapeHtml(i.name)}${isNew(i) ? `<span class="badge-new">${icon("sparkle")}${t("Nueva instancia", "New instance")}</span>` : ""}</div>
+          <div class="sub">${escapeHtml(subtitle(i))}<i></i>${running ? t("Jugando ahora", "Playing now") : escapeHtml(ago(i.lastPlayed))}</div>
         </div>
-        <button class="btn primary play" data-play="${escapeHtml(i.id)}" ${running ? "disabled" : ""}>${icon("play")}${running ? "En juego" : "Jugar"}</button>
-        <button class="circle-btn" data-more="${escapeHtml(i.id)}" title="Más opciones">${icon("more")}</button>
+        <button class="btn primary play" data-play="${escapeHtml(i.id)}" ${running ? "disabled" : ""}>${icon("play")}${running ? t("En juego", "In game") : t("Jugar", "Play")}</button>
+        <button class="circle-btn" data-more="${escapeHtml(i.id)}" title="${t("Más opciones", "More options")}">${icon("more")}</button>
       </div>`;
     })
     .join("");
@@ -370,7 +370,7 @@ function renderLibrary() {
           const running = state.running.has(i.id);
           return `<div class="tile" data-open="${escapeHtml(i.id)}" style="animation-delay:${Math.min(index++, 14) * 30}ms">
             <div style="position:relative">${art(i)}
-              <button class="tile-play ${running ? "running" : ""}" data-play="${escapeHtml(i.id)}" title="${running ? "En juego" : "Jugar"}">${icon("play")}</button>
+              <button class="tile-play ${running ? "running" : ""}" data-play="${escapeHtml(i.id)}" title="${running ? t("En juego", "In game") : t("Jugar", "Play")}">${icon("play")}</button>
             </div>
             <div class="name">${escapeHtml(i.name)}</div>
             <div class="sub">${escapeHtml(subtitle(i))}</div>
@@ -408,16 +408,16 @@ function renderInstance() {
   $("#detail-name").textContent = i.name;
   $("#detail-meta").innerHTML = `
     <span>${icon("cubes")}${escapeHtml(subtitle(i))}</span>
-    <span>${icon("play-outline")}${escapeHtml(state.running.has(i.id) ? "Jugando ahora" : ago(i.lastPlayed))}</span>`;
+    <span>${icon("play-outline")}${escapeHtml(state.running.has(i.id) ? t("Jugando ahora", "Playing now") : ago(i.lastPlayed))}</span>`;
   $("#detail-rows").innerHTML = `
-    <dt>Versión de Minecraft</dt><dd>${escapeHtml(i.minecraftVersion)}</dd>
+    <dt>${t("Versión de Minecraft", "Minecraft version")}</dt><dd>${escapeHtml(i.minecraftVersion)}</dd>
     ${i.modpack ? `<dt>Modpack</dt><dd>${escapeHtml(i.modpack)}</dd>` : ""}
     <dt>Loader</dt><dd>${escapeHtml(i.loader)}${i.loaderVersion ? " " + escapeHtml(i.loaderVersion) : ""}</dd>
-    <dt>Versión del perfil</dt><dd>${escapeHtml(i.versionId)}</dd>
-    <dt>Carpeta</dt><dd>instancias\\${escapeHtml(i.id)}</dd>
-    <dt>Memoria</dt><dd>${i.ramGb ? `${i.ramGb} GB (propia de esta instancia)` : `${state.settings.ramGb} GB (la general de Ajustes)`}</dd>
-    <dt>Argumentos de Java</dt><dd>${i.jvmArgs.length ? escapeHtml(i.jvmArgs.join(" ")) : "—"}</dd>
-    <dt>Creada</dt><dd>${i.created ? new Date(i.created).toLocaleString("es-MX") : "—"}</dd>`;
+    <dt>${t("Versión del perfil", "Profile version")}</dt><dd>${escapeHtml(i.versionId)}</dd>
+    <dt>${t("Carpeta", "Folder")}</dt><dd>instancias\\${escapeHtml(i.id)}</dd>
+    <dt>${t("Memoria", "Memory")}</dt><dd>${i.ramGb ? t(`${i.ramGb} GB (propia de esta instancia)`, `${i.ramGb} GB (this instance's own)`) : t(`${state.settings.ramGb} GB (la general de Ajustes)`, `${state.settings.ramGb} GB (the general one from Settings)`)}</dd>
+    <dt>${t("Argumentos de Java", "Java arguments")}</dt><dd>${i.jvmArgs.length ? escapeHtml(i.jvmArgs.join(" ")) : "—"}</dd>
+    <dt>${t("Creada", "Created")}</dt><dd>${i.created ? new Date(i.created).toLocaleString(locale()) : "—"}</dd>`;
   const running = state.running.has(i.id);
   $("#detail-play").classList.toggle("hidden", running);
   $("#detail-stop").classList.toggle("hidden", !running);
@@ -439,7 +439,7 @@ function selectTab(tab) {
 }
 
 // ---------- Contenido (mods, resource packs, shaders y mundos) ----------
-const kindNames = { mods: "mods", resourcepacks: "resource packs", shaderpacks: "shaders", worlds: "mundos" };
+const kindNames = { mods: "mods", resourcepacks: "resource packs", shaderpacks: "shaders", worlds: t("mundos", "worlds") };
 const kindIcons = { mods: "puzzle", resourcepacks: "image", shaderpacks: "sun-sparkle", worlds: "globe" };
 
 async function loadContent() {
@@ -467,7 +467,7 @@ function renderContent() {
   }
   const updates = availableUpdates();
   $("#content-update-all").classList.toggle("hidden", !updates.length);
-  $("#content-update-all span").textContent = `Actualizar todo (${updates.length})`;
+  $("#content-update-all span").textContent = t(`Actualizar todo (${updates.length})`, `Update all (${updates.length})`);
   const query = $("#content-search").value.trim().toLowerCase();
   const items = content[state.kind].filter((i) => !query || `${i.name} ${i.file} ${i.authors ?? ""}`.toLowerCase().includes(query));
   if (!items.length) {
@@ -475,10 +475,10 @@ function renderContent() {
     const vanillaMods = state.kind === "mods" && state.current?.loader === "Vanilla";
     $("#content-list").innerHTML = `<div class="content-empty">${
       !none
-        ? "Nada coincide con la búsqueda."
+        ? t("Nada coincide con la búsqueda.", "Nothing matches the search.")
         : vanillaMods
-          ? "Las instancias vanilla no cargan mods. Crea una instancia con un loader (Fabric, Quilt, Forge o NeoForge) para usarlos."
-          : `Esta instancia no tiene ${kindNames[state.kind]}. Arrástralos a la ventana o usa "Agregar archivos".`
+          ? t("Las instancias vanilla no cargan mods. Crea una instancia con un loader (Fabric, Quilt, Forge o NeoForge) para usarlos.", "Vanilla instances do not load mods. Create an instance with a loader (Fabric, Quilt, Forge or NeoForge) to use them.")
+          : t(`Esta instancia no tiene ${kindNames[state.kind]}. Arrástralos a la ventana o usa "Agregar contenido".`, `This instance has no ${kindNames[state.kind]}. Drag them onto the window or use "Add content".`)
     }</div>`;
     return;
   }
@@ -486,18 +486,18 @@ function renderContent() {
   $("#content-list").innerHTML = items
     .slice(0, 600)
     .map((item, index) => {
-      const sub = world ? `Jugado ${ago(item.modified).toLowerCase()}${item.version ? ` · ${item.version}` : ""}` : item.authors ? `por ${item.authors}` : item.file;
+      const sub = world ? `${t("Jugado", "Played")} ${ago(item.modified).toLowerCase()}${item.version ? ` · ${item.version}` : ""}` : item.authors ? t(`por ${item.authors}`, `by ${item.authors}`) : item.file;
       return `<div class="content-item ${item.enabled ? "" : "disabled"}" style="animation-delay:${Math.min(index, 20) * 15}ms">
         <div class="content-icon">${item.icon ? `<img src="${item.icon}" alt="" loading="lazy" decoding="async">` : icon(kindIcons[state.kind])}</div>
         <div class="grow">${
           item.projectId
-            ? `<button class="c-name link" data-project-open="${escapeHtml(item.projectId)}" title="Ver su página">${escapeHtml(item.name)}</button>`
+            ? `<button class="c-name link" data-project-open="${escapeHtml(item.projectId)}" title="${t("Ver su página", "See its page")}">${escapeHtml(item.name)}</button>`
             : `<div class="c-name">${escapeHtml(item.name)}</div>`
         }<div class="c-sub">${escapeHtml(sub)}</div></div>
         ${updateChip(item.file)}
         ${world ? "" : `<div class="c-version">${escapeHtml(item.version ?? "")}</div>
-          <label class="toggle" title="${item.enabled ? "Desactivar" : "Activar"}"><input type="checkbox" data-toggle="${escapeHtml(item.file)}" ${item.enabled ? "checked" : ""}><span></span></label>`}
-        <button class="circle-btn" data-remove="${escapeHtml(item.file)}" title="Mandar a la papelera">${icon("trash")}</button>
+          <label class="toggle" title="${item.enabled ? t("Desactivar", "Disable") : t("Activar", "Enable")}"><input type="checkbox" data-toggle="${escapeHtml(item.file)}" ${item.enabled ? "checked" : ""}><span></span></label>`}
+        <button class="circle-btn" data-remove="${escapeHtml(item.file)}" title="${t("Mandar a la papelera", "Move to the Recycle Bin")}">${icon("trash")}</button>
       </div>`;
     })
     .join("");
@@ -510,8 +510,8 @@ function updateChip(file) {
   if (!update) return "";
   const reason = state.heldBack.get(update.versionId);
   return reason
-    ? `<span class="update-chip held" title="${escapeHtml(`${update.versionNumber} no se instaló: ${reason}`)}">${icon("alert")}No compatible</span>`
-    : `<button class="update-chip" data-update="${escapeHtml(file)}" title="Actualizar a ${escapeHtml(update.versionNumber)}">${icon("update")}${escapeHtml(update.versionNumber)}</button>`;
+    ? `<span class="update-chip held" title="${escapeHtml(t(`${update.versionNumber} no se instaló: ${reason}`, `${update.versionNumber} was not installed: ${reason}`))}">${icon("alert")}${t("No compatible", "Not compatible")}</span>`
+    : `<button class="update-chip" data-update="${escapeHtml(file)}" title="${t("Actualizar a", "Update to")} ${escapeHtml(update.versionNumber)}">${icon("update")}${escapeHtml(update.versionNumber)}</button>`;
 }
 
 async function toggleContent(file, enabled) {
@@ -529,9 +529,9 @@ async function toggleContent(file, enabled) {
 async function removeContent(file) {
   const item = state.content[state.kind].find((i) => i.file === file);
   const ok = await confirmAction({
-    title: state.kind === "worlds" ? "¿Eliminar este mundo?" : "¿Eliminar este archivo?",
-    text: `"${item?.name ?? file}" se moverá a la papelera de reciclaje; desde ahí lo puedes recuperar.`,
-    ok: "Mandar a la papelera",
+    title: state.kind === "worlds" ? t("¿Eliminar este mundo?", "Delete this world?") : t("¿Eliminar este archivo?", "Delete this file?"),
+    text: t(`"${item?.name ?? file}" se moverá a la papelera de reciclaje; desde ahí lo puedes recuperar.`, `"${item?.name ?? file}" will be moved to the Recycle Bin; you can restore it from there.`),
+    ok: t("Mandar a la papelera", "Move to the Recycle Bin"),
   });
   if (!ok) return;
   try {
@@ -548,13 +548,14 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 /** Avisa qué se agregó ("2 mods y 1 mundo") y qué no, y muestra la categoría donde quedó. */
 function reportAdded(added) {
-  const counts = { mods: ["mod", "mods"], resourcepacks: ["resource pack", "resource packs"], shaderpacks: ["shader", "shaders"], worlds: ["mundo", "mundos"] };
+  const counts = { mods: ["mod", "mods"], resourcepacks: ["resource pack", "resource packs"], shaderpacks: ["shader", "shaders"], worlds: [t("mundo", "world"), t("mundos", "worlds")] };
   const parts = Object.entries(counts).filter(([kind]) => added[kind]).map(([kind, [one, many]]) => plural(added[kind], one, many));
   const total = Object.keys(counts).reduce((sum, kind) => sum + added[kind], 0);
-  if (parts.length) toast(`Se ${total === 1 ? "agregó" : "agregaron"} ${parts.length > 1 ? `${parts.slice(0, -1).join(", ")} y ${parts.at(-1)}` : parts[0]}.`);
+  const joined = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} ${t("y", "and")} ${parts.at(-1)}` : parts[0];
+  if (parts.length) toast(t(`Se ${total === 1 ? "agregó" : "agregaron"} ${joined}.`, `Added ${joined}.`));
   if (added.skipped.length) {
-    const more = added.skipped.length > 3 ? ` (y ${added.skipped.length - 3} más)` : "";
-    toast(`No se ${added.skipped.length === 1 ? "agregó" : "agregaron"}: ${added.skipped.slice(0, 3).join(" · ")}${more}`, "error");
+    const more = added.skipped.length > 3 ? t(` (y ${added.skipped.length - 3} más)`, ` (and ${added.skipped.length - 3} more)`) : "";
+    toast(t(`No se ${added.skipped.length === 1 ? "agregó" : "agregaron"}: `, "Not added: ") + `${added.skipped.slice(0, 3).join(" · ")}${more}`, "error");
   }
   if (!total) return;
   if (!added[state.kind]) state.kind = Object.keys(counts).find((kind) => added[kind]);
@@ -615,20 +616,20 @@ function renderLog(scrollToEnd) {
           return css ? `<span class="${css}">${escapeHtml(line)}</span>` : escapeHtml(line);
         })
         .join("\n")
-    : `<span class="l-dim">${query ? "Ninguna línea coincide." : "Esta instancia todavía no tiene registro: se crea al abrir el juego."}</span>`;
+    : `<span class="l-dim">${query ? t("Ninguna línea coincide.", "No line matches.") : t("Esta instancia todavía no tiene registro: se crea al abrir el juego.", "This instance has no log yet: it is created when the game opens.")}</span>`;
   if (scrollToEnd || $("#log-follow").checked) box.scrollTop = box.scrollHeight;
 }
 
 // ---------- Acciones sobre instancias ----------
 function instanceMenuItems(id) {
   return [
-    { icon: "info", label: "Ver instancia", action: () => navigate("instance", id) },
-    { icon: "settings", label: "Ajustes de la instancia", action: () => openEdit(id) },
-    { icon: "folder", label: "Abrir carpeta", action: () => invoke("abrir_carpeta", { id }) },
-    { icon: "check-circle", label: "Verificar y reparar archivos", action: () => verifyInstance(id) },
-    { icon: "duplicate", label: "Duplicar", action: () => duplicateInstance(id) },
-    { icon: "upload", label: "Exportar modpack", action: () => openExport(id) },
-    { icon: "trash", label: "Eliminar", danger: true, action: () => deleteInstance(id) },
+    { icon: "info", label: t("Ver instancia", "View instance"), action: () => navigate("instance", id) },
+    { icon: "settings", label: t("Ajustes de la instancia", "Instance settings"), action: () => openEdit(id) },
+    { icon: "folder", label: t("Abrir carpeta", "Open folder"), action: () => invoke("abrir_carpeta", { id }) },
+    { icon: "check-circle", label: t("Verificar y reparar archivos", "Check and repair files"), action: () => verifyInstance(id) },
+    { icon: "duplicate", label: t("Duplicar", "Duplicate"), action: () => duplicateInstance(id) },
+    { icon: "upload", label: t("Exportar modpack", "Export modpack"), action: () => openExport(id) },
+    { icon: "trash", label: t("Eliminar", "Delete"), danger: true, action: () => deleteInstance(id) },
   ];
 }
 
@@ -636,25 +637,25 @@ function instanceMenuItems(id) {
 async function verifyInstance(id) {
   const instance = state.instances.find((i) => i.id === id);
   if (!instance) return;
-  if (state.verifying) return toast("Espera a que termine la verificación que está en curso.", "error");
+  if (state.verifying) return toast(t("Espera a que termine la verificación que está en curso.", "Wait for the current check to finish."), "error");
   state.verifying = id;
-  toast(`Verificando los archivos de ${instance.name}…`);
+  toast(t(`Verificando los archivos de ${instance.name}…`, `Checking the files of ${instance.name}…`));
   $("#download-indicator").classList.remove("hidden");
   $("#download-percent").textContent = "…";
   try {
     const report = await invoke("verificar_instancia", { id });
-    const repaired = report.repaired.length
-      ? `se ${report.repaired.length === 1 ? "repuso" : "repusieron"}: ${report.repaired.slice(0, 3).join(", ")}${report.repaired.length > 3 ? ` y ${report.repaired.length - 3} más` : ""}`
-      : "";
+    const names = `${report.repaired.slice(0, 3).join(", ")}${report.repaired.length > 3 ? t(` y ${report.repaired.length - 3} más`, ` and ${report.repaired.length - 3} more`) : ""}`;
+    const repaired = report.repaired.length ? t(`se ${report.repaired.length === 1 ? "repuso" : "repusieron"}: ${names}`, `restored: ${names}`) : "";
     if (report.failed.length) {
-      const list = report.failed.slice(0, 4).join("\n") + (report.failed.length > 4 ? `\n…y ${report.failed.length - 4} más` : "");
-      toast(`${instance.name}: ${repaired ? `${repaired}. Pero ` : ""}faltan ${plural(report.failed.length, "archivo", "archivos")}:\n${list}`, "error");
+      const list = report.failed.slice(0, 4).join("\n") + (report.failed.length > 4 ? t(`\n…y ${report.failed.length - 4} más`, `\n…and ${report.failed.length - 4} more`) : "");
+      const missing = t(`faltan ${plural(report.failed.length, "archivo", "archivos")}`, `${plural(report.failed.length, "file is", "files are")} missing`);
+      toast(`${instance.name}: ${repaired ? `${repaired}. ${t("Pero", "But")} ` : ""}${missing}:\n${list}`, "error");
     } else if (repaired) {
-      toast(`${instance.name} quedó completo: ${repaired}.`);
+      toast(t(`${instance.name} quedó completo: ${repaired}.`, `${instance.name} is complete: ${repaired}.`));
     } else if (report.checked) {
-      toast(`${instance.name} está completo: ${plural(report.checked, "archivo revisado", "archivos revisados")}, todos bien.`);
+      toast(t(`${instance.name} está completo: ${plural(report.checked, "archivo revisado", "archivos revisados")}, todos bien.`, `${instance.name} is complete: ${plural(report.checked, "file checked", "files checked")}, all fine.`));
     } else {
-      toast(`${instance.name} no viene de un modpack, así que no hay con qué compararla. Lo que pide su configuración está completo.`);
+      toast(t(`${instance.name} no viene de un modpack, así que no hay con qué compararla. Lo que pide su configuración está completo.`, `${instance.name} does not come from a modpack, so there is nothing to compare it with. What its configuration asks for is complete.`));
     }
     if (state.contentFor === id) {
       state.content = null;
@@ -670,9 +671,9 @@ async function verifyInstance(id) {
 
 // ---------- Accesos directos (Escritorio y menú Inicio) ----------
 const shortcutHints = {
-  desktop: "Para abrir Parabellum sin buscar su carpeta. Sigue siendo portable: no se instala nada.",
-  startMenu: "Aparece al buscar «Parabellum» en Inicio.",
-  other: "Hay uno que abre Parabellum desde otra carpeta. Actívalo para que abra este.",
+  desktop: t("Para abrir Parabellum sin buscar su carpeta. Sigue siendo portable: no se instala nada.", "To open Parabellum without looking for its folder. It is still portable: nothing is installed."),
+  startMenu: t("Aparece al buscar «Parabellum» en Inicio.", "It shows up when you search «Parabellum» in Start."),
+  other: t("Hay uno que abre Parabellum desde otra carpeta. Actívalo para que abra este.", "There is one that opens Parabellum from another folder. Turn it on so it opens this one."),
 };
 
 function renderShortcuts(status) {
@@ -704,11 +705,11 @@ async function toggleShortcut(place, input) {
 
 async function duplicateInstance(id) {
   const instance = state.instances.find((i) => i.id === id);
-  toast(`Duplicando ${instance?.name}… (se copian también sus mundos y mods)`);
+  toast(t(`Duplicando ${instance?.name}… (se copian también sus mundos y mods)`, `Duplicating ${instance?.name}… (its worlds and mods are copied too)`));
   try {
     const copy = await invoke("duplicar_instancia", { id });
     await reloadInstances();
-    toast(`Se creó ${copy.name}.`);
+    toast(t(`Se creó ${copy.name}.`, `${copy.name} was created.`));
   } catch (error) {
     toast(String(error), "error");
   }
@@ -717,9 +718,9 @@ async function duplicateInstance(id) {
 async function deleteInstance(id) {
   const instance = state.instances.find((i) => i.id === id);
   const ok = await confirmAction({
-    title: `¿Eliminar ${instance?.name}?`,
-    text: "La instancia, con sus mundos y mods, se moverá a la papelera de reciclaje. Desde ahí la puedes recuperar.",
-    ok: "Mandar a la papelera",
+    title: t(`¿Eliminar ${instance?.name}?`, `Delete ${instance?.name}?`),
+    text: t("La instancia, con sus mundos y mods, se moverá a la papelera de reciclaje. Desde ahí la puedes recuperar.", "The instance, with its worlds and mods, will be moved to the Recycle Bin. You can restore it from there."),
+    ok: t("Mandar a la papelera", "Move to the Recycle Bin"),
   });
   if (!ok) return;
   try {
@@ -728,7 +729,7 @@ async function deleteInstance(id) {
     state.back = state.back.filter((h) => !(h.page === "instance" && h.param === id));
     state.forward = state.forward.filter((h) => !(h.page === "instance" && h.param === id));
     await reloadInstances();
-    toast(`${instance?.name} se movió a la papelera.`);
+    toast(t(`${instance?.name} se movió a la papelera.`, `${instance?.name} was moved to the Recycle Bin.`));
   } catch (error) {
     toast(String(error), "error");
   }
@@ -754,8 +755,8 @@ async function loadEditLoaderVersions(instance) {
   const select = $("#edit-loader");
   const loader = instance.loader.toLowerCase();
   const current = instance.loaderVersion ?? "";
-  $("#edit-loader-label").textContent = `Versión de ${instance.loader}`;
-  $("#edit-loader-hint").textContent = "Algunos mods piden una versión más nueva del loader.";
+  $("#edit-loader-label").textContent = t(`Versión de ${instance.loader}`, `${instance.loader} version`);
+  $("#edit-loader-hint").textContent = t("Algunos mods piden una versión más nueva del loader.", "Some mods ask for a newer loader version.");
   select.innerHTML = `<option value="${escapeHtml(current)}">${escapeHtml(current)} (actual)</option>`;
   select.disabled = true;
   const key = `${loader}:${instance.minecraftVersion}`;
@@ -769,7 +770,7 @@ async function loadEditLoaderVersions(instance) {
   const info = state.loaderVersions[key];
   fillLoaderSelect(select, info, current);
   select.disabled = false;
-  if (!info.online) $("#edit-loader-hint").textContent = `${info.message} Solo se muestran las versiones ya descargadas.`;
+  if (!info.online) $("#edit-loader-hint").textContent = `${info.message} ${t("Solo se muestran las versiones ya descargadas.", "Only already downloaded versions are shown.")}`;
 }
 
 function updateEditTexts() {
@@ -795,7 +796,7 @@ function imageToPng(file) {
       URL.revokeObjectURL(url);
       resolve(canvas.toDataURL("image/png"));
     };
-    image.onerror = () => reject("No se pudo leer esa imagen.");
+    image.onerror = () => reject(t("No se pudo leer esa imagen.", "That image could not be read."));
     image.src = url;
   });
 }
@@ -807,7 +808,7 @@ async function saveEdit() {
   $("#edit-save").disabled = true;
   try {
     if (wantedLoader && wantedLoader !== instance?.loaderVersion) {
-      $("#edit-loader-hint").textContent = `Preparando ${instance.loader} ${wantedLoader}…`;
+      $("#edit-loader-hint").textContent = t(`Preparando ${instance.loader} ${wantedLoader}…`, `Preparing ${instance.loader} ${wantedLoader}…`);
       await invoke("cambiar_loader", { id, versionLoader: wantedLoader });
       state.loaderVersions = {};
     }
@@ -825,7 +826,7 @@ async function saveEdit() {
       renderInstance();
       $("#crumb-text").textContent = state.current.name;
     }
-    toast("Cambios guardados.");
+    toast(t("Cambios guardados.", "Changes saved."));
   } catch (error) {
     toast(String(error), "error");
   } finally {
@@ -859,8 +860,8 @@ function onGameClosed({ id, code, reason }) {
   if (code === null || code === undefined || code === 0) return;
   const instance = state.instances.find((i) => i.id === id);
   state.crashFor = id;
-  $("#crash-title").textContent = `${instance?.name ?? "El juego"} se cerró con un error`;
-  $("#crash-reason").textContent = reason ?? `Java terminó con el código ${code}. Revisa el registro completo para ver el motivo.`;
+  $("#crash-title").textContent = t(`${instance?.name ?? "El juego"} se cerró con un error`, `${instance?.name ?? "The game"} closed with an error`);
+  $("#crash-reason").textContent = reason ?? t(`Java terminó con el código ${code}. Revisa el registro completo para ver el motivo.`, `Java ended with code ${code}. Check the full log to see why.`);
   appWindow?.unminimize?.();
   openModal("#crash-dialog");
 }
@@ -869,7 +870,7 @@ async function play(id, server = null) {
   const instance = state.instances.find((i) => i.id === id);
   if (!instance) return;
   try {
-    toast(server ? `Abriendo ${instance.name} y entrando a ${server}…` : `Abriendo ${instance.name}…`);
+    toast(server ? t(`Abriendo ${instance.name} y entrando a ${server}…`, `Opening ${instance.name} and joining ${server}…`) : t(`Abriendo ${instance.name}…`, `Opening ${instance.name}…`));
     await invoke("jugar", { id, servidor: server });
     state.running.add(id);
     if (state.settings.minimizeOnLaunch) setTimeout(() => appWindow?.minimize(), 3500);
@@ -891,7 +892,7 @@ async function play(id, server = null) {
 function refreshRunning() {
   const running = state.instances.find((i) => state.running.has(i.id));
   $("#status").classList.toggle("running", !!running);
-  $("#status-text").textContent = running ? `Jugando ${running.name}` : "Ningún juego abierto";
+  $("#status-text").textContent = running ? t(`Jugando ${running.name}`, `Playing ${running.name}`) : t("Ningún juego abierto", "No game open");
   renderHome();
   if (state.page === "instance") renderInstance();
 }
@@ -913,7 +914,7 @@ async function pollRunning() {
 // ======================================================================
 function renderSidebar() {
   $("#side-name").textContent = state.settings.username;
-  $("#side-account-sub").textContent = state.settings.uuid ? "Cuenta no premium · UUID fijo" : "Cuenta no premium";
+  $("#side-account-sub").textContent = state.settings.uuid ? t("Cuenta no premium · UUID fijo", "Non-premium account · fixed UUID") : t("Cuenta no premium", "Non-premium account");
   drawHead($("#side-head"), state.settings.username);
   drawHead($("#rail-head"), state.settings.username);
 }
@@ -923,11 +924,11 @@ function renderSidebar() {
 function openAccountMenu(anchor) {
   const s = state.settings;
   contextMenu(anchor, [
-    { head: s.username, label: s.username, sub: s.uuid ? "En uso · UUID fijo" : "En uso", checked: true, action: () => {} },
+    { head: s.username, label: s.username, sub: s.uuid ? t("En uso · UUID fijo", "In use · fixed UUID") : t("En uso", "In use"), checked: true, action: () => {} },
     ...s.accounts.map((a, i) => ({ head: a.username, label: a.username, sub: a.uuid ? "UUID fijo" : "", action: () => switchAccount(i) })),
-    { icon: "brush", label: "Cambiar nombre", separator: true, action: () => openAccountDialog("rename") },
-    { icon: "user-plus", label: "Añadir cuenta", action: () => openAccountDialog("add") },
-    { icon: "settings", label: "Administrar cuentas", action: () => openSettings("profile") },
+    { icon: "brush", label: t("Cambiar nombre", "Change name"), separator: true, action: () => openAccountDialog("rename") },
+    { icon: "user-plus", label: t("Añadir cuenta", "Add account"), action: () => openAccountDialog("add") },
+    { icon: "settings", label: t("Administrar cuentas", "Manage accounts"), action: () => openSettings("profile") },
   ], { matchWidth: true });
 }
 
@@ -946,7 +947,7 @@ async function switchAccount(index) {
   const accounts = [{ username: s.username, uuid: s.uuid }, ...s.accounts.filter((_, i) => i !== index)];
   try {
     await saveAccounts({ username: target.username, uuid: target.uuid, accounts });
-    toast(`Ahora juegas como ${target.username}.`);
+    toast(t(`Ahora juegas como ${target.username}.`, `You now play as ${target.username}.`));
   } catch (error) {
     toast(String(error), "error");
   }
@@ -956,9 +957,9 @@ async function removeAccount(index) {
   const target = state.settings.accounts[index];
   if (!target) return;
   const ok = await confirmAction({
-    title: `Quitar a ${target.username}`,
-    text: "Solo se quita de la lista para cambiar de cuenta. Sus mundos y partidas no se tocan.",
-    ok: "Quitar",
+    title: t(`Quitar a ${target.username}`, `Remove ${target.username}`),
+    text: t("Solo se quita de la lista para cambiar de cuenta. Sus mundos y partidas no se tocan.", "It is only removed from the account list. Their worlds and games are not touched."),
+    ok: t("Quitar", "Remove"),
   });
   if (!ok) return;
   try {
@@ -972,8 +973,8 @@ async function removeAccount(index) {
 function openAccountDialog(mode = "add") {
   state.accountDialog = mode;
   const rename = mode === "rename";
-  $("#account-title").textContent = rename ? "Cambiar nombre de jugador" : "Añadir cuenta";
-  $("#account-ok").textContent = rename ? "Guardar" : "Añadir y usar";
+  $("#account-title").textContent = rename ? t("Cambiar nombre de jugador", "Change player name") : t("Añadir cuenta", "Add account");
+  $("#account-ok").textContent = rename ? t("Guardar", "Save") : t("Añadir y usar", "Add and use");
   $("#account-uuid-box").classList.toggle("hidden", rename);
   $("#account-rename-hint").classList.toggle("hidden", !rename);
   $("#account-name").value = rename ? state.settings.username : "";
@@ -999,25 +1000,25 @@ async function addAccount() {
     $("#account-error").textContent = message;
     $("#account-error").classList.remove("hidden");
   };
-  if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) return fail("El nombre debe tener de 1 a 16 letras, números o guiones bajos (sin espacios ni acentos).");
+  if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) return fail(t("El nombre debe tener de 1 a 16 letras, números o guiones bajos (sin espacios ni acentos).", "The name must have 1 to 16 letters, numbers or underscores (no spaces or accents)."));
   if (state.accountDialog === "rename") {
     if (name === s.username) return closeModal("#account-dialog");
-    if (otherAccountNamed(name)) return fail("Ya tienes otra cuenta con ese nombre: cámbiate a ella desde «Jugando como».");
+    if (otherAccountNamed(name)) return fail(t("Ya tienes otra cuenta con ese nombre: cámbiate a ella desde «Jugando como».", "You already have another account with that name: switch to it from «Playing as»."));
     try {
       await saveAccounts({ username: name });
       closeModal("#account-dialog");
-      toast(`Ahora te llamas ${name}.`);
+      toast(t(`Ahora te llamas ${name}.`, `Your name is now ${name}.`));
     } catch (error) {
       fail(String(error));
     }
     return;
   }
-  if (uuid && !validUuid(uuid)) return fail("El UUID tiene 32 letras y números (0–9, a–f), con o sin guiones. Déjalo vacío si no lo necesitas.");
-  if ([s.username, ...s.accounts.map((a) => a.username)].some((n) => n.toLowerCase() === name.toLowerCase())) return fail("Ya tienes una cuenta con ese nombre.");
+  if (uuid && !validUuid(uuid)) return fail(t("El UUID tiene 32 letras y números (0–9, a–f), con o sin guiones. Déjalo vacío si no lo necesitas.", "The UUID has 32 letters and numbers (0–9, a–f), with or without dashes. Leave it empty if you do not need it."));
+  if ([s.username, ...s.accounts.map((a) => a.username)].some((n) => n.toLowerCase() === name.toLowerCase())) return fail(t("Ya tienes una cuenta con ese nombre.", "You already have an account with that name."));
   try {
     await saveAccounts({ username: name, uuid, accounts: [{ username: s.username, uuid: s.uuid }, ...s.accounts] });
     closeModal("#account-dialog");
-    toast(`Cuenta añadida: ahora juegas como ${name}.`);
+    toast(t(`Cuenta añadida: ahora juegas como ${name}.`, `Account added: you now play as ${name}.`));
   } catch (error) {
     fail(String(error));
   }
@@ -1030,26 +1031,26 @@ function renderAccounts() {
         .map(
           (a, i) => `<div class="account-row">
             <canvas width="8" height="8" class="head" data-head="${escapeHtml(a.username)}"></canvas>
-            <div class="grow"><b>${escapeHtml(a.username)}</b><span>${a.uuid ? `UUID fijo ${escapeHtml(a.uuid)}` : "UUID de su nombre"}</span></div>
-            <button class="btn small" data-use-account="${i}">Usar</button>
-            <button class="circle-btn small" data-remove-account="${i}" title="Quitar de la lista">${icon("trash")}</button>
+            <div class="grow"><b>${escapeHtml(a.username)}</b><span>${a.uuid ? `${t("UUID fijo", "Fixed UUID")} ${escapeHtml(a.uuid)}` : t("UUID de su nombre", "UUID from their name")}</span></div>
+            <button class="btn small" data-use-account="${i}">${t("Usar", "Use")}</button>
+            <button class="circle-btn small" data-remove-account="${i}" title="${t("Quitar de la lista", "Remove from the list")}">${icon("trash")}</button>
           </div>`,
         )
         .join("")
-    : `<p class="muted small-text">Añade otra cuenta para cambiar de jugador con un clic desde «Jugando como».</p>`;
+    : `<p class="muted small-text">${t("Añade otra cuenta para cambiar de jugador con un clic desde «Jugando como».", "Add another account to switch players with one click from «Playing as».")}</p>`;
   for (const canvas of $$("#account-list canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
 }
 
 function renderSteps() {
   const steps = [
-    { done: state.instances.length > 0, label: "Crea tu primera instancia", action: openCreate },
-    { done: state.settings.username !== "Jugador", label: "Elige tu nombre de jugador", action: () => openAccountDialog("rename"), always: true },
-    { done: !!state.social?.signedIn, label: "Inicia sesión con Google", action: signInGoogle, disabled: state.social?.available === false },
+    { done: state.instances.length > 0, label: t("Crea tu primera instancia", "Create your first instance"), action: openCreate },
+    { done: state.settings.username !== "Jugador", label: t("Elige tu nombre de jugador", "Choose your player name"), action: () => openAccountDialog("rename"), always: true },
+    { done: !!state.social?.signedIn, label: t("Inicia sesión con Google", "Sign in with Google"), action: signInGoogle, disabled: state.social?.available === false },
   ];
   $("#steps-list").innerHTML = `<div>${steps
     .map(
       (s, i) => `<button class="step ${s.done ? "done" : ""}" data-step="${i}" ${(s.done && !s.always) || s.disabled ? "disabled" : ""}>
-        ${icon(s.done ? "check-circle" : "circle")}<span class="grow">${s.label}</span>${s.soon ? `<span class="soon">Pronto</span>` : ""}</button>`,
+        ${icon(s.done ? "check-circle" : "circle")}<span class="grow">${s.label}</span>${s.soon ? `<span class="soon">${t("Pronto", "Soon")}</span>` : ""}</button>`,
     )
     .join("")}</div>`;
   $$("#steps-list .step").forEach((button) => (button.onclick = () => steps[button.dataset.step].action?.()));
@@ -1059,13 +1060,13 @@ function renderSteps() {
 // Amigos (sesión de Google)
 // ======================================================================
 function friendStatus(f) {
-  if (!f.online) return f.lastSeen ? `Desconectado · ${ago(f.lastSeen).toLowerCase()}` : "Desconectado";
+  if (!f.online) return f.lastSeen ? `${t("Desconectado", "Offline")} · ${ago(f.lastSeen).toLowerCase()}` : t("Desconectado", "Offline");
   const p = f.presence;
-  if (p?.state !== "playing") return "En línea";
-  if (f.worldOpen) return `Jugando ${p.pack} · mundo abierto`;
-  if (p.world === "server") return `Jugando ${p.pack} · en ${p.server}`;
-  if (p.world === "single") return `Jugando ${p.pack} · en su mundo`;
-  return `Jugando ${p.pack}`;
+  if (p?.state !== "playing") return t("En línea", "Online");
+  if (f.worldOpen) return t(`Jugando ${p.pack} · mundo abierto`, `Playing ${p.pack} · world open`);
+  if (p.world === "server") return t(`Jugando ${p.pack} · en ${p.server}`, `Playing ${p.pack} · on ${p.server}`);
+  if (p.world === "single") return t(`Jugando ${p.pack} · en su mundo`, `Playing ${p.pack} · in their world`);
+  return t(`Jugando ${p.pack}`, `Playing ${p.pack}`);
 }
 
 function renderFriends() {
@@ -1077,23 +1078,23 @@ function renderFriends() {
   renderGoogleBox();
   if (!connected) {
     $("#friends-count").textContent = "";
-    let note = "Inicia sesión con Google para agregar amigos, ver a qué están jugando y entrar a sus mundos con un clic.";
-    let label = "Iniciar sesión con Google";
+    let note = t("Inicia sesión con Google para agregar amigos, ver a qué están jugando y entrar a sus mundos con un clic.", "Sign in with Google to add friends, see what they are playing and join their worlds with one click.");
+    let label = t("Iniciar sesión con Google", "Sign in with Google");
     let show = true;
     if (!s || s.available === false) {
-      note = "Los amigos no están disponibles en esta copia de Parabellum. Descarga la versión más reciente.";
+      note = t("Los amigos no están disponibles en esta copia de Parabellum. Descarga la versión más reciente.", "Friends are not available in this copy of Parabellum. Download the latest version.");
       show = false;
     } else if (s.signingIn) {
-      note = "Se abrió tu navegador. Elige tu cuenta de Google y vuelve aquí…";
+      note = t("Se abrió tu navegador. Elige tu cuenta de Google y vuelve aquí…", "Your browser opened. Choose your Google account and come back here…");
       show = false;
     } else if (s.connecting) {
-      note = "Conectando con tus amigos…";
+      note = t("Conectando con tus amigos…", "Connecting with your friends…");
       show = false;
     } else if (s.signedIn) {
-      note = `No se pudo conectar con el servidor de amigos${s.error ? `: ${s.error}` : "."}`;
+      note = t("No se pudo conectar con el servidor de amigos", "Could not connect to the friends server") + (s.error ? `: ${s.error}` : ".");
       label = "Reintentar";
     } else if (s.error) {
-      note = `No se pudo iniciar sesión: ${s.error}`;
+      note = t(`No se pudo iniciar sesión: ${s.error}`, `Could not sign in: ${s.error}`);
     }
     $("#friends-note").textContent = note;
     $("#friends-sign-in span").textContent = label;
@@ -1106,29 +1107,29 @@ function renderFriends() {
   const open = me.address || me.lan;
   const myText =
     me.state !== "playing"
-      ? "En línea"
+      ? t("En línea", "Online")
       : open
-        ? `Jugando ${me.pack} · mundo abierto en ${me.address ?? me.lan}`
-        : `Jugando ${me.pack}${me.world === "single" ? " · en tu mundo" : me.world === "server" ? ` · en ${me.server}` : ""}`;
+        ? t(`Jugando ${me.pack} · mundo abierto en ${me.address ?? me.lan}`, `Playing ${me.pack} · world open at ${me.address ?? me.lan}`)
+        : t(`Jugando ${me.pack}`, `Playing ${me.pack}`) + (me.world === "single" ? t(" · en tu mundo", " · in your world") : me.world === "server" ? t(` · en ${me.server}`, ` · on ${me.server}`) : "");
   $("#my-status").innerHTML = `<span class="presence-dot ${me.state === "playing" ? "playing" : "online"}"></span>
     <span class="grow"><b>${escapeHtml(s.friends?.name ?? state.settings.username)}</b> · ${escapeHtml(myText)}</span>
-    ${open ? `<button class="circle-btn small" id="copy-my-address" title="Copiar la dirección de tu mundo">${icon("copy")}</button>` : ""}`;
+    ${open ? `<button class="circle-btn small" id="copy-my-address" title="${t("Copiar la dirección de tu mundo", "Copy your world's address")}">${icon("copy")}</button>` : ""}`;
   const copyButton = $("#copy-my-address");
-  if (copyButton) copyButton.onclick = () => copyText(me.address ?? me.lan, "Dirección copiada.");
+  if (copyButton) copyButton.onclick = () => copyText(me.address ?? me.lan, t("Dirección copiada.", "Address copied."));
 
   // Avisos: nombre ocupado, problemas de conexión y consejos para abrir tu mundo
   let notice = null;
   let kind = "";
   if (s.nameConflict) {
-    notice = `El nombre "${s.nameConflict}" ya lo usa otro jugador de Parabellum. Cámbialo con «Jugando como» › Cambiar nombre: tus amigos no podrían encontrarte.`;
+    notice = t(`El nombre "${s.nameConflict}" ya lo usa otro jugador de Parabellum. Cámbialo con «Jugando como» › Cambiar nombre: tus amigos no podrían encontrarte.`, `The name "${s.nameConflict}" is already used by another Parabellum player. Change it with «Playing as» › Change name: your friends would not be able to find you.`);
     kind = "danger";
   } else if (s.warning) {
     notice = s.warning;
     kind = "warn";
   } else if (open && !me.address) {
-    notice = "Tu mundo está abierto en la red local. Si tus amigos están en otra red, el modpack necesita el mod e4mc.";
+    notice = t("Tu mundo está abierto en la red local. Si tus amigos están en otra red, el modpack necesita el mod e4mc.", "Your world is open on the local network. If your friends are on another network, the modpack needs the e4mc mod.");
   } else if (open && me.world === "single") {
-    notice = "Tus amigos ya pueden pulsar Unirse. Deben abrir el juego desde Parabellum.";
+    notice = t("Tus amigos ya pueden pulsar Unirse. Deben abrir el juego desde Parabellum.", "Your friends can now press Join. They must open the game from Parabellum.");
   } else if (s.notice) {
     notice = s.notice;
   }
@@ -1141,9 +1142,9 @@ function renderFriends() {
     .map(
       (r) => `<div class="friend request">
         <canvas width="8" height="8" class="head" data-head="${escapeHtml(r.name)}"></canvas>
-        <div class="grow"><b>${escapeHtml(r.name)}</b><span>Quiere ser tu amigo</span></div>
-        <button class="btn primary small" data-accept="${escapeHtml(r.uid)}">Aceptar</button>
-        <button class="circle-btn small" data-decline="${escapeHtml(r.uid)}" title="Rechazar">${icon("close")}</button>
+        <div class="grow"><b>${escapeHtml(r.name)}</b><span>${t("Quiere ser tu amigo", "Wants to be your friend")}</span></div>
+        <button class="btn primary small" data-accept="${escapeHtml(r.uid)}">${t("Aceptar", "Accept")}</button>
+        <button class="circle-btn small" data-decline="${escapeHtml(r.uid)}" title="${t("Rechazar", "Decline")}">${icon("close")}</button>
       </div>`,
     )
     .join("");
@@ -1153,15 +1154,15 @@ function renderFriends() {
           (f) => `<div class="friend ${f.online ? "online" : ""}">
             <div class="friend-head"><canvas width="8" height="8" class="head" data-head="${escapeHtml(f.name)}"></canvas><span class="presence-dot ${f.online ? (f.presence?.state === "playing" ? "playing" : "online") : ""}"></span></div>
             <div class="grow"><b>${escapeHtml(f.name)}</b><span>${escapeHtml(friendStatus(f))}</span></div>
-            ${f.worldOpen ? `<button class="btn primary small" data-join="${escapeHtml(f.uid)}">Unirse</button>` : ""}
-            <button class="circle-btn small" data-friend-menu="${escapeHtml(f.uid)}" title="Más">${icon("more")}</button>
+            ${f.worldOpen ? `<button class="btn primary small" data-join="${escapeHtml(f.uid)}">${t("Unirse", "Join")}</button>` : ""}
+            <button class="circle-btn small" data-friend-menu="${escapeHtml(f.uid)}" title="${t("Más", "More")}">${icon("more")}</button>
           </div>`,
         )
         .join("")
-    : `<p class="side-note">Todavía no tienes amigos en Parabellum. Escribe el nombre de jugador de un amigo y pulsa +.</p>`;
+    : `<p class="side-note">${t("Todavía no tienes amigos en Parabellum. Escribe el nombre de jugador de un amigo y pulsa +.", "You have no friends on Parabellum yet. Type a friend's player name and press +.")}</p>`;
   for (const canvas of $$("#friends-block canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
   const online = view.friends.filter((f) => f.online).length;
-  $("#friends-count").textContent = view.friends.length ? `${online} en línea` : "";
+  $("#friends-count").textContent = view.friends.length ? t(`${online} en línea`, `${online} online`) : "";
 }
 
 function renderGoogleBox() {
@@ -1169,22 +1170,22 @@ function renderGoogleBox() {
   const box = $("#google-box");
   if (!box) return;
   if (!s || s.available === false) {
-    box.innerHTML = `<p class="muted small-text">Esta copia de Parabellum no trae el inicio de sesión con Google.</p>`;
+    box.innerHTML = `<p class="muted small-text">${t("Esta copia de Parabellum no trae el inicio de sesión con Google.", "This copy of Parabellum does not include Google sign-in.")}</p>`;
     return;
   }
   if (s.signedIn) {
     box.innerHTML = `<div class="account-row">
         <span class="google-badge">${icon("user")}</span>
-        <div class="grow"><b>${escapeHtml(s.displayName || s.email)}</b><span>${escapeHtml(s.email)} · tu perfil se guarda en una carpeta oculta de tu Google Drive</span></div>
-        <button class="btn small" id="google-sign-out">Cerrar sesión</button>
+        <div class="grow"><b>${escapeHtml(s.displayName || s.email)}</b><span>${escapeHtml(s.email)} · ${t("tu perfil se guarda en una carpeta oculta de tu Google Drive", "your profile is saved in a hidden folder of your Google Drive")}</span></div>
+        <button class="btn small" id="google-sign-out">${t("Cerrar sesión", "Sign out")}</button>
       </div>`;
     $("#google-sign-out").onclick = signOutGoogle;
     return;
   }
-  box.innerHTML = `<p class="muted small-text">Para tener amigos, ver a qué juegan y que tu nombre sea solo tuyo. Parabellum solo ve tu correo y una carpeta oculta de tu Drive para guardar tu perfil.</p>
+  box.innerHTML = `<p class="muted small-text">${t("Para tener amigos, ver a qué juegan y que tu nombre sea solo tuyo. Parabellum solo ve tu correo y una carpeta oculta de tu Drive para guardar tu perfil.", "To have friends, see what they play and keep your name yours. Parabellum only sees your email and a hidden folder of your Drive to save your profile.")}</p>
     <div class="google-actions">
-      <label class="check"><input type="checkbox" id="google-remember" checked> Recordar en este PC (desmárcalo en una PC compartida)</label>
-      <button class="btn primary small" id="google-sign-in" ${s.signingIn ? "disabled" : ""}>${s.signingIn ? "Esperando al navegador…" : "Iniciar sesión con Google"}</button>
+      <label class="check"><input type="checkbox" id="google-remember" checked> ${t("Recordar en este PC (desmárcalo en una PC compartida)", "Remember on this PC (uncheck it on a shared PC)")}</label>
+      <button class="btn primary small" id="google-sign-in" ${s.signingIn ? "disabled" : ""}>${s.signingIn ? t("Esperando al navegador…", "Waiting for the browser…") : t("Iniciar sesión con Google", "Sign in with Google")}</button>
     </div>`;
   $("#google-sign-in").onclick = signInGoogle;
 }
@@ -1201,7 +1202,7 @@ async function signInGoogle() {
     state.social = await invoke("iniciar_sesion_google", { recordar: remember });
     renderFriends();
     if (state.social.notice) toast(state.social.notice);
-    else toast(`Sesión iniciada como ${state.social.email}.`);
+    else toast(t(`Sesión iniciada como ${state.social.email}.`, `Signed in as ${state.social.email}.`));
   } catch (error) {
     toast(String(error), "error");
   }
@@ -1209,9 +1210,9 @@ async function signInGoogle() {
 
 async function signOutGoogle() {
   const ok = await confirmAction({
-    title: "Cerrar la sesión de Google",
-    text: "Tus amigos te verán desconectado y no podrás entrar a sus mundos con un clic hasta que vuelvas a iniciarla. Tus instancias no cambian.",
-    ok: "Cerrar sesión",
+    title: t("Cerrar la sesión de Google", "Sign out of Google"),
+    text: t("Tus amigos te verán desconectado y no podrás entrar a sus mundos con un clic hasta que vuelvas a iniciarla. Tus instancias no cambian.", "Your friends will see you offline and you will not be able to join their worlds with one click until you sign in again. Your instances do not change."),
+    ok: t("Cerrar sesión", "Sign out"),
   });
   if (!ok) return;
   state.social = await invoke("cerrar_sesion_google");
@@ -1234,7 +1235,7 @@ async function addFriend() {
     message.textContent = text;
     message.className = `side-note ${kind}`;
   };
-  if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) return show("Escribe su nombre de jugador (1 a 16 letras, números o guiones bajos).", "danger");
+  if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) return show(t("Escribe su nombre de jugador (1 a 16 letras, números o guiones bajos).", "Type their player name (1 to 16 letters, numbers or underscores)."), "danger");
   $("#add-friend-button").disabled = true;
   try {
     show(await invoke("agregar_amigo", { nombre: name }), "accent");
@@ -1257,11 +1258,11 @@ async function joinFriend(friend, address) {
     state.instances.find((i) => i.id.toLowerCase() === (p.packFolder ?? "").toLowerCase()) ??
     state.instances.find((i) => i.name.toLowerCase() === (p.pack ?? "").toLowerCase());
   if (!instance) {
-    toast(`${friend.name} está jugando ${p.pack} (Minecraft ${p.minecraft}) y tú no lo tienes. Búscalo en Explorar y vuelve a pulsar Unirse.`, "error");
+    toast(t(`${friend.name} está jugando ${p.pack} (Minecraft ${p.minecraft}) y tú no lo tienes. Búscalo en Explorar y vuelve a pulsar Unirse.`, `${friend.name} is playing ${p.pack} (Minecraft ${p.minecraft}) and you do not have it. Look for it in Explore and press Join again.`), "error");
     return;
   }
   if (state.running.size) {
-    await copyText(address, `Ya tienes Minecraft abierto. Copié la dirección de ${friend.name}: en el juego ve a Multijugador › Conexión directa y pégala.`);
+    await copyText(address, t(`Ya tienes Minecraft abierto. Copié la dirección de ${friend.name}: en el juego ve a Multijugador › Conexión directa y pégala.`, `Minecraft is already open. I copied ${friend.name}'s address: in the game go to Multiplayer › Direct Connection and paste it.`));
     return;
   }
   play(instance.id, address);
@@ -1269,19 +1270,19 @@ async function joinFriend(friend, address) {
 
 function friendMenu(anchor, friend) {
   const p = friend.presence ?? {};
-  const items = [{ icon: "chat", label: "Enviar mensaje", action: () => messageFriend(friend.uid) }];
+  const items = [{ icon: "chat", label: t("Enviar mensaje", "Send message"), action: () => messageFriend(friend.uid) }];
   if (friend.worldOpen) {
-    if (p.address) items.push({ icon: "globe", label: "Unirse por Internet (e4mc)", action: () => joinFriend(friend, p.address) });
-    if (p.lan) items.push({ icon: "server", label: "Unirse por red local", action: () => joinFriend(friend, p.lan) });
-    items.push({ icon: "copy", label: "Copiar dirección", action: () => copyText(p.address ?? p.lan, "Dirección copiada.") });
+    if (p.address) items.push({ icon: "globe", label: t("Unirse por Internet (e4mc)", "Join over the Internet (e4mc)"), action: () => joinFriend(friend, p.address) });
+    if (p.lan) items.push({ icon: "server", label: t("Unirse por red local", "Join over the local network"), action: () => joinFriend(friend, p.lan) });
+    items.push({ icon: "copy", label: t("Copiar dirección", "Copy address"), action: () => copyText(p.address ?? p.lan, t("Dirección copiada.", "Address copied.")) });
   }
   items.push({
     icon: "trash",
-    label: "Eliminar amigo",
+    label: t("Eliminar amigo", "Remove friend"),
     danger: true,
     separator: true,
     action: async () => {
-      const ok = await confirmAction({ title: `Eliminar a ${friend.name}`, text: "Dejarán de verse en sus listas de amigos.", ok: "Eliminar" });
+      const ok = await confirmAction({ title: t(`Eliminar a ${friend.name}`, `Remove ${friend.name}`), text: t("Dejarán de verse en sus listas de amigos.", "You will no longer see each other in your friend lists."), ok: t("Eliminar", "Remove") });
       if (!ok) return;
       try {
         await invoke("eliminar_amigo", { uid: friend.uid });
@@ -1342,11 +1343,16 @@ function chatTime(ms) {
   if (!ms) return "";
   const date = new Date(ms);
   const today = new Date();
-  if (date.toDateString() === today.toDateString()) return date.toLocaleTimeString("es-MX", { hour: "numeric", minute: "2-digit" });
+  if (date.toDateString() === today.toDateString()) return date.toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return "Ayer";
-  return date.toLocaleDateString("es-MX", { day: "numeric", month: "short" });
+  if (date.toDateString() === yesterday.toDateString()) return t("Ayer", "Yesterday");
+  return date.toLocaleDateString(locale(), { day: "numeric", month: "short" });
+}
+
+/** La vista previa de una imagen se guarda en español en la base de datos (la ven todos). */
+function chatPreview(text) {
+  return text === "📷 Imagen" ? t("📷 Imagen", "📷 Image") : text;
 }
 
 function chatAvatar(chat) {
@@ -1376,8 +1382,8 @@ function renderChatList() {
     $("#chat-list").innerHTML = "";
     showChatEmpty(
       state.social?.signedIn
-        ? "Conectando con tus amigos…"
-        : "Inicia sesión con Google para chatear con tus amigos y sus grupos.",
+        ? t("Conectando con tus amigos…", "Connecting with your friends…")
+        : t("Inicia sesión con Google para chatear con tus amigos y sus grupos.", "Sign in with Google to chat with your friends and their groups."),
       !state.social?.signedIn,
     );
     return;
@@ -1394,14 +1400,14 @@ function renderChatList() {
           ${chatAvatar(c)}
           <span class="grow">
             <span class="chat-item-top"><b>${escapeHtml(c.name)}</b><small>${escapeHtml(chatTime(c.lastAt))}</small></span>
-            <span class="chat-item-last">${escapeHtml(c.lastText ? (c.kind === "grupo" && c.lastName ? `${c.lastName}: ${c.lastText}` : c.lastText) : c.kind === "grupo" ? "Grupo nuevo" : "Sin mensajes todavía")}</span>
+            <span class="chat-item-last">${escapeHtml(c.lastText ? (c.kind === "grupo" && c.lastName ? `${c.lastName}: ${chatPreview(c.lastText)}` : chatPreview(c.lastText)) : c.kind === "grupo" ? t("Grupo nuevo", "New group") : t("Sin mensajes todavía", "No messages yet"))}</span>
           </span>
           ${c.unread ? `<span class="unread-dot"></span>` : ""}
         </button>`,
       )
       .join("") +
     (others.length
-      ? `<p class="chat-list-label">Escribir a un amigo</p>` +
+      ? `<p class="chat-list-label">${t("Escribir a un amigo", "Write to a friend")}</p>` +
         others
           .map(
             (f) => `<button class="chat-item" data-chat-friend="${escapeHtml(f.uid)}">
@@ -1411,9 +1417,9 @@ function renderChatList() {
           )
           .join("")
       : "") ||
-    `<p class="side-note">Todavía no tienes conversaciones. Agrega amigos en el panel de Inicio para escribirles.</p>`;
+    `<p class="side-note">${t("Todavía no tienes conversaciones. Agrega amigos en el panel de Inicio para escribirles.", "You have no conversations yet. Add friends in the Home panel to write to them.")}</p>`;
   for (const canvas of $$("#chat-list canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
-  if (!state.chatOpen) showChatEmpty(chats.length ? "Elige una conversación." : "Escríbele a un amigo para empezar.", false);
+  if (!state.chatOpen) showChatEmpty(chats.length ? t("Elige una conversación.", "Choose a conversation.") : t("Escríbele a un amigo para empezar.", "Write to a friend to start."), false);
   else renderChatHeader();
 }
 
@@ -1421,7 +1427,7 @@ function showChatEmpty(text, withSignIn) {
   $("#chat-conversation").classList.add("hidden");
   $("#chat-empty").classList.remove("hidden");
   $("#chat-empty").innerHTML = `<span class="chat-empty-icon">${icon("chat")}</span><p>${escapeHtml(text)}</p>${
-    withSignIn ? `<button class="btn primary" id="chat-sign-in">Iniciar sesión con Google</button>` : ""
+    withSignIn ? `<button class="btn primary" id="chat-sign-in">${t("Iniciar sesión con Google", "Sign in with Google")}</button>` : ""
   }`;
   const button = $("#chat-sign-in");
   if (button) button.onclick = signInGoogle;
@@ -1475,7 +1481,7 @@ function renderMessages() {
   const messages = state.chatMessages ?? [];
   const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
   if (!messages.length) {
-    box.innerHTML = `<p class="chat-hint">Todavía no hay mensajes. ¡Saluda!</p>`;
+    box.innerHTML = `<p class="chat-hint">${t("Todavía no hay mensajes. ¡Saluda!", "No messages yet. Say hi!")}</p>`;
     return;
   }
   const group = currentChat()?.kind === "grupo";
@@ -1519,7 +1525,7 @@ async function loadChatImages() {
       })
       .catch(() => {
         const target = $(`#chat-messages [data-image="${CSS.escape(id)}"]`);
-        if (target) target.innerHTML = `<span class="muted small-text">No se pudo cargar</span>`;
+        if (target) target.innerHTML = `<span class="muted small-text">${t("No se pudo cargar", "Could not load")}</span>`;
       })
       .finally(() => state.chatImageLoading.delete(id));
   }
@@ -1566,14 +1572,14 @@ async function reduceImage(source) {
     }
     scale *= 0.75;
   }
-  throw new Error("No se pudo reducir la imagen lo suficiente.");
+  throw new Error(t("No se pudo reducir la imagen lo suficiente.", "The image could not be shrunk enough."));
 }
 
 async function sendChatImage(source) {
-  if (!state.chatOpen) return toast("Primero abre una conversación.", "error");
+  if (!state.chatOpen) return toast(t("Primero abre una conversación.", "Open a conversation first."), "error");
   const chat = state.chatOpen;
   try {
-    toast("Enviando imagen…");
+    toast(t("Enviando imagen…", "Sending image…"));
     const { data, width, height } = await reduceImage(source);
     await invoke("enviar_imagen", { chat, datos: data, ancho: width, alto: height });
   } catch (error) {
@@ -1595,8 +1601,8 @@ function openGroupDialog(mode) {
   state.groupDialog = mode;
   const inGroup = new Set(mode === "add" ? chat?.members.map((m) => m.uid) : []);
   const friends = (state.social?.friends?.friends ?? []).filter((f) => !inGroup.has(f.uid));
-  $("#group-title").textContent = mode === "add" ? "Agregar amigos al grupo" : mode === "rename" ? "Cambiar nombre del grupo" : "Nuevo grupo";
-  $("#group-ok").textContent = mode === "add" ? "Agregar" : mode === "rename" ? "Guardar" : "Crear grupo";
+  $("#group-title").textContent = mode === "add" ? t("Agregar amigos al grupo", "Add friends to the group") : mode === "rename" ? t("Cambiar nombre del grupo", "Rename the group") : t("Nuevo grupo", "New group");
+  $("#group-ok").textContent = mode === "add" ? t("Agregar", "Add") : mode === "rename" ? t("Guardar", "Save") : t("Crear grupo", "Create group");
   $("#group-name-box").classList.toggle("hidden", mode === "add");
   $("#group-friends").classList.toggle("hidden", mode === "rename");
   $("#group-friends-label").classList.toggle("hidden", mode === "rename");
@@ -1608,7 +1614,7 @@ function openGroupDialog(mode) {
           (f) => `<label class="group-friend"><input type="checkbox" value="${escapeHtml(f.uid)}"><canvas width="8" height="8" class="head" data-head="${escapeHtml(f.name)}"></canvas><span>${escapeHtml(f.name)}</span></label>`,
         )
         .join("")
-    : `<p class="muted small-text">${mode === "add" ? "Todos tus amigos ya están en el grupo." : "Primero agrega amigos."}</p>`;
+    : `<p class="muted small-text">${mode === "add" ? t("Todos tus amigos ya están en el grupo.", "All your friends are already in the group.") : t("Primero agrega amigos.", "Add friends first.")}</p>`;
   for (const canvas of $$("#group-friends canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
   openModal("#group-dialog");
   setTimeout(() => (mode === "add" ? null : $("#group-name").focus()), 60);
@@ -1624,17 +1630,17 @@ async function confirmGroupDialog() {
   };
   try {
     if (mode === "create") {
-      if (!name) return fail("Ponle un nombre al grupo.");
-      if (!picked.length) return fail("Elige al menos un amigo.");
+      if (!name) return fail(t("Ponle un nombre al grupo.", "Give the group a name."));
+      if (!picked.length) return fail(t("Elige al menos un amigo.", "Choose at least one friend."));
       const id = await invoke("crear_grupo", { nombre: name, amigos: picked });
       closeModal("#group-dialog");
       openChat(id);
     } else if (mode === "add") {
-      if (!picked.length) return fail("Elige al menos un amigo.");
+      if (!picked.length) return fail(t("Elige al menos un amigo.", "Choose at least one friend."));
       await invoke("agregar_al_grupo", { chat: state.chatOpen, amigos: picked });
       closeModal("#group-dialog");
     } else {
-      if (!name) return fail("Ponle un nombre al grupo.");
+      if (!name) return fail(t("Ponle un nombre al grupo.", "Give the group a name."));
       await invoke("renombrar_grupo", { chat: state.chatOpen, nombre: name });
       closeModal("#group-dialog");
     }
@@ -1649,11 +1655,11 @@ function chatMenu(anchor) {
   const items =
     chat.kind === "grupo"
       ? [
-          { icon: "user-plus", label: "Agregar amigos", action: () => openGroupDialog("add") },
-          { icon: "brush", label: "Cambiar nombre del grupo", action: () => openGroupDialog("rename") },
-          { icon: "close", label: "Salir del grupo", danger: true, separator: true, action: () => leaveChat(chat, "Salir del grupo", "Dejarás de ver sus mensajes. Alguien del grupo puede volver a agregarte.") },
+          { icon: "user-plus", label: t("Agregar amigos", "Add friends"), action: () => openGroupDialog("add") },
+          { icon: "brush", label: t("Cambiar nombre del grupo", "Rename the group"), action: () => openGroupDialog("rename") },
+          { icon: "close", label: t("Salir del grupo", "Leave the group"), danger: true, separator: true, action: () => leaveChat(chat, t("Salir del grupo", "Leave the group"), t("Dejarás de ver sus mensajes. Alguien del grupo puede volver a agregarte.", "You will stop seeing its messages. Someone in the group can add you again.")) },
         ]
-      : [{ icon: "close", label: "Ocultar conversación", action: () => leaveChat(chat, "Ocultar conversación", "Desaparece de tu lista; vuelve si te escribe de nuevo.") }];
+      : [{ icon: "close", label: t("Ocultar conversación", "Hide conversation"), action: () => leaveChat(chat, t("Ocultar conversación", "Hide conversation"), t("Desaparece de tu lista; vuelve si te escribe de nuevo.", "It disappears from your list; it comes back if they write to you again.")) }];
   contextMenu(anchor, items);
 }
 
@@ -1745,7 +1751,7 @@ function renderServers() {
   const previous = select.value;
   select.innerHTML = state.instances.length
     ? state.instances.map((i) => `<option value="${escapeHtml(i.id)}">${escapeHtml(i.name)} · ${escapeHtml(subtitle(i))}</option>`).join("")
-    : `<option value="">Primero crea una instancia</option>`;
+    : `<option value="">${t("Primero crea una instancia", "Create an instance first")}</option>`;
   if (previous) select.value = previous;
   const servers = state.settings.servers ?? [];
   $("#server-list").innerHTML = servers
@@ -1755,10 +1761,10 @@ function renderServers() {
         <div class="server-icon">${icon("server")}</div>
         <div class="grow">
           <div class="title">${escapeHtml(s.name || s.address)}</div>
-          <div class="sub">${escapeHtml(s.address)} · ${instance ? escapeHtml(instance.name) : "instancia no encontrada"}</div>
+          <div class="sub">${escapeHtml(s.address)} · ${instance ? escapeHtml(instance.name) : t("instancia no encontrada", "instance not found")}</div>
         </div>
-        <button class="btn primary play" data-server-play="${index}" ${instance ? "" : "disabled"}>${icon("play")}Jugar</button>
-        <button class="circle-btn" data-server-delete="${index}" title="Quitar">${icon("trash")}</button>
+        <button class="btn primary play" data-server-play="${index}" ${instance ? "" : "disabled"}>${icon("play")}${t("Jugar", "Play")}</button>
+        <button class="circle-btn" data-server-delete="${index}" title="${t("Quitar", "Remove")}">${icon("trash")}</button>
       </div>`;
     })
     .join("");
@@ -1872,6 +1878,23 @@ function setupAccessibility() {
 // ---------- Tamaño de la interfaz ----------
 const SCALES = [0.9, 1, 1.1, 1.25, 1.5];
 
+function renderLanguage() {
+  for (const button of $$("#language button")) {
+    const active = button.dataset.language === (state.settings.language === "en" ? "en" : "es");
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-checked", String(active));
+  }
+}
+
+/** Cambiar de idioma: se guarda en Ajustes y la ventana se vuelve a abrir en el nuevo. */
+async function setLanguage(code) {
+  if (code === state.settings.language) return;
+  state.settings.language = code;
+  renderLanguage();
+  await saveSettings({ language: code });
+  if (adoptLanguage(code)) location.reload();
+}
+
 function renderScale() {
   const current = state.settings.uiScale ?? 1;
   for (const button of $$("#ui-scale button")) {
@@ -1904,7 +1927,7 @@ function openCreate() {
   $("#create-step-type").classList.remove("hidden");
   $("#create-step-custom").classList.add("hidden");
   $("#create-back").classList.add("hidden");
-  $("#create-title").textContent = "Crear instancia";
+  $("#create-title").textContent = t("Crear instancia", "Create instance");
   openModal("#create-dialog");
 }
 
@@ -1912,7 +1935,7 @@ async function showCustomStep() {
   $("#create-step-type").classList.add("hidden");
   $("#create-step-custom").classList.remove("hidden");
   $("#create-back").classList.remove("hidden");
-  $("#create-title").textContent = "Configuración personalizada";
+  $("#create-title").textContent = t("Configuración personalizada", "Custom setup");
   state.selectedVersion = null;
   state.nameEdited = false;
   state.loader = "vanilla";
@@ -1925,9 +1948,9 @@ async function showCustomStep() {
   $("#new-status").textContent = "";
   $("#new-create").disabled = true;
   updateCreateArt();
-  $("#new-versions").innerHTML = `<div class="version-empty">Cargando versiones…</div>`;
+  $("#new-versions").innerHTML = `<div class="version-empty">${t("Cargando versiones…", "Loading versions…")}</div>`;
   state.versions = await invoke("listar_versiones");
-  if (!state.versions.mojang) $("#new-status").textContent = `${state.versions.message} Puedes usar las versiones ya descargadas en este PC.`;
+  if (!state.versions.mojang) $("#new-status").textContent = `${state.versions.message} ${t("Puedes usar las versiones ya descargadas en este PC.", "You can use the versions already downloaded on this PC.")}`;
   renderVersions();
 }
 
@@ -1942,9 +1965,9 @@ async function selectLoader(loader) {
   for (const button of $$("#loader-choice [data-loader]")) button.classList.toggle("active", button.dataset.loader === loader);
   $("#loader-version-box").classList.toggle("hidden", loader === "vanilla");
   $("#create-step-custom").classList.toggle("with-loader", loader !== "vanilla");
-  $("#loader-version-label").textContent = `Versión de ${loaderNames[loader]}`;
+  $("#loader-version-label").textContent = t(`Versión de ${loaderNames[loader]}`, `${loaderNames[loader]} version`);
   if (loader !== "vanilla" && !state.loaderGames[loader]?.online) {
-    $("#new-versions").innerHTML = `<div class="version-empty">Buscando las versiones compatibles con ${loaderNames[loader]}…</div>`;
+    $("#new-versions").innerHTML = `<div class="version-empty">${t(`Buscando las versiones compatibles con ${loaderNames[loader]}…`, `Looking for the versions compatible with ${loaderNames[loader]}…`)}</div>`;
     state.loaderGames[loader] = await invoke("versiones_compatibles", { loader });
     if (state.loader !== loader) return;
   }
@@ -1979,9 +2002,9 @@ function versionOptions() {
 
 function emptyVersionsText() {
   const games = state.loaderGames[state.loader];
-  if (state.loader !== "vanilla" && games && !games.online) return `${games.message} No hay ${loaderNames[state.loader]} descargado en este PC.`;
-  if (state.versions?.mojang === false && !state.versions.installed.length) return "No hay versiones descargadas en este PC.";
-  return "Ninguna versión coincide.";
+  if (state.loader !== "vanilla" && games && !games.online) return `${games.message} ${t(`No hay ${loaderNames[state.loader]} descargado en este PC.`, `There is no ${loaderNames[state.loader]} downloaded on this PC.`)}`;
+  if (state.versions?.mojang === false && !state.versions.installed.length) return t("No hay versiones descargadas en este PC.", "There are no versions downloaded on this PC.");
+  return t("Ninguna versión coincide.", "No version matches.");
 }
 
 function renderVersions() {
@@ -1995,8 +2018,8 @@ function renderVersions() {
         .map((o) => {
           const date = o.releaseTime ? new Date(o.releaseTime).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : "";
           return `<div class="version ${o.id === state.selectedVersion ? "selected" : ""}" data-version="${escapeHtml(o.id)}">
-            <div><div class="v-name">Minecraft ${escapeHtml(o.id)}</div><div class="v-sub">${o.type === "release" ? "Versión estable" : "Snapshot"}${date ? " · " + date : ""}</div></div>
-            ${o.installed ? `<span class="badge">Descargada</span>` : ""}
+            <div><div class="v-name">Minecraft ${escapeHtml(o.id)}</div><div class="v-sub">${o.type === "release" ? t("Versión estable", "Stable version") : "Snapshot"}${date ? " · " + date : ""}</div></div>
+            ${o.installed ? `<span class="badge">${t("Descargada", "Downloaded")}</span>` : ""}
           </div>`;
         })
         .join("")
@@ -2021,7 +2044,7 @@ function updateCreateStatus() {
   const option = versionOptions().find((o) => o.id === state.selectedVersion);
   if (!option) return;
   if (state.loader === "vanilla") {
-    $("#new-status").textContent = option.installed ? "Ya está descargada: la instancia se crea al momento." : "Se descargará de los servidores de Mojang, con su Java.";
+    $("#new-status").textContent = option.installed ? t("Ya está descargada: la instancia se crea al momento.", "It is already downloaded: the instance is created right away.") : t("Se descargará de los servidores de Mojang, con su Java.", "It will be downloaded from Mojang's servers, with its Java.");
     return;
   }
   const name = loaderNames[state.loader];
@@ -2030,10 +2053,10 @@ function updateCreateStatus() {
   const ready = state.loaderVersions[`${state.loader}:${option.id}`]?.installed.includes(chosen);
   $("#new-status").textContent =
     option.installed && ready
-      ? "Ya está descargada: la instancia se crea al momento."
+      ? t("Ya está descargada: la instancia se crea al momento.", "It is already downloaded: the instance is created right away.")
       : option.installed
-        ? `Se descargará ${name} ${chosen} (tarda unos segundos).`
-        : `Se descargará Minecraft ${option.id} con su Java y ${name} ${chosen}.`;
+        ? t(`Se descargará ${name} ${chosen} (tarda unos segundos).`, `${name} ${chosen} will be downloaded (it takes a few seconds).`)
+        : t(`Se descargará Minecraft ${option.id} con su Java y ${name} ${chosen}.`, `Minecraft ${option.id} will be downloaded with its Java and ${name} ${chosen}.`);
 }
 
 async function loadLoaderVersions(minecraft) {
@@ -2041,7 +2064,7 @@ async function loadLoaderVersions(minecraft) {
   const key = `${loader}:${minecraft}`;
   const select = $("#loader-version");
   if (!state.loaderVersions[key]) {
-    select.innerHTML = `<option value="">Cargando versiones…</option>`;
+    select.innerHTML = `<option value="">${t("Cargando versiones…", "Loading versions…")}</option>`;
     select.disabled = true;
     $("#new-create").disabled = true;
     try {
@@ -2056,7 +2079,7 @@ async function loadLoaderVersions(minecraft) {
   select.disabled = state.creating || !info.versions.length;
   $("#new-create").disabled = state.creating || !select.value;
   updateCreateStatus();
-  if (!info.versions.length) $("#new-status").textContent = info.message ?? `${loaderNames[loader]} todavía no está disponible para Minecraft ${minecraft}.`;
+  if (!info.versions.length) $("#new-status").textContent = info.message ?? t(`${loaderNames[loader]} todavía no está disponible para Minecraft ${minecraft}.`, `${loaderNames[loader]} is not available for Minecraft ${minecraft} yet.`);
 }
 
 /** Lista de versiones del loader; marca la recomendada, las beta, las descargadas y la actual. */
@@ -2076,7 +2099,7 @@ function fillLoaderSelect(select, info, current) {
           return `<option value="${escapeHtml(v.version)}" ${v.version === selected ? "selected" : ""}>${escapeHtml(v.version)}${tags.length ? ` (${tags.join(", ")})` : ""}</option>`;
         })
         .join("")
-    : `<option value="">No disponible</option>`;
+    : `<option value="">${t("No disponible", "Not available")}</option>`;
 }
 
 async function createInstance() {
@@ -2095,7 +2118,7 @@ async function createInstance() {
     state.creating = false;
     closeModal("#create-dialog");
     await reloadInstances();
-    toast(`${instance.name} está lista para jugar.`);
+    toast(t(`${instance.name} está lista para jugar.`, `${instance.name} is ready to play.`));
     navigate("instance", instance.id);
   } catch (error) {
     $("#new-status").textContent = String(error);
@@ -2143,6 +2166,7 @@ function renderSettings() {
   $("#win-width").value = s.windowWidth;
   $("#win-height").value = s.windowHeight;
   renderScale();
+  renderLanguage();
   updateSettingsTexts();
   applyTheme(s.theme);
 }
@@ -2150,7 +2174,7 @@ function renderSettings() {
 async function updateSettingsTexts() {
   const name = $("#username").value.trim();
   const valid = /^[A-Za-z0-9_]{1,16}$/.test(name);
-  $("#username-error").textContent = "El nombre debe tener de 1 a 16 letras, números o guiones bajos (sin espacios ni acentos).";
+  $("#username-error").textContent = t("El nombre debe tener de 1 a 16 letras, números o guiones bajos (sin espacios ni acentos).", "The name must have 1 to 16 letters, numbers or underscores (no spaces or accents).");
   $("#username-error").classList.toggle("hidden", valid);
   const fixed = $("#uuid-fixed").checked;
   const typed = $("#uuid-input").value.trim();
@@ -2164,8 +2188,8 @@ async function updateSettingsTexts() {
   drawHead($("#settings-head"), name);
   const ram = Number($("#ram").value);
   $("#ram-value").textContent = `${ram} GB`;
-  let hint = `Tu PC tiene ${state.systemRam} GB. Vanilla funciona bien con 2–4 GB; los modpacks grandes piden de 6 a 10 GB.`;
-  if (ram > state.systemRam - 3) hint += " Deja al menos 3 GB libres para Windows.";
+  let hint = t(`Tu PC tiene ${state.systemRam} GB. Vanilla funciona bien con 2–4 GB; los modpacks grandes piden de 6 a 10 GB.`, `Your PC has ${state.systemRam} GB. Vanilla works well with 2–4 GB; big modpacks ask for 6 to 10 GB.`);
+  if (ram > state.systemRam - 3) hint += t(" Deja al menos 3 GB libres para Windows.", " Leave at least 3 GB free for Windows.");
   $("#ram-hint").textContent = hint;
 }
 
@@ -2178,7 +2202,7 @@ async function saveSettings(extra = {}) {
   const name = $("#username").value.trim();
   if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) return;
   if (name !== state.settings.username && otherAccountNamed(name)) {
-    $("#username-error").textContent = "Ya tienes otra cuenta con ese nombre: cámbiate a ella desde «Jugando como».";
+    $("#username-error").textContent = t("Ya tienes otra cuenta con ese nombre: cámbiate a ella desde «Jugando como».", "You already have another account with that name: switch to it from «Playing as».");
     $("#username-error").classList.remove("hidden");
     return;
   }
@@ -2220,7 +2244,7 @@ async function loadJava() {
     ? list
         .map((j) => `<div class="java"><div class="java-major">${j.major}</div><div class="grow"><b>Java ${escapeHtml(j.version)}</b><div class="java-path">${escapeHtml(j.path)}</div></div></div>`)
         .join("")
-    : `<p class="muted">Todavía no hay ningún Java: se descargará al crear tu primera instancia.</p>`;
+    : `<p class="muted">${t("Todavía no hay ningún Java: se descargará al crear tu primera instancia.", "There is no Java yet: it will be downloaded when you create your first instance.")}</p>`;
 }
 
 // ======================================================================
@@ -2245,9 +2269,9 @@ function wireEvents() {
     } catch {}
     if (state.social?.signedIn && state.settings.closeToTray && !explained) {
       await confirmAction({
-        title: "Parabellum sigue abierto",
-        text: "Se queda junto al reloj para que tus amigos te vean y puedan entrar a tu mundo. Para cerrarlo del todo: clic derecho en su icono › Salir. Puedes cambiarlo en Ajustes › Comportamiento.",
-        ok: "Entendido",
+        title: t("Parabellum sigue abierto", "Parabellum is still open"),
+        text: t("Se queda junto al reloj para que tus amigos te vean y puedan entrar a tu mundo. Para cerrarlo del todo: clic derecho en su icono › Salir. Puedes cambiarlo en Ajustes › Comportamiento.", "It stays next to the clock so your friends can see you and join your world. To close it completely: right-click its icon › Quit. You can change this in Settings › Behavior."),
+        ok: t("Entendido", "Got it"),
         primary: true,
       });
       try {
@@ -2358,7 +2382,7 @@ function wireEvents() {
   $("#log-follow").onchange = () => renderLog(true);
   $("#log-copy").onclick = async () => {
     await navigator.clipboard.writeText(state.log?.text ?? "");
-    toast("Registro copiado: pégalo donde quieras pedir ayuda.");
+    toast(t("Registro copiado: pégalo donde quieras pedir ayuda.", "Log copied: paste it wherever you want to ask for help."));
   };
   $("#log-folder").onclick = () => invoke("abrir_registro", { id: state.current.id });
 
@@ -2414,7 +2438,7 @@ function wireEvents() {
   };
   $("#detail-join").onclick = () => {
     const address = $("#detail-server").value.trim();
-    if (!address) return toast("Escribe la dirección del servidor.", "error");
+    if (!address) return toast(t("Escribe la dirección del servidor.", "Type the server address."), "error");
     play(state.current.id, address);
   };
   $("#detail-server").onkeydown = (event) => {
@@ -2425,8 +2449,8 @@ function wireEvents() {
   $("#server-add").onclick = () => {
     const address = $("#server-address").value.trim();
     const instance = $("#server-instance").value;
-    if (!address) return toast("Escribe la dirección del servidor.", "error");
-    if (!instance) return toast("Primero crea una instancia para entrar al servidor.", "error");
+    if (!address) return toast(t("Escribe la dirección del servidor.", "Type the server address."), "error");
+    if (!instance) return toast(t("Primero crea una instancia para entrar al servidor.", "Create an instance first to join the server."), "error");
     saveServers([...(state.settings.servers ?? []), { name: $("#server-name").value.trim(), address, instance }]);
     $("#server-name").value = "";
     $("#server-address").value = "";
@@ -2540,13 +2564,14 @@ function wireEvents() {
   }
   $("#uuid-copy").onclick = async () => {
     await navigator.clipboard.writeText($("#uuid-text").textContent);
-    toast("UUID copiado.");
+    toast(t("UUID copiado.", "UUID copied."));
   };
   $("#open-root").onclick = () => invoke("abrir_carpeta", { id: null });
 
   // Colapsables y teclado
   for (const collapsible of $$(".collapsible")) $(".collapsible-head", collapsible).onclick = () => collapsible.classList.toggle("open");
   for (const button of $$("#ui-scale button")) button.onclick = () => setScale(Number(button.dataset.scale));
+  for (const button of $$("#language button")) button.onclick = () => setLanguage(button.dataset.language);
   document.addEventListener("keydown", (event) => {
     if (event.ctrlKey && !event.altKey && ["+", "=", "-", "0"].includes(event.key)) {
       event.preventDefault();
@@ -2596,10 +2621,10 @@ function wireEvents() {
     }
     if (payload.type === "enter") {
       const modpack = dropsModpack(payload.paths);
-      $("#drop-title").textContent = modpack ? "Suelta para instalar el modpack" : `Suelta para agregar a ${state.current.name}`;
+      $("#drop-title").textContent = modpack ? t("Suelta para instalar el modpack", "Drop to install the modpack") : t(`Suelta para agregar a ${state.current.name}`, `Drop to add to ${state.current.name}`);
       $("#drop-text").textContent = modpack
-        ? "Un .mrpack o un paquete .zip de Parabellum (de Drive o una USB)."
-        : "Mods, resource packs, shaders y mundos: cada uno va a su lugar.";
+        ? t("Un .mrpack o un paquete .zip de Parabellum (de Drive o una USB).", "A .mrpack or a Parabellum .zip package (from Drive or a USB drive).")
+        : t("Mods, resource packs, shaders y mundos: cada uno va a su lugar.", "Mods, resource packs, shaders and worlds: each one goes to its place.");
       $("#drop-overlay").classList.remove("hidden");
     } else if (payload.type === "drop" || payload.type === "leave") {
       $("#drop-overlay").classList.add("hidden");
@@ -2617,7 +2642,7 @@ function wireEvents() {
       return;
     }
     if (payload.task === "actualizacion") {
-      $("#update-text").textContent = `Descargando… ${Math.round(payload.fraction * 100)}%`;
+      $("#update-text").textContent = t(`Descargando… ${Math.round(payload.fraction * 100)}%`, `Downloading… ${Math.round(payload.fraction * 100)}%`);
       return;
     }
     if (payload.task === "exportar") {
@@ -2662,9 +2687,12 @@ function wireEvents() {
 }
 
 async function init() {
+  translateStatic();
   wireEvents();
   setupAccessibility();
   const initial = await invoke("estado_inicial");
+  // El idioma lo deciden los Ajustes; si la ventana se pintó en el otro, se recarga una vez.
+  if (adoptLanguage(initial.settings.language)) return location.reload();
   state.settings = initial.settings;
   state.instances = initial.instances;
   state.systemRam = initial.systemRamGb;
@@ -2692,18 +2720,18 @@ async function init() {
 // Explorar: mods, resource packs y shaders de Modrinth
 // ======================================================================
 const exploreKinds = {
-  mod: { placeholder: "Buscar mods…", contentKind: "mods", noun: "mods" },
-  resourcepack: { placeholder: "Buscar resource packs…", contentKind: "resourcepacks", noun: "resource packs" },
-  shader: { placeholder: "Buscar shaders…", contentKind: "shaderpacks", noun: "shaders" },
-  datapack: { placeholder: "Buscar data packs…", contentKind: "worlds", noun: "data packs" },
-  modpack: { placeholder: "Buscar modpacks…", contentKind: null, noun: "modpacks" },
-  drive: { placeholder: "Buscar en tus paquetes…", contentKind: null, noun: "paquetes" },
+  mod: { placeholder: t("Buscar mods…", "Search mods…"), contentKind: "mods", noun: "mods" },
+  resourcepack: { placeholder: t("Buscar resource packs…", "Search resource packs…"), contentKind: "resourcepacks", noun: "resource packs" },
+  shader: { placeholder: t("Buscar shaders…", "Search shaders…"), contentKind: "shaderpacks", noun: "shaders" },
+  datapack: { placeholder: t("Buscar data packs…", "Search data packs…"), contentKind: "worlds", noun: "data packs" },
+  modpack: { placeholder: t("Buscar modpacks…", "Search modpacks…"), contentKind: null, noun: "modpacks" },
+  drive: { placeholder: t("Buscar en tus paquetes…", "Search your packages…"), contentKind: null, noun: t("paquetes", "packages") },
 };
 const contentToExplore = { mods: "mod", resourcepacks: "resourcepack", shaderpacks: "shader", worlds: "datapack" };
 /** Qué es el proyecto abierto: lo dice la pestaña desde la que se abrió (los data packs en Modrinth son "mod"). */
 const projectKind = () => state.projectKind ?? state.projectData?.projectType;
 
-const categoryNames = {
+const categoryNamesEs = {
   adventure: "Aventura", cursed: "Raros", decoration: "Decoración", economy: "Economía", equipment: "Equipo", food: "Comida",
   "game-mechanics": "Mecánicas", library: "Bibliotecas", magic: "Magia", management: "Gestión", minigame: "Minijuegos",
   mobs: "Criaturas", optimization: "Optimización", social: "Social", storage: "Almacenamiento", technology: "Tecnología",
@@ -2718,20 +2746,29 @@ const categoryNames = {
   fantasy: "Fantasía", "semi-realistic": "Semirrealista", screenshot: "Capturas", high: "Exigente", medium: "Medio",
   low: "Ligero", potato: "Muy ligero", "8x-": "8x o menos", "512x+": "512x o más",
 };
-const categoryHeaders = { categories: "Categorías", features: "Características", resolutions: "Resolución", "performance impact": "Rendimiento" };
+// En inglés, las categorías de Modrinth ya vienen con su nombre: solo se ajustan algunas.
+const categoryNamesEn = {
+  "game-mechanics": "Game mechanics", worldgen: "World generation", "core-shaders": "Core shaders", "vanilla-like": "Vanilla-like",
+  "colored-lighting": "Colored lighting", "path-tracing": "Path tracing", "semi-realistic": "Semi-realistic", pbr: "PBR", gui: "GUI",
+  datapack: "Data pack", "8x-": "8x or less", "512x+": "512x or more", optifine: "OptiFine", neoforge: "NeoForge",
+};
+const categoryNames = LANG === "en" ? categoryNamesEn : categoryNamesEs;
+const categoryHeaders = { categories: t("Categorías", "Categories"), features: t("Características", "Features"), resolutions: t("Resolución", "Resolution"), "performance impact": t("Rendimiento", "Performance impact") };
 const loaderCategories = new Set(["fabric", "quilt", "forge", "neoforge", "iris", "optifine", "canvas", "vanilla", "minecraft", "datapack", "liteloader", "modloader", "rift", "bukkit", "paper", "spigot", "velocity"]);
 const categoryName = (name) => categoryNames[name] ?? name.charAt(0).toUpperCase() + name.slice(1);
-const compact = new Intl.NumberFormat("es-MX", { notation: "compact", maximumFractionDigits: 1 });
+const compact = new Intl.NumberFormat(locale(), { notation: "compact", maximumFractionDigits: 1 });
 
 function relativeDate(iso) {
   const ms = Date.parse(iso);
   if (!ms) return "";
   const days = (Date.now() - ms) / 86400e3;
-  if (days < 1) return "hoy";
-  if (days < 2) return "ayer";
-  if (days < 31) return `hace ${Math.floor(days)} días`;
-  if (days < 365) return `hace ${Math.floor(days / 30)} ${Math.floor(days / 30) === 1 ? "mes" : "meses"}`;
-  return `hace ${Math.floor(days / 365)} ${Math.floor(days / 365) === 1 ? "año" : "años"}`;
+  if (days < 1) return t("hoy", "today");
+  if (days < 2) return t("ayer", "yesterday");
+  const months = Math.floor(days / 30);
+  const years = Math.floor(days / 365);
+  if (days < 31) return t(`hace ${Math.floor(days)} días`, `${Math.floor(days)} days ago`);
+  if (days < 365) return t(`hace ${months} ${months === 1 ? "mes" : "meses"}`, `${months} ${months === 1 ? "month" : "months"} ago`);
+  return t(`hace ${years} ${years === 1 ? "año" : "años"}`, `${years} ${years === 1 ? "year" : "years"} ago`);
 }
 
 function projectIcon(url, size = "") {
@@ -2754,7 +2791,7 @@ function installLabel(instance) {
 function fillTargetSelect(select) {
   const target = state.explore.target;
   select.innerHTML =
-    `<option value="">Ninguna (solo ver)</option>` +
+    `<option value="">${t("Ninguna (solo ver)", "None (just browse)")}</option>` +
     state.instances.map((i) => `<option value="${escapeHtml(i.id)}" ${i.id === target ? "selected" : ""}>${escapeHtml(installLabel(i))}</option>`).join("");
 }
 
@@ -2818,13 +2855,13 @@ function renderExploreFilters() {
   $("#filter-version").classList.toggle("hidden", drive || (!!instance && !modpack));
   for (const chip of $$("#explore-loaders [data-loader]")) chip.classList.toggle("active", e.loader === chip.dataset.loader);
   const note = $("#explore-instance-note");
-  if (!instance) note.textContent = "Elige una instancia para ver solo lo compatible e instalar con un clic.";
-  else if (e.kind === "mod" && instance.loader === "Vanilla") note.textContent = "Es vanilla: no carga mods. Elige una con un loader.";
-  else if (e.kind === "datapack") note.textContent = `Se muestra solo lo compatible con Minecraft ${instance.minecraftVersion}. Al instalar eliges el mundo.`;
-  else note.textContent = `Se muestra solo lo compatible con ${e.kind === "mod" ? instance.loader + " " : "Minecraft "}${instance.minecraftVersion}.`;
+  if (!instance) note.textContent = t("Elige una instancia para ver solo lo compatible e instalar con un clic.", "Choose an instance to see only what is compatible and install with one click.");
+  else if (e.kind === "mod" && instance.loader === "Vanilla") note.textContent = t("Es vanilla: no carga mods. Elige una con un loader.", "It is vanilla: it does not load mods. Choose one with a loader.");
+  else if (e.kind === "datapack") note.textContent = t(`Se muestra solo lo compatible con Minecraft ${instance.minecraftVersion}. Al instalar eliges el mundo.`, `Only what is compatible with Minecraft ${instance.minecraftVersion} is shown. You choose the world when installing.`);
+  else note.textContent = t("Se muestra solo lo compatible con", "Only what is compatible is shown:") + ` ${e.kind === "mod" ? instance.loader + " " : "Minecraft "}${instance.minecraftVersion}.`;
   const showNote = instance && e.kind === "mod" && instance.loader === "Vanilla";
   $("#explore-note").classList.toggle("hidden", !showNote);
-  $("#explore-note").textContent = showNote ? `${instance.name} es vanilla y no puede cargar mods. Crea una instancia con un loader, o explora resource packs y shaders.` : "";
+  $("#explore-note").textContent = showNote ? t(`${instance.name} es vanilla y no puede cargar mods. Crea una instancia con un loader, o explora resource packs y shaders.`, `${instance.name} is vanilla and cannot load mods. Create an instance with a loader, or explore resource packs and shaders.`) : "";
 }
 
 async function loadExploreVersions() {
@@ -2834,7 +2871,7 @@ async function loadExploreVersions() {
     const versions = state.versions ?? (await invoke("listar_versiones"));
     state.versions ??= versions;
     const releases = versions.mojang ? versions.releases.filter((r) => r.type === "release").map((r) => r.id) : versions.installed;
-    $("#explore-version").innerHTML = `<option value="">Todas</option>` + releases.map((v) => `<option>${escapeHtml(v)}</option>`).join("");
+    $("#explore-version").innerHTML = `<option value="">${t("Todas", "All")}</option>` + releases.map((v) => `<option>${escapeHtml(v)}</option>`).join("");
   } catch {
     state.explore.versionsLoaded = false;
   }
@@ -2895,9 +2932,9 @@ async function runExplore(append = false) {
     renderExploreResults(append ? e.hits.length - result.hits.length : 0);
   } catch (error) {
     if (id !== e.requestId) return;
-    if (String(error).includes("No se puede conectar con Modrinth") && !e.autoDrive) {
+    if (/No se puede conectar con Modrinth|Cannot connect to Modrinth/.test(String(error)) && !e.autoDrive) {
       e.autoDrive = true;
-      toast("Modrinth está bloqueado en esta red: aquí tienes los modpacks de tu Drive.");
+      toast(t("Modrinth está bloqueado en esta red: aquí tienes los modpacks de tu Drive.", "Modrinth is blocked on this network: here are the modpacks from your Drive."));
       return selectExploreKind("drive");
     }
     $("#explore-results").innerHTML = `<div class="content-empty">${escapeHtml(error)}</div>`;
@@ -2911,17 +2948,17 @@ const modpackInstalled = (projectId) => state.instances.some((i) => i.modpackPro
 
 function installButton(projectId, extraClass = "") {
   const e = state.explore;
-  if (e.installing.has(projectId)) return `<button class="btn ${extraClass}" disabled><span class="spinner tiny"></span>Instalando…</button>`;
+  if (e.installing.has(projectId)) return `<button class="btn ${extraClass}" disabled><span class="spinner tiny"></span>${t("Instalando…", "Installing…")}</button>`;
   const installed = e.kind === "modpack" ? modpackInstalled(projectId) : e.kind !== "datapack" && e.installed.has(projectId);
-  if (installed) return `<button class="btn installed ${extraClass}" disabled><svg><use href="#i-check"/></svg>Instalado</button>`;
-  return `<button class="btn primary ${extraClass}" data-install="${escapeHtml(projectId)}"><svg><use href="#i-download"/></svg>Instalar</button>`;
+  if (installed) return `<button class="btn installed ${extraClass}" disabled><svg><use href="#i-check"/></svg>${t("Instalado", "Installed")}</button>`;
+  return `<button class="btn primary ${extraClass}" data-install="${escapeHtml(projectId)}"><svg><use href="#i-download"/></svg>${t("Instalar", "Install")}</button>`;
 }
 
 function renderExploreResults(from = 0) {
   const e = state.explore;
   const list = $("#explore-results");
   if (!e.hits.length) {
-    list.innerHTML = `<div class="content-empty">No se encontró nada${e.query ? ` para "${escapeHtml(e.query)}"` : ""}. Prueba con otras palabras o quita filtros.</div>`;
+    list.innerHTML = `<div class="content-empty">${t("No se encontró nada", "Nothing was found")}${e.query ? ` ${t("para", "for")} "${escapeHtml(e.query)}"` : ""}. ${t("Prueba con otras palabras o quita filtros.", "Try other words or remove filters.")}</div>`;
     $("#explore-more").classList.add("hidden");
     return;
   }
@@ -2932,16 +2969,16 @@ function renderExploreResults(from = 0) {
       return `<div class="result" data-project="${escapeHtml(hit.id)}" style="animation-delay:${Math.min(index, 12) * 25}ms">
         <div class="result-icon">${projectIcon(hit.iconUrl)}</div>
         <div class="grow result-body">
-          <div class="r-title"><b>${escapeHtml(hit.title)}</b><span class="muted">por ${escapeHtml(hit.author)}</span></div>
+          <div class="r-title"><b>${escapeHtml(hit.title)}</b><span class="muted">${t("por", "by")} ${escapeHtml(hit.author)}</span></div>
           <div class="r-desc">${escapeHtml(hit.description)}</div>
           <div class="r-tags">${tags.map((t) => `<span class="tag">${escapeHtml(categoryName(t))}</span>`).join("")}</div>
         </div>
         <div class="r-side">
           <div class="r-stats">
-            <span title="Descargas">${icon("download")}${compact.format(hit.downloads)}</span>
-            <span title="Seguidores">${icon("heart")}${compact.format(hit.follows)}</span>
+            <span title="${t("Descargas", "Downloads")}">${icon("download")}${compact.format(hit.downloads)}</span>
+            <span title="${t("Seguidores", "Followers")}">${icon("heart")}${compact.format(hit.follows)}</span>
           </div>
-          <div class="faint r-updated">${icon("clock")}Actualizado ${escapeHtml(relativeDate(hit.updated))}</div>
+          <div class="faint r-updated">${icon("clock")}${t("Actualizado", "Updated")} ${escapeHtml(relativeDate(hit.updated))}</div>
           <div class="r-action">${installButton(hit.id)}</div>
         </div>
       </div>`;
@@ -2962,7 +2999,7 @@ async function installProject(projectId, versionId = null) {
   const e = state.explore;
   const instance = exploreTarget();
   if (!instance) {
-    toast('Elige en qué instancia instalarlo en "Instalar en".', "error");
+    toast(t('Elige en qué instancia instalarlo en "Instalar en".', 'Choose which instance to install it to in "Install to".'), "error");
     ($("#page-project").classList.contains("hidden") ? $("#explore-instance") : $("#project-target")).focus();
     return;
   }
@@ -2974,13 +3011,13 @@ async function installProject(projectId, versionId = null) {
   try {
     const plan = await invoke("preparar_instalacion", { id: instance.id, proyecto: projectId, version: versionId });
     if (plan.installed) {
-      toast(`${plan.title} ${plan.versionNumber} ya está instalado en ${instance.name}.`);
+      toast(t(`${plan.title} ${plan.versionNumber} ya está instalado en ${instance.name}.`, `${plan.title} ${plan.versionNumber} is already installed in ${instance.name}.`));
     } else if (plan.problem) {
       showInstallProblem(plan, projectId);
     } else {
       await invoke("instalar_contenido", { id: instance.id, archivos: plan.files });
       const dependencies = plan.files.filter((f) => f.dependency).map((f) => f.title);
-      toast(`Se instaló ${plan.title} ${plan.versionNumber} en ${instance.name}${dependencies.length ? `, con ${dependencies.join(", ")}` : ""}.`);
+      toast(t(`Se instaló ${plan.title} ${plan.versionNumber} en ${instance.name}${dependencies.length ? `, con ${dependencies.join(", ")}` : ""}.`, `${plan.title} ${plan.versionNumber} was installed in ${instance.name}${dependencies.length ? `, with ${dependencies.join(", ")}` : ""}.`));
       for (const file of plan.files) {
         e.installed.add(file.projectId);
         e.installedVersions.add(file.versionId);
@@ -3004,11 +3041,11 @@ async function installProject(projectId, versionId = null) {
 function showInstallProblem(plan, projectId) {
   openInstallDialog({
     alert: true,
-    title: `No se puede instalar ${plan.title}`,
+    title: t(`No se puede instalar ${plan.title}`, `${plan.title} cannot be installed`),
     text: plan.problem,
     items: [],
-    ok: state.page === "project" ? "" : "Ver versiones",
-    secondary: "Entendido",
+    ok: state.page === "project" ? "" : t("Ver versiones", "See versions"),
+    secondary: t("Entendido", "Got it"),
     onOk: () => {
       navigate("project", projectId);
       selectProjectTab("versions");
@@ -3019,11 +3056,11 @@ function showInstallProblem(plan, projectId) {
 function offerOptional(plan) {
   openInstallDialog({
     alert: false,
-    title: `${plan.title} está instalado`,
-    text: "También funciona con estos mods opcionales. ¿Quieres alguno?",
+    title: t(`${plan.title} está instalado`, `${plan.title} is installed`),
+    text: t("También funciona con estos mods opcionales. ¿Quieres alguno?", "It also works with these optional mods. Do you want any?"),
     items: plan.optional,
-    ok: "Instalar los marcados",
-    secondary: "No, gracias",
+    ok: t("Instalar los marcados", "Install the checked ones"),
+    secondary: t("No, gracias", "No, thanks"),
     onOk: async (chosen) => {
       for (const id of chosen) await installProject(id);
     },
@@ -3060,7 +3097,7 @@ async function loadProject(id) {
   state.projectVersions = null;
   selectProjectTab("description");
   $("#project-icon").innerHTML = `<div class="spinner"></div>`;
-  $("#project-title").textContent = "Cargando…";
+  $("#project-title").textContent = t("Cargando…", "Loading…");
   $("#project-summary").textContent = "";
   $("#project-meta").innerHTML = "";
   $("#project-body").replaceChildren();
@@ -3075,7 +3112,7 @@ async function loadProject(id) {
   } catch (error) {
     if (state.projectId !== id) return;
     $("#project-icon").innerHTML = icon("alert");
-    $("#project-title").textContent = "No se pudo abrir";
+    $("#project-title").textContent = t("No se pudo abrir", "Could not open");
     $("#project-summary").textContent = String(error);
   }
 }
@@ -3089,31 +3126,31 @@ function renderProject() {
   $("#project-meta").innerHTML = `
     <span>${icon("download")}${compact.format(p.downloads)} descargas</span>
     <span>${icon("heart")}${compact.format(p.followers)} seguidores</span>
-    <span>${icon("clock")}Actualizado ${escapeHtml(relativeDate(p.updated))}</span>`;
+    <span>${icon("clock")}${t("Actualizado", "Updated")} ${escapeHtml(relativeDate(p.updated))}</span>`;
   renderProjectInstall();
   const body = $("#project-body");
   body.replaceChildren(Markdown.toFragment(p.body || p.description));
   const releases = p.gameVersions.filter((v) => /^\d+(\.\d+)+$/.test(v));
-  const sides = { required: "Necesario", optional: "Opcional", unsupported: "No se usa", unknown: "Sin datos" };
+  const sides = { required: t("Necesario", "Required"), optional: t("Opcional", "Optional"), unsupported: t("No se usa", "Not used"), unknown: t("Sin datos", "Unknown") };
   $("#project-aside").innerHTML = `
-    <div class="card-panel"><h4>Compatibilidad</h4>
+    <div class="card-panel"><h4>${t("Compatibilidad", "Compatibility")}</h4>
       <dl class="mini-details">
         <dt>Minecraft</dt><dd>${releases.length ? `${escapeHtml(releases[0])} – ${escapeHtml(releases.at(-1))}` : escapeHtml(p.gameVersions.at(-1) ?? "—")}</dd>
-        <dt>Plataformas</dt><dd>${escapeHtml(p.loaders.map(categoryName).join(", ") || "—")}</dd>
-        <dt>En el cliente</dt><dd>${sides[p.clientSide] ?? "—"}</dd>
-        <dt>En el servidor</dt><dd>${sides[p.serverSide] ?? "—"}</dd>
+        <dt>${t("Plataformas", "Platforms")}</dt><dd>${escapeHtml(p.loaders.map(categoryName).join(", ") || "—")}</dd>
+        <dt>${t("En el cliente", "On the client")}</dt><dd>${sides[p.clientSide] ?? "—"}</dd>
+        <dt>${t("En el servidor", "On the server")}</dt><dd>${sides[p.serverSide] ?? "—"}</dd>
       </dl></div>
-    <div class="card-panel"><h4>Detalles</h4>
+    <div class="card-panel"><h4>${t("Detalles", "Details")}</h4>
       <dl class="mini-details">
-        <dt>Autor</dt><dd>${escapeHtml(p.author || "—")}</dd>
-        <dt>Licencia</dt><dd>${escapeHtml(p.license || "—")}</dd>
-        <dt>Publicado</dt><dd>${p.published ? new Date(p.published).toLocaleDateString("es-MX") : "—"}</dd>
+        <dt>${t("Autor", "Author")}</dt><dd>${escapeHtml(p.author || "—")}</dd>
+        <dt>${t("Licencia", "License")}</dt><dd>${escapeHtml(p.license || "—")}</dd>
+        <dt>${t("Publicado", "Published")}</dt><dd>${p.published ? new Date(p.published).toLocaleDateString(locale()) : "—"}</dd>
       </dl>
       <div class="r-tags">${p.categories.filter((c) => !loaderCategories.has(c)).map((c) => `<span class="tag">${escapeHtml(categoryName(c))}</span>`).join("")}</div>
     </div>
-    <div class="card-panel"><h4>Enlaces</h4>
+    <div class="card-panel"><h4>${t("Enlaces", "Links")}</h4>
       <div class="link-list">
-        <a href="https://modrinth.com/${escapeHtml(p.projectType)}/${escapeHtml(p.slug)}">${icon("external")}Ver en Modrinth</a>
+        <a href="https://modrinth.com/${escapeHtml(p.projectType)}/${escapeHtml(p.slug)}">${icon("external")}${t("Ver en Modrinth", "See on Modrinth")}</a>
         ${p.links.map(([label, url]) => `<a href="${escapeHtml(url)}">${icon("external")}${escapeHtml(label)}</a>`).join("")}
       </div>
     </div>`;
@@ -3124,7 +3161,7 @@ function renderProject() {
           ${g.title ? `<figcaption>${escapeHtml(g.title)}</figcaption>` : ""}</figure>`,
         )
         .join("")
-    : `<div class="content-empty">Este proyecto no tiene imágenes.</div>`;
+    : `<div class="content-empty">${t("Este proyecto no tiene imágenes.", "This project has no images.")}</div>`;
   $('#project-tabs [data-tab="gallery"]').classList.toggle("hidden", !p.gallery.length);
 }
 
@@ -3142,18 +3179,18 @@ function renderProjectInstall() {
   button.disabled = installing || done;
   button.className = `btn big ${done ? "installed" : "primary"}`;
   $("span", button).textContent = installing
-    ? "Instalando…"
+    ? t("Instalando…", "Installing…")
     : done
-      ? "Instalado"
+      ? t("Instalado", "Installed")
       : modpack
-        ? "Instalar modpack"
+        ? t("Instalar modpack", "Install modpack")
         : instance
-          ? `Instalar en ${instance.name}`
-          : "Instalar";
+          ? t(`Instalar en ${instance.name}`, `Install to ${instance.name}`)
+          : t("Instalar", "Install");
   $("use", button).setAttribute("href", done ? "#i-check" : "#i-download");
   $("#project-target-box").classList.toggle("hidden", modpack);
   $("#project-install-note").classList.toggle("hidden", !modpack);
-  $("#project-install-note").textContent = "Se instala como una instancia nueva, con su versión de Minecraft y su loader.";
+  $("#project-install-note").textContent = t("Se instala como una instancia nueva, con su versión de Minecraft y su loader.", "It is installed as a new instance, with its Minecraft version and its loader.");
   $(".project-install").classList.toggle("hidden", !exploreKinds[kind]);
 }
 
@@ -3172,10 +3209,10 @@ async function loadProjectVersions() {
   $("#project-versions").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
   $("#project-versions-note").textContent =
     kind === "modpack"
-      ? "Cada versión se instala como una instancia nueva, con su loader."
+      ? t("Cada versión se instala como una instancia nueva, con su loader.", "Each version is installed as a new instance, with its loader.")
       : instance
-        ? `Versiones compatibles con ${instance.name} (${kind === "mod" ? instance.loader + " " : "Minecraft "}${instance.minecraftVersion}).`
-        : "Todas las versiones. Elige una instancia en \"Instalar en\" para ver solo las compatibles.";
+        ? t(`Versiones compatibles con ${instance.name}`, `Versions compatible with ${instance.name}`) + ` (${kind === "mod" ? instance.loader + " " : "Minecraft "}${instance.minecraftVersion}).`
+        : t("Todas las versiones. Elige una instancia en \"Instalar en\" para ver solo las compatibles.", "All versions. Choose an instance in \"Install to\" to see only the compatible ones.");
   try {
     const versions = await invoke("versiones_proyecto", { id, tipo: kind, instancia: instance?.id ?? null });
     if (state.projectId !== id) return;
@@ -3201,18 +3238,18 @@ function renderProjectVersions() {
           const action = !exploreKinds[kind] || (!instance && kind !== "modpack")
             ? ""
             : installed
-              ? `<button class="btn installed small" disabled><svg><use href="#i-check"/></svg>Instalada</button>`
-              : `<button class="btn small" data-install-version="${escapeHtml(v.id)}" ${state.explore.installing.has(state.projectId) ? "disabled" : ""}><svg><use href="#i-download"/></svg>Instalar</button>`;
+              ? `<button class="btn installed small" disabled><svg><use href="#i-check"/></svg>${t("Instalada", "Installed")}</button>`
+              : `<button class="btn small" data-install-version="${escapeHtml(v.id)}" ${state.explore.installing.has(state.projectId) ? "disabled" : ""}><svg><use href="#i-download"/></svg>${t("Instalar", "Install")}</button>`;
           return `<div class="content-item">
             <span class="version-type ${typeClass}">${typeName}</span>
             <div class="grow"><div class="c-name">${escapeHtml(v.name || v.versionNumber)}</div>
               <div class="c-sub">${escapeHtml(v.loaders.map(categoryName).join(", "))} · Minecraft ${escapeHtml(games)}</div></div>
-            <div class="c-version">${new Date(v.published).toLocaleDateString("es-MX")} · ${compact.format(v.downloads)}</div>
+            <div class="c-version">${new Date(v.published).toLocaleDateString(locale())} · ${compact.format(v.downloads)}</div>
             ${action}
           </div>`;
         })
         .join("")
-    : `<div class="content-empty">No hay versiones${instance ? ` para ${escapeHtml(instance.name)}` : ""}.</div>`;
+    : `<div class="content-empty">${t("No hay versiones", "There are no versions")}${instance ? ` ${t("para", "for")} ${escapeHtml(instance.name)}` : ""}.</div>`;
 }
 
 // ======================================================================
@@ -3242,10 +3279,10 @@ async function applyUpdates(files) {
     const heldBack = await invoke("actualizar_contenido", { id, archivos: files });
     for (const held of heldBack) state.heldBack.set(held.versionId, held.reason);
     const done = files.length - heldBack.length;
-    if (done) toast(`Se ${done === 1 ? "actualizó" : "actualizaron"} ${plural(done, "elemento", "elementos")}.`);
+    if (done) toast(t(`Se ${done === 1 ? "actualizó" : "actualizaron"} ${plural(done, "elemento", "elementos")}.`, `${plural(done, "item was", "items were")} updated.`));
     if (heldBack.length) {
       const one = heldBack.length === 1;
-      toast(`No se ${one ? "actualizó" : "actualizaron"} porque ${one ? "rompería" : "romperían"} algo: ${heldBack.map((h) => `${h.title} (${h.reason})`).join(" · ")}`, "error");
+      toast(t(`No se ${one ? "actualizó" : "actualizaron"} porque ${one ? "rompería" : "romperían"} algo: `, `Not updated because ${one ? "it" : "they"} would break something: `) + heldBack.map((h) => `${h.title} (${h.reason})`).join(" · "), "error");
     }
     state.content = null;
     state.updates = { for: null, list: [] };
@@ -3262,8 +3299,8 @@ function contentAddMenu() {
   const id = state.current?.id;
   if (!id) return;
   contextMenu($("#content-add"), [
-    { label: "Buscar en Modrinth", icon: "compass", action: () => openExploreFor(id, state.kind) },
-    { label: "Desde un archivo de la PC", icon: "upload", action: pickContentFiles },
+    { label: t("Buscar en Modrinth", "Search on Modrinth"), icon: "compass", action: () => openExploreFor(id, state.kind) },
+    { label: t("Desde un archivo de la PC", "From a file on the PC"), icon: "upload", action: pickContentFiles },
   ]);
 }
 
@@ -3359,9 +3396,9 @@ function wireExploreEvents() {
     // Un modpack trae versiones que su autor probó juntas; actualizarlas todas de golpe puede romperlo.
     if (state.current?.modpack) {
       const ok = await confirmAction({
-        title: "¿Actualizar todos los mods del modpack?",
-        text: `${state.current.name} trae versiones que su autor probó juntas. Actualizarlas todas puede hacer que el juego no abra o que cambie cómo funciona. Si quieres el modpack al día, es mejor instalar su versión nueva.`,
-        ok: "Actualizar de todos modos",
+        title: t("¿Actualizar todos los mods del modpack?", "Update all the modpack's mods?"),
+        text: t(`${state.current.name} trae versiones que su autor probó juntas. Actualizarlas todas puede hacer que el juego no abra o que cambie cómo funciona. Si quieres el modpack al día, es mejor instalar su versión nueva.`, `${state.current.name} includes versions its author tested together. Updating them all can stop the game from opening or change how it works. If you want the modpack up to date, it is better to install its new version.`),
+        ok: t("Actualizar de todos modos", "Update anyway"),
       });
       if (!ok) return;
     }
@@ -3405,7 +3442,7 @@ async function installModpack(projectId, versionId = null) {
   try {
     const result = await invoke("instalar_modpack", { proyecto: projectId, version: versionId });
     await reloadInstances();
-    toast(`${result.name} está lista para jugar. La encuentras en tu biblioteca.`);
+    toast(t(`${result.name} está lista para jugar. La encuentras en tu biblioteca.`, `${result.name} is ready to play. You will find it in your library.`));
     if (result.warning) toast(result.warning, "error");
   } catch (error) {
     toast(String(error), "error");
@@ -3417,7 +3454,7 @@ async function installModpack(projectId, versionId = null) {
 async function installDatapack(projectId, versionId = null) {
   const instance = exploreTarget();
   if (!instance) {
-    toast('Elige en qué instancia instalarlo en "Instalar en".', "error");
+    toast(t('Elige en qué instancia instalarlo en "Instalar en".', 'Choose which instance to install it to in "Install to".'), "error");
     return;
   }
   let worlds;
@@ -3429,20 +3466,20 @@ async function installDatapack(projectId, versionId = null) {
   if (!worlds.length) {
     return openInstallDialog({
       alert: true,
-      title: "Todavía no hay mundos",
-      text: `Los data packs van dentro de un mundo y ${instance.name} aún no tiene ninguno. Abre el juego, crea un mundo y vuelve.`,
+      title: t("Todavía no hay mundos", "There are no worlds yet"),
+      text: t(`Los data packs van dentro de un mundo y ${instance.name} aún no tiene ninguno. Abre el juego, crea un mundo y vuelve.`, `Data packs go inside a world and ${instance.name} has none yet. Open the game, create a world and come back.`),
       items: [],
       ok: "",
-      secondary: "Entendido",
+      secondary: t("Entendido", "Got it"),
     });
   }
   openInstallDialog({
     alert: false,
-    title: "¿En qué mundo?",
-    text: "Los data packs se instalan dentro de un mundo. Si el mundo ya existe, se activan la próxima vez que lo abras.",
+    title: t("¿En qué mundo?", "In which world?"),
+    text: t("Los data packs se instalan dentro de un mundo. Si el mundo ya existe, se activan la próxima vez que lo abras.", "Data packs are installed inside a world. If the world already exists, they turn on the next time you open it."),
     items: worlds.map((w) => ({ id: w.file, title: w.name, iconUrl: w.icon })),
-    ok: "Instalar",
-    secondary: "Cancelar",
+    ok: t("Instalar", "Install"),
+    secondary: t("Cancelar", "Cancel"),
     single: true,
     onOk: async ([world]) => {
       if (!world) return;
@@ -3464,13 +3501,13 @@ async function showExternalStep() {
   $("#create-step-type").classList.add("hidden");
   $("#create-step-external").classList.remove("hidden");
   $("#create-back").classList.remove("hidden");
-  $("#create-title").textContent = "Importar de otro launcher";
-  $("#external-note").textContent = "Buscando instancias de CurseForge, Prism y MultiMC…";
+  $("#create-title").textContent = t("Importar de otro launcher", "Import from another launcher");
+  $("#external-note").textContent = t("Buscando instancias de CurseForge, Prism y MultiMC…", "Looking for CurseForge, Prism and MultiMC instances…");
   $("#external-list").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
   const found = await invoke("instancias_externas").catch(() => []);
   $("#external-note").textContent = found.length
-    ? "Se copian con sus mods, mundos y opciones; el original no se toca. El loader lo instala Parabellum."
-    : "No se encontraron instancias en las carpetas de CurseForge, Prism ni MultiMC. Si están en otro lugar, elige su carpeta.";
+    ? t("Se copian con sus mods, mundos y opciones; el original no se toca. El loader lo instala Parabellum.", "They are copied with their mods, worlds and options; the original is not touched. Parabellum installs the loader.")
+    : t("No se encontraron instancias en las carpetas de CurseForge, Prism ni MultiMC. Si están en otro lugar, elige su carpeta.", "No instances were found in the CurseForge, Prism or MultiMC folders. If they are somewhere else, choose their folder.");
   $("#external-list").innerHTML = found.map(externalItem).join("");
   state.externals = found;
 }
@@ -3479,27 +3516,27 @@ function externalItem(e, index) {
   const loader = e.loader === "Vanilla" ? "Vanilla" : `${e.loader} ${e.loaderVersion ?? ""}`.trim();
   const details = [`Minecraft ${e.minecraft}`, loader];
   if (e.mods) details.push(`${e.mods} mods`);
-  if (e.worlds) details.push(e.worlds === 1 ? "1 mundo" : `${e.worlds} mundos`);
+  if (e.worlds) details.push(e.worlds === 1 ? t("1 mundo", "1 world") : t(`${e.worlds} mundos`, `${e.worlds} worlds`));
   const taken = state.instances.some((i) => i.name.toLowerCase() === e.name.toLowerCase());
   return `<div class="external-item">
     <div class="grow">
       <b>${escapeHtml(e.name)}</b>
-      <span class="muted">${escapeHtml(details.join(" · "))}${taken ? " · ya tienes una con ese nombre" : ""}</span>
+      <span class="muted">${escapeHtml(details.join(" · "))}${taken ? t(" · ya tienes una con ese nombre", " · you already have one with that name") : ""}</span>
     </div>
     <span class="tag">${escapeHtml(e.launcher)}</span>
-    <button class="btn primary" data-external="${index}">Importar</button>
+    <button class="btn primary" data-external="${index}">${t("Importar", "Import")}</button>
   </div>`;
 }
 
 async function importExternal(external) {
-  if (state.importing) return toast("Ya se está instalando algo; espera a que termine.", "error");
+  if (state.importing) return toast(t("Ya se está instalando algo; espera a que termine.", "Something is already being installed; wait for it to finish."), "error");
   state.importing = true;
   $("#create-step-external").classList.add("hidden");
   $("#create-step-import").classList.remove("hidden");
   $("#create-back").classList.add("hidden");
-  $("#create-title").textContent = "Importar de otro launcher";
+  $("#create-title").textContent = t("Importar de otro launcher", "Import from another launcher");
   $("#import-title").textContent = external.name;
-  $("#import-status").textContent = "Preparando…";
+  $("#import-status").textContent = t("Preparando…", "Preparing…");
   $("#import-progress div").style.width = "2%";
   $("#download-indicator").classList.remove("hidden");
   $("#download-percent").textContent = "…";
@@ -3508,11 +3545,11 @@ async function importExternal(external) {
     state.importing = false;
     closeModal("#create-dialog");
     await reloadInstances();
-    toast(`${result.name} está lista para jugar.`);
+    toast(t(`${result.name} está lista para jugar.`, `${result.name} is ready to play.`));
     if (result.warning) toast(result.warning, "error");
     navigate("instance", result.id);
   } catch (error) {
-    $("#import-title").textContent = "No se pudo importar";
+    $("#import-title").textContent = t("No se pudo importar", "Could not import");
     $("#import-status").textContent = String(error);
     $("#create-back").classList.remove("hidden");
   } finally {
@@ -3523,15 +3560,15 @@ async function importExternal(external) {
 
 /** Subir un modpack: .mrpack o paquete de Parabellum. Sin ruta, abre la ventana para elegirlo. */
 async function importModpack(path = null) {
-  if (state.importing) return toast("Ya se está instalando un modpack; espera a que termine.", "error");
+  if (state.importing) return toast(t("Ya se está instalando un modpack; espera a que termine.", "A modpack is already being installed; wait for it to finish."), "error");
   state.importing = true;
   $("#create-step-type").classList.add("hidden");
   $("#create-step-custom").classList.add("hidden");
   $("#create-step-import").classList.remove("hidden");
   $("#create-back").classList.add("hidden");
-  $("#create-title").textContent = "Subir un modpack";
-  $("#import-title").textContent = path ? path.split(/[\\/]/).pop() : "Elige el archivo del modpack…";
-  $("#import-status").textContent = path ? "Preparando…" : "Se abrió una ventana para elegirlo.";
+  $("#create-title").textContent = t("Subir un modpack", "Upload a modpack");
+  $("#import-title").textContent = path ? path.split(/[\\/]/).pop() : t("Elige el archivo del modpack…", "Choose the modpack file…");
+  $("#import-status").textContent = path ? t("Preparando…", "Preparing…") : t("Se abrió una ventana para elegirlo.", "A window opened to choose it.");
   $("#import-progress div").style.width = "2%";
   openModal("#create-dialog");
   $("#download-indicator").classList.remove("hidden");
@@ -3543,14 +3580,14 @@ async function importModpack(path = null) {
     closeModal("#create-dialog");
     await reloadInstances();
     if (result.kind === "base") {
-      toast(`Se instaló ${result.name}. Ya puedes instalar los modpacks de esa versión.`);
+      toast(t(`Se instaló ${result.name}. Ya puedes instalar los modpacks de esa versión.`, `${result.name} was installed. You can now install the modpacks of that version.`));
     } else {
-      toast(result.updated ? `${result.name} se actualizó: tus mundos y opciones se conservaron.` : `${result.name} está lista para jugar.`);
+      toast(result.updated ? t(`${result.name} se actualizó: tus mundos y opciones se conservaron.`, `${result.name} was updated: your worlds and options were kept.`) : t(`${result.name} está lista para jugar.`, `${result.name} is ready to play.`));
       if (result.warning) toast(result.warning, "error");
       navigate("instance", result.id);
     }
   } catch (error) {
-    $("#import-title").textContent = "No se pudo instalar";
+    $("#import-title").textContent = t("No se pudo instalar", "Could not install");
     $("#import-status").textContent = String(error);
     $("#create-back").classList.remove("hidden");
   } finally {
@@ -3562,15 +3599,15 @@ async function importModpack(path = null) {
 // ---------- Exportar ----------
 const exportHints = {
   mods: "Mods",
-  config: "Configuración de los mods",
+  config: t("Configuración de los mods", "Mod settings"),
   resourcepacks: "Resource packs",
   shaderpacks: "Shaders",
-  saves: "Mundos (tus partidas)",
-  "options.txt": "Opciones del juego (teclas, video, sonido)",
-  "servers.dat": "Lista de servidores",
-  screenshots: "Capturas de pantalla",
-  defaultconfigs: "Configuración inicial",
-  kubejs: "Scripts de KubeJS",
+  saves: t("Mundos (tus partidas)", "Worlds (your saves)"),
+  "options.txt": t("Opciones del juego (teclas, video, sonido)", "Game options (keys, video, sound)"),
+  "servers.dat": t("Lista de servidores", "Server list"),
+  screenshots: t("Capturas de pantalla", "Screenshots"),
+  defaultconfigs: t("Configuración inicial", "Default settings"),
+  kubejs: t("Scripts de KubeJS", "KubeJS scripts"),
 };
 
 function formatSize(bytes) {
@@ -3584,7 +3621,7 @@ async function openExport(id) {
   if (!instance) return;
   state.exporting = { id, format: "drive", entries: [], busy: false, file: null, folder: await invoke("carpeta_exportar").catch(() => null), choose: false };
   $("#export-drive").classList.add("hidden");
-  $("#export-title").textContent = `Exportar ${instance.name}`;
+  $("#export-title").textContent = t(`Exportar ${instance.name}`, `Export ${instance.name}`);
   $("#export-name").value = instance.name;
   $("#export-version").value = "1.0.0";
   $("#export-description").value = "";
@@ -3604,7 +3641,7 @@ async function openExport(id) {
 
 function resetExportButton() {
   $("#export-ok").disabled = false;
-  $("#export-ok span").textContent = "Exportar…";
+  $("#export-ok span").textContent = t("Exportar…", "Export…");
   $("#export-ok use").setAttribute("href", "#i-download");
   state.exporting.file = null;
 }
@@ -3637,7 +3674,7 @@ function renderExportList() {
 function updateExportSize() {
   const chosen = new Set($$("#export-list [data-entry]:checked").map((i) => i.dataset.entry));
   const total = state.exporting.entries.filter((e) => chosen.has(e.name)).reduce((sum, e) => sum + e.size, 0);
-  $("#export-size").textContent = `${formatSize(total)} de la instancia`;
+  $("#export-size").textContent = t(`${formatSize(total)} de la instancia`, `${formatSize(total)} of the instance`);
 }
 
 async function runExport() {
@@ -3645,10 +3682,10 @@ async function runExport() {
   if (exporting.file) return invoke("mostrar_archivo", { ruta: exporting.file }).catch((error) => toast(String(error), "error"));
   if (exporting.busy) return;
   const include = $$("#export-list [data-entry]:checked").map((i) => i.dataset.entry);
-  if (!include.length) return toast("Marca al menos una cosa para incluir.", "error");
+  if (!include.length) return toast(t("Marca al menos una cosa para incluir.", "Check at least one thing to include."), "error");
   exporting.busy = true;
   $("#export-ok").disabled = true;
-  $("#export-status").textContent = exporting.format === "mrpack" ? "Elige dónde guardar el .mrpack…" : "Elige la carpeta donde guardar el paquete…";
+  $("#export-status").textContent = exporting.format === "mrpack" ? t("Elige dónde guardar el .mrpack…", "Choose where to save the .mrpack…") : t("Elige la carpeta donde guardar el paquete…", "Choose the folder to save the package in…");
   try {
     const result = await invoke("exportar_modpack", {
       id: exporting.id,
@@ -3663,7 +3700,7 @@ async function runExport() {
     $("#export-progress").classList.add("hidden");
     if (exporting.format === "mrpack") {
       exporting.file = result.file;
-      $("#export-status").textContent = `Listo: ${plural(result.downloads, "archivo se descargará", "archivos se descargarán")} de Modrinth y ${plural(result.included, "va", "van")} dentro del .mrpack.${result.warning ? ` ${result.warning}` : ""}`;
+      $("#export-status").textContent = t(`Listo: ${plural(result.downloads, "archivo se descargará", "archivos se descargarán")} de Modrinth y ${plural(result.included, "va", "van")} dentro del .mrpack.`, `Done: ${plural(result.downloads, "file will be", "files will be")} downloaded from Modrinth and ${plural(result.included, "goes", "go")} inside the .mrpack.`) + (result.warning ? ` ${result.warning}` : "");
     } else {
       exporting.file = result.modpack;
       exporting.folder = result.folder.replace(/[\\/][^\\/]+$/, "");
@@ -3671,11 +3708,11 @@ async function runExport() {
       updateExportDestination();
       $("#export-drive").classList.toggle("hidden", !state.driveUrl);
       const folder = result.folder.split(/[\\/]/).pop();
-      $("#export-status").textContent = `Listo (${formatSize(result.size)}). Sube la carpeta «${folder}» a tu Drive tal cual o cópiala a una USB: dentro van el modpack y Minecraft ${folder} con su Java.${
-        result.baseReused ? " Minecraft ya estaba en esa carpeta y no se volvió a empaquetar." : ""
-      }`;
+      $("#export-status").textContent =
+        t(`Listo (${formatSize(result.size)}). Sube la carpeta «${folder}» a tu Drive tal cual o cópiala a una USB: dentro van el modpack y Minecraft ${folder} con su Java.`, `Done (${formatSize(result.size)}). Upload the «${folder}» folder to your Drive as it is or copy it to a USB drive: it contains the modpack and Minecraft ${folder} with its Java.`) +
+        (result.baseReused ? t(" Minecraft ya estaba en esa carpeta y no se volvió a empaquetar.", " Minecraft was already in that folder and was not packed again.") : "");
     }
-    $("#export-ok span").textContent = "Mostrar en la carpeta";
+    $("#export-ok span").textContent = t("Mostrar en la carpeta", "Show in folder");
     $("#export-ok use").setAttribute("href", "#i-folder");
   } catch (error) {
     $("#export-progress").classList.add("hidden");
@@ -3708,7 +3745,7 @@ async function loadDriveCatalog(reload = false) {
   if (drive.loading) return;
   drive.loading = true;
   if (!drive.data || reload) {
-    $("#explore-results").innerHTML = `<div class="content-loading column"><div class="spinner"></div><span class="muted">Leyendo tus paquetes de Drive…</span></div>`;
+    $("#explore-results").innerHTML = `<div class="content-loading column"><div class="spinner"></div><span class="muted">${t("Leyendo tus paquetes de Drive…", "Reading your Drive packages…")}</span></div>`;
   }
   try {
     drive.data = await invoke("catalogo", { recargar: reload });
@@ -3724,23 +3761,23 @@ async function loadDriveCatalog(reload = false) {
 
 function driveAction(entry) {
   const drive = state.drive;
-  if (drive.installing === entry.id) return `<button class="btn" disabled><span class="spinner tiny"></span>Instalando…</button>`;
+  if (drive.installing === entry.id) return `<button class="btn" disabled><span class="spinner tiny"></span>${t("Instalando…", "Installing…")}</button>`;
   const busy = drive.installing ? "disabled" : "";
   if (entry.kind === "base") {
     return entry.status === "instalado"
-      ? `<button class="btn installed" disabled><svg><use href="#i-check"/></svg>Instalada</button>`
-      : `<button class="btn primary" data-drive-install="${escapeHtml(entry.id)}" ${busy}><svg><use href="#i-download"/></svg>Instalar</button>`;
+      ? `<button class="btn installed" disabled><svg><use href="#i-check"/></svg>${t("Instalada", "Installed")}</button>`
+      : `<button class="btn primary" data-drive-install="${escapeHtml(entry.id)}" ${busy}><svg><use href="#i-download"/></svg>${t("Instalar", "Install")}</button>`;
   }
   if (entry.status === "actualizar") {
-    return `<button class="btn primary" data-drive-install="${escapeHtml(entry.id)}" ${busy}><svg><use href="#i-update"/></svg>Actualizar</button>`;
+    return `<button class="btn primary" data-drive-install="${escapeHtml(entry.id)}" ${busy}><svg><use href="#i-update"/></svg>${t("Actualizar", "Update")}</button>`;
   }
   if (entry.status === "instalado") {
     const repair = entry.source === "drive"
-      ? `<button class="circle-btn" data-drive-repair="${escapeHtml(entry.id)}" ${busy} title="Reparar: vuelve a bajar solo lo que falte o esté dañado">${icon("refresh")}</button>`
+      ? `<button class="circle-btn" data-drive-repair="${escapeHtml(entry.id)}" ${busy} title="${t("Reparar: vuelve a bajar solo lo que falte o esté dañado", "Repair: downloads again only what is missing or damaged")}">${icon("refresh")}</button>`
       : "";
-    return `${repair}<button class="btn" data-drive-open="${escapeHtml(entry.instance ?? "")}"><svg><use href="#i-play"/></svg>Abrir</button>`;
+    return `${repair}<button class="btn" data-drive-open="${escapeHtml(entry.instance ?? "")}"><svg><use href="#i-play"/></svg>${t("Abrir", "Open")}</button>`;
   }
-  return `<button class="btn primary" data-drive-install="${escapeHtml(entry.id)}" ${busy}><svg><use href="#i-download"/></svg>Instalar</button>`;
+  return `<button class="btn primary" data-drive-install="${escapeHtml(entry.id)}" ${busy}><svg><use href="#i-download"/></svg>${t("Instalar", "Install")}</button>`;
 }
 
 function driveCard(entry, index) {
@@ -3748,7 +3785,7 @@ function driveCard(entry, index) {
   const subtitle = base
     ? `Minecraft ${entry.minecraftVersion}`
     : `${entry.loader} · Minecraft ${entry.minecraftVersion}${entry.modCount ? ` · ${plural(entry.modCount, "mod", "mods")}` : ""}`;
-  const description = entry.description || (base ? "Minecraft con sus sonidos, idiomas y Java. Sirve para crear instancias aunque Mojang esté bloqueado." : "");
+  const description = entry.description || (base ? t("Minecraft con sus sonidos, idiomas y Java. Sirve para crear instancias aunque Mojang esté bloqueado.", "Minecraft with its sounds, languages and Java. It lets you create instances even if Mojang is blocked.") : "");
   const date = entry.exportedAt ? relativeDate(entry.exportedAt) : "";
   return `<div class="result drive-item" data-drive="${escapeHtml(entry.id)}" style="animation-delay:${Math.min(index, 12) * 25}ms">
     <div class="result-icon">${entry.icon ? `<img src="${entry.icon}" alt="">` : icon(base ? "cubes" : "puzzle")}</div>
@@ -3756,10 +3793,10 @@ function driveCard(entry, index) {
       <div class="r-title"><b>${escapeHtml(entry.name)}</b><span class="muted">${escapeHtml(subtitle)}</span></div>
       ${description ? `<div class="r-desc">${escapeHtml(description)}</div>` : ""}
       <div class="r-tags">
-        <span class="tag">${entry.source === "drive" ? "Google Drive" : "Carpeta paquetes"}</span>
+        <span class="tag">${entry.source === "drive" ? "Google Drive" : t("Carpeta paquetes", "Packages folder")}</span>
         <span class="tag">${formatSize(entry.size)}</span>
-        ${date ? `<span class="tag">Subido ${escapeHtml(date)}</span>` : ""}
-        ${entry.status === "actualizar" ? `<span class="tag accent">Versión nueva</span>` : ""}
+        ${date ? `<span class="tag">${t("Subido", "Uploaded")} ${escapeHtml(date)}</span>` : ""}
+        ${entry.status === "actualizar" ? `<span class="tag accent">${t("Versión nueva", "New version")}</span>` : ""}
       </div>
       <div class="r-progress faint" data-progress-for="${escapeHtml(entry.id)}"></div>
     </div>
@@ -3773,12 +3810,12 @@ function renderDrive() {
   const sources = [];
   sources.push(
     data.configured
-      ? `<a href="${escapeHtml(data.folderUrl)}">${icon("external")}Carpeta de Google Drive</a>`
-      : `<span class="muted">No hay carpeta de Drive configurada.</span>`,
+      ? `<a href="${escapeHtml(data.folderUrl)}">${icon("external")}${t("Carpeta de Google Drive", "Google Drive folder")}</a>`
+      : `<span class="muted">${t("No hay carpeta de Drive configurada.", "No Drive folder is configured.")}</span>`,
   );
-  sources.push(`<button class="link-btn" data-open-packages>${icon("folder")}Carpeta «paquetes» de este PC</button>`);
+  sources.push(`<button class="link-btn" data-open-packages>${icon("folder")}${t("Carpeta «paquetes» de este PC", "This PC's «paquetes» folder")}</button>`);
   if (data.warnings.length) {
-    sources.push(`<details class="drive-warnings"><summary>${plural(data.warnings.length, "aviso", "avisos")}</summary>${data.warnings.map((w) => `<p>${escapeHtml(w)}</p>`).join("")}</details>`);
+    sources.push(`<details class="drive-warnings"><summary>${plural(data.warnings.length, t("aviso", "warning"), t("avisos", "warnings"))}</summary>${data.warnings.map((w) => `<p>${escapeHtml(w)}</p>`).join("")}</details>`);
   }
   $("#drive-sources").innerHTML = sources.join("");
 
@@ -3793,18 +3830,18 @@ function renderDrive() {
   if (!modpacks.length && !bases.length) {
     $("#explore-results").innerHTML = `<div class="content-empty">${
       query
-        ? "Nada coincide con la búsqueda."
+        ? t("Nada coincide con la búsqueda.", "Nothing matches the search.")
         : data.entries.length
-          ? "No hay modpacks."
-          : "Todavía no hay paquetes. Exporta un modpack «Para Drive o USB» y súbelo a la carpeta de Drive, o copia los zips a la carpeta «paquetes» junto a Parabellum."
+          ? t("No hay modpacks.", "There are no modpacks.")
+          : t("Todavía no hay paquetes. Exporta un modpack «Para Drive o USB» y súbelo a la carpeta de Drive, o copia los zips a la carpeta «paquetes» junto a Parabellum.", "There are no packages yet. Export a modpack «For Drive or USB» and upload it to the Drive folder, or copy the zips to the «paquetes» folder next to Parabellum.")
     }</div>`;
     return;
   }
   let html = "";
   if (modpacks.length) html += `<h3 class="results-title">Modpacks</h3>${modpacks.map(driveCard).join("")}`;
   if (bases.length) {
-    html += `<h3 class="results-title">Versiones de Minecraft</h3>
-      <p class="muted small-text results-note">Los modpacks instalan la suya solos. Instálalas aparte para crear instancias vanilla aunque Mojang esté bloqueado.</p>
+    html += `<h3 class="results-title">${t("Versiones de Minecraft", "Minecraft versions")}</h3>
+      <p class="muted small-text results-note">${t("Los modpacks instalan la suya solos. Instálalas aparte para crear instancias vanilla aunque Mojang esté bloqueado.", "Modpacks install their own. Install these separately to create vanilla instances even if Mojang is blocked.")}</p>
       ${bases.map(driveCard).join("")}`;
   }
   $("#explore-results").innerHTML = html;
@@ -3813,7 +3850,7 @@ function renderDrive() {
 
 async function installFromDrive(id, repair = false) {
   const drive = state.drive;
-  if (drive.installing) return toast("Espera a que termine la instalación que está en curso.", "error");
+  if (drive.installing) return toast(t("Espera a que termine la instalación que está en curso.", "Wait for the current installation to finish."), "error");
   drive.installing = id;
   renderDrive();
   $("#download-indicator").classList.remove("hidden");
@@ -3822,12 +3859,14 @@ async function installFromDrive(id, repair = false) {
     const result = await invoke("instalar_de_catalogo", { id, reparar: repair });
     await reloadInstances();
     if (result.kind === "base") {
-      toast(`${result.name} quedó instalado: ya puedes crear instancias de esa versión.`);
+      toast(t(`${result.name} quedó instalado: ya puedes crear instancias de esa versión.`, `${result.name} is installed: you can now create instances of that version.`));
     } else if (result.downloadedFiles != null) {
-      const what = result.downloadedFiles ? `se bajaron ${plural(result.downloadedFiles, "archivo", "archivos")} (${formatSize(result.downloadedBytes)})` : "todo estaba bien, no hizo falta bajar nada";
-      toast(repair ? `${result.name} revisado: ${what}.` : `${result.name} actualizado: solo ${what}. Tus mundos se conservaron.`);
+      const what = result.downloadedFiles
+        ? t(`se bajaron ${plural(result.downloadedFiles, "archivo", "archivos")} (${formatSize(result.downloadedBytes)})`, `${plural(result.downloadedFiles, "file was", "files were")} downloaded (${formatSize(result.downloadedBytes)})`)
+        : t("todo estaba bien, no hizo falta bajar nada", "everything was fine, nothing needed downloading");
+      toast(repair ? t(`${result.name} revisado: ${what}.`, `${result.name} checked: ${what}.`) : t(`${result.name} actualizado: solo ${what}. Tus mundos se conservaron.`, `${result.name} updated: only ${what}. Your worlds were kept.`));
     } else {
-      toast(result.updated ? `${result.name} se actualizó; tus mundos y opciones se conservaron.` : `${result.name} está lista para jugar.`);
+      toast(result.updated ? t(`${result.name} se actualizó; tus mundos y opciones se conservaron.`, `${result.name} was updated; your worlds and options were kept.`) : t(`${result.name} está lista para jugar.`, `${result.name} is ready to play.`));
     }
   } catch (error) {
     toast(String(error), "error");
@@ -3845,11 +3884,11 @@ async function checkLauncherUpdate(reload = false, quiet = true) {
     state.launcherUpdate = update;
     $("#update-pill").classList.toggle("hidden", !update);
     $("#update-pill").disabled = false;
-    if (update) $("#update-text").textContent = `Actualizar a ${update.version}`;
+    if (update) $("#update-text").textContent = t(`Actualizar a ${update.version}`, `Update to ${update.version}`);
     $("#about-update").textContent = update
-      ? `Hay una versión nueva: ${update.version}${update.notes ? ` — ${update.notes.replace(/\.$/, "")}` : ""}.`
-      : `Tienes la versión más nueva.`;
-    if (!quiet) toast(update ? `Hay una versión nueva de Parabellum: ${update.version}.` : `Ya tienes la versión más nueva (${state.version}).`);
+      ? t(`Hay una versión nueva: ${update.version}`, `There is a new version: ${update.version}`) + `${update.notes ? ` — ${update.notes.replace(/\.$/, "")}` : ""}.`
+      : t("Tienes la versión más nueva.", "You have the newest version.");
+    if (!quiet) toast(update ? t(`Hay una versión nueva de Parabellum: ${update.version}.`, `There is a new version of Parabellum: ${update.version}.`) : t(`Ya tienes la versión más nueva (${state.version}).`, `You already have the newest version (${state.version}).`));
   } catch (error) {
     if (!quiet) toast(String(error), "error");
   }
@@ -3859,27 +3898,27 @@ async function applyLauncherUpdate() {
   const update = state.launcherUpdate;
   if (!update) return;
   const ok = await confirmAction({
-    title: `Actualizar a Parabellum ${update.version}`,
-    text: `${update.notes ? `${update.notes}\n\n` : ""}Se descargará (${formatSize(update.size)}) y Parabellum se reiniciará solo. Los juegos abiertos no se cierran.`,
-    ok: "Actualizar y reiniciar",
+    title: t(`Actualizar a Parabellum ${update.version}`, `Update to Parabellum ${update.version}`),
+    text: `${update.notes ? `${update.notes}\n\n` : ""}` + t(`Se descargará (${formatSize(update.size)}) y Parabellum se reiniciará solo. Los juegos abiertos no se cierran.`, `It will be downloaded (${formatSize(update.size)}) and Parabellum will restart on its own. Open games are not closed.`),
+    ok: t("Actualizar y reiniciar", "Update and restart"),
     primary: true,
   });
   if (!ok) return;
   $("#update-pill").disabled = true;
-  $("#update-text").textContent = "Descargando…";
+  $("#update-text").textContent = t("Descargando…", "Downloading…");
   try {
     await invoke("aplicar_actualizacion");
   } catch (error) {
     toast(String(error), "error");
     $("#update-pill").disabled = false;
-    $("#update-text").textContent = `Actualizar a ${update.version}`;
+    $("#update-text").textContent = t(`Actualizar a ${update.version}`, `Update to ${update.version}`);
   }
 }
 
 async function refreshAbout() {
   $("#about-version").textContent = `Parabellum ${state.version}`;
   const folder = await invoke("carpeta_exportar").catch(() => null);
-  $("#about-folder").textContent = folder ?? "Todavía no eliges una (se pide al publicar o exportar).";
+  $("#about-folder").textContent = folder ?? t("Todavía no eliges una (se pide al publicar o exportar).", "You have not chosen one yet (it is asked when publishing or exporting).");
   $("#about-open-drive").classList.toggle("hidden", !state.driveUrl);
 }
 
@@ -3889,7 +3928,7 @@ async function publishLauncher() {
   try {
     const folder = await invoke("publicar_launcher", { notas: $("#about-notes").value, elegir: false });
     if (folder) {
-      toast(`Listo: sube la carpeta «_parabellum» (está en ${folder.replace(/[\\/]_parabellum$/, "")}) a tu Drive. Quien abra Parabellum se actualizará.`);
+      toast(t(`Listo: sube la carpeta «_parabellum» (está en ${folder.replace(/[\\/]_parabellum$/, "")}) a tu Drive. Quien abra Parabellum se actualizará.`, `Done: upload the «_parabellum» folder (it is in ${folder.replace(/[\\/]_parabellum$/, "")}) to your Drive. Whoever opens Parabellum will update.`));
       refreshAbout();
     }
   } catch (error) {
@@ -3926,7 +3965,7 @@ function updateExportDestination() {
   const exporting = state.exporting;
   $("#export-destination").classList.toggle("hidden", exporting.format !== "drive");
   $("#export-folder-text").textContent =
-    exporting.choose || !exporting.folder ? "Elegirás la carpeta al exportar (la de tus paquetes para Drive, o una USB)." : `Se guardará en ${exporting.folder}`;
+    exporting.choose || !exporting.folder ? t("Elegirás la carpeta al exportar (la de tus paquetes para Drive, o una USB).", "You will choose the folder when exporting (your Drive packages folder, or a USB drive).") : t(`Se guardará en ${exporting.folder}`, `It will be saved in ${exporting.folder}`);
   $("#export-folder-change").classList.toggle("hidden", exporting.choose || !exporting.folder);
 }
 

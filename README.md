@@ -38,6 +38,25 @@ de sus carpetas tal cual: instancias (también las de CurseForge), bases, mundos
 Su actualizador acepta cualquier versión nueva del catálogo, así que al publicar Parabellum en
 Drive (`_parabellum`) quienes sigan con la versión C# reciben esta en su lugar.
 
+## Para quien lo usa por primera vez
+
+Parabellum no se instala: se descomprime en una carpeta y se abre `Parabellum.exe`. El exe no lleva
+firma de pago, así que la primera vez Windows puede mostrar «Windows protegió tu PC»: «Más
+información» › «Ejecutar de todas formas». Las actualizaciones las baja Parabellum mismo y ya no
+muestran ese aviso. Al publicar una versión (Acerca de › Publicar en la carpeta) se deja un
+`LEEME.txt` con estos pasos en `_parabellum`. Los accesos directos del Escritorio y del menú Inicio
+se crean desde Ajustes › Comportamiento.
+
+## Idiomas y accesibilidad
+
+- Español e inglés (Ajustes › Apariencia; la primera vez, el de Windows). El motor arma sus mensajes
+  con `t!("español", "English")` (`src-tauri/src/idioma.rs`) y la interfaz con `t("español", "English")`
+  (`ui/i18n.js`, donde también están los textos fijos de `index.html`). Las instancias nuevas abren
+  Minecraft en el mismo idioma (`lang:` de `options.txt`).
+- Todo se puede usar con el teclado: foco visible, diálogos que no dejan escapar el foco, menús con
+  flechas y Escape, tarjetas con Enter. Avisos anunciados al lector de pantalla, contraste suficiente
+  en los dos temas y tamaño de la interfaz de 90 a 150 % (Ctrl + / Ctrl − / Ctrl 0).
+
 ## Configuración
 
 La carpeta de Drive y las claves de Google y Firebase se integran al compilar desde

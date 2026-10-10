@@ -36,14 +36,14 @@ pub async fn export(
     options: &ExportOptions,
     progress: impl Fn(String, f64) + Send + Sync + 'static,
 ) -> Result<Exported, String> {
-    progress("Buscando qué archivos están en Modrinth…".into(), 0.0);
+    progress(t!("Buscando qué archivos están en Modrinth…", "Looking for which files are on Modrinth…"), 0.0);
     let installed = modrinth::identify(instance).await;
     let known: Vec<&modrinth::InstalledFile> = installed.iter().filter(|f| f.project_id.is_some() && !f.file.ends_with(".disabled")).collect();
     let mut warning = None;
     let remote = match modrinth::files_by_hash(&known.iter().map(|f| f.sha1.clone()).collect::<Vec<_>>()).await {
         Ok(found) => found,
         Err(_) if !known.is_empty() => {
-            warning = Some("Sin conexión con Modrinth: los mods van dentro del .mrpack, así que pesa más.".to_string());
+            warning = Some(t!("Sin conexión con Modrinth: los mods van dentro del .mrpack, así que pesa más.", "No connection with Modrinth: the mods go inside the .mrpack, so it is larger."));
             HashMap::new()
         }
         Err(_) => HashMap::new(),
@@ -109,7 +109,7 @@ pub async fn export(
         zip.add_bytes(INDEX, &serde_json::to_vec_pretty(&index).unwrap())?;
         for (file, name) in &overrides {
             zip.add_file(file, name)?;
-            progress(format!("Empaquetando {:.0} de {:.0} MB…", zip.written as f64 / 1048576.0, total as f64 / 1048576.0), zip.written as f64 / total as f64);
+            progress(t!("Empaquetando {:.0} de {:.0} MB…", "Packing {:.0} of {:.0} MB…", zip.written as f64 / 1048576.0, total as f64 / 1048576.0), zip.written as f64 / total as f64);
         }
         zip.finish()?;
         std::fs::rename(&temp, &out).map_err(|e| e.to_string())
@@ -148,17 +148,17 @@ pub(crate) fn safe_relative(path: &str) -> Option<PathBuf> {
 
 /// Lee el índice de un .mrpack. None si el zip no es un .mrpack.
 pub fn read(zip_path: &Path) -> Result<Option<Info>, String> {
-    let file = std::fs::File::open(zip_path).map_err(|e| format!("No se pudo abrir el archivo: {e}"))?;
-    let mut zip = zip::ZipArchive::new(file).map_err(|_| "El archivo no es un zip válido.".to_string())?;
+    let file = std::fs::File::open(zip_path).map_err(|e| t!("No se pudo abrir el archivo: {e}", "Could not open the file: {e}"))?;
+    let mut zip = zip::ZipArchive::new(file).map_err(|_| t!("El archivo no es un zip válido.", "The file is not a valid zip."))?;
     let Ok(mut entry) = zip.by_name(INDEX) else { return Ok(None) };
     let mut text = String::new();
     entry.read_to_string(&mut text).map_err(|e| e.to_string())?;
-    let index: Value = serde_json::from_str(&text).map_err(|e| format!("El índice del modpack está dañado: {e}"))?;
+    let index: Value = serde_json::from_str(&text).map_err(|e| t!("El índice del modpack está dañado: {e}", "The modpack index is damaged: {e}"))?;
     if index["formatVersion"].as_u64() != Some(1) || index["game"].as_str() != Some("minecraft") {
-        return Err("Este .mrpack usa un formato que Parabellum todavía no conoce.".into());
+        return Err(t!("Este .mrpack usa un formato que Parabellum todavía no conoce.", "This .mrpack uses a format Parabellum does not know yet."));
     }
     let dependencies = &index["dependencies"];
-    let minecraft = dependencies["minecraft"].as_str().ok_or("El modpack no dice qué versión de Minecraft usa.")?.to_string();
+    let minecraft = dependencies["minecraft"].as_str().ok_or(t!("El modpack no dice qué versión de Minecraft usa.", "The modpack does not say which Minecraft version it uses."))?.to_string();
     let loader = [("fabric-loader", "Fabric"), ("quilt-loader", "Quilt"), ("neoforge", "NeoForge"), ("forge", "Forge")]
         .iter()
         .find_map(|(key, name)| Some((name.to_string(), dependencies[*key].as_str()?.to_string())));
@@ -169,16 +169,16 @@ pub fn read(zip_path: &Path) -> Result<Option<Info>, String> {
             continue;
         }
         let raw_path = item["path"].as_str().unwrap_or_default();
-        let path = safe_relative(raw_path).ok_or(format!("El modpack trae una ruta no permitida: {raw_path}"))?;
+        let path = safe_relative(raw_path).ok_or(t!("El modpack trae una ruta no permitida: {raw_path}", "The modpack contains a path that is not allowed: {raw_path}"))?;
         let url = item["downloads"]
             .as_array()
             .into_iter()
             .flatten()
             .filter_map(Value::as_str)
             .find(|u| ALLOWED_HOSTS.iter().any(|h| u.starts_with(h)))
-            .ok_or(format!("{raw_path} no se descarga de un sitio permitido."))?
+            .ok_or(t!("{raw_path} no se descarga de un sitio permitido.", "{raw_path} is not downloaded from an allowed site."))?
             .to_string();
-        let sha1 = item.pointer("/hashes/sha1").and_then(Value::as_str).filter(|h| h.len() == 40).ok_or(format!("{raw_path} no trae su SHA-1."))?;
+        let sha1 = item.pointer("/hashes/sha1").and_then(Value::as_str).filter(|h| h.len() == 40).ok_or(t!("{raw_path} no trae su SHA-1.", "{raw_path} has no SHA-1."))?;
         files.push(MrpackFile { path, url, sha1: sha1.to_string(), size: item["fileSize"].as_u64() });
     }
     Ok(Some(Info {
@@ -205,7 +205,7 @@ pub async fn install_files(
     let report = progress.clone();
     download::download_all(downloads, move |count, total, bytes, total_bytes| {
         report(
-            format!("Descargando mods… {count} de {total} ({:.0} de {:.0} MB)", bytes as f64 / 1048576.0, total_bytes as f64 / 1048576.0),
+            t!("Descargando mods… {count} de {total} ({:.0} de {:.0} MB)", "Downloading mods… {count} of {total} ({:.0} of {:.0} MB)", bytes as f64 / 1048576.0, total_bytes as f64 / 1048576.0),
             0.9 * bytes as f64 / total_bytes.max(1) as f64,
         );
     })
@@ -213,7 +213,7 @@ pub async fn install_files(
     let (zip_copy, game_copy) = (zip_path.to_path_buf(), game_dir.to_path_buf());
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
         let (zip_path, game_dir) = (zip_copy, game_copy);
-        progress("Copiando la configuración del modpack…".into(), 0.92);
+        progress(t!("Copiando la configuración del modpack…", "Copying the modpack configuration…"), 0.92);
         let mut zip = zip::ZipArchive::new(std::fs::File::open(&zip_path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
         // Primero overrides y después client-overrides, que tienen prioridad.
         for prefix in ["overrides", "client-overrides"] {
@@ -227,7 +227,7 @@ pub async fn install_files(
                 let target = game_dir.join(relative);
                 std::fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
                 let mut out = std::fs::File::create(&target).map_err(|e| e.to_string())?;
-                std::io::copy(&mut entry, &mut out).map_err(|e| format!("El modpack está dañado ({}): {e}", name.display()))?;
+                std::io::copy(&mut entry, &mut out).map_err(|e| t!("El modpack está dañado ({}): {e}", "The modpack is damaged ({}): {e}", name.display()))?;
             }
         }
         Ok(())

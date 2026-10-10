@@ -112,5 +112,11 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* publicar las reglas nuevas en Firebase y chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
-### Fase 11: pulido
-- [ ] Instalador y firma del exe, idiomas, accesibilidad y rendimiento
+### Fase 11: pulido (0.11.0)
+- [x] **Sin instalador** (sigue portable): accesos directos en el Escritorio y en el menú Inicio desde Ajustes › Comportamiento; avisan si apuntan a otra carpeta
+- [x] **Firma**: sin certificado de pago (decisión de Juan). El exe lleva su versión real, nombre y editor en sus propiedades; al publicar se deja `LEEME.txt` en `_parabellum` con los pasos de la primera vez y qué hacer con el aviso de SmartScreen (las actualizaciones automáticas no lo muestran)
+- [x] **Idiomas**: español e inglés en toda la interfaz y en los mensajes del motor; la primera vez se usa el de Windows; Minecraft abre en ese idioma en las instancias nuevas (también en modpacks que traen inglés de EE. UU.)
+- [x] **Accesibilidad**: foco visible, interruptores y tarjetas usables con el teclado, diálogos con el foco dentro, menús con flechas, avisos para lector de pantalla, contraste AA en los dos temas, tamaño de la interfaz 90–150 %
+- [x] **Rendimiento**: la pestaña Contenido guarda lo leído de cada mod y carga los iconos al verse (355 mods: de 14 MB y segundos a 120 KB y ~0,1 s); en reposo, menos de 1 % de un núcleo
+- [x] *Prueba:* todo con teclado real por CDP; recorrido de todas las páginas y diálogos en inglés sin textos en español; mensajes del motor en ambos idiomas; accesos directos creados y quitados; instancia nueva con `lang:es_mx`
+- [ ] (Si algún día se quiere) certificado de firma de código

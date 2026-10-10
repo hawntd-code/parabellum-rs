@@ -220,17 +220,17 @@ impl Problem {
     pub fn describe(&self, names: &HashMap<String, String>) -> String {
         let show = |id: &str| names.get(id).cloned().unwrap_or_else(|| id.to_string());
         let range = |predicates: &[String]| {
-            let list: Vec<String> = predicates.iter().map(|p| if p == "*" { "cualquier versión".into() } else { p.clone() }).collect();
+            let list: Vec<String> = predicates.iter().map(|p| if p == "*" { t!("cualquier versión", "any version") } else { p.clone() }).collect();
             list.join(" o ")
         };
         match self {
             Problem::Missing { name, id, predicates, .. } => {
-                format!("{name} necesita {} ({}), que no está instalado.", show(id), range(predicates))
+                t!("{name} necesita {} ({}), que no está instalado.", "{name} needs {} ({}), which is not installed.", show(id), range(predicates))
             }
             Problem::Wrong { name, id, predicates, found, .. } => {
-                format!("{name} necesita {} {}, pero la versión es {found}.", show(id), range(predicates))
+                t!("{name} necesita {} {}, pero la versión es {found}.", "{name} needs {} {}, but the version is {found}.", show(id), range(predicates))
             }
-            Problem::Breaks { name, id, found, .. } => format!("{name} no funciona con {} {found}.", show(id)),
+            Problem::Breaks { name, id, found, .. } => t!("{name} no funciona con {} {found}.", "{name} does not work with {} {found}.", show(id)),
         }
     }
 }

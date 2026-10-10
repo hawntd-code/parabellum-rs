@@ -174,7 +174,7 @@ pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<L
     }
     let client_jar = paths.version_jar(&version.client_jar_id);
     if !client_jar.exists() {
-        missing.push(format!("Juego: {}", client_jar.display()));
+        missing.push(t!("Juego: {}", "Game: {}", client_jar.display()));
     }
     // Forge (1.17–1.20) y NeoForge cargan el juego ya parcheado desde libraries y, con -DignoreList,
     // esperan que el .jar original no esté en el classpath (si está, Java lo ve dos veces y no arranca).
@@ -186,7 +186,7 @@ pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<L
     let asset_index = version.asset_index.clone().unwrap_or_else(|| "legacy".into());
     let index_file = paths.assets.join("indexes").join(format!("{asset_index}.json"));
     match std::fs::read_to_string(&index_file).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
-        None => missing.push(format!("Índice de sonidos y texturas {asset_index}")),
+        None => missing.push(t!("Índice de sonidos y texturas {asset_index}", "Sound and texture index {asset_index}")),
         Some(index) => {
             let objects = index["objects"].as_object().map(|o| o.len()).unwrap_or(0);
             let absent = index["objects"]
@@ -197,7 +197,7 @@ pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<L
                 .filter(|h| h.len() > 2 && !paths.assets.join("objects").join(&h[..2]).join(h).exists())
                 .count();
             if absent > 0 {
-                missing.push(format!("Faltan {absent} de {objects} sonidos y texturas"));
+                missing.push(t!("Faltan {absent} de {objects} sonidos y texturas", "{absent} of {objects} sounds and textures are missing"));
             }
         }
     }
@@ -300,9 +300,9 @@ pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<L
 /// Abre el juego. La salida de Java va a un archivo (no a una tubería), así el juego no depende del launcher.
 /// Devuelve el proceso para poder seguirlo y detenerlo.
 pub fn start(plan: &LaunchPlan, instance: &Instance) -> Result<std::process::Child, String> {
-    let java = plan.java.as_ref().ok_or("No hay Java para esta versión.")?;
+    let java = plan.java.as_ref().ok_or(t!("No hay Java para esta versión.", "There is no Java for this version."))?;
     if !plan.missing.is_empty() {
-        return Err(format!("Faltan archivos:\n{}", plan.missing.iter().take(5).cloned().collect::<Vec<_>>().join("\n")));
+        return Err(t!("Faltan archivos:\n{}", "Files are missing:\n{}", plan.missing.iter().take(5).cloned().collect::<Vec<_>>().join("\n")));
     }
     extract_natives(&plan.native_archives, &plan.natives_dir)?;
     crate::actividad::prefer_e4mc_relay(&instance.game_dir);
@@ -329,7 +329,7 @@ pub fn start(plan: &LaunchPlan, instance: &Instance) -> Result<std::process::Chi
         .stderr(output)
         .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
         .spawn()
-        .map_err(|e| format!("No se pudo abrir Java: {e}"))?;
+        .map_err(|e| t!("No se pudo abrir Java: {e}", "Could not start Java: {e}"))?;
     let now = chrono::Utc::now().timestamp_millis();
     let _ = std::fs::write(state.join("ultima-partida.txt"), now.to_string());
     let _ = std::fs::write(state.join("juego.pid"), child.id().to_string());
@@ -421,11 +421,15 @@ pub fn crash_reason(instance: &Instance, since_ms: i64) -> Option<String> {
     if let Some((path, _)) = newest {
         // Algunos mods escriben caracteres que no son UTF-8: se leen igual.
         let text = String::from_utf8_lossy(&std::fs::read(&path).unwrap_or_default()).to_string();
-        let description = text.lines().find_map(|l| l.strip_prefix("Description: ")).unwrap_or("Minecraft dejó un informe de fallo");
+        let description = text
+            .lines()
+            .find_map(|l| l.strip_prefix("Description: "))
+            .map(String::from)
+            .unwrap_or_else(|| t!("Minecraft dejó un informe de fallo", "Minecraft left a crash report"));
         let exception = text.lines().skip_while(|l| !l.starts_with("Description:")).skip(1).find(|l| !l.trim().is_empty());
         return Some(match exception {
             Some(e) => format!("{description}\n{}", e.trim()),
-            None => description.to_string(),
+            None => description,
         });
     }
     // Si Minecraft no llegó a escribir su registro, Java falló al arrancar: lo explica su propia salida.

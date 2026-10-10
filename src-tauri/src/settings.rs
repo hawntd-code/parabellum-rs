@@ -118,14 +118,14 @@ impl Settings {
 
     /// Deja los UUID con guiones y la lista de cuentas sin repetidas, sin nombres no válidos y sin la
     /// que se está usando. Error si el UUID de la cuenta en uso no es válido.
-    pub fn normalize(&mut self) -> Result<(), &'static str> {
+    pub fn normalize(&mut self) -> Result<(), String> {
         self.username = self.username.trim().to_string();
         if let Some(problem) = validate_username(&self.username) {
             return Err(problem);
         }
         self.uuid = match self.uuid.trim() {
             "" => String::new(),
-            text => dashed(&parse_uuid(text).ok_or("El UUID no es válido. Déjalo vacío para usar el de tu nombre.")?),
+            text => dashed(&parse_uuid(text).ok_or(t!("El UUID no es válido. Déjalo vacío para usar el de tu nombre.", "The UUID is not valid. Leave it empty to use the one from your name."))?),
         };
         let mut seen = vec![self.username.to_lowercase()];
         self.accounts.retain_mut(|account| {
@@ -146,13 +146,16 @@ impl Settings {
 }
 
 /// Mensaje de error si el nombre no sirve para Minecraft (1 a 16 letras, números o guion bajo).
-pub fn validate_username(name: &str) -> Option<&'static str> {
+pub fn validate_username(name: &str) -> Option<String> {
     static PATTERN: OnceLock<Regex> = OnceLock::new();
     let pattern = PATTERN.get_or_init(|| Regex::new("^[A-Za-z0-9_]{1,16}$").unwrap());
     if pattern.is_match(name) {
         None
     } else {
-        Some("El nombre debe tener de 1 a 16 letras, números o guiones bajos (sin espacios ni acentos).")
+        Some(t!(
+            "El nombre debe tener de 1 a 16 letras, números o guiones bajos (sin espacios ni acentos).",
+            "The name must have 1 to 16 letters, numbers or underscores (no spaces or accents)."
+        ))
     }
 }
 

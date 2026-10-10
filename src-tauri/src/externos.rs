@@ -172,7 +172,7 @@ pub fn copy_game(from: &Path, to: &Path, progress: impl Fn(u64, u64)) -> Result<
         if let Some(parent) = target.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        std::fs::copy(file, &target).map_err(|e| format!("No se pudo copiar {}: {e}", file.display()))?;
+        std::fs::copy(file, &target).map_err(|e| t!("No se pudo copiar {}: {e}", "Could not copy {}: {e}", file.display()))?;
         done += size;
         if index % 25 == 0 || index + 1 == files.len() {
             progress(done, total);

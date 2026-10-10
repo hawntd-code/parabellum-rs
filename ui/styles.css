@@ -893,3 +893,4 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .scale-options button:hover { border-color: var(--border-strong); }
 .scale-options button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.scale-options.language-options { grid-template-columns: repeat(2, 1fr); max-width: 320px; }
