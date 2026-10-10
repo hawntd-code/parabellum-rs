@@ -109,7 +109,8 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] **Imágenes** reducidas en la propia base de datos (máx. 1280 px y ~330 KB en JPEG): botón, pegar una captura o soltarla en la ventana; se guardan aparte de los mensajes y se descargan solo al verlas
 - [x] Avisos de Windows de mensajes nuevos (salvo que esa conversación esté a la vista)
 - [x] Reglas de Firebase: solo los miembros leen y escriben cada conversación; solo se puede meter a amigos; tamaños limitados
-- [ ] *Prueba:* publicar las reglas nuevas en Firebase y chatear con un compañero
+- [x] Reglas publicadas en Firebase (Juan, 2026-10-10)
+- [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
 ### Fase 13: hostear partida (0.13.0)
@@ -126,7 +127,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] *Prueba:* servidores de vanilla, Fabric (con un mundo dañado: el doctor ofrece empezar uno nuevo), Quilt y BattleArmory TACZ (Forge 1.20.1, 56 mods, mundo copiado con nombre chino): enciende en 33 s, `list` responde, se apaga guardando; con Oculus metido a propósito el servidor cae, Parabellum lo quita solo y enciende en el 2.º intento; invitados, lista blanca y ajustes en la ventana real, en español e inglés
 - [x] 0.13.1 (tras la prueba de Juan con Fabulously Optimized 26.2): los mods que abren su propio túnel (e4mc, World Host) ya no van al servidor y, si un servidor los tiene, se quitan solos al encender (e4mc daba otra dirección en la consola y su 6.2.1 tumba los servidores de 26.2 cuando alguien entra: `NoSuchMethodError CommandSourceStack.hasPermission(int)`). En «Abrir mi mundo», aviso con botón para desactivar e4mc en las instancias que lo tengan. Botones y campos alineados (tarjeta de dirección, ajustes, consola, invitados) y el interruptor del EULA al crear ya no sale doble
 - [x] *Prueba de Juan:* playit.gg vinculado, servidor encendido con dirección fija (cairo-take.tun.ply.gg, con registro SRV: no hace falta puerto)
-- [ ] *Prueba:* entrar desde otra red con la dirección de playit.gg; invitar a un compañero y que entre con «Unirse» (antes hay que publicar las reglas nuevas de Firebase)
+- [ ] *Prueba:* entrar desde otra red con la dirección de playit.gg; invitar a un compañero y que entre con «Unirse» (las reglas de `servers/` e `invites/` ya están publicadas)
 
 ### Fase 12: doctor (0.12.0)
 - [x] **Revisión antes de jugar**: lo que declara cada mod (fabric.mod.json y también mods.toml de Forge/NeoForge, con los mods que traen dentro) contra la instancia: dependencias que faltan, versión del loader o de Minecraft que no encaja, choques y mods repetidos. Si algo impide abrir, se ofrece «Arreglar y jugar» o «Jugar de todos modos»
