@@ -894,3 +894,22 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .scale-options button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .scale-options.language-options { grid-template-columns: repeat(2, 1fr); max-width: 320px; }
+
+/* ================= Doctor */
+.modal.doctor { width: min(720px, calc(100vw - 48px)); }
+.doctor-icon { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-fg); flex: none; }
+.doctor-icon svg { width: 20px; height: 20px; }
+.doctor-progress { display: flex; align-items: center; gap: 10px; margin: 14px 0 0; padding: 12px 14px; border-radius: var(--r); background: var(--accent-softer); border: 1px solid var(--accent-soft); font-weight: 600; }
+.doctor-findings { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.doctor-finding { padding: 14px 16px; border-radius: var(--r-lg); background: var(--field); border: 1px solid var(--border); border-left: 4px solid var(--danger); }
+.doctor-finding.aviso { border-left-color: #e8a33d; }
+.doctor-finding.info { border-left-color: var(--accent); }
+.doctor-finding.ok { border-left-color: var(--success); }
+.doctor-finding h3 { font-size: 15px; margin: 0 0 4px; }
+.doctor-finding p { margin: 0; color: var(--muted); font-size: 13.5px; }
+.doctor-finding code { display: block; margin-top: 8px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--panel); font: 12px/1.45 "Cascadia Mono", Consolas, monospace; color: var(--faint); white-space: pre-wrap; word-break: break-word; user-select: text; }
+.doctor-fixes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.doctor-fixes .btn { padding: 7px 12px; font-size: 13px; }
+.doctor-fixes .btn.done { opacity: .6; pointer-events: none; }
+.doctor-applied { margin-top: 14px; padding: 12px 14px; border-radius: var(--r); background: color-mix(in srgb, var(--success) 10%, transparent); color: var(--text); font-size: 13.5px; }
+.doctor-applied ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); }

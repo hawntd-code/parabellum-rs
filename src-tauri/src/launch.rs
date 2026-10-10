@@ -29,9 +29,6 @@ pub struct LaunchPlan {
 }
 
 impl LaunchPlan {
-    pub fn can_launch(&self) -> bool {
-        self.missing.is_empty() && self.java.is_some()
-    }
 
     pub fn add_jvm_arguments(&mut self, arguments: impl IntoIterator<Item = String>) {
         let list: Vec<String> = arguments.into_iter().collect();
@@ -203,10 +200,15 @@ pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<L
     }
 
     // Java
+    // La instancia puede pedir otro Java (el doctor lo cambia si un mod necesita uno más nuevo).
     let runtimes = java::discover(paths);
-    let java = java::select(&runtimes, version.java_component.as_deref(), version.java_major).cloned();
+    let (component, major) = match instance.java_major {
+        Some(major) => (None, major),
+        None => (version.java_component.as_deref(), version.java_major),
+    };
+    let java = java::select(&runtimes, component, major).filter(|r| instance.java_major.is_none() || r.major == major).cloned();
     if java.is_none() {
-        missing.push(format!("Java {}", version.java_major));
+        missing.push(format!("Java {major}"));
     }
 
     // Variables de los argumentos

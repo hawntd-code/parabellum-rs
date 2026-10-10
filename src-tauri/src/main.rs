@@ -12,6 +12,7 @@ mod chat;
 mod compat;
 mod config;
 mod content;
+mod diagnostico;
 mod cuenta;
 mod download;
 mod externos;
@@ -330,6 +331,8 @@ struct GameClosed {
     id: String,
     code: Option<i32>,
     reason: Option<String>,
+    /// Qué falló y cómo arreglarlo (si el juego se cerró con un error).
+    diagnosis: Option<diagnostico::Diagnosis>,
 }
 
 #[tauri::command]
@@ -365,6 +368,7 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
     }
     let launched = instance.clone();
     let session = cuenta::session_arguments(&app);
+    let ram_gb = instance.ram_gb.unwrap_or(settings.ram_gb);
     let mut child = tauri::async_runtime::spawn_blocking(move || {
         let mut plan = launch::plan(&launched, &settings, &paths)?;
         // Mundos LAN y e4mc de amigos sin "Invalid session".
@@ -386,9 +390,14 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
         let state = app.state::<AppState>();
         let stopped = state.stopped.lock().unwrap().remove(&id);
         state.games.lock().unwrap().remove(&id);
-        let failed = !stopped && code.is_some_and(|c| c != 0);
+        // Con código distinto de 0, o si dejó un informe de fallo (la pantalla de error de Forge sale con 0).
+        let failed = !stopped && (code.is_some_and(|c| c != 0) || diagnostico::crash_report_since(&instance, started));
         let reason = if failed { launch::crash_reason(&instance, started) } else { None };
-        let _ = app.emit("juego-cerrado", GameClosed { id, code: if stopped { None } else { code }, reason });
+        let diagnosis = failed.then(|| {
+            diagnostico::after_crash(&instance, &diagnostico::CrashContext { since_ms: started, exit_code: code, ram_gb, system_ram_gb: system_ram_gb() })
+        });
+        let code = if stopped { None } else if failed { Some(code.filter(|c| *c != 0).unwrap_or(1)) } else { code };
+        let _ = app.emit("juego-cerrado", GameClosed { id, code, reason, diagnosis });
     });
     Ok(pid)
 }
@@ -418,7 +427,7 @@ fn adopt_running_games(app: &AppHandle) {
                 std::thread::sleep(std::time::Duration::from_secs(5));
             }
             app.state::<AppState>().games.lock().unwrap().remove(&instance.id);
-            let _ = app.emit("juego-cerrado", GameClosed { id: instance.id, code: None, reason: None });
+            let _ = app.emit("juego-cerrado", GameClosed { id: instance.id, code: None, reason: None, diagnosis: None });
         });
     }
 }
@@ -1087,6 +1096,253 @@ async fn instalar_modpack(app: AppHandle, state: State<'_, AppState>, proyecto: 
     result
 }
 
+// ================= Doctor: revisar, diagnosticar y arreglar
+
+/// Revisa los mods sin abrir el juego: dependencias, versiones del loader y del juego, repetidos.
+#[tauri::command]
+async fn revisar_instancia(state: State<'_, AppState>, id: String) -> Result<diagnostico::Diagnosis, String> {
+    let instance = instance_or_error(&state, &id)?;
+    tauri::async_runtime::spawn_blocking(move || diagnostico::check(&instance)).await.map_err(|e| e.to_string())
+}
+
+/// Explica el último arranque de la instancia (su informe de fallo y registros) y revisa sus mods.
+#[tauri::command]
+async fn diagnosticar(state: State<'_, AppState>, id: String) -> Result<diagnostico::Diagnosis, String> {
+    let instance = instance_or_error(&state, &id)?;
+    let ram_gb = instance.ram_gb.unwrap_or(state.settings.lock().unwrap().ram_gb);
+    let since_ms = instance.last_played.unwrap_or(0);
+    tauri::async_runtime::spawn_blocking(move || {
+        diagnostico::after_crash(&instance, &diagnostico::CrashContext { since_ms, exit_code: None, ram_gb, system_ram_gb: system_ram_gb() })
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// «Probar y arreglar»: abre el juego hasta el menú principal (y lo cierra). Si no llega, aplica los
+/// arreglos recomendados del diagnóstico y vuelve a probar, hasta 5 veces.
+#[tauri::command]
+async fn probar_y_arreglar(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<diagnostico::AutoFix, String> {
+    if state.games.lock().unwrap().contains_key(&id) {
+        return Err(t!("Cierra el juego antes de probarlo.", "Close the game before testing it."));
+    }
+    let settings = state.settings.lock().unwrap().clone();
+    let cached = state.catalog.lock().unwrap().clone();
+    let session = cuenta::session_arguments(&app);
+    let (running, key) = (app.clone(), id.clone());
+    let on_start = move |pid: Option<u32>| {
+        let state = running.state::<AppState>();
+        match pid {
+            Some(pid) => state.games.lock().unwrap().insert(key.clone(), pid),
+            None => state.games.lock().unwrap().remove(&key),
+        };
+    };
+    auto_fix(&id, &state.paths, &state.config, cached, &settings, session, on_start, progress_emitter(&app, "doctor")).await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn auto_fix(
+    id: &str,
+    paths: &Paths,
+    config: &config::Config,
+    catalog: Option<Arc<catalog::Catalog>>,
+    settings: &Settings,
+    session: Vec<String>,
+    on_start: impl Fn(Option<u32>) + Send + Sync + Clone + 'static,
+    progress: impl Fn(String, f64) + Send + Sync + Clone + 'static,
+) -> Result<diagnostico::AutoFix, String> {
+    let mut report = diagnostico::AutoFix::default();
+    let mut tried: Vec<diagnostico::Fix> = Vec::new();
+    const ATTEMPTS: u32 = 5;
+    for attempt in 1..=ATTEMPTS {
+        // Cada arreglo cambia la instancia (loader, argumentos, memoria…): se vuelve a leer.
+        let instance = instances::find(paths, id).ok_or(t!("No se encontró la instancia.", "The instance was not found."))?;
+        progress(t!("Revisando los mods…", "Checking the mods…"), 0.0);
+        let _ = ensure_complete(&instance, paths, config, catalog.clone(), false, progress.clone()).await;
+        let checked = {
+            let instance = instance.clone();
+            tauri::async_runtime::spawn_blocking(move || diagnostico::check(&instance)).await.map_err(|e| e.to_string())?
+        };
+        let before_launch = diagnostico::recommended(&checked, &tried);
+        if !before_launch.is_empty() {
+            for (label, fix) in before_launch {
+                progress(t!("Arreglando: {label}…", "Fixing: {label}…"), 0.1);
+                tried.push(fix.clone());
+                match apply_fix(&instance, paths, config, catalog.clone(), fix, progress.clone()).await {
+                    Ok(done) => report.applied.push(done),
+                    Err(error) => report.applied.push(t!("No se pudo: {label} ({error})", "Could not: {label} ({error})")),
+                }
+            }
+            continue;
+        }
+        // Abre el juego y espera al menú principal.
+        report.attempts = attempt;
+        progress(t!("Abriendo el juego para probar (intento {attempt} de {ATTEMPTS})…", "Opening the game to test (attempt {attempt} of {ATTEMPTS})…"), 0.3);
+        let ram_gb = instance.ram_gb.unwrap_or(settings.ram_gb);
+        let (launched, settings_copy, paths_copy, session_copy, started_hook) = (instance.clone(), settings.clone(), paths.clone(), session.clone(), on_start.clone());
+        let probe = tauri::async_runtime::spawn_blocking(move || -> Result<(Result<u64, Option<i32>>, i64), String> {
+            let mut plan = launch::plan(&launched, &settings_copy, &paths_copy)?;
+            plan.add_jvm_arguments(session_copy);
+            let started = chrono::Utc::now().timestamp_millis();
+            let mut child = launch::start(&plan, &launched)?;
+            started_hook(Some(child.id()));
+            let outcome = diagnostico::wait_for_menu(&mut child, &launched, started, 480);
+            started_hook(None);
+            Ok((outcome, started))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        match probe {
+            (Ok(_), _) => {
+                report.ok = true;
+                report.diagnosis = None;
+                progress(t!("Llega al menú principal.", "It reaches the main menu."), 1.0);
+                return Ok(report);
+            }
+            (Err(code), started) => {
+                let context = diagnostico::CrashContext { since_ms: started, exit_code: code, ram_gb, system_ram_gb: system_ram_gb() };
+                let diagnosis = {
+                    let instance = instance.clone();
+                    tauri::async_runtime::spawn_blocking(move || diagnostico::after_crash(&instance, &context)).await.map_err(|e| e.to_string())?
+                };
+                let fixes = diagnostico::recommended(&diagnosis, &tried);
+                if fixes.is_empty() {
+                    report.diagnosis = Some(diagnosis);
+                    return Ok(report);
+                }
+                for (label, fix) in fixes {
+                    progress(t!("Arreglando: {label}…", "Fixing: {label}…"), 0.6);
+                    tried.push(fix.clone());
+                    match apply_fix(&instance, paths, config, catalog.clone(), fix, progress.clone()).await {
+                        Ok(done) => report.applied.push(done),
+                        Err(error) => report.applied.push(t!("No se pudo: {label} ({error})", "Could not: {label} ({error})")),
+                    }
+                }
+                report.diagnosis = Some(diagnosis);
+            }
+        }
+    }
+    Ok(report)
+}
+
+/// Aplica un arreglo del doctor. Devuelve qué se hizo.
+#[tauri::command]
+async fn aplicar_arreglo(app: AppHandle, state: State<'_, AppState>, id: String, arreglo: diagnostico::Fix) -> Result<String, String> {
+    let instance = instance_or_error(&state, &id)?;
+    if state.games.lock().unwrap().contains_key(&id) {
+        return Err(t!("Cierra el juego antes de arreglarlo.", "Close the game before fixing it."));
+    }
+    let cached = state.catalog.lock().unwrap().clone();
+    apply_fix(&instance, &state.paths, &state.config, cached, arreglo, progress_emitter(&app, "doctor")).await
+}
+
+async fn apply_fix(
+    instance: &Instance,
+    paths: &Paths,
+    config: &config::Config,
+    catalog: Option<Arc<catalog::Catalog>>,
+    fix: diagnostico::Fix,
+    progress: impl Fn(String, f64) + Send + Sync + Clone + 'static,
+) -> Result<String, String> {
+    use diagnostico::Fix;
+    match fix {
+        Fix::AddJvmArg { arg } => {
+            let mut args = instance.jvm_args.clone();
+            if !args.contains(&arg) {
+                args.push(arg.clone());
+            }
+            instances::update(instance, &instance.name, instance.ram_gb, &args)?;
+            Ok(t!("Se agregó {arg} a los argumentos de Java.", "{arg} was added to the Java arguments."))
+        }
+        Fix::SetLoader { requirements } => {
+            let loader = parse_loader(&instance.loader)?;
+            let versions = loaders::loader_versions(loader, &instance.minecraft_version).await?;
+            let fits = |v: &&loaders::LoaderVersion| requirements.iter().all(|r| compat::matches(&v.version, r));
+            let chosen = versions
+                .iter()
+                .filter(fits)
+                .find(|v| v.stable)
+                .or_else(|| versions.iter().find(fits))
+                .ok_or(t!(
+                    "No hay una versión de {} para Minecraft {} que cumpla lo que piden los mods.",
+                    "There is no {} version for Minecraft {} that meets what the mods ask for.",
+                    loader.name(),
+                    instance.minecraft_version
+                ))?
+                .version
+                .clone();
+            let (version_id, loader_version) = install_game(&instance.minecraft_version, Some(loader), Some(&chosen), paths, progress).await?;
+            let game = GameVersion {
+                version_id: &version_id,
+                minecraft: &instance.minecraft_version,
+                loader: Some((loader.name(), loader_version.as_deref().unwrap_or(&chosen))),
+            };
+            instances::set_version(instance, &game)?;
+            Ok(t!("{} cambió a {chosen}.", "{} switched to {chosen}.", loader.name()))
+        }
+        Fix::InstallMod { id, requirements, replaces } => {
+            progress(t!("Buscando {id} en Modrinth…", "Looking for {id} on Modrinth…"), 0.0);
+            let (project, version) = modrinth::find_by_mod_id(instance, &id, &requirements).await?.ok_or(t!(
+                "{id} no está en Modrinth para esta versión. Búscalo en CurseForge o desactiva el mod que lo pide.",
+                "{id} is not on Modrinth for this version. Look for it on CurseForge or disable the mod that asks for it."
+            ))?;
+            let plan = modrinth::plan(instance, &project, Some(&version)).await?;
+            if let Some(problem) = plan.problem {
+                return Err(problem);
+            }
+            if !plan.installed {
+                let report = progress.clone();
+                modrinth::install(instance, &plan.files, move |count, total, _, _| {
+                    report(t!("Instalando… {count} de {total}", "Installing… {count} of {total}"), count as f64 / total.max(1) as f64)
+                })
+                .await?;
+            }
+            // La copia que no servía (si no la reemplazó la instalación) se desactiva para que no quede repetida.
+            if let Some(old) = replaces.filter(|old| !plan.files.iter().any(|f| f.replaces.as_deref() == Some(old.as_str()) || &f.filename == old)) {
+                if instance.game_dir.join("mods").join(&old).is_file() {
+                    content::set_enabled(instance, "mods", &old, false)?;
+                }
+            }
+            Ok(t!("Se instaló {} {}.", "{} {} was installed.", plan.title, plan.version_number))
+        }
+        Fix::EnableMod { file } => {
+            let name = content::set_enabled(instance, "mods", &file, true)?;
+            Ok(t!("Se activó {name}.", "{name} was enabled."))
+        }
+        Fix::DisableMod { file } => {
+            content::set_enabled(instance, "mods", &file, false)?;
+            Ok(t!("Se desactivó {file}. Lo puedes volver a activar en Contenido.", "{file} was disabled. You can turn it back on in Content."))
+        }
+        Fix::ResetConfig { path } => {
+            let relative = mrpack::safe_relative(&path)
+                .filter(|p| p.starts_with("config") || p.starts_with("defaultconfigs"))
+                .ok_or(t!("Ruta de configuración no válida.", "Invalid settings path."))?;
+            let full = instance.game_dir.join(relative);
+            if full.is_file() {
+                trash::delete(&full).map_err(|e| t!("No se pudo mandar a la papelera: {e}", "Could not move it to the Recycle Bin: {e}"))?;
+            }
+            Ok(t!("{path} se fue a la papelera: el mod creará uno nuevo.", "{path} went to the Recycle Bin: the mod will create a new one."))
+        }
+        Fix::SetRam { gb } => {
+            let gb = gb.clamp(1, 64);
+            instances::update(instance, &instance.name, Some(gb), &instance.jvm_args)?;
+            Ok(t!("La instancia ahora usa {gb} GB.", "The instance now uses {gb} GB."))
+        }
+        Fix::UseJava { major } => {
+            mojang::ensure_java(major, paths, progress).await?;
+            instances::set_field(instance, "javaMajor", serde_json::json!(major))?;
+            Ok(t!("La instancia ahora usa Java {major}.", "The instance now uses Java {major}."))
+        }
+        Fix::Repair => {
+            let report = ensure_complete(instance, paths, config, catalog, true, progress).await;
+            Ok(match (report.repaired.len(), report.failed.len()) {
+                (0, 0) => t!("Los archivos del modpack están completos.", "The modpack files are complete."),
+                (repaired, 0) => t!("Se repusieron {repaired} archivos.", "{repaired} files were restored."),
+                (_, failed) => t!("Faltan {failed} archivos que no se pudieron reponer.", "{failed} files are missing and could not be restored."),
+            })
+        }
+    }
+}
+
 /// Comprueba la huella de cada archivo del modpack y repone lo que falte o esté dañado.
 #[tauri::command]
 async fn verificar_instancia(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<integridad::Report, String> {
@@ -1325,6 +1581,8 @@ fn system_ram_gb() -> u32 {
 ///   --instalar-modpack <proyecto> [versión]         modpack de Modrinth como instancia nueva
 ///   --instalar-datapack <instancia> <mundo> <proyecto>
 ///   --verificar <instancia> [rapido]                comprueba y repone los archivos del modpack
+///   --diagnosticar <instancia>                      qué falla (revisión de mods y último informe de fallo)
+///   --arreglar <instancia>                          prueba el arranque y aplica arreglos hasta que abra
 ///   --catalogo                                      modpacks y versiones de Drive y de la carpeta paquetes
 ///   --instalar-catalogo <id> [reparar]              instala, actualiza o repara (bajando solo lo que cambió)
 ///   --publicar-launcher <carpeta> [notas]           prepara _parabellum para subirla a Drive
@@ -1651,6 +1909,21 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             })?;
             Ok(format!("{} -> carpeta {:?} en {:.0} s", result.name, result.id, started.elapsed().as_secs_f64()))
         }
+        "--diagnosticar" => {
+            let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
+            let context = diagnostico::CrashContext { since_ms: 0, exit_code: None, ram_gb: instance.ram_gb.unwrap_or(settings.ram_gb), system_ram_gb: system_ram_gb() };
+            let diagnosis = diagnostico::after_crash(&instance, &context);
+            Ok(serde_json::to_string_pretty(&diagnosis).unwrap())
+        }
+        "--arreglar" => {
+            let id = args.get(1).ok_or("Falta la instancia.")?.clone();
+            let config = config::Config::load(paths);
+            let started = std::time::Instant::now();
+            let port = tauri::async_runtime::block_on(sesion_local::start(paths.logs.join("sesion-local.log"))).map_err(|e| e.to_string())?;
+            let session = sesion_local::jvm_arguments(port);
+            let report = tauri::async_runtime::block_on(auto_fix(&id, paths, &config, None, settings, session, |_| {}, |stage, _| eprintln!("{stage}")))?;
+            Ok(format!("{}\nen {:.0} s", serde_json::to_string_pretty(&report).unwrap(), started.elapsed().as_secs_f64()))
+        }
         "--verificar" => {
             let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
             let deep = args.get(2).is_none_or(|a| a != "rapido");
@@ -1865,6 +2138,10 @@ fn main() {
             catalogo,
             instalar_de_catalogo,
             verificar_instancia,
+            revisar_instancia,
+            diagnosticar,
+            probar_y_arreglar,
+            aplicar_arreglo,
             accesos_directos,
             acceso_directo,
             actualizacion_launcher,

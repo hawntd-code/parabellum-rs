@@ -233,6 +233,11 @@ const HTML_EN = {
   "El juego se cerró con un error": "The game closed with an error",
   "Esto es lo que dice el registro del juego:": "This is what the game log says:",
   "Ver registro completo": "See full log",
+  "Doctor": "Doctor",
+  "Ver registro": "See log",
+  "Jugar de todos modos": "Play anyway",
+  "Arreglar lo recomendado": "Fix the recommended",
+  "Probar y arreglar solo": "Test and fix on its own",
 };
 
 /** Traduce los textos fijos de la página (y sus title, placeholder y aria-label). */

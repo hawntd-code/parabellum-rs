@@ -149,6 +149,28 @@ pub async fn install(release: &Release, paths: &Paths, progress: impl Fn(String,
     Ok(())
 }
 
+/// Que haya un Java de esa versión mayor en base/java: si falta, se baja el de Mojang que la tenga.
+pub async fn ensure_java(major: u32, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + 'static) -> Result<(), String> {
+    if java::discover(paths).iter().any(|r| r.major == major) {
+        return Ok(());
+    }
+    let platform = if cfg!(target_arch = "aarch64") { "windows-arm64" } else { "windows-x64" };
+    let all: Value = serde_json::from_str(&download::get_text(JAVA_RUNTIMES_URL).await.map_err(|_| unavailable())?).map_err(|e| e.to_string())?;
+    let component = all[platform]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .find(|(_, list)| list.pointer("/0/version/name").and_then(Value::as_str).is_some_and(|v| java::major_of(v) == major))
+        .map(|(name, _)| name.clone())
+        .ok_or(t!("Mojang no ofrece Java {major}.", "Mojang does not offer Java {major}."))?;
+    progress(t!("Preparando Java {major}…", "Preparing Java {major}…"), 0.0);
+    let files = java_files(&component, paths).await?;
+    download::download_all(files, move |count, total, _, _| {
+        progress(t!("Descargando Java {major}… {count} de {total} archivos", "Downloading Java {major}… {count} of {total} files"), count as f64 / total.max(1) as f64)
+    })
+    .await
+}
+
 /// Archivos del Java de Mojang para Windows (el mismo que usa el launcher oficial).
 async fn java_files(component: &str, paths: &Paths) -> Result<Vec<FileDownload>, String> {
     let platform = if cfg!(target_arch = "aarch64") { "windows-arm64" } else { "windows-x64" };

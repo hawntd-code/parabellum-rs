@@ -43,6 +43,8 @@ pub struct Instance {
     pub modpack: Option<String>,
     /// Proyecto de Modrinth del modpack (para marcarlo como instalado al explorar).
     pub modpack_project: Option<String>,
+    /// Versión de Java elegida para esta instancia (si no, la que pide la versión de Minecraft).
+    pub java_major: Option<u32>,
 }
 
 impl Instance {
@@ -176,6 +178,7 @@ fn load(folder: &Path) -> Option<Instance> {
         loader_version,
         ram_gb: json["ramGB"].as_u64().map(|v| v as u32),
         jvm_args: json["extraJvmArgs"].as_array().into_iter().flatten().filter_map(Value::as_str).map(String::from).collect(),
+        java_major: json["javaMajor"].as_u64().map(|v| v as u32),
         folder: folder.to_path_buf(),
         game_dir,
         last_played,

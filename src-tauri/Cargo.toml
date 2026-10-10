@@ -1,6 +1,6 @@
 [package]
 name = "parabellum"
-version = "0.11.0"
+version = "0.12.0"
 description = "Parabellum: launcher de Minecraft no premium"
 edition = "2021"
 publish = false
@@ -25,6 +25,8 @@ md-5 = "0.10"
 hex = "0.4"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 regex = "1"
+# mods.toml de Forge y NeoForge (dependencias de cada mod)
+toml = "0.8"
 chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
 thiserror = "2"
 # Borrar a la papelera de reciclaje (se puede deshacer)

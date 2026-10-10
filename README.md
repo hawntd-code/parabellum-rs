@@ -89,6 +89,8 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--importar-externa <carpeta>` | Copia una de ellas a Parabellum, con su loader |
 | `--instalar-modpack <proyecto> [versión]` | Instala un modpack de Modrinth como instancia nueva |
 | `--instalar-datapack <instancia> <mundo> <proyecto>` | Instala un data pack de Modrinth en un mundo |
+| `--diagnosticar <instancia>` | Qué falla: revisión de mods (dependencias, loader, versión del juego, repetidos) y el último informe de fallo, con sus arreglos |
+| `--arreglar <instancia>` | Probar y arreglar: abre el juego hasta el menú principal y, si no llega, aplica los arreglos recomendados y repite (hasta 5 veces) |
 | `--verificar <instancia> [rapido]` | Comprueba la huella de cada archivo del modpack y repone lo que falte o esté dañado (`rapido`: solo lo que falte) |
 | `--catalogo` | Modpacks y versiones de Drive y de la carpeta paquetes, con su estado |
 | `--instalar-catalogo <id> [reparar]` | Instala, actualiza o repara un paquete (bajando solo lo que cambió) |

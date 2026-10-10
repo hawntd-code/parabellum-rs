@@ -480,14 +480,27 @@ struct IndexEntry {
 struct Index {
     /// Clave: "mods/sodium.jar" (sin ".disabled", así desactivar no pierde la información).
     files: HashMap<String, IndexEntry>,
+    /// Cómo se leyó lo que declara cada mod: 2 = también los mods.toml de Forge y NeoForge.
+    #[serde(default)]
+    meta_version: u32,
 }
+
+const META_VERSION: u32 = 3;
 
 fn index_path(instance: &Instance) -> std::path::PathBuf {
     instance.state_dir().join(INDEX_FILE)
 }
 
 fn load_index(instance: &Instance) -> Index {
-    std::fs::read_to_string(index_path(instance)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    let mut index: Index = std::fs::read_to_string(index_path(instance)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    // Leído con una versión anterior: se vuelve a leer lo que declara cada mod.
+    if index.meta_version < META_VERSION {
+        for entry in index.files.values_mut() {
+            entry.mods = None;
+        }
+        index.meta_version = META_VERSION;
+    }
+    index
 }
 
 fn save_index(instance: &Instance, index: &Index) {
@@ -750,7 +763,7 @@ async fn repair(
     loaders: &[&str],
 ) -> Result<Option<String>, String> {
     let minecraft = instance.minecraft_version.as_str();
-    let loader_version = instance.loader_version.as_deref();
+    let game = compat::Game::of(instance);
     let replaced: HashSet<String> = files.iter().filter_map(|f| f.replaces.clone()).collect();
     let base: Vec<(String, Vec<ModMeta>)> = installed
         .iter()
@@ -774,7 +787,7 @@ async fn repair(
         }
         let current = all(files, &metas);
         let problems: Vec<Problem> =
-            compat::check(&current, loader_version).into_iter().filter(|p| files.iter().any(|f| p.involves(&f.filename))).collect();
+            compat::check_game(&current, &game).into_iter().filter(|p| files.iter().any(|f| p.involves(&f.filename))).collect();
         let Some(first) = problems.first() else { return Ok(None) };
         let names = compat::names(&current);
 
@@ -836,7 +849,7 @@ async fn repair(
             metas.insert(replacement.sha1.clone(), planned_meta(instance, &replacement).await?);
             let mut trial = files.clone();
             trial[index] = replacement.clone();
-            if !compat::check(&all(&trial, &metas), loader_version).iter().any(|p| same_problem(p, problem)) {
+            if !compat::check_game(&all(&trial, &metas), &game).iter().any(|p| same_problem(p, problem)) {
                 files[index] = replacement;
                 fixed = true;
                 break;
@@ -1149,7 +1162,8 @@ pub async fn apply_updates(
     progress: impl Fn(usize, usize, u64, u64) + Send + Sync + 'static,
 ) -> Result<Vec<HeldBack>, String> {
     let mut held_back = Vec::new();
-    if matches!(instance.loader.as_str(), "Fabric" | "Quilt") && files.iter().any(|f| f.kind == "mods") {
+    // Una actualización que pida otro loader, otra versión del juego u otra dependencia se queda fuera.
+    if instance.loader != "Vanilla" && files.iter().any(|f| f.kind == "mods") {
         let installed = identify(instance).await;
         loop {
             let replaced: HashSet<&str> = files.iter().filter_map(|f| f.replaces.as_deref()).collect();
@@ -1161,7 +1175,7 @@ pub async fn apply_updates(
             for file in files.iter().filter(|f| f.kind == "mods") {
                 all.push((file.filename.clone(), planned_meta(instance, file).await?));
             }
-            let problems = compat::check(&all, instance.loader_version.as_deref());
+            let problems = compat::check_game(&all, &compat::Game::of(instance));
             let Some((index, problem)) = problems.iter().find_map(|p| {
                 let sides: Vec<&str> = match p {
                     Problem::Wrong { owner, found_file, .. } | Problem::Breaks { owner, found_file, .. } => vec![found_file, owner],
@@ -1268,6 +1282,49 @@ pub async fn download_modpack(project_id: &str, version_id: Option<&str>, temp_d
         version_id: chosen.id,
         version_number: chosen.version_number,
     })
+}
+
+/// Busca en Modrinth el mod con ese id (el de su fabric.mod.json o mods.toml) en una versión para la
+/// instancia que cumpla los rangos. Comprueba el .jar de verdad (el id del proyecto no siempre es el
+/// del mod). Devuelve (proyecto, versión), o None si no está en Modrinth.
+pub async fn find_by_mod_id(instance: &Instance, mod_id: &str, requirements: &[String]) -> Result<Option<(String, String)>, String> {
+    let loaders = instance_loaders(instance, ContentType::Mod)?;
+    let minecraft = instance.minecraft_version.clone();
+    let mut candidates: Vec<String> = vec![mod_id.to_string(), mod_id.replace('_', "-")];
+    let query = SearchQuery {
+        query: mod_id.replace(['_', '-'], " "),
+        kind: "mod".into(),
+        loaders: loaders.iter().map(|l| l.to_string()).collect(),
+        game_version: Some(minecraft.clone()),
+        categories: Vec::new(),
+        sort: "relevance".into(),
+        offset: 0,
+    };
+    if let Ok(results) = search(&query).await {
+        candidates.extend(results.hits.into_iter().take(6).map(|h| h.id));
+    }
+    let mut seen = HashSet::new();
+    let mut downloads = 0;
+    for project in candidates.into_iter().filter(|c| seen.insert(c.clone())) {
+        let Ok(id) = checked_id(&project).map(String::from) else { continue };
+        let Ok(versions) = project_versions(&id, &loaders, &[minecraft.as_str()]).await else { continue };
+        for version in versions.iter().take(6) {
+            if downloads >= 14 {
+                return Ok(None);
+            }
+            downloads += 1;
+            let file = PlannedFile::new(version, ContentType::Mod, true, None);
+            let Ok(metas) = planned_meta(instance, &file).await else { break };
+            let Some(meta) = metas.iter().find(|m| m.id == mod_id || m.provides.iter().any(|p| p == mod_id)) else {
+                // Este proyecto no es ese mod: se prueba el siguiente.
+                break;
+            };
+            if requirements.iter().all(|r| compat::matches(&meta.version, r)) {
+                return Ok(Some((version.project_id.clone(), version.id.clone())));
+            }
+        }
+    }
+    Ok(None)
 }
 
 /// Icono de un proyecto (solo del CDN de Modrinth y de tamaño razonable).

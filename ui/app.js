@@ -626,6 +626,7 @@ function instanceMenuItems(id) {
     { icon: "info", label: t("Ver instancia", "View instance"), action: () => navigate("instance", id) },
     { icon: "settings", label: t("Ajustes de la instancia", "Instance settings"), action: () => openEdit(id) },
     { icon: "folder", label: t("Abrir carpeta", "Open folder"), action: () => invoke("abrir_carpeta", { id }) },
+    { icon: "wrench", label: t("Diagnosticar y arreglar", "Diagnose and fix"), action: () => openDoctor(id, "manual") },
     { icon: "check-circle", label: t("Verificar y reparar archivos", "Check and repair files"), action: () => verifyInstance(id) },
     { icon: "duplicate", label: t("Duplicar", "Duplicate"), action: () => duplicateInstance(id) },
     { icon: "upload", label: t("Exportar modpack", "Export modpack"), action: () => openExport(id) },
@@ -700,6 +701,164 @@ async function toggleShortcut(place, input) {
     toast(String(error), "error");
   } finally {
     input.disabled = false;
+  }
+}
+
+// ---------- Doctor: qué falla y cómo arreglarlo ----------
+/** mode: "crash" (se cerró con error), "prelaunch" (la revisión encontró algo antes de abrir) o "manual". */
+async function openDoctor(id, mode, { diagnosis = null, reason = null, server = null } = {}) {
+  const instance = state.instances.find((i) => i.id === id);
+  if (!instance) return;
+  state.doctor = { id, mode, server, diagnosis, applied: [], busy: false, reason };
+  $("#doctor-title").textContent =
+    mode === "crash"
+      ? t(`${instance.name} se cerró con un error`, `${instance.name} closed with an error`)
+      : mode === "prelaunch"
+        ? t(`${instance.name} no va a abrir así`, `${instance.name} will not open like this`)
+        : t(`Doctor de ${instance.name}`, `${instance.name} doctor`);
+  $("#doctor-intro").textContent =
+    mode === "crash"
+      ? t("Esto es lo que encontré y cómo arreglarlo:", "This is what I found and how to fix it:")
+      : mode === "prelaunch"
+        ? t("Revisé los mods antes de abrir el juego y encontré esto:", "I checked the mods before opening the game and found this:")
+        : t("Reviso los mods y el último arranque…", "Checking the mods and the last launch…");
+  $("#doctor-reason").classList.add("hidden");
+  renderDoctor();
+  openModal("#doctor-dialog");
+  if (!diagnosis) {
+    try {
+      state.doctor.diagnosis = await invoke("diagnosticar", { id });
+      $("#doctor-intro").textContent = state.doctor.diagnosis.findings.length
+        ? t("Esto es lo que encontré y cómo arreglarlo:", "This is what I found and how to fix it:")
+        : t(
+            `Revisé ${plural(state.doctor.diagnosis.checkedMods, "mod", "mods")} y el último arranque y no encontré problemas. Si aun así falla, pulsa «Probar y arreglar solo»: abro el juego, veo qué pasa y lo arreglo.`,
+            `I checked ${plural(state.doctor.diagnosis.checkedMods, "mod", "mods")} and the last launch and found no problems. If it still fails, press «Test and fix on its own»: I open the game, see what happens and fix it.`,
+          );
+    } catch (error) {
+      $("#doctor-intro").textContent = String(error);
+    }
+    renderDoctor();
+  }
+}
+
+const severityNames = () => ({ error: t("Impide abrir", "Blocks opening"), aviso: t("Posible causa", "Possible cause"), info: t("Para saber", "Good to know") });
+
+function renderDoctor() {
+  const doctor = state.doctor;
+  if (!doctor) return;
+  const findings = doctor.diagnosis?.findings ?? [];
+  const names = severityNames();
+  $("#doctor-findings").innerHTML = findings
+    .map(
+      (f, i) => `<div class="doctor-finding ${f.severity}">
+        <h3>${escapeHtml(f.title)}</h3>
+        <p><b>${escapeHtml(names[f.severity] ?? "")}.</b> ${escapeHtml(f.detail)}</p>
+        ${f.evidence ? `<code>${escapeHtml(f.evidence)}</code>` : ""}
+        ${
+          f.fixes.length
+            ? `<div class="doctor-fixes">${f.fixes
+                .map((o, j) => {
+                  const done = doctor.applied.some((a) => JSON.stringify(a) === JSON.stringify(o.fix));
+                  return `<button class="btn ${o.recommended ? "primary" : ""} ${done ? "done" : ""}" data-doctor-fix="${i}:${j}" ${doctor.busy ? "disabled" : ""}>${done ? icon("check") : ""}${escapeHtml(o.label)}</button>`;
+                })
+                .join("")}</div>`
+            : ""
+        }
+      </div>`,
+    )
+    .join("");
+  if (doctor.done) $("#doctor-findings").insertAdjacentHTML("beforeend", doctor.done);
+  if (!findings.length && doctor.reason) {
+    $("#doctor-reason").textContent = doctor.reason;
+    $("#doctor-reason").classList.remove("hidden");
+  }
+  const recommended = findings.flatMap((f) => f.fixes.filter((o) => o.recommended)).filter((o) => !doctor.applied.some((a) => JSON.stringify(a) === JSON.stringify(o.fix)));
+  $("#doctor-fix-all").classList.toggle("hidden", !recommended.length);
+  $("#doctor-fix-all").lastChild.textContent = doctor.mode === "prelaunch" ? t("Arreglar y jugar", "Fix and play") : t("Arreglar lo recomendado", "Fix the recommended");
+  $("#doctor-anyway").classList.toggle("hidden", doctor.mode !== "prelaunch");
+  $("#doctor-logs").classList.toggle("hidden", doctor.mode === "prelaunch");
+  for (const button of [$("#doctor-fix-all"), $("#doctor-auto"), $("#doctor-anyway")]) button.disabled = doctor.busy;
+}
+
+function doctorBusy(busy, status = "") {
+  state.doctor.busy = busy;
+  $("#doctor-progress").classList.toggle("hidden", !busy);
+  $("#doctor-status").textContent = status;
+  renderDoctor();
+}
+
+/** Aplica un arreglo y vuelve a revisar los mods. */
+async function applyDoctorFix(fix, label) {
+  const doctor = state.doctor;
+  doctorBusy(true, t(`Arreglando: ${label}…`, `Fixing: ${label}…`));
+  try {
+    const done = await invoke("aplicar_arreglo", { id: doctor.id, arreglo: fix });
+    doctor.applied.push(fix);
+    toast(done);
+    return true;
+  } catch (error) {
+    toast(String(error), "error");
+    return false;
+  } finally {
+    doctorBusy(false);
+  }
+}
+
+async function doctorFixAll() {
+  const doctor = state.doctor;
+  const options = (doctor.diagnosis?.findings ?? []).flatMap((f) => f.fixes.filter((o) => o.recommended));
+  let ok = true;
+  for (const option of options) {
+    if (doctor.applied.some((a) => JSON.stringify(a) === JSON.stringify(option.fix))) continue;
+    ok = (await applyDoctorFix(option.fix, option.label)) && ok;
+  }
+  await reloadInstances();
+  // Se vuelve a revisar: si ya no queda nada que impida abrir y era antes de jugar, se abre.
+  try {
+    doctor.diagnosis = await invoke("revisar_instancia", { id: doctor.id });
+  } catch {}
+  renderDoctor();
+  if (doctor.mode === "prelaunch" && ok && !doctor.diagnosis.findings.some((f) => f.severity === "error")) {
+    closeModal("#doctor-dialog");
+    play(doctor.id, doctor.server, { skipCheck: true });
+  } else if (!doctor.diagnosis.findings.length) {
+    $("#doctor-intro").textContent = t("Listo: la revisión ya no encuentra problemas. Ábrelo o usa «Probar y arreglar solo» para comprobarlo.", "Done: the check no longer finds problems. Open it or use «Test and fix on its own» to make sure.");
+  }
+}
+
+/** Abre el juego hasta el menú principal; si no llega, aplica los arreglos recomendados y repite. */
+async function doctorAuto() {
+  const doctor = state.doctor;
+  doctorBusy(true, t("Revisando los mods…", "Checking the mods…"));
+  $("#doctor-intro").textContent = t(
+    "Voy a abrir el juego para ver si llega al menú principal (se abrirá una ventana de Minecraft y la cerraré yo). Si falla, lo arreglo y vuelvo a probar.",
+    "I will open the game to see if it reaches the main menu (a Minecraft window will open and I will close it). If it fails, I fix it and try again.",
+  );
+  try {
+    const result = await invoke("probar_y_arreglar", { id: doctor.id });
+    await reloadInstances();
+    const applied = result.applied.length
+      ? `<ul>${result.applied.map((a) => `<li>${escapeHtml(a)}</li>`).join("")}</ul>`
+      : "";
+    if (result.ok) {
+      doctor.diagnosis = { findings: [], checkedMods: doctor.diagnosis?.checkedMods ?? 0 };
+      $("#doctor-intro").textContent = "";
+      doctor.done = `<div class="doctor-finding ok"><h3>${t("¡Ya abre! Llega al menú principal.", "It opens now! It reaches the main menu.")}</h3><p>${
+        result.applied.length ? t("Esto es lo que arreglé:", "This is what I fixed:") : t("No hizo falta arreglar nada.", "Nothing needed fixing.")
+      }</p>${applied}</div>`;
+      toast(t("El juego llega al menú principal.", "The game reaches the main menu."));
+    } else {
+      doctor.diagnosis = result.diagnosis ?? doctor.diagnosis;
+      $("#doctor-intro").textContent = t(
+        `Probé ${plural(result.attempts, "vez", "veces")} y todavía no abre. Esto es lo que queda; elige qué hacer:`,
+        `I tried ${plural(result.attempts, "time", "times")} and it still does not open. This is what is left; choose what to do:`,
+      );
+      doctor.done = result.applied.length ? `<div class="doctor-applied">${t("Lo que ya arreglé:", "What I already fixed:")}${applied}</div>` : "";
+    }
+  } catch (error) {
+    toast(String(error), "error");
+  } finally {
+    doctorBusy(false);
   }
 }
 
@@ -853,11 +1012,16 @@ function confirmAction({ title, text, ok, primary = false }) {
 }
 
 /** Aviso del backend: un juego se cerró. Si fue por un error, se explica el motivo. */
-function onGameClosed({ id, code, reason }) {
+function onGameClosed({ id, code, reason, diagnosis }) {
   state.running.delete(id);
   refreshRunning();
   if (state.page === "instance" && state.current?.id === id && state.tab === "logs") loadLog(false);
   if (code === null || code === undefined || code === 0) return;
+  if (state.doctor?.busy) return;
+  if (diagnosis) {
+    appWindow?.unminimize?.();
+    return openDoctor(id, "crash", { diagnosis, reason });
+  }
   const instance = state.instances.find((i) => i.id === id);
   state.crashFor = id;
   $("#crash-title").textContent = t(`${instance?.name ?? "El juego"} se cerró con un error`, `${instance?.name ?? "The game"} closed with an error`);
@@ -866,9 +1030,17 @@ function onGameClosed({ id, code, reason }) {
   openModal("#crash-dialog");
 }
 
-async function play(id, server = null) {
+async function play(id, server = null, { skipCheck = false } = {}) {
   const instance = state.instances.find((i) => i.id === id);
   if (!instance) return;
+  if (!skipCheck && instance.loader !== "Vanilla") {
+    try {
+      const diagnosis = await invoke("revisar_instancia", { id });
+      if (diagnosis.findings.some((f) => f.severity === "error")) return openDoctor(id, "prelaunch", { diagnosis, server });
+    } catch {
+      // Si la revisión falla, se abre igual: el juego dirá lo que pase.
+    }
+  }
   try {
     toast(server ? t(`Abriendo ${instance.name} y entrando a ${server}…`, `Opening ${instance.name} and joining ${server}…`) : t(`Abriendo ${instance.name}…`, `Opening ${instance.name}…`));
     await invoke("jugar", { id, servidor: server });
@@ -2431,6 +2603,33 @@ function wireEvents() {
     if (event.target.id === "confirm-dialog") state.confirmCancel?.();
   };
   for (const id of ["#crash-close", "#crash-dismiss"]) $(id).onclick = () => closeModal("#crash-dialog");
+  $("#doctor-close").onclick = () => {
+    if (!state.doctor?.busy) closeModal("#doctor-dialog");
+  };
+  $("#doctor-findings").onclick = (event) => {
+    const button = event.target.closest("[data-doctor-fix]");
+    if (!button || state.doctor?.busy) return;
+    const [i, j] = button.dataset.doctorFix.split(":").map(Number);
+    const option = state.doctor.diagnosis.findings[i].fixes[j];
+    applyDoctorFix(option.fix, option.label).then(async (ok) => {
+      if (!ok) return;
+      await reloadInstances();
+      renderDoctor();
+    });
+  };
+  $("#doctor-fix-all").onclick = () => doctorFixAll();
+  $("#doctor-auto").onclick = () => doctorAuto();
+  $("#doctor-anyway").onclick = () => {
+    const { id, server } = state.doctor;
+    closeModal("#doctor-dialog");
+    play(id, server, { skipCheck: true });
+  };
+  $("#doctor-logs").onclick = () => {
+    const id = state.doctor.id;
+    closeModal("#doctor-dialog");
+    navigate("instance", id);
+    selectTab("logs");
+  };
   $("#crash-logs").onclick = () => {
     closeModal("#crash-dialog");
     navigate("instance", state.crashFor);
@@ -2583,6 +2782,7 @@ function wireEvents() {
       closeModal("#settings-dialog");
       closeModal("#edit-dialog");
       closeModal("#crash-dialog");
+      if (!state.doctor?.busy) closeModal("#doctor-dialog");
       closeModal("#install-dialog");
       closeModal("#group-dialog");
       closeModal("#account-dialog");
@@ -2672,6 +2872,10 @@ function wireEvents() {
       $("#download-indicator").classList.remove("hidden");
       $("#download-percent").textContent = `${Math.round(payload.fraction * 100)}%`;
       $("#status-text").textContent = payload.stage;
+      return;
+    }
+    if (payload.task === "doctor") {
+      if (state.doctor?.busy) $("#doctor-status").textContent = payload.stage;
       return;
     }
     if (payload.task === "verificar") {
@@ -4165,6 +4369,17 @@ function demoInvoke(command, args = {}) {
   if (command === "instalar_modpack") return later({ id: "Minecraft++", name: "Fabulously Optimized", kind: "modpack", updated: false }, 1200);
   if (command === "accesos_directos" || command === "acceso_directo")
     return later({ desktop: command === "acceso_directo" && args.lugar === "escritorio" && args.crear ? "si" : "no", startMenu: "otro" }, 200);
+  if (command === "revisar_instancia") return later({ findings: [], checkedMods: 12 }, 200);
+  if (command === "diagnosticar")
+    return later({
+      checkedMods: 100,
+      findings: [
+        { severity: "error", title: "CustomSkinLoader choca con otro mod al arrancar", detail: "Java encontró el mismo paquete (net.minecraft.client.renderer) en dos módulos y Forge no puede arrancar así. Desactivar CustomSkinLoader lo evita.", evidence: "java.lang.module.ResolutionException: Modules customskinloader and minecraft export package net.minecraft.client.renderer", fixes: [{ label: "Desactivar CustomSkinLoader", recommended: true, fix: { type: "disableMod", file: "CustomSkinLoader.jar" } }] },
+        { severity: "error", title: "Hace falta otra versión de Forge", detail: "ParCool! pide Forge 47.4.23 o más nueva y la instancia tiene 47.4.20.", evidence: "ParCool-1.20.1-4.0.1.2.jar", fixes: [{ label: "Cambiar Forge a una versión compatible", recommended: true, fix: { type: "setLoader", requirements: ["[47.4.23,)"] } }, { label: "Desactivar ParCool!", recommended: false, fix: { type: "disableMod", file: "ParCool.jar" } }] },
+      ],
+    }, 600);
+  if (command === "aplicar_arreglo") return later("Listo.", 500);
+  if (command === "probar_y_arreglar") return later({ ok: true, attempts: 2, applied: ["Se desactivó CustomSkinLoader_Universal-15.0.jar. Lo puedes volver a activar en Contenido."], diagnosis: null }, 2500);
   if (command === "verificar_instancia") return later({ checked: 394, repaired: ["balm-fabric-1.20.1-7.3.38.jar", "voidz-1.0.11.jar"], failed: [] }, 1500);
   if (command === "instalar_datapack") return later("Se instaló Terralith 2.5.8 en el mundo «Mi mundo».", 600);
   if (command === "contenido") {

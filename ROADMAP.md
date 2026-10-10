@@ -112,6 +112,15 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* publicar las reglas nuevas en Firebase y chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### Fase 12: doctor (0.12.0)
+- [x] **Revisión antes de jugar**: lo que declara cada mod (fabric.mod.json y también mods.toml de Forge/NeoForge, con los mods que traen dentro) contra la instancia: dependencias que faltan, versión del loader o de Minecraft que no encaja, choques y mods repetidos. Si algo impide abrir, se ofrece «Arreglar y jugar» o «Jugar de todos modos»
+- [x] **Después de un fallo** (también cuando Forge muestra su pantalla de error y sale con código 0): se lee el informe y los registros y se explica en palabras simples, con la línea que lo demuestra: argumento de Java que pide el propio mod, choque de módulos de Java, Java equivocado, memoria, configuración dañada, mod sospechoso (mixins, «Suspected Mods»), video
+- [x] **Arreglos de un clic**: activar/desactivar un mod, instalar la dependencia desde Modrinth (comprobando el .jar), cambiar la versión del loader a una que cumpla todo, agregar el argumento de Java, otra versión de Java para la instancia (se baja la de Mojang), más memoria, mandar la configuración dañada a la papelera, reponer archivos
+- [x] **Probar y arreglar solo**: abre el juego hasta el menú principal y lo cierra; si no llega, aplica los arreglos recomendados y repite (hasta 5 intentos)
+- [x] «Actualizar» y «Actualizar todo» ya no instalan versiones que piden otro Forge/NeoForge, otra versión de Minecraft u otra dependencia (antes solo se revisaba Fabric)
+- [x] *Prueba:* BattleArmory TACZ (Forge 1.20.1, 100 mods, el que falló a Juan): Probar y arreglar desactivó CustomSkinLoader y llegó al menú en el 2.º intento; «Actualizar todo» dejó fuera ParCool 4.0.1.2 (pide Forge 47.4.23) y Shoulder Surfing 5.2 (choca con Third Person Shooting) y el modpack sigue abriendo; en la ventana real: antes de jugar (Connector desactivado → «Activar»), después del fallo y desde el menú
+- [ ] (Más adelante) buscar el mod culpable por mitades cuando el error no lo dice
+
 ### Fase 11: pulido (0.11.0)
 - [x] **Sin instalador** (sigue portable): accesos directos en el Escritorio y en el menú Inicio desde Ajustes › Comportamiento; avisan si apuntan a otra carpeta
 - [x] **Firma**: sin certificado de pago (decisión de Juan). El exe lleva su versión real, nombre y editor en sus propiedades; al publicar se deja `LEEME.txt` en `_parabellum` con los pasos de la primera vez y qué hacer con el aviso de SmartScreen (las actualizaciones automáticas no lo muestran)
