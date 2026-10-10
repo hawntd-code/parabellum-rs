@@ -29,6 +29,21 @@ const CLIENT_ONLY: &[&str] = &[
     "presencefootsteps", "skinlayers3d", "firstperson", "customskinloader", "shouldersurfing", "betterthirdperson", "legendarytooltips",
     "fancymenu", "drippyloadingscreen", "chat_heads", "fpsreducer", "ambientsounds", "controlling", "mousetweaks",
 ];
+/// Mods que abren su propio túnel a internet (e4mc, World Host): el servidor ya tiene la dirección de
+/// playit.gg, así que sobran y confunden (otra dirección en la consola). Además e4mc 6.2 tumba los
+/// servidores de Minecraft 26.2 en cuanto entra alguien.
+const TUNNEL_MODS: &[&str] = &["e4mc", "e4mc_minecraft", "world-host"];
+
+/// Si el mod es de túnel, su id.
+fn tunnel_mod(file: &str, metas: &[crate::compat::ModMeta]) -> Option<String> {
+    metas
+        .first()
+        .map(|m| m.id.as_str())
+        .filter(|id| TUNNEL_MODS.contains(id))
+        .map(String::from)
+        .or_else(|| file.to_lowercase().starts_with("e4mc").then(|| "e4mc".to_string()))
+}
+
 /// Banderas de Java para servidores (las de Aikar, sin reservar toda la memoria al arrancar: en un PC
 /// de 8 GB eso dejaría sin memoria al juego).
 const SERVER_FLAGS: [&str; 14] = [
@@ -753,7 +768,9 @@ pub async fn client_only(instance: &Instance) -> Vec<LeftOut> {
     let sides = modrinth::server_sides(&ids).await;
     let mut left = Vec::new();
     for file in &files {
-        if file.project_id.as_ref().and_then(|id| sides.get(id)).is_some_and(|side| side == "unsupported") {
+        if let Some(id) = tunnel_mod(&file.file, &file.mods) {
+            left.push(LeftOut::new(&file.file, "tunnel", Some(&id)));
+        } else if file.project_id.as_ref().and_then(|id| sides.get(id)).is_some_and(|side| side == "unsupported") {
             left.push(LeftOut::new(&file.file, "modrinth", None));
         } else if let Some(id) = file.mods.first().map(|m| m.id.as_str()).filter(|id| CLIENT_ONLY.contains(id)) {
             left.push(LeftOut::new(&file.file, "client", Some(id)));
@@ -763,6 +780,10 @@ pub async fn client_only(instance: &Instance) -> Vec<LeftOut> {
     // Sin conexión, identify no trae los mods leídos: se usan los del doctor.
     if files.is_empty() {
         for (file, metas) in &mods {
+            if let Some(id) = tunnel_mod(file, metas) {
+                left.push(LeftOut::new(file, "tunnel", Some(&id)));
+                continue;
+            }
             // Solo el mod principal: llevar dentro uno de cliente (p. ej. Mod Menu) no lo hace de cliente.
             if let Some(id) = metas.first().map(|m| m.id.as_str()).filter(|id| CLIENT_ONLY.contains(id)) {
                 left.push(LeftOut::new(file, "client", Some(id)));
@@ -877,6 +898,51 @@ fn copy_without_lock(from: &Path, to: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Quita del servidor los mods de túnel que tenga (de servidores creados antes de excluirlos).
+/// Devuelve los archivos quitados.
+pub fn remove_tunnel_mods(config: &mut ServerConfig) -> Vec<String> {
+    let mods = config.folder.join("mods");
+    let mut removed = Vec::new();
+    for entry in std::fs::read_dir(&mods).into_iter().flatten().flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !is_mod_file(&name) {
+            continue;
+        }
+        let metas = std::fs::File::open(entry.path()).map(crate::compat::read_jar).unwrap_or_default();
+        let Some(id) = tunnel_mod(&name, &metas) else { continue };
+        if std::fs::rename(entry.path(), mods.join(format!("{name}.disabled"))).is_ok() {
+            if !config.left_out.iter().any(|l| l.file.eq_ignore_ascii_case(&name)) {
+                config.left_out.push(LeftOut::new(&name, "tunnel", Some(&id)));
+            }
+            removed.push(name);
+        }
+    }
+    removed
+}
+
+/// Instancias con un mod de túnel activado (e4mc): con playit.gg ya no hace falta.
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct TunnelModInstance {
+    pub id: String,
+    pub name: String,
+    pub file: String,
+}
+
+pub fn instances_with_tunnel_mods(paths: &Paths) -> Vec<TunnelModInstance> {
+    let mut found = Vec::new();
+    for instance in instances::list(paths) {
+        for entry in std::fs::read_dir(instance.game_dir.join("mods")).into_iter().flatten().flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let lower = name.to_lowercase();
+            if is_mod_file(&name) && (lower.starts_with("e4mc") || lower.starts_with("world-host") || lower.starts_with("worldhost")) {
+                found.push(TunnelModInstance { id: instance.id.clone(), name: instance.name.clone(), file: name });
+            }
+        }
+    }
+    found
+}
+
 pub fn mod_count(folder: &Path) -> usize {
     std::fs::read_dir(folder.join("mods")).into_iter().flatten().flatten().filter(|e| is_mod_file(&e.file_name().to_string_lossy())).count()
 }
@@ -987,6 +1053,24 @@ mod tests {
         assert_eq!(named("2", &DIFFICULTIES, "normal"), "normal");
         assert_eq!(named("hard", &DIFFICULTIES, "normal"), "hard");
         assert_eq!(named("", &GAMEMODES, "survival"), "survival");
+    }
+
+    #[test]
+    fn e4mc_no_va_en_el_servidor() {
+        use crate::compat::ModMeta;
+        let e4mc = vec![ModMeta { id: "e4mc".into(), ..Default::default() }];
+        assert_eq!(tunnel_mod("e4mc-fabric-6.2.1-modern.jar", &e4mc).as_deref(), Some("e4mc"));
+        assert_eq!(tunnel_mod("e4mc-forge-5.0.jar", &[]).as_deref(), Some("e4mc"));
+        assert!(tunnel_mod("lithium-fabric-0.25.3.jar", &[ModMeta { id: "lithium".into(), ..Default::default() }]).is_none());
+        let folder = std::env::temp_dir().join(format!("parabellum-tunel-{}", std::process::id()));
+        std::fs::create_dir_all(folder.join("mods")).unwrap();
+        std::fs::write(folder.join("mods").join("e4mc-fabric-6.2.1-modern.jar"), b"x").unwrap();
+        std::fs::write(folder.join("mods").join("lithium.jar"), b"x").unwrap();
+        let mut config = ServerConfig { folder: folder.clone(), ..Default::default() };
+        assert_eq!(remove_tunnel_mods(&mut config), vec!["e4mc-fabric-6.2.1-modern.jar".to_string()]);
+        assert!(folder.join("mods").join("e4mc-fabric-6.2.1-modern.jar.disabled").exists() && folder.join("mods").join("lithium.jar").exists());
+        assert_eq!(config.left_out[0].kind, "tunnel");
+        let _ = std::fs::remove_dir_all(&folder);
     }
 
     #[test]

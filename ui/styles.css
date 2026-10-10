@@ -1020,10 +1020,29 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .eula-box { margin-top: 20px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--field); border: 1px solid var(--border); }
 .eula-box .toggle { color: var(--text); }
 .eula-box p { margin: 6px 0 0; }
-.eula-text .link-btn { color: var(--accent-fg); font-size: inherit; padding: 0 2px; text-decoration: underline; }
 .eula-check { margin-top: 14px; color: var(--text); }
 .spinner.small { width: 18px; height: 18px; border-width: 2px; flex: none; }
 @media (max-width: 1100px) {
   .hosted-top { grid-template-columns: 1fr; }
   .host-columns, .host-modes { grid-template-columns: 1fr; }
 }
+
+.host-e4mc { display: flex; gap: 12px; margin-top: 12px; padding: 14px 16px; border-radius: var(--r-lg); background: color-mix(in srgb, #e8a33d 9%, var(--panel)); border: 1px solid color-mix(in srgb, #e8a33d 40%, var(--border)); }
+.host-e4mc > svg { width: 20px; height: 20px; color: #e8a33d; flex: none; margin-top: 1px; }
+.host-e4mc p { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; }
+.e4mc-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.e4mc-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 6px 6px 12px; border-radius: var(--r); background: var(--field); font-size: 13px; }
+.e4mc-row span { min-width: 0; overflow-wrap: anywhere; }
+
+/* Alineación (0.13.1) */
+.hosted-address .address-card:first-child { flex: 1; }
+.host-settings input:not([type="range"]):not([type="checkbox"]), .host-settings select,
+#host-create-dialog input:not([type="range"]):not([type="checkbox"]), #host-create-dialog select,
+.guest-add input { background: var(--card); }
+.host-settings .form-grid, #host-create-dialog .form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.guest-add input, .guest-add .btn { height: 42px; }
+.console-input input, .console-input .btn { height: 40px; }
+
+.eula-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.eula-line .link-btn { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-fg); font-size: 13px; }
+.eula-line .link-btn svg { width: 14px; height: 14px; }

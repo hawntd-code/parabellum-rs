@@ -118,6 +118,12 @@ mod tests {
 
     #[test]
     fn mide_este_proceso() {
+        // Windows cuenta el tiempo de procesador en saltos de ~15 ms: primero se trabaja un poco.
+        let started = std::time::Instant::now();
+        let mut n: u64 = 0;
+        while started.elapsed() < std::time::Duration::from_millis(60) {
+            n = std::hint::black_box(n.wrapping_mul(31).wrapping_add(7));
+        }
         let (memory, cpu) = usage(std::process::id()).expect("uso del proceso");
         assert!(memory > 0 && cpu > 0);
         let (total, available) = system_memory();

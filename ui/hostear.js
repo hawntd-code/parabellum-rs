@@ -101,6 +101,51 @@ async function loadHosting() {
 function enterHost() {
   if (!host.view) loadHosting();
   else renderHost();
+  loadTunnelMods();
+}
+
+/** Instancias con e4mc: con playit.gg sobra (da otra dirección y en 26.2 cierra el mundo al entrar alguien). */
+async function loadTunnelMods() {
+  try {
+    host.tunnelMods = await invoke("mods_de_tunel");
+  } catch {
+    host.tunnelMods = [];
+  }
+  renderTunnelMods();
+}
+
+function renderTunnelMods() {
+  const box = $("#host-e4mc");
+  const list = host.tunnelMods ?? [];
+  const show = list.length && host.view?.shareWorld;
+  box.classList.toggle("hidden", !show);
+  if (!show) return;
+  box.innerHTML = `${icon("alert")}<div class="grow">
+      <b>${t("Tus instancias todavía tienen e4mc", "Your instances still have e4mc")}</b>
+      <p>${t(
+        "Con playit.gg ya no hace falta: e4mc abre otra dirección distinta y, en Minecraft 26.2, cierra tu mundo en cuanto entra un amigo. Desactívalo (puedes volver a activarlo en Contenido).",
+        "With playit.gg it is no longer needed: e4mc opens a different address and, on Minecraft 26.2, closes your world as soon as a friend joins. Disable it (you can turn it back on in Content).",
+      )}</p>
+      <div class="e4mc-list">${list
+        .map((m, i) => `<div class="e4mc-row"><span><b>${escapeHtml(m.name)}</b> · ${escapeHtml(m.file)}</span><button class="btn small" data-disable-tunnel="${i}">${t("Desactivar", "Disable")}</button></div>`)
+        .join("")}</div>
+    </div>`;
+}
+
+async function disableTunnelMod(index) {
+  const item = host.tunnelMods?.[index];
+  if (!item) return;
+  if (state.running.has(item.id)) {
+    toast(t("Cierra el juego antes de desactivar e4mc.", "Close the game before disabling e4mc."), "error");
+    return;
+  }
+  try {
+    await invoke("activar_contenido", { id: item.id, tipo: "mods", archivo: item.file, activo: false });
+    toast(t(`e4mc desactivado en ${item.name}.`, `e4mc disabled in ${item.name}.`));
+  } catch (error) {
+    toast(String(error), "error");
+  }
+  loadTunnelMods();
 }
 
 // ---------- Tarjeta de playit.gg ----------
@@ -224,6 +269,7 @@ function renderHost() {
   if (!view) return;
   renderTunnel();
   $("#host-share-world").checked = view.shareWorld;
+  renderTunnelMods();
   const world = view.world;
   const status = $("#host-world-status");
   if (world && view.shareWorld) {
@@ -677,6 +723,8 @@ function leftOutReason(item) {
       return t(`Necesita ${id}, que es solo para el juego`, `It needs ${id}, which is client-only`);
     case "doctor":
       return t("Lo quitó el doctor: tumbaba el servidor", "Removed by the doctor: it crashed the server");
+    case "tunnel":
+      return t(`Abre su propia dirección (${id}); en el servidor la dirección la da playit.gg`, `It opens its own address (${id}); on the server the address comes from playit.gg`);
     default:
       return "";
   }
@@ -850,6 +898,8 @@ function wireHostEvents() {
   $("#host-new-server").onclick = () => openHostCreate();
   $("#host-share-world").onchange = (event) => invoke("compartir_mundo", { activo: event.target.checked });
   document.addEventListener("click", (event) => {
+    const disable = event.target.closest("[data-disable-tunnel]");
+    if (disable) return void disableTunnelMod(Number(disable.dataset.disableTunnel));
     const copy = event.target.closest("[data-copy-address]");
     if (copy) {
       copyText(copy.dataset.copyAddress, t("Dirección copiada.", "Address copied."));

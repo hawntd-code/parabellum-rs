@@ -244,6 +244,7 @@
               </div>
             </div>
             <div class="host-world-status hidden" id="host-world-status"></div>
+            <div class="host-e4mc hidden" id="host-e4mc"></div>
             <h2 class="host-subtitle">Tus servidores</h2>
             <div class="server-list" id="host-servers"></div>
             <p class="no-results hidden" id="host-empty">Todavía no tienes servidores. Crea uno con «Crear un servidor».</p>
@@ -786,7 +787,10 @@
         <label class="label" for="hc-jvm" style="margin-top:16px">Argumentos de Java</label>
         <input id="hc-jvm" placeholder="Opcional, p. ej. -XX:+UseZGC" autocomplete="off" spellcheck="false">
         <div class="eula-box">
-          <label class="toggle"><input type="checkbox" id="hc-eula"><span></span><span class="eula-text">Acepto el <button class="link-btn" id="hc-eula-link">EULA de Minecraft</button></span></label>
+          <div class="eula-line">
+            <label class="toggle"><input type="checkbox" id="hc-eula"><span></span>Acepto el EULA de Minecraft</label>
+            <button class="link-btn" id="hc-eula-link"><svg><use href="#i-external"/></svg>Leer el EULA</button>
+          </div>
           <p class="muted small-text">Mojang pide aceptarlo para tener un servidor. Puedes crear el servidor sin aceptarlo, pero no encenderlo.</p>
         </div>
         <div class="doctor-progress hidden" id="hc-progress"><div class="spinner small"></div><span id="hc-status"></span></div>

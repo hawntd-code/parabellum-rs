@@ -1541,6 +1541,12 @@ fn compartir_mundo(app: AppHandle, activo: bool) {
     hosting::set_share_world(&app, activo);
 }
 
+/// Instancias con e4mc (u otro mod de túnel) activado: con playit.gg sobran.
+#[tauri::command]
+fn mods_de_tunel(state: State<AppState>) -> Vec<servidor::TunnelModInstance> {
+    servidor::instances_with_tunnel_mods(&state.paths)
+}
+
 #[tauri::command]
 fn preparar_servidor(app: AppHandle, instancia: String) -> Result<hosting::Preparation, String> {
     hosting::prepare(&app, &instancia)
@@ -2386,6 +2392,7 @@ fn main() {
             desconectar_playit,
             compartir_mundo,
             preparar_servidor,
+            mods_de_tunel,
             crear_servidor,
             iniciar_servidor,
             detener_servidor,

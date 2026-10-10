@@ -670,6 +670,8 @@ pub fn start_server(app: &AppHandle, id: &str) -> Result<(), String> {
         return Ok(());
     }
     let mut config = servidor::find(&state.paths, id).ok_or(missing())?;
+    // e4mc y compañía abren su propia dirección (y e4mc 6.2 tumba los servidores de 26.2): fuera.
+    let tunnel_mods = servidor::remove_tunnel_mods(&mut config);
     if !config.eula {
         return Err(t!("Para encender el servidor hay que aceptar el EULA de Minecraft.", "To start the server you must accept the Minecraft EULA."));
     }
@@ -702,6 +704,15 @@ pub fn start_server(app: &AppHandle, id: &str) -> Result<(), String> {
     let _ = std::fs::create_dir_all(&state_dir);
     let output = std::fs::File::create(state_dir.join("salida-java.log")).ok().map(std::io::BufWriter::new);
     host_state.outcomes.lock().unwrap().remove(id);
+    let notes: Vec<String> = tunnel_mods
+        .iter()
+        .map(|file| {
+            t!(
+                "[Parabellum] Se quitó {file} del servidor: abre su propia dirección y aquí la dirección la da playit.gg.",
+                "[Parabellum] {file} was removed from the server: it opens its own address and here the address comes from playit.gg."
+            )
+        })
+        .collect();
     host_state.running.lock().unwrap().insert(
         id.to_string(),
         Running {
@@ -711,8 +722,8 @@ pub fn start_server(app: &AppHandle, id: &str) -> Result<(), String> {
             phase: Phase::Starting,
             players: Vec::new(),
             started: config.last_started.unwrap_or_default(),
-            console: VecDeque::new(),
-            pending: Vec::new(),
+            console: notes.iter().cloned().collect(),
+            pending: notes,
             output,
             cpu: proceso::CpuMeter::default(),
             cpu_percent: 0.0,
