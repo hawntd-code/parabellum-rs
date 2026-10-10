@@ -164,6 +164,8 @@ function drawHead(canvas, name) {
 function toast(message, kind = "info") {
   const element = document.createElement("div");
   element.className = `toast ${kind}`;
+  // Los errores se anuncian de inmediato al lector de pantalla; lo demás, cuando termine de hablar.
+  if (kind === "error") element.setAttribute("role", "alert");
   element.innerHTML = `${icon(kind === "error" ? "alert" : "check")}<div>${escapeHtml(message)}</div>`;
   $("#toasts").appendChild(element);
   setTimeout(() => {
@@ -191,11 +193,36 @@ function contextMenu(anchor, items, { matchWidth = false } = {}) {
   const rect = anchor.getBoundingClientRect();
   menu.style.top = `${Math.min(rect.bottom + 6, innerHeight - menu.offsetHeight - 10)}px`;
   menu.style.left = `${Math.min(rect.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 10)}px`;
+  menu.setAttribute("role", "menu");
+  const buttons = [...menu.querySelectorAll("button")];
+  for (const button of buttons) button.setAttribute("role", "menuitem");
+  const close = (refocus) => {
+    menu.remove();
+    if (refocus && anchor.isConnected) anchor.focus();
+  };
   menu.onclick = (event) => {
     const button = event.target.closest("[data-i]");
+    close(!button);
     if (button) items[button.dataset.i].action();
-    menu.remove();
   };
+  // Con el teclado: flechas para moverse, Enter para elegir, Escape o Tab para cerrar.
+  menu.onkeydown = (event) => {
+    const index = buttons.indexOf(document.activeElement);
+    const go = (i) => {
+      event.preventDefault();
+      buttons[(i + buttons.length) % buttons.length]?.focus();
+    };
+    if (event.key === "ArrowDown") go(index + 1);
+    else if (event.key === "ArrowUp") go(index - 1);
+    else if (event.key === "Home") go(0);
+    else if (event.key === "End") go(buttons.length - 1);
+    else if (event.key === "Escape" || event.key === "Tab") {
+      event.preventDefault();
+      event.stopPropagation();
+      close(true);
+    }
+  };
+  buttons[0]?.focus({ preventScroll: true });
   setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
 }
 
@@ -461,7 +488,7 @@ function renderContent() {
     .map((item, index) => {
       const sub = world ? `Jugado ${ago(item.modified).toLowerCase()}${item.version ? ` · ${item.version}` : ""}` : item.authors ? `por ${item.authors}` : item.file;
       return `<div class="content-item ${item.enabled ? "" : "disabled"}" style="animation-delay:${Math.min(index, 20) * 15}ms">
-        <div class="content-icon">${item.icon ? `<img src="${item.icon}" alt="">` : icon(kindIcons[state.kind])}</div>
+        <div class="content-icon">${item.icon ? `<img src="${item.icon}" alt="" loading="lazy" decoding="async">` : icon(kindIcons[state.kind])}</div>
         <div class="grow">${
           item.projectId
             ? `<button class="c-name link" data-project-open="${escapeHtml(item.projectId)}" title="Ver su página">${escapeHtml(item.name)}</button>`
@@ -638,6 +665,40 @@ async function verifyInstance(id) {
   } finally {
     state.verifying = null;
     $("#download-indicator").classList.add("hidden");
+  }
+}
+
+// ---------- Accesos directos (Escritorio y menú Inicio) ----------
+const shortcutHints = {
+  desktop: "Para abrir Parabellum sin buscar su carpeta. Sigue siendo portable: no se instala nada.",
+  startMenu: "Aparece al buscar «Parabellum» en Inicio.",
+  other: "Hay uno que abre Parabellum desde otra carpeta. Actívalo para que abra este.",
+};
+
+function renderShortcuts(status) {
+  for (const [key, id] of [["desktop", "shortcut-desktop"], ["startMenu", "shortcut-start"]]) {
+    $(`#${id}`).checked = status[key] === "si";
+    $(`#${id}-hint`).textContent = status[key] === "otro" ? shortcutHints.other : shortcutHints[key];
+  }
+}
+
+async function loadShortcuts() {
+  try {
+    renderShortcuts(await invoke("accesos_directos"));
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+async function toggleShortcut(place, input) {
+  input.disabled = true;
+  try {
+    renderShortcuts(await invoke("acceso_directo", { lugar: place, crear: input.checked }));
+  } catch (error) {
+    input.checked = !input.checked;
+    toast(String(error), "error");
+  } finally {
+    input.disabled = false;
   }
 }
 
@@ -1716,9 +1777,31 @@ async function saveServers(servers) {
 // ======================================================================
 // Modales
 // ======================================================================
+const FOCUSABLE = 'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [href], [tabindex]:not([tabindex="-1"])';
+
+/** Lo que se puede enfocar y se ve (los pasos ocultos de un diálogo no cuentan). */
+function focusables(root) {
+  return [...root.querySelectorAll(FOCUSABLE)].filter((e) => e.getClientRects().length && !e.closest(".hidden"));
+}
+
+/** El diálogo abierto que está encima. */
+function topModal() {
+  return [...$$(".overlay")].filter((o) => !o.classList.contains("hidden") && !o.classList.contains("closing")).pop() ?? null;
+}
+
 function openModal(id) {
   const overlay = $(id);
+  const wasHidden = overlay.classList.contains("hidden") || overlay.classList.contains("closing");
   overlay.classList.remove("hidden", "closing");
+  if (!wasHidden) return;
+  if (!overlay.contains(document.activeElement)) overlay.returnFocus = document.activeElement;
+  // El foco entra al diálogo (a su primer campo, si tiene) para poder usarlo con el teclado.
+  requestAnimationFrame(() => {
+    if (overlay.contains(document.activeElement)) return;
+    const modal = $(".modal", overlay) ?? overlay;
+    const field = focusables(modal).find((e) => e.matches("input:not([type=checkbox]):not([type=range]), textarea"));
+    (field ?? modal).focus({ preventScroll: true });
+  });
 }
 
 function closeModal(id) {
@@ -1726,6 +1809,91 @@ function closeModal(id) {
   if (overlay.classList.contains("hidden")) return;
   overlay.classList.add("closing");
   setTimeout(() => overlay.classList.add("hidden"), 150);
+  // El foco vuelve a donde estaba (el botón que abrió el diálogo).
+  const back = overlay.returnFocus;
+  overlay.returnFocus = null;
+  if (back?.isConnected && overlay.contains(document.activeElement)) back.focus({ preventScroll: true });
+}
+
+/** Marca cada diálogo para el lector de pantalla y hace que las tarjetas se puedan usar con el teclado. */
+function setupAccessibility() {
+  for (const overlay of $$(".overlay")) {
+    const modal = $(".modal", overlay);
+    if (!modal) continue;
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.tabIndex = -1;
+    const title = $("h2", modal);
+    if (title) {
+      title.id ||= `${overlay.id}-titulo`;
+      modal.setAttribute("aria-labelledby", title.id);
+    }
+  }
+  // Tarjetas y filas que se pulsan pero no son botones: reciben foco y responden a Enter y Espacio.
+  const clickable = "[data-open], [data-project], [data-version], [data-chat], [data-chat-friend], [data-image], [data-external], [data-drive], [data-loader], [data-value], [data-category], [data-format], [data-use-account]";
+  const mark = (root) => {
+    for (const element of root.querySelectorAll?.(clickable) ?? []) {
+      if (element.matches("button, a, input, label, select, textarea") || element.hasAttribute("tabindex")) continue;
+      element.tabIndex = 0;
+      element.setAttribute("role", "button");
+    }
+  };
+  mark(document);
+  new MutationObserver((changes) => {
+    for (const change of changes) for (const node of change.addedNodes) if (node.nodeType === 1) mark(node.parentElement ?? node);
+  }).observe(document.body, { childList: true, subtree: true });
+  document.addEventListener("keydown", (event) => {
+    const target = event.target;
+    if ((event.key === "Enter" || event.key === " ") && target.getAttribute?.("role") === "button" && !target.matches("button")) {
+      event.preventDefault();
+      target.click();
+    }
+    // Tab no sale del diálogo abierto.
+    if (event.key === "Tab") {
+      const overlay = topModal();
+      if (!overlay) return;
+      const items = focusables($(".modal", overlay) ?? overlay);
+      if (!items.length) return;
+      const [first, last] = [items[0], items[items.length - 1]];
+      if (!overlay.contains(document.activeElement)) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+  });
+}
+
+// ---------- Tamaño de la interfaz ----------
+const SCALES = [0.9, 1, 1.1, 1.25, 1.5];
+
+function renderScale() {
+  const current = state.settings.uiScale ?? 1;
+  for (const button of $$("#ui-scale button")) {
+    const active = Math.abs(Number(button.dataset.scale) - current) < 0.001;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-checked", String(active));
+  }
+}
+
+function setScale(scale) {
+  state.settings.uiScale = scale;
+  renderScale();
+  saveSettings({ uiScale: scale });
+}
+
+/** Ctrl + / Ctrl − / Ctrl 0 */
+function stepScale(direction) {
+  const current = state.settings.uiScale ?? 1;
+  if (direction === 0) return setScale(1);
+  const index = SCALES.findIndex((s) => Math.abs(s - current) < 0.001);
+  const next = SCALES[Math.min(SCALES.length - 1, Math.max(0, (index < 0 ? 1 : index) + direction))];
+  if (next !== current) setScale(next);
 }
 
 // ---------- Crear instancia ----------
@@ -1953,6 +2121,7 @@ function openSettings(section = "appearance") {
 
 function selectSettingsSection(section) {
   if (section === "about") refreshAbout();
+  if (section === "behavior") loadShortcuts();
   for (const button of $$(".settings-nav button")) button.classList.toggle("active", button.dataset.section === section);
   for (const panel of $$(".settings-content section")) panel.classList.toggle("hidden", panel.dataset.section !== section);
 }
@@ -1973,6 +2142,7 @@ function renderSettings() {
   $("#ram-max").textContent = `${$("#ram").max} GB`;
   $("#win-width").value = s.windowWidth;
   $("#win-height").value = s.windowHeight;
+  renderScale();
   updateSettingsTexts();
   applyTheme(s.theme);
 }
@@ -2334,6 +2504,8 @@ function wireEvents() {
   $("#minimize-on-launch").onchange = () => saveSettings();
   $("#close-to-tray").onchange = () => saveSettings();
   $("#notifications").onchange = () => saveSettings();
+  $("#shortcut-desktop").onchange = () => toggleShortcut("escritorio", $("#shortcut-desktop"));
+  $("#shortcut-start").onchange = () => toggleShortcut("inicio", $("#shortcut-start"));
   for (const button of $$("#theme button")) {
     button.onclick = () => {
       applyTheme(button.dataset.theme);
@@ -2374,13 +2546,21 @@ function wireEvents() {
 
   // Colapsables y teclado
   for (const collapsible of $$(".collapsible")) $(".collapsible-head", collapsible).onclick = () => collapsible.classList.toggle("open");
+  for (const button of $$("#ui-scale button")) button.onclick = () => setScale(Number(button.dataset.scale));
   document.addEventListener("keydown", (event) => {
+    if (event.ctrlKey && !event.altKey && ["+", "=", "-", "0"].includes(event.key)) {
+      event.preventDefault();
+      stepScale(event.key === "0" ? 0 : event.key === "-" ? -1 : 1);
+      return;
+    }
     if (event.key === "Escape") {
       closeModal("#create-dialog");
       closeModal("#settings-dialog");
       closeModal("#edit-dialog");
       closeModal("#crash-dialog");
       closeModal("#install-dialog");
+      closeModal("#group-dialog");
+      closeModal("#account-dialog");
       if (!state.exporting?.busy) closeModal("#export-dialog");
       $("#lightbox").classList.add("hidden");
       if (!$("#confirm-dialog").classList.contains("hidden")) state.confirmCancel?.();
@@ -2483,6 +2663,7 @@ function wireEvents() {
 
 async function init() {
   wireEvents();
+  setupAccessibility();
   const initial = await invoke("estado_inicial");
   state.settings = initial.settings;
   state.instances = initial.instances;
@@ -3943,6 +4124,8 @@ function demoInvoke(command, args = {}) {
     );
   if (command === "importar_modpack") return later({ id: "Minecraft++", name: "Minecraft++", kind: "modpack", updated: false }, 1200);
   if (command === "instalar_modpack") return later({ id: "Minecraft++", name: "Fabulously Optimized", kind: "modpack", updated: false }, 1200);
+  if (command === "accesos_directos" || command === "acceso_directo")
+    return later({ desktop: command === "acceso_directo" && args.lugar === "escritorio" && args.crear ? "si" : "no", startMenu: "otro" }, 200);
   if (command === "verificar_instancia") return later({ checked: 394, repaired: ["balm-fabric-1.20.1-7.3.38.jar", "voidz-1.0.11.jar"], failed: [] }, 1500);
   if (command === "instalar_datapack") return later("Se instaló Terralith 2.5.8 en el mundo «Mi mundo».", 600);
   if (command === "contenido") {

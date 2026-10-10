@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Parabellum",
-  "version": "0.1.0",
   "identifier": "mx.parabellum.launcher",
   "build": {
     "frontendDist": "../ui"
@@ -24,11 +23,13 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' data: asset: http://asset.localhost https:; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' data: asset: http://asset.localhost http://icono.localhost https:; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {
     "active": false,
+    "publisher": "Parabellum",
+    "copyright": "Parabellum, launcher de Minecraft no premium",
     "icon": ["icons/icon.ico"]
   }
 }

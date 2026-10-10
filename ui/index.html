@@ -516,6 +516,16 @@
               <button data-theme="claro"><span class="theme-preview light"><i></i><i></i><i></i></span>Claro</button>
               <button data-theme="sistema"><span class="theme-preview system"><i></i><i></i><i></i></span>Sistema</button>
             </div>
+            <div class="setting" style="margin-top:22px">
+              <div class="grow"><b>Tamaño de la interfaz</b><span>Letras y botones más grandes o más pequeños. También con Ctrl + y Ctrl − (Ctrl 0 vuelve al normal).</span></div>
+            </div>
+            <div class="scale-options" id="ui-scale" role="radiogroup" aria-label="Tamaño de la interfaz">
+              <button data-scale="0.9" role="radio">90 %</button>
+              <button data-scale="1" role="radio">100 %</button>
+              <button data-scale="1.1" role="radio">110 %</button>
+              <button data-scale="1.25" role="radio">125 %</button>
+              <button data-scale="1.5" role="radio">150 %</button>
+            </div>
           </section>
           <section data-section="behavior" class="hidden">
             <div class="setting">
@@ -529,6 +539,14 @@
             <div class="setting">
               <div class="grow"><b>Avisos de amigos</b><span>Un aviso de Windows cuando alguien te manda solicitud de amistad o un amigo abre su mundo (solo si Parabellum no está al frente).</span></div>
               <label class="toggle big"><input type="checkbox" id="notifications"><span></span></label>
+            </div>
+            <div class="setting">
+              <div class="grow"><b>Acceso directo en el Escritorio</b><span id="shortcut-desktop-hint">Para abrir Parabellum sin buscar su carpeta. Sigue siendo portable: no se instala nada.</span></div>
+              <label class="toggle big"><input type="checkbox" id="shortcut-desktop"><span></span></label>
+            </div>
+            <div class="setting">
+              <div class="grow"><b>Acceso directo en el menú Inicio</b><span id="shortcut-start-hint">Aparece al buscar «Parabellum» en Inicio.</span></div>
+              <label class="toggle big"><input type="checkbox" id="shortcut-start"><span></span></label>
             </div>
           </section>
           <section data-section="profile" class="hidden">
@@ -797,7 +815,7 @@
     </div>
   </div>
 
-  <div class="toasts" id="toasts"></div>
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 
   <!-- Iconos lineales (estilo Lucide) -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">

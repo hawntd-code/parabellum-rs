@@ -1,9 +1,8 @@
 //! Contenido de una instancia: mods, resource packs, shaders y mundos.
 //! Desactivar un mod = renombrarlo a "*.jar.disabled" (lo mismo que hacen CurseForge, Modrinth y Prism).
 
-use base64::Engine;
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -50,21 +49,91 @@ pub fn folder(instance: &Instance, kind: &str) -> Option<PathBuf> {
 }
 
 pub fn list(instance: &Instance) -> Content {
-    Content {
-        mods: files(instance, "mods", &[".jar"], true),
-        resourcepacks: files(instance, "resourcepacks", &[".zip"], false),
-        shaderpacks: files(instance, "shaderpacks", &[".zip"], false),
+    // Lo que se leyó de cada archivo se guarda: abrir cientos de .jar cada vez es lo que tardaba.
+    let mut cache = load_cache(instance);
+    let before = cache.len();
+    let mut seen = std::collections::HashSet::new();
+    let content = Content {
+        mods: files(instance, "mods", &[".jar"], &mut cache, &mut seen),
+        resourcepacks: files(instance, "resourcepacks", &[".zip"], &mut cache, &mut seen),
+        shaderpacks: files(instance, "shaderpacks", &[".zip"], &mut cache, &mut seen),
         worlds: worlds(instance),
+    };
+    // Sin lo que ya no está; se guarda solo si algo cambió.
+    cache.retain(|key, _| seen.contains(key));
+    if cache.len() != before || seen.iter().any(|k| cache.get(k).is_some_and(|c| c.fresh)) {
+        save_cache(instance, &cache);
     }
+    content
+}
+
+const CACHE_FILE: &str = "contenido.json";
+
+/// Lo que se sabe de un archivo mientras no cambie (mismo tamaño y fecha).
+#[derive(Serialize, Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+struct Cached {
+    size: u64,
+    modified: Option<i64>,
+    name: Option<String>,
+    version: Option<String>,
+    authors: Option<String>,
+    /// Ruta del icono dentro del .jar o .zip ("assets/sodium/icon.png"), si tiene.
+    icon: Option<String>,
+    #[serde(skip)]
+    fresh: bool,
+}
+
+fn load_cache(instance: &Instance) -> std::collections::HashMap<String, Cached> {
+    std::fs::read_to_string(instance.state_dir().join(CACHE_FILE)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+fn save_cache(instance: &Instance, cache: &std::collections::HashMap<String, Cached>) {
+    let _ = std::fs::create_dir_all(instance.state_dir());
+    let _ = std::fs::write(instance.state_dir().join(CACHE_FILE), serde_json::to_vec(cache).unwrap_or_default());
 }
 
 fn modified_ms(meta: &std::fs::Metadata) -> Option<i64> {
     meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_millis() as i64)
 }
 
-fn files(instance: &Instance, kind: &str, extensions: &[&str], read_mod: bool) -> Vec<ContentItem> {
+/// Codifica un trozo de ruta para una URL.
+fn encode(text: &str) -> String {
+    text.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
+}
+
+fn decode(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            out.push(u8::from_str_radix(text.get(i + 1..i + 3)?, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// Dirección del icono de un elemento: lo sirve el protocolo "icono" (ver `icon_for_path`), así la
+/// lista llega sin imágenes y cada icono se carga cuando se ve.
+fn icon_url(instance: &Instance, kind: &str, file: &str, modified: Option<i64>) -> String {
+    format!("http://icono.localhost/{}/{kind}/{}?v={}", encode(&instance.id), encode(file), modified.unwrap_or(0))
+}
+
+fn files(
+    instance: &Instance,
+    kind: &str,
+    extensions: &[&str],
+    cache: &mut std::collections::HashMap<String, Cached>,
+    seen: &mut std::collections::HashSet<String>,
+) -> Vec<ContentItem> {
     let Some(dir) = folder(instance, kind) else { return Vec::new() };
     let Ok(entries) = std::fs::read_dir(&dir) else { return Vec::new() };
+    let read_mod = kind == "mods";
     let mut items: Vec<ContentItem> = entries
         .flatten()
         .filter_map(|entry| {
@@ -77,15 +146,32 @@ fn files(instance: &Instance, kind: &str, extensions: &[&str], read_mod: bool) -
                 return None;
             }
             let meta = entry.metadata().ok()?;
-            let info = if read_mod { mod_info(&entry.path()) } else { ModInfo::default() };
+            let modified = modified_ms(&meta);
+            let key = format!("{kind}/{}", base.to_lowercase());
+            seen.insert(key.clone());
+            let known = cache.get(&key).filter(|c| c.size == meta.len() && c.modified == modified).cloned();
+            let info = known.unwrap_or_else(|| {
+                let mut read = if read_mod {
+                    mod_info(&entry.path())
+                } else if kind == "resourcepacks" {
+                    Cached { icon: pack_icon(&entry.path()), ..Default::default() }
+                } else {
+                    Cached::default()
+                };
+                read.size = meta.len();
+                read.modified = modified;
+                read.fresh = true;
+                cache.insert(key.clone(), read.clone());
+                read
+            });
             Some(ContentItem {
                 name: info.name.unwrap_or_else(|| pretty_name(base, extensions)),
                 version: info.version,
                 authors: info.authors,
-                icon: info.icon,
+                icon: info.icon.is_some().then(|| icon_url(instance, kind, &file, modified)),
                 enabled,
                 size: meta.len(),
-                modified: modified_ms(&meta),
+                modified,
                 project_id: None,
                 file,
             })
@@ -102,11 +188,8 @@ fn worlds(instance: &Instance) -> Vec<ContentItem> {
         .filter(|e| e.path().join("level.dat").exists())
         .map(|entry| {
             let meta = std::fs::metadata(entry.path().join("level.dat")).ok();
-            let icon = std::fs::read(entry.path().join("icon.png"))
-                .ok()
-                .filter(|b| b.len() < 500_000)
-                .map(|b| format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(b)));
             let file = entry.file_name().to_string_lossy().to_string();
+            let icon_modified = std::fs::metadata(entry.path().join("icon.png")).ok().and_then(|m| modified_ms(&m));
             let datapacks = std::fs::read_dir(entry.path().join("datapacks")).into_iter().flatten().flatten().count();
             ContentItem {
                 name: file.clone(),
@@ -115,7 +198,7 @@ fn worlds(instance: &Instance) -> Vec<ContentItem> {
                 enabled: true,
                 size: 0,
                 modified: meta.as_ref().and_then(modified_ms),
-                icon,
+                icon: icon_modified.map(|m| icon_url(instance, "worlds", &file, Some(m))),
                 project_id: None,
                 file,
             }
@@ -135,52 +218,87 @@ fn pretty_name(file: &str, extensions: &[&str]) -> String {
     name
 }
 
-#[derive(Default)]
-struct ModInfo {
-    name: Option<String>,
-    version: Option<String>,
-    authors: Option<String>,
-    icon: Option<String>,
+/// Lee un archivo de dentro de un zip (si no es enorme).
+fn read_entry<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>, name: &str, limit: u64) -> Option<Vec<u8>> {
+    let mut entry = zip.by_name(name).ok()?;
+    if entry.size() > limit {
+        return None;
+    }
+    let mut buffer = Vec::new();
+    entry.read_to_end(&mut buffer).ok()?;
+    Some(buffer)
 }
 
-/// Nombre, versión, autores e icono que declara el propio mod (Fabric, Quilt, Forge o NeoForge).
-fn mod_info(path: &Path) -> ModInfo {
-    let Ok(file) = std::fs::File::open(path) else { return ModInfo::default() };
-    let Ok(mut zip) = zip::ZipArchive::new(file) else { return ModInfo::default() };
-    let mut read = |name: &str| -> Option<Vec<u8>> {
-        let mut entry = zip.by_name(name).ok()?;
-        if entry.size() > 4_000_000 {
-            return None;
-        }
-        let mut buffer = Vec::new();
-        entry.read_to_end(&mut buffer).ok()?;
-        Some(buffer)
-    };
+fn is_png(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0x89, b'P', b'N', b'G'])
+}
 
-    let mut info = ModInfo::default();
+/// Nombre, versión, autores y ruta del icono que declara el propio mod (Fabric, Quilt, Forge o NeoForge).
+fn mod_info(path: &Path) -> Cached {
+    let Ok(file) = std::fs::File::open(path) else { return Cached::default() };
+    let Ok(mut zip) = zip::ZipArchive::new(file) else { return Cached::default() };
+    let mut info = Cached::default();
     let mut icon_path: Option<String> = None;
-    if let Some(json) = read("fabric.mod.json").and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok()) {
+    if let Some(json) = read_entry(&mut zip, "fabric.mod.json", 4_000_000).and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok()) {
         info.name = json["name"].as_str().map(String::from);
         info.version = json["version"].as_str().map(String::from);
         info.authors = authors(&json["authors"]);
-        icon_path = json["icon"].as_str().map(String::from);
-    } else if let Some(json) = read("quilt.mod.json").and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok()) {
+        // El icono puede ser una ruta o un objeto con varios tamaños ({"64": "…", "128": "…"}).
+        icon_path = json["icon"].as_str().map(String::from).or_else(|| json["icon"].as_object()?.values().filter_map(|v| v.as_str()).next().map(String::from));
+    } else if let Some(json) = read_entry(&mut zip, "quilt.mod.json", 4_000_000).and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok()) {
         let loader = &json["quilt_loader"];
         info.name = loader["metadata"]["name"].as_str().map(String::from);
         info.version = loader["version"].as_str().map(String::from);
         icon_path = loader["metadata"]["icon"].as_str().map(String::from);
-    } else if let Some(toml) = read("META-INF/neoforge.mods.toml").or_else(|| read("META-INF/mods.toml")) {
+    } else if let Some(toml) = read_entry(&mut zip, "META-INF/neoforge.mods.toml", 4_000_000).or_else(|| read_entry(&mut zip, "META-INF/mods.toml", 4_000_000)) {
         let text = String::from_utf8_lossy(&toml);
         info.name = toml_value(&text, "displayName");
         info.version = toml_value(&text, "version").filter(|v| !v.contains("${"));
         info.authors = toml_value(&text, "authors");
         icon_path = toml_value(&text, "logoFile");
     }
+    // Solo se anota si de verdad es un PNG que se puede mostrar.
     info.icon = icon_path
-        .and_then(|p| read(p.trim_start_matches('/')))
-        .filter(|b| b.len() < 300_000 && b.starts_with(&[0x89, b'P', b'N', b'G']))
-        .map(|b| format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(b)));
+        .map(|p| p.trim_start_matches('/').to_string())
+        .filter(|p| read_entry(&mut zip, p, 2_000_000).is_some_and(|b| is_png(&b)));
     info
+}
+
+/// El pack.png de un resource pack (zip o carpeta).
+fn pack_icon(path: &Path) -> Option<String> {
+    let found = if path.is_dir() {
+        std::fs::read(path.join("pack.png")).ok().is_some_and(|b| is_png(&b))
+    } else {
+        let file = std::fs::File::open(path).ok()?;
+        let mut zip = zip::ZipArchive::new(file).ok()?;
+        read_entry(&mut zip, "pack.png", 2_000_000).is_some_and(|b| is_png(&b))
+    };
+    found.then(|| "pack.png".to_string())
+}
+
+/// El icono que pide la interfaz: "/<instancia>/<categoría>/<archivo>" (cada parte codificada).
+/// Solo sirve archivos de dentro de la instancia, igual que el resto de comandos de contenido.
+pub fn icon_for_path(paths: &crate::paths::Paths, uri_path: &str) -> Option<Vec<u8>> {
+    let mut parts = uri_path.trim_start_matches('/').split('/');
+    let (id, kind, file) = (decode(parts.next()?)?, parts.next()?.to_string(), decode(parts.next()?)?);
+    if parts.next().is_some() {
+        return None;
+    }
+    let instance = crate::instances::find(paths, &id)?;
+    let path = item_path(&instance, &kind, &file).ok()?;
+    let bytes = match kind.as_str() {
+        "worlds" => std::fs::read(path.join("icon.png")).ok()?,
+        "mods" | "resourcepacks" => {
+            let icon = if kind == "mods" { mod_info(&path).icon? } else { pack_icon(&path)? };
+            if path.is_dir() {
+                std::fs::read(path.join(&icon)).ok()?
+            } else {
+                read_entry(&mut zip::ZipArchive::new(std::fs::File::open(&path).ok()?).ok()?, &icon, 2_000_000)?
+            }
+        }
+        _ => return None,
+    };
+    is_png(&bytes).then_some(bytes)
 }
 
 fn authors(value: &serde_json::Value) -> Option<String> {

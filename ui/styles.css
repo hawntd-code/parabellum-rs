@@ -34,10 +34,10 @@
   --border-strong: #3a3743;
   --text: #ecebf1;
   --muted: #a7a3b3;
-  --faint: #74707f;
-  --accent: #8b5cf6;
-  --accent-hover: #9a70f8;
-  --accent-press: #7845ea;
+  --faint: #928ea0;
+  --accent: #7f50f2;
+  --accent-hover: #7444e8;
+  --accent-press: #6a3ade;
   --accent-fg: #b79bff;
   --accent-soft: rgba(139, 92, 246, 0.17);
   --accent-softer: rgba(139, 92, 246, 0.09);
@@ -63,7 +63,7 @@
   --border-strong: #cdc6dc;
   --text: #1b1825;
   --muted: #625e70;
-  --faint: #8f8b9b;
+  --faint: #6b6779;
   --accent: #7444c9;
   --accent-hover: #6838c0;
   --accent-press: #5c2fb0;
@@ -72,8 +72,8 @@
   --accent-softer: rgba(116, 68, 201, 0.06);
   --accent-glow: rgba(116, 68, 201, 0.28);
   --on-accent: #ffffff;
-  --danger: #d93a46;
-  --success: #1f9d61;
+  --danger: #c42f3b;
+  --success: #17804f;
   --shadow: 0 24px 60px rgba(48, 28, 84, 0.2);
   --overlay: rgba(40, 28, 60, 0.35);
   color-scheme: light;
@@ -432,7 +432,10 @@ input:disabled { opacity: .6; }
 .version-empty { color: var(--muted); text-align: center; padding: 40px 10px; }
 
 .toggle { display: inline-flex; align-items: center; gap: 9px; color: var(--muted); font-size: 13px; font-weight: 650; cursor: pointer; }
-.toggle input { display: none; }
+/* La casilla no se ve pero sigue ahí: así se puede usar con el teclado y la anuncia el lector de pantalla. */
+.toggle { position: relative; }
+.toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+.toggle input:focus-visible + span { outline: 2px solid var(--accent-fg); outline-offset: 2px; }
 .toggle span { width: 34px; height: 20px; border-radius: 999px; background: var(--card-hover); position: relative; transition: background .2s; flex: none; }
 .toggle span::after { content: ""; position: absolute; left: 3px; top: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--muted); transition: transform .22s var(--ease), background .2s; }
 .toggle input:checked + span { background: var(--accent); }
@@ -879,3 +882,14 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
   .chat-layout { grid-template-columns: 1fr; }
   .chat-side { display: none; }
 }
+
+/* ================= Accesibilidad */
+/* Con el teclado se ve siempre dónde está el foco (con el ratón no aparece). */
+:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 2px; }
+.menu button:focus-visible { outline: none; background: var(--card-hover); }
+.modal:focus { outline: none; }
+.scale-options { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 8px; }
+.scale-options button { padding: 10px 0; border-radius: var(--r); border: 2px solid var(--border); background: var(--field); color: var(--text); font-weight: 650; transition: border-color .15s, background .15s; }
+.scale-options button:hover { border-color: var(--border-strong); }
+.scale-options button.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

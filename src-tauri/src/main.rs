@@ -1,6 +1,7 @@
 // Sin ventana de consola en Windows.
 #![windows_subsystem = "windows"]
 
+mod accesos;
 mod actividad;
 mod amigos;
 mod avisos;
@@ -107,6 +108,12 @@ fn estado_inicial(state: State<AppState>) -> Initial {
 fn guardar_ajustes(app: AppHandle, state: State<AppState>, mut ajustes: Settings) -> Result<Settings, String> {
     ajustes.normalize()?;
     ajustes.ram_gb = ajustes.ram_gb.clamp(1, 64);
+    ajustes.ui_scale = if ajustes.ui_scale.is_finite() { ajustes.ui_scale.clamp(0.8, 1.5) } else { 1.0 };
+    if (ajustes.ui_scale - state.settings.lock().unwrap().ui_scale).abs() > f64::EPSILON {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.set_zoom(ajustes.ui_scale);
+        }
+    }
     ajustes.save(&state.paths).map_err(|e| format!("No se pudieron guardar los ajustes: {e}"))?;
     *state.settings.lock().unwrap() = ajustes.clone();
     cuenta::settings_changed(&app);
@@ -486,6 +493,26 @@ async fn elegir_contenido(app: AppHandle, state: State<'_, AppState>, id: String
     let Some(picked) = picked else { return Ok(None) };
     let sources: Vec<PathBuf> = picked.into_iter().filter_map(|f| f.into_path().ok()).collect();
     tauri::async_runtime::spawn_blocking(move || Some(content::add(&instance, &sources, Some(&tipo)))).await.map_err(|e| e.to_string())
+}
+
+/// Accesos directos del Escritorio y del menú Inicio: si están y si abren este Parabellum.
+#[tauri::command]
+async fn accesos_directos() -> Result<accesos::Status, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || accesos::status(&exe)).await.map_err(|e| e.to_string())
+}
+
+/// Crea (o rehace) o quita un acceso directo: `lugar` es "escritorio" o "inicio".
+#[tauri::command]
+async fn acceso_directo(lugar: String, crear: bool) -> Result<accesos::Status, String> {
+    let place = accesos::Place::parse(&lugar).ok_or("Lugar desconocido.")?;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        if crear { accesos::create(place, &exe) } else { accesos::remove(place) }?;
+        Ok(accesos::status(&exe))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1696,6 +1723,21 @@ fn main() {
     catalog::cleanup_previous_version();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        // Iconos de mods, resource packs y mundos (http://icono.localhost/…): se leen cuando se ven.
+        .register_asynchronous_uri_scheme_protocol("icono", |ctx, request, responder| {
+            let paths = ctx.app_handle().state::<AppState>().paths.clone();
+            let path = request.uri().path().to_string();
+            std::thread::spawn(move || {
+                let response = match content::icon_for_path(&paths, &path) {
+                    Some(bytes) => tauri::http::Response::builder()
+                        .header("Content-Type", "image/png")
+                        .header("Cache-Control", "max-age=31536000, immutable")
+                        .body(bytes),
+                    None => tauri::http::Response::builder().status(404).body(Vec::new()),
+                };
+                responder.respond(response.unwrap());
+            });
+        })
         .manage(AppState {
             config: config::Config::load(&paths),
             paths,
@@ -1706,6 +1748,13 @@ fn main() {
             social: cuenta::SocialState::default(),
         })
         .setup(|app| {
+            // El tamaño de la interfaz que eligió el jugador (Ajustes › Apariencia).
+            let scale = app.state::<AppState>().settings.lock().unwrap().ui_scale;
+            if (scale - 1.0).abs() > f64::EPSILON {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_zoom(scale.clamp(0.8, 1.5));
+                }
+            }
             adopt_running_games(app.handle());
             avisos::register(&app.state::<AppState>().paths.data.join("cache"));
             cuenta::create_tray(app.handle())?;
@@ -1788,6 +1837,8 @@ fn main() {
             catalogo,
             instalar_de_catalogo,
             verificar_instancia,
+            accesos_directos,
+            acceso_directo,
             actualizacion_launcher,
             aplicar_actualizacion,
             carpeta_exportar,
