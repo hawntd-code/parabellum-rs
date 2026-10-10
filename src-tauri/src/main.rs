@@ -16,6 +16,7 @@ mod firebase;
 mod forge;
 mod google;
 mod instances;
+mod integridad;
 mod java;
 mod launch;
 mod loaders;
@@ -325,6 +326,19 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
     let instance = instances::find(&paths, &id).ok_or("No se encontró la instancia.")?;
     if state.games.lock().unwrap().contains_key(&id) {
         return Err("Este juego ya está abierto.".into());
+    }
+    // Que el modpack esté completo: lo que falte se baja (o se repone) antes de abrir el juego.
+    let cached = state.catalog.lock().unwrap().clone();
+    let completed = ensure_complete(&instance, &paths, &state.config, cached, false, progress_emitter(&app, "jugar")).await;
+    let missing_mods = &completed.missing_mods;
+    if !missing_mods.is_empty() {
+        let shown: Vec<&str> = missing_mods.iter().take(4).map(String::as_str).collect();
+        return Err(format!(
+            "{} del modpack y no se {} reponer:\n{}\nConéctate a internet o usa «Verificar y reparar archivos» en el menú ⋯ de la instancia.",
+            missing_count(missing_mods.len(), "mod", "mods"),
+            if missing_mods.len() == 1 { "pudo" } else { "pudieron" },
+            shown.join("\n")
+        ));
     }
     let launched = instance.clone();
     let session = cuenta::session_arguments(&app);
@@ -668,6 +682,139 @@ struct Imported {
     kind: String,
     /// Ya existía y se actualizó conservando mundos y opciones.
     updated: bool,
+    /// Lo que no se pudo completar (por ejemplo, mods de CurseForge sin internet).
+    warning: Option<String>,
+}
+
+/// Aviso de lo que quedó sin reponer, o None si está todo.
+fn missing_warning(report: &integridad::Report) -> Option<String> {
+    if report.failed.is_empty() {
+        return None;
+    }
+    let shown: Vec<&str> = report.failed.iter().take(4).map(String::as_str).collect();
+    let more = if report.failed.len() > shown.len() { format!("\n…y {} más", report.failed.len() - shown.len()) } else { String::new() };
+    Some(format!("{} del modpack:\n{}{more}", missing_count(report.failed.len(), "archivo", "archivos"), shown.join("\n")))
+}
+
+/// "Falta 1 mod" o "Faltan 3 mods".
+fn missing_count(n: usize, one: &str, many: &str) -> String {
+    if n == 1 { format!("Falta 1 {one}") } else { format!("Faltan {n} {many}") }
+}
+
+/// Deja la instancia completa: baja lo que falte (con `deep`, también lo dañado) y lo que el modpack
+/// pide a CurseForge, y repone lo que venía dentro del modpack (del .mrpack de Modrinth o del paquete de Drive).
+async fn ensure_complete(
+    instance: &Instance,
+    paths: &Paths,
+    config: &config::Config,
+    catalog: Option<Arc<catalog::Catalog>>,
+    deep: bool,
+    progress: impl Fn(String, f64) + Send + Sync + Clone + 'static,
+) -> integridad::Report {
+    let package = packs::installed_manifest(instance).filter(|m| !m.is_base());
+    // Un modpack de Modrinth exportado como paquete se repone desde el paquete: su lista es la del paquete.
+    let modrinth_source = integridad::modrinth_source(instance).filter(|_| package.is_none());
+    let temp = paths.data.join("temporal");
+    let mut early_failure = None;
+    // Desde Drive se compara todo el paquete (por CRC32), así que se hace una sola vez.
+    let mut drive: Option<Result<String, String>> = None;
+    // Instalada antes de que existiera la lista: se arma con el modpack original, o se repara desde Drive.
+    if deep && integridad::load(&instance.game_dir).is_none() {
+        if let Some((project, version)) = &modrinth_source {
+            progress("Descargando el modpack original para comparar…".into(), 0.0);
+            match modrinth::download_modpack(project, Some(version), &temp).await {
+                Ok(download) => {
+                    if let Ok(Some(info)) = mrpack::read(&download.file) {
+                        integridad::save(&instance.game_dir, integridad::from_mrpack(&info, &download.file));
+                    }
+                    let _ = std::fs::remove_file(&download.file);
+                }
+                Err(error) => early_failure = Some(format!("No se pudo bajar el modpack original para comparar: {error}")),
+            }
+        } else if let Some(manifest) = &package {
+            drive = Some(drive_repair(manifest, paths, config, catalog.clone(), progress.clone()).await);
+        }
+    }
+    let mut report = integridad::repair(&instance.game_dir, deep, progress.clone()).await;
+    if let Some(error) = early_failure {
+        report.fail(None, error);
+    }
+    let pending = std::mem::take(&mut report.from_pack);
+    // Cada archivo que no se pudo reponer se anota con su ruta (así se sabe si falta un mod).
+    let fail_each = |report: &mut integridad::Report, paths: &[&str], reason: &str| {
+        for path in paths {
+            report.fail(Some(path), format!("{}: {reason}", integridad::file_name(path)));
+        }
+    };
+    if !pending.is_empty() {
+        let pending_paths: Vec<&str> = pending.iter().map(|t| t.path.as_str()).collect();
+        if let Some((project, version)) = &modrinth_source {
+            progress("Descargando el modpack para reponer lo que traía dentro…".into(), 0.5);
+            match modrinth::download_modpack(project, Some(version), &temp).await {
+                Ok(download) => {
+                    let (file, game_dir, wanted) = (download.file.clone(), instance.game_dir.clone(), pending.clone());
+                    let restored = tauri::async_runtime::spawn_blocking(move || integridad::restore_from_mrpack(&file, &game_dir, &wanted)).await;
+                    let _ = std::fs::remove_file(&download.file);
+                    match restored.map_err(|e| e.to_string()).and_then(|r| r) {
+                        Ok((done, absent)) => {
+                            report.repaired.extend(done);
+                            fail_each(&mut report, &absent.iter().map(String::as_str).collect::<Vec<_>>(), "el modpack ya no lo trae");
+                        }
+                        Err(error) => fail_each(&mut report, &pending_paths, &error),
+                    }
+                }
+                Err(error) => fail_each(&mut report, &pending_paths, &format!("no se pudo bajar el modpack ({error})")),
+            }
+        } else if let Some(manifest) = &package {
+            if drive.is_none() {
+                drive = Some(drive_repair(manifest, paths, config, catalog, progress.clone()).await);
+            }
+            let still: Vec<&str> = pending_paths.iter().copied().filter(|p| !integridad::present(&instance.game_dir, p)).collect();
+            match drive.take() {
+                Some(Ok(text)) => {
+                    report.repaired.push(text);
+                    fail_each(&mut report, &still, "el paquete ya no lo trae");
+                }
+                Some(Err(error)) => fail_each(&mut report, &still, &error),
+                None => {}
+            }
+        } else {
+            fail_each(&mut report, &pending_paths, "venía dentro del modpack; vuelve a instalarlo para reponerlo");
+        }
+    }
+    match drive {
+        Some(Ok(text)) => report.repaired.push(text),
+        Some(Err(error)) => report.fail(None, error),
+        None => {}
+    }
+    progress("Listo".into(), 1.0);
+    report
+}
+
+/// Repara un modpack instalado desde Drive o la carpeta paquetes (baja solo lo que falte o esté dañado).
+async fn drive_repair(
+    manifest: &packs::Manifest,
+    paths: &Paths,
+    config: &config::Config,
+    catalog: Option<Arc<catalog::Catalog>>,
+    progress: impl Fn(String, f64) + Send + Sync + Clone + 'static,
+) -> Result<String, String> {
+    let catalog = match catalog {
+        Some(cached) => cached,
+        None => Arc::new(catalog::load(paths, config).await),
+    };
+    let entry = catalog
+        .entries
+        .iter()
+        .find(|e| !e.is_launcher() && !e.manifest.is_base() && e.manifest.id.eq_ignore_ascii_case(&manifest.id))
+        .ok_or(format!("«{}» no está en el catálogo de Drive ni en la carpeta paquetes, y venía dentro de su paquete.", manifest.name))?;
+    let list = instances::list(paths);
+    let result = catalog::install(entry, &catalog.entries, paths, &list, true, progress).await?;
+    Ok(match result.downloaded_files {
+        Some(0) => format!("Se comparó con el paquete «{}» de Drive: estaba todo bien", manifest.name),
+        Some(files) => format!("Se repusieron {files} archivos desde el paquete «{}»", manifest.name),
+        None => format!("Se reinstaló el paquete «{}» (se conservaron mundos y opciones)", manifest.name),
+    })
 }
 
 /// Instala un modpack desde un archivo: paquete de Parabellum (Drive o USB) o .mrpack de Modrinth.
@@ -695,9 +842,14 @@ async fn import_modpack(
                 let _ = install_vanilla(&manifest.minecraft_version, paths, move |stage, f| report(stage, f * 0.5)).await;
             }
         }
-        let (file, paths, report) = (file.to_path_buf(), paths.clone(), progress.clone());
-        let installed = tauri::async_runtime::spawn_blocking(move || packs::install(&file, &paths, report)).await.map_err(|e| e.to_string())??;
-        return Ok(Imported { id: installed.folder, name: installed.name, kind: installed.kind, updated: installed.updated });
+        let (file, paths_copy, report) = (file.to_path_buf(), paths.clone(), progress.clone());
+        let installed = tauri::async_runtime::spawn_blocking(move || packs::install(&file, &paths_copy, report)).await.map_err(|e| e.to_string())??;
+        // Si el paquete se exportó antes de bajar lo que el modpack pide a CurseForge, se baja ahora.
+        let mut warning = None;
+        if let Some(instance) = installed.folder.as_deref().and_then(|f| instances::find(paths, f)) {
+            warning = missing_warning(&integridad::repair(&instance.game_dir, false, progress.clone()).await);
+        }
+        return Ok(Imported { id: installed.folder, name: installed.name, kind: installed.kind, updated: installed.updated, warning });
     }
 
     // .mrpack
@@ -723,8 +875,11 @@ async fn import_modpack(
     if let Some(bytes) = icon {
         let _ = instances::set_icon_bytes(&instance, &bytes);
     }
+    // Lo que el modpack no puede traer de Modrinth y pide a CurseForge (Missing Mods Checker).
+    let report = progress.clone();
+    let completed = integridad::repair(&instance.game_dir, false, move |stage, f| report(stage, 0.95 + f * 0.05)).await;
     progress("Listo".into(), 1.0);
-    Ok(Imported { id: Some(instance.id), name, kind: "modpack".into(), updated: false })
+    Ok(Imported { id: Some(instance.id), name, kind: "modpack".into(), updated: false, warning: missing_warning(&completed) })
 }
 
 fn progress_emitter(app: &AppHandle, task: &'static str) -> impl Fn(String, f64) + Send + Sync + Clone + 'static {
@@ -753,6 +908,12 @@ async fn exportar_modpack(
     let instance = instance_or_error(&state, &id)?;
     let paths = state.paths.clone();
     let progress = progress_emitter(&app, "exportar");
+    let completed = integridad::repair(&instance.game_dir, false, progress.clone()).await;
+    let missing_mods = &completed.missing_mods;
+    if !missing_mods.is_empty() {
+        let shown = missing_mods.iter().take(4).cloned().collect::<Vec<_>>().join("\n");
+        return Err(format!("El modpack está incompleto y saldría así. {}:\n{shown}", missing_count(missing_mods.len(), "mod", "mods")));
+    }
     if formato == "mrpack" {
         let name = Some(opciones.name.trim()).filter(|n| !n.is_empty()).unwrap_or(&instance.name).to_string();
         let dialog = app
@@ -844,8 +1005,9 @@ async fn import_external(folder: &Path, paths: &Paths, progress: impl Fn(String,
         let _ = instances::set_icon_bytes(&instance, &bytes);
     }
     let _ = instances::set_field(&instance, "importadaDe", serde_json::json!({ "launcher": external.launcher, "carpeta": external.folder }));
+    let completed = integridad::repair(&instance.game_dir, false, progress.clone()).await;
     progress("Listo".into(), 1.0);
-    Ok(Imported { id: Some(instance.id), name, kind: "instancia".into(), updated: false })
+    Ok(Imported { id: Some(instance.id), name, kind: "instancia".into(), updated: false, warning: missing_warning(&completed) })
 }
 
 #[tauri::command]
@@ -874,6 +1036,17 @@ async fn instalar_modpack(app: AppHandle, state: State<'_, AppState>, proyecto: 
     let result = import_modpack(&download.file, &paths, Some(download.title.clone()), icon, source, &running, progress).await;
     let _ = std::fs::remove_file(&download.file);
     result
+}
+
+/// Comprueba la huella de cada archivo del modpack y repone lo que falte o esté dañado.
+#[tauri::command]
+async fn verificar_instancia(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<integridad::Report, String> {
+    let instance = instance_or_error(&state, &id)?;
+    if state.games.lock().unwrap().contains_key(&id) {
+        return Err("Cierra el juego antes de verificar sus archivos.".into());
+    }
+    let cached = state.catalog.lock().unwrap().clone();
+    Ok(ensure_complete(&instance, &state.paths, &state.config, cached, true, progress_emitter(&app, "verificar")).await)
 }
 
 /// Instala un data pack de Modrinth dentro de un mundo de la instancia.
@@ -1102,6 +1275,7 @@ fn system_ram_gb() -> u32 {
 ///   --importar-externa <carpeta>                    copia una de ellas a Parabellum
 ///   --instalar-modpack <proyecto> [versión]         modpack de Modrinth como instancia nueva
 ///   --instalar-datapack <instancia> <mundo> <proyecto>
+///   --verificar <instancia> [rapido]                comprueba y repone los archivos del modpack
 ///   --catalogo                                      modpacks y versiones de Drive y de la carpeta paquetes
 ///   --instalar-catalogo <id> [reparar]              instala, actualiza o repara (bajando solo lo que cambió)
 ///   --publicar-launcher <carpeta> [notas]           prepara _parabellum para subirla a Drive
@@ -1176,7 +1350,7 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                 let fresh = std::fs::metadata(&log)
                     .and_then(|m| m.modified())
                     .is_ok_and(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64 >= started_ms);
-                let text = if fresh { std::fs::read_to_string(&log).unwrap_or_default() } else { String::new() };
+                let text = if fresh { String::from_utf8_lossy(&std::fs::read(&log).unwrap_or_default()).to_string() } else { String::new() };
                 // El juego terminó de cargar cuando crea los atlas de texturas o arranca el sonido.
                 if text.contains("Sound engine started") || text.contains("-atlas") {
                     break format!("MENÚ PRINCIPAL en {:.0} s", started.elapsed().as_secs_f64());
@@ -1190,7 +1364,7 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             out += &outcome;
             out += "\n";
             // Lo que dijo el loader sobre los mods
-            let text = std::fs::read_to_string(&log).unwrap_or_default();
+            let text = String::from_utf8_lossy(&std::fs::read(&log).unwrap_or_default()).to_string();
             let mut lines = text.lines().skip_while(|l| !l.contains("Loading ") || !l.contains(" mods"));
             for line in lines.by_ref().take(1) {
                 out += line;
@@ -1428,6 +1602,23 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             })?;
             Ok(format!("{} -> carpeta {:?} en {:.0} s", result.name, result.id, started.elapsed().as_secs_f64()))
         }
+        "--verificar" => {
+            let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
+            let deep = args.get(2).is_none_or(|a| a != "rapido");
+            let started = std::time::Instant::now();
+            let config = config::Config::load(paths);
+            let report = tauri::async_runtime::block_on(ensure_complete(&instance, paths, &config, None, deep, |stage, _| eprintln!("{stage}")));
+            Ok(format!(
+                "{} archivos revisados en {:.0} s\nRepuestos ({}): {}\nSin reponer ({}, {} mods):\n{}",
+                report.checked,
+                started.elapsed().as_secs_f64(),
+                report.repaired.len(),
+                report.repaired.join(", "),
+                report.failed.len(),
+                report.missing_mods.len(),
+                report.failed.join("\n")
+            ))
+        }
         "--instalar-datapack" => {
             let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
             let world = args.get(2).ok_or("Falta el mundo.")?;
@@ -1596,6 +1787,7 @@ fn main() {
             mostrar_archivo,
             catalogo,
             instalar_de_catalogo,
+            verificar_instancia,
             actualizacion_launcher,
             aplicar_actualizacion,
             carpeta_exportar,

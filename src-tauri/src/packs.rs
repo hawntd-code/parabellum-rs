@@ -479,6 +479,7 @@ pub fn install(zip_path: &Path, paths: &Paths, progress: impl Fn(String, f64)) -
     let staging = paths.data.join("temporal").join(format!("paquete-{}", std::process::id() as u128 * 1_000_000 + chrono::Utc::now().timestamp_subsec_micros() as u128));
     let total: u64 = (0..zip.len()).filter_map(|i| zip.by_index_raw(i).ok().map(|e| e.size())).sum::<u64>().max(1);
     let mut done = 0u64;
+    let mut listed: Vec<(String, u32, u64)> = Vec::new();
     let result = (|| -> Result<Installed, String> {
         for i in 0..zip.len() {
             let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
@@ -495,6 +496,9 @@ pub fn install(zip_path: &Path, paths: &Paths, progress: impl Fn(String, f64)) -
                 continue;
             };
             let size = entry.size();
+            if !manifest.is_base() {
+                listed.push((name.to_string_lossy().replace('\\', "/"), entry.crc32(), size));
+            }
             // Los archivos de base son compartidos: si ya están iguales (mismo tamaño) no se reescriben.
             let shared_present = target.starts_with(&paths.base) && target.metadata().is_ok_and(|m| m.len() == size);
             if !shared_present {
@@ -516,6 +520,7 @@ pub fn install(zip_path: &Path, paths: &Paths, progress: impl Fn(String, f64)) -
         let state = staging.join(STATE_DIR);
         std::fs::create_dir_all(&state).map_err(|e| e.to_string())?;
         std::fs::write(state.join(INSTALLED_MANIFEST), serde_json::to_vec_pretty(&manifest).unwrap()).map_err(|e| e.to_string())?;
+        crate::integridad::save_package(&staging, &listed);
         let destination = paths.instances.join(&folder);
         let updated = destination.exists();
         if updated {

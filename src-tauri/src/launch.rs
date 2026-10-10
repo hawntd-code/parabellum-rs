@@ -419,7 +419,8 @@ pub fn crash_reason(instance: &Instance, since_ms: i64) -> Option<String> {
         })
         .max_by_key(|(_, m)| *m);
     if let Some((path, _)) = newest {
-        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        // Algunos mods escriben caracteres que no son UTF-8: se leen igual.
+        let text = String::from_utf8_lossy(&std::fs::read(&path).unwrap_or_default()).to_string();
         let description = text.lines().find_map(|l| l.strip_prefix("Description: ")).unwrap_or("Minecraft dejó un informe de fallo");
         let exception = text.lines().skip_while(|l| !l.starts_with("Description:")).skip(1).find(|l| !l.trim().is_empty());
         return Some(match exception {

@@ -663,6 +663,12 @@ fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress
     }
     packs::keep_local_settings(&old_settings, &folder.join(INSTANCE_FILE));
     let _ = std::fs::remove_file(&old_settings);
+    let listed: Vec<(String, u32, u64)> = entries
+        .iter()
+        .filter(|e| !e.name.ends_with('/') && e.name.strip_prefix("instancia/").is_some_and(|rest| !preserved(rest)))
+        .map(|e| (e.name.clone(), e.crc32, e.size))
+        .collect();
+    crate::integridad::save_package(&folder, &listed);
     std::fs::write(folder.join(STATE_DIR).join(packs::INSTALLED_MANIFEST), serde_json::to_vec_pretty(manifest).unwrap()).map_err(|e| e.to_string())?;
     progress("Listo".into(), 1.0);
     Ok(DeltaStats { files: wanted.len(), bytes: done })

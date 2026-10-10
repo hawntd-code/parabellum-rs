@@ -376,7 +376,8 @@ async function reloadInstances() {
 // ======================================================================
 function renderInstance() {
   const i = state.current;
-  $("#detail-art").outerHTML = art(i, "xl").replace('class="art xl"', 'class="art xl" id="detail-art"');
+  // Con icono propio el elemento es "art has-icon xl": el id se pone al principio para no perderlo.
+  $("#detail-art").outerHTML = art(i, "xl").replace('<div class="art', '<div id="detail-art" class="art');
   $("#detail-name").textContent = i.name;
   $("#detail-meta").innerHTML = `
     <span>${icon("cubes")}${escapeHtml(subtitle(i))}</span>
@@ -597,10 +598,47 @@ function instanceMenuItems(id) {
     { icon: "info", label: "Ver instancia", action: () => navigate("instance", id) },
     { icon: "settings", label: "Ajustes de la instancia", action: () => openEdit(id) },
     { icon: "folder", label: "Abrir carpeta", action: () => invoke("abrir_carpeta", { id }) },
+    { icon: "check-circle", label: "Verificar y reparar archivos", action: () => verifyInstance(id) },
     { icon: "duplicate", label: "Duplicar", action: () => duplicateInstance(id) },
     { icon: "upload", label: "Exportar modpack", action: () => openExport(id) },
     { icon: "trash", label: "Eliminar", danger: true, action: () => deleteInstance(id) },
   ];
+}
+
+/** Comprueba la huella de cada archivo del modpack y repone lo que falte o esté dañado. */
+async function verifyInstance(id) {
+  const instance = state.instances.find((i) => i.id === id);
+  if (!instance) return;
+  if (state.verifying) return toast("Espera a que termine la verificación que está en curso.", "error");
+  state.verifying = id;
+  toast(`Verificando los archivos de ${instance.name}…`);
+  $("#download-indicator").classList.remove("hidden");
+  $("#download-percent").textContent = "…";
+  try {
+    const report = await invoke("verificar_instancia", { id });
+    const repaired = report.repaired.length
+      ? `se ${report.repaired.length === 1 ? "repuso" : "repusieron"}: ${report.repaired.slice(0, 3).join(", ")}${report.repaired.length > 3 ? ` y ${report.repaired.length - 3} más` : ""}`
+      : "";
+    if (report.failed.length) {
+      const list = report.failed.slice(0, 4).join("\n") + (report.failed.length > 4 ? `\n…y ${report.failed.length - 4} más` : "");
+      toast(`${instance.name}: ${repaired ? `${repaired}. Pero ` : ""}faltan ${plural(report.failed.length, "archivo", "archivos")}:\n${list}`, "error");
+    } else if (repaired) {
+      toast(`${instance.name} quedó completo: ${repaired}.`);
+    } else if (report.checked) {
+      toast(`${instance.name} está completo: ${plural(report.checked, "archivo revisado", "archivos revisados")}, todos bien.`);
+    } else {
+      toast(`${instance.name} no viene de un modpack, así que no hay con qué compararla. Lo que pide su configuración está completo.`);
+    }
+    if (state.contentFor === id) {
+      state.content = null;
+      if (state.page === "instance" && state.current?.id === id) renderInstance();
+    }
+  } catch (error) {
+    toast(String(error), "error");
+  } finally {
+    state.verifying = null;
+    $("#download-indicator").classList.add("hidden");
+  }
 }
 
 async function duplicateInstance(id) {
@@ -773,10 +811,16 @@ async function play(id, server = null) {
     toast(server ? `Abriendo ${instance.name} y entrando a ${server}…` : `Abriendo ${instance.name}…`);
     await invoke("jugar", { id, servidor: server });
     state.running.add(id);
-    refreshRunning();
     if (state.settings.minimizeOnLaunch) setTimeout(() => appWindow?.minimize(), 3500);
   } catch (error) {
     toast(String(error), "error");
+  } finally {
+    // Si antes de abrir se bajó algo que le faltaba al modpack, se quita el aviso de descarga.
+    if (state.completingShown) {
+      state.completingShown = false;
+      $("#download-indicator").classList.add("hidden");
+    }
+    refreshRunning();
   }
 }
 
@@ -1720,7 +1764,7 @@ async function showCustomStep() {
 }
 
 function updateCreateArt() {
-  $("#create-art").outerHTML = art({ name: $("#new-name").value.trim() || "Nueva" }, "large").replace('class="art large"', 'class="art large" id="create-art"');
+  $("#create-art").outerHTML = art({ name: $("#new-name").value.trim() || "Nueva" }, "large").replace('<div class="art', '<div id="create-art" class="art');
 }
 
 const loaderNames = { vanilla: "Vanilla", fabric: "Fabric", quilt: "Quilt", forge: "Forge", neoforge: "NeoForge" };
@@ -2414,6 +2458,20 @@ function wireEvents() {
     }
     if (payload.task === "loader") {
       $("#edit-loader-hint").textContent = payload.stage;
+      return;
+    }
+    if (payload.task === "jugar") {
+      // Antes de abrir el juego se baja lo que le falte al modpack.
+      if (payload.fraction >= 1) return;
+      state.completingShown = true;
+      $("#download-indicator").classList.remove("hidden");
+      $("#download-percent").textContent = `${Math.round(payload.fraction * 100)}%`;
+      $("#status-text").textContent = payload.stage;
+      return;
+    }
+    if (payload.task === "verificar") {
+      $("#download-percent").textContent = `${Math.round(payload.fraction * 100)}%`;
+      $("#download-indicator").title = payload.stage;
       return;
     }
     $("#new-status").textContent = payload.stage;
@@ -3116,7 +3174,18 @@ function wireExploreEvents() {
     event.stopPropagation();
     contentAddMenu();
   };
-  $("#content-update-all").onclick = () => applyUpdates(availableUpdates());
+  $("#content-update-all").onclick = async () => {
+    // Un modpack trae versiones que su autor probó juntas; actualizarlas todas de golpe puede romperlo.
+    if (state.current?.modpack) {
+      const ok = await confirmAction({
+        title: "¿Actualizar todos los mods del modpack?",
+        text: `${state.current.name} trae versiones que su autor probó juntas. Actualizarlas todas puede hacer que el juego no abra o que cambie cómo funciona. Si quieres el modpack al día, es mejor instalar su versión nueva.`,
+        ok: "Actualizar de todos modos",
+      });
+      if (!ok) return;
+    }
+    applyUpdates(availableUpdates());
+  };
 
   // Los enlaces (descripciones, "Ver en Modrinth") se abren en el navegador, nunca dentro del launcher.
   const openLink = (event) => {
@@ -3156,6 +3225,7 @@ async function installModpack(projectId, versionId = null) {
     const result = await invoke("instalar_modpack", { proyecto: projectId, version: versionId });
     await reloadInstances();
     toast(`${result.name} está lista para jugar. La encuentras en tu biblioteca.`);
+    if (result.warning) toast(result.warning, "error");
   } catch (error) {
     toast(String(error), "error");
   } finally {
@@ -3258,6 +3328,7 @@ async function importExternal(external) {
     closeModal("#create-dialog");
     await reloadInstances();
     toast(`${result.name} está lista para jugar.`);
+    if (result.warning) toast(result.warning, "error");
     navigate("instance", result.id);
   } catch (error) {
     $("#import-title").textContent = "No se pudo importar";
@@ -3294,6 +3365,7 @@ async function importModpack(path = null) {
       toast(`Se instaló ${result.name}. Ya puedes instalar los modpacks de esa versión.`);
     } else {
       toast(result.updated ? `${result.name} se actualizó: tus mundos y opciones se conservaron.` : `${result.name} está lista para jugar.`);
+      if (result.warning) toast(result.warning, "error");
       navigate("instance", result.id);
     }
   } catch (error) {
@@ -3871,6 +3943,7 @@ function demoInvoke(command, args = {}) {
     );
   if (command === "importar_modpack") return later({ id: "Minecraft++", name: "Minecraft++", kind: "modpack", updated: false }, 1200);
   if (command === "instalar_modpack") return later({ id: "Minecraft++", name: "Fabulously Optimized", kind: "modpack", updated: false }, 1200);
+  if (command === "verificar_instancia") return later({ checked: 394, repaired: ["balm-fabric-1.20.1-7.3.38.jar", "voidz-1.0.11.jar"], failed: [] }, 1500);
   if (command === "instalar_datapack") return later("Se instaló Terralith 2.5.8 en el mundo «Mi mundo».", 600);
   if (command === "contenido") {
     const mod = (name, version, authors, enabled = true) => ({ file: `${name.toLowerCase().replace(/\W+/g, "-")}-${version}.jar${enabled ? "" : ".disabled"}`, name, version, authors, enabled, size: 1e6, modified: now - 86400e3, icon: null });

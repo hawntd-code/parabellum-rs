@@ -15,7 +15,7 @@ use crate::packs::{self, ExportOptions, ZipOut};
 
 const INDEX: &str = "modrinth.index.json";
 /// Únicos sitios desde los que la especificación permite descargar archivos de un .mrpack.
-const ALLOWED_HOSTS: [&str; 4] = ["https://cdn.modrinth.com/", "https://github.com/", "https://raw.githubusercontent.com/", "https://gitlab.com/"];
+pub(crate) const ALLOWED_HOSTS: [&str; 4] = ["https://cdn.modrinth.com/", "https://github.com/", "https://raw.githubusercontent.com/", "https://gitlab.com/"];
 
 // ================= Exportar
 
@@ -210,8 +210,9 @@ pub async fn install_files(
         );
     })
     .await?;
-    let (zip_path, game_dir) = (zip_path.to_path_buf(), game_dir.to_path_buf());
+    let (zip_copy, game_copy) = (zip_path.to_path_buf(), game_dir.to_path_buf());
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        let (zip_path, game_dir) = (zip_copy, game_copy);
         progress("Copiando la configuración del modpack…".into(), 0.92);
         let mut zip = zip::ZipArchive::new(std::fs::File::open(&zip_path).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
         // Primero overrides y después client-overrides, que tienen prioridad.
@@ -232,7 +233,10 @@ pub async fn install_files(
         Ok(())
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())??;
+    // Lo que trae el modpack, para comprobar antes de jugar que siga todo.
+    crate::integridad::save(game_dir, crate::integridad::from_mrpack(info, zip_path));
+    Ok(())
 }
 
 #[cfg(test)]

@@ -77,6 +77,15 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] (Opcional) CurseForge: requiere solicitar una clave de API y respetar qué autores permiten descargas externas
 - [ ] Probar Forge 1.12.2 (su instalador más nuevo no tiene processors; los muy antiguos usan otro formato)
 
+### Modpacks completos e íntegros (0.10.1)
+- [x] **Mods que el modpack pide a CurseForge**: algunos modpacks de Modrinth (Better MC BMC2) no pueden traer los mods que solo están en CurseForge y los piden con Missing Mods Checker, que abre una ventana para bajarlos a mano y cierra el juego. Parabellum los baja solo, de la CDN de CurseForge, al instalar el modpack (y al importar o instalar desde Drive)
+- [x] **Lista de lo que trae cada modpack** (`.lanzador/archivos.json`): mods, resource packs y shaders con su huella (SHA-1 de Modrinth o CRC32 del paquete) y de dónde volver a bajarlos
+- [x] **Antes de jugar** se comprueba que no falte nada; lo que falte se baja o se repone del modpack (de Modrinth o del paquete de Drive/USB). Si falta un mod y no hay forma de reponerlo, se explica en lugar de abrir un juego roto
+- [x] **Verificar y reparar archivos** (menú ⋯ de la instancia): comprueba la huella de cada archivo y repone lo dañado; en instancias instaladas antes, arma la lista con el modpack original
+- [x] Lo que el jugador quita o actualiza desde Contenido deja de vigilarse; lo desactivado cuenta como presente
+- [x] Exportar revisa antes que el modpack esté completo; «Actualizar todo» en un modpack pide confirmación (rompe la combinación que probó su autor)
+- [x] *Prueba:* Better MC BMC2 desde Modrinth llega completo (356 mods y los 34 archivos de CurseForge; el mod dice «All mods found!» y el juego llega al menú); borrar o dañar mods y repararlos (rápido, completo, sin lista, desde el paquete de Drive conservando mundos)
+
 ### Diseño
 - [x] Interfaz al estilo de la app de Modrinth con identidad morada (tema oscuro y claro, fuente Inter)
 - [x] Biblioteca, continuar jugando, crear instancia por tipo, ajustes por secciones, página Servidores

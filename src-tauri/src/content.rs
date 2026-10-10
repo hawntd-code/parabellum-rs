@@ -228,7 +228,12 @@ pub fn set_enabled(instance: &Instance, kind: &str, file: &str, enabled: bool) -
 
 /// Manda un elemento (o un mundo entero) a la papelera.
 pub fn delete(instance: &Instance, kind: &str, file: &str) -> Result<(), String> {
-    trash::delete(item_path(instance, kind, file)?).map_err(|e| format!("No se pudo mandar a la papelera: {e}"))
+    trash::delete(item_path(instance, kind, file)?).map_err(|e| format!("No se pudo mandar a la papelera: {e}"))?;
+    // Si venía con un modpack, ya no se repone al jugar.
+    if kind != "worlds" {
+        crate::integridad::forget(instance, &format!("{kind}/{file}"));
+    }
+    Ok(())
 }
 
 /// Resultado de agregar archivos: cuántos entraron en cada categoría y cuáles no (con el motivo).

@@ -1051,6 +1051,7 @@ pub async fn install(
     for (file, kind, folder, name) in targets {
         if let Some(old) = file.replaces.as_deref().filter(|old| *old != name && !old.contains(['/', '\\'])) {
             let _ = trash::delete(folder.join(old));
+            crate::integridad::forget(instance, &format!("{}/{old}", kind.kind()));
             index.files.remove(&format!("{}/{}", kind.kind(), old.strip_suffix(".disabled").unwrap_or(old)));
         }
         let Ok(meta) = std::fs::metadata(folder.join(&name)) else { continue };
