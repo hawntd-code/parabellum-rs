@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::io::{Cursor, Read, Seek};
 
 /// Lo que declara un mod (o una biblioteca incluida dentro de otro mod).
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 pub struct ModMeta {
     pub id: String,
     pub name: String,

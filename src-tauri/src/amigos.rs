@@ -4,6 +4,9 @@
 //!   requests/{destino}/{origen} = { name, at }    (solicitudes pendientes)
 //!   friends/{uid}/{amigo} = true                  (en las dos direcciones)
 //!   presence/{uid} = { name, state, pack, …, updated }   (solo la leen los amigos)
+//!   servers/{uid}/{clave} = { name, pack, address, online, players, updated, guests: {uid: true} }
+//!                                                 (servidores de «Hostear partida»: solo los leen los invitados)
+//!   invites/{invitado}/{anfitrión}/{clave} = true (a qué servidores te invitaron)
 //! Una cuenta de Google puede reservar varios nombres: los de cada cuenta de Parabellum que use.
 
 use serde::Serialize;
@@ -93,11 +96,33 @@ pub struct Request {
     pub name: String,
 }
 
+/// Un servidor de un amigo al que te invitó (con su dirección actual).
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FriendServer {
+    pub host: String,
+    pub host_name: String,
+    pub key: String,
+    pub name: String,
+    pub pack: Option<String>,
+    pub pack_folder: Option<String>,
+    pub modpack: Option<String>,
+    pub project: Option<String>,
+    pub minecraft: Option<String>,
+    pub loader: Option<String>,
+    pub address: Option<String>,
+    pub online: bool,
+    pub players: u64,
+    pub max_players: u64,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct View {
     pub friends: Vec<Friend>,
     pub requests: Vec<Request>,
+    /// Servidores de amigos a los que te invitaron.
+    pub servers: Vec<FriendServer>,
     /// Nombre con el que te ven (None si aún no se reservó).
     pub name: Option<String>,
 }
@@ -119,6 +144,10 @@ struct Inner {
     dirty: bool,
     server_offset_ms: i64,
     name: Option<String>,
+    /// "anfitrión/clave" -> escucha de ese servidor.
+    invite_listeners: HashMap<String, Listener>,
+    /// "anfitrión/clave" -> datos del servidor.
+    servers: HashMap<String, Value>,
 }
 
 type Callback = Box<dyn Fn() + Send + Sync>;
@@ -187,6 +216,18 @@ impl Social {
                 failed,
             )
         };
+        let invites = {
+            let (weak, failed) = (weak.clone(), on_error(weak.clone()));
+            self.db.listen(
+                format!("invites/{}", self.uid),
+                move |data| {
+                    if let Some(social) = weak.upgrade() {
+                        social.update_invites(&data);
+                    }
+                },
+                failed,
+            )
+        };
         let heartbeat = tauri::async_runtime::spawn(async move {
             loop {
                 match weak.upgrade() {
@@ -203,6 +244,7 @@ impl Social {
         let mut tasks = self.tasks.lock().unwrap();
         tasks.push(friends);
         tasks.push(requests);
+        tasks.push(invites);
         tasks.push(Listener(heartbeat));
     }
 
@@ -270,7 +312,100 @@ impl Social {
             .collect();
         // Primero quien tiene el mundo abierto, luego quien juega, quien está en línea y el resto.
         friends.sort_by_key(|f| (!f.world_open, !(f.online && f.presence.as_ref().is_some_and(|p| p.state == "playing")), !f.online, f.name.to_lowercase()));
-        View { friends, requests: inner.requests.clone(), name: inner.name.clone() }
+        let mut servers: Vec<FriendServer> = inner
+            .servers
+            .iter()
+            .filter(|(_, data)| data.is_object())
+            .filter_map(|(path, data)| {
+                let (host, key) = path.split_once('/')?;
+                let text = |field: &str| data[field].as_str().filter(|s| !s.is_empty()).map(String::from);
+                let fresh = data["updated"].as_i64().is_some_and(|updated| now - updated < OFFLINE_AFTER_MS);
+                Some(FriendServer {
+                    host: host.to_string(),
+                    host_name: text("hostName").or_else(|| inner.names.get(host).cloned()).unwrap_or_else(|| "…".into()),
+                    key: key.to_string(),
+                    name: text("name").unwrap_or_else(|| "…".into()),
+                    pack: text("pack"),
+                    pack_folder: text("packFolder"),
+                    modpack: text("modpack"),
+                    project: text("project"),
+                    minecraft: text("mc"),
+                    loader: text("loader"),
+                    address: text("address"),
+                    online: fresh && data["online"].as_bool() == Some(true),
+                    players: data["players"].as_u64().unwrap_or(0),
+                    max_players: data["max"].as_u64().unwrap_or(0),
+                })
+            })
+            .collect();
+        servers.sort_by_key(|s| (!s.online, s.name.to_lowercase()));
+        View { friends, requests: inner.requests.clone(), servers, name: inner.name.clone() }
+    }
+
+    /// Nombre de cada amigo (uid -> nombre), para la lista blanca de los servidores.
+    pub fn friend_names(&self) -> HashMap<String, String> {
+        self.view().friends.into_iter().filter(|f| f.name != "…").map(|f| (f.uid, f.name)).collect()
+    }
+
+    // ================= Servidores de «Hostear partida»
+
+    /// Publica (o actualiza) un servidor propio para sus invitados.
+    pub async fn publish_server(&self, key: &str, mut data: Value) -> Result<(), String> {
+        data["hostName"] = json!(self.name().unwrap_or_default());
+        data["updated"] = firebase::server_timestamp();
+        self.db.put(&format!("servers/{}/{key}", self.uid), &data).await.map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    /// Invita (o deja de invitar) a un amigo a un servidor propio.
+    pub async fn set_invite(&self, key: &str, guest: &str, invited: bool) -> Result<(), String> {
+        let path = format!("invites/{guest}/{}/{key}", self.uid);
+        let result = if invited { self.db.put(&path, &json!(true)).await.map(|_| ()) } else { self.db.delete(&path).await };
+        result.map_err(|e| e.to_string())
+    }
+
+    /// Borra un servidor propio y sus invitaciones.
+    pub async fn remove_server(&self, key: &str, guests: &[String]) -> Result<(), String> {
+        for guest in guests {
+            let _ = self.set_invite(key, guest, false).await;
+        }
+        self.db.delete(&format!("servers/{}/{key}", self.uid)).await.map_err(|e| e.to_string())
+    }
+
+    /// El invitado quita de su lista un servidor de un amigo.
+    pub async fn leave_server(&self, host: &str, key: &str) -> Result<(), String> {
+        self.db.delete(&format!("invites/{}/{host}/{key}", self.uid)).await.map_err(|e| e.to_string())
+    }
+
+    fn update_invites(self: &Arc<Self>, data: &Value) {
+        let wanted: HashSet<String> = data
+            .as_object()
+            .into_iter()
+            .flatten()
+            .flat_map(|(host, keys)| keys.as_object().into_iter().flatten().filter(|(_, v)| v.as_bool() == Some(true)).map(move |(key, _)| format!("{host}/{key}")))
+            .filter(|path| !path.contains(['.', '#', '$', '[', ']']))
+            .collect();
+        {
+            let mut inner = self.inner.lock().unwrap();
+            inner.invite_listeners.retain(|path, _| wanted.contains(path));
+            inner.servers.retain(|path, _| wanted.contains(path));
+            let added: Vec<String> = wanted.iter().filter(|p| !inner.invite_listeners.contains_key(*p)).cloned().collect();
+            for path in added {
+                let weak = Arc::downgrade(self);
+                let key = path.clone();
+                let listener = self.db.listen(
+                    format!("servers/{path}"),
+                    move |server| {
+                        if let Some(social) = weak.upgrade() {
+                            social.inner.lock().unwrap().servers.insert(key.clone(), server);
+                            (social.changed)();
+                        }
+                    },
+                    |_| {},
+                );
+                inner.invite_listeners.insert(path, listener);
+            }
+        }
+        (self.changed)();
     }
 
     /// Envía una solicitud al jugador con ese nombre. Si él ya te la había enviado, se hacen amigos.
@@ -422,6 +557,7 @@ impl Social {
     pub async fn go_offline(&self) {
         self.tasks.lock().unwrap().clear();
         self.inner.lock().unwrap().presence_listeners.clear();
+        self.inner.lock().unwrap().invite_listeners.clear();
         let name = self.name().unwrap_or_default();
         let offline = json!({ "name": name, "state": "offline", "updated": firebase::server_timestamp() });
         let _ = tokio::time::timeout(Duration::from_secs(3), self.db.put(&format!("presence/{}", self.uid), &offline)).await;

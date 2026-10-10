@@ -19,6 +19,7 @@ mod externos;
 mod firebase;
 mod forge;
 mod google;
+mod hosting;
 mod instances;
 mod integridad;
 mod java;
@@ -27,9 +28,13 @@ mod loaders;
 mod modrinth;
 mod mojang;
 mod mrpack;
+mod nbt;
 mod packs;
 mod paths;
+mod playit;
+mod proceso;
 mod remote_zip;
+mod servidor;
 mod sesion_local;
 mod settings;
 mod version;
@@ -58,6 +63,8 @@ struct AppState {
     catalog: Mutex<Option<Arc<catalog::Catalog>>>,
     /// Cuenta de Google, amigos y servidor de sesión local.
     social: cuenta::SocialState,
+    /// «Hostear partida»: servidores en marcha y el túnel de playit.gg.
+    hosting: hosting::Hosting,
 }
 
 #[derive(Serialize)]
@@ -1496,6 +1503,134 @@ fn abrir_carpeta_paquetes(state: State<AppState>) -> Result<(), String> {
     std::process::Command::new("explorer").arg(folder).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
+// ================= Hostear partida
+
+#[tauri::command]
+fn hosting_estado(app: AppHandle) -> hosting::HostView {
+    hosting::view(&app)
+}
+
+/// Vincula playit.gg (baja su agente la primera vez y abre la página para aceptar).
+#[tauri::command]
+async fn conectar_playit(app: AppHandle) -> Result<hosting::HostView, String> {
+    hosting::connect_playit(&app, progress_emitter(&app, "playit")).await?;
+    Ok(hosting::view(&app))
+}
+
+/// Vuelve a intentar abrir la dirección pública (tras un error de playit.gg).
+#[tauri::command]
+async fn reintentar_playit(app: AppHandle) {
+    hosting::retarget(&app).await;
+}
+
+#[tauri::command]
+fn cancelar_playit(app: AppHandle) {
+    hosting::cancel_claim(&app);
+}
+
+#[tauri::command]
+async fn desconectar_playit(app: AppHandle) -> Result<hosting::HostView, String> {
+    hosting::disconnect_playit(&app).await;
+    Ok(hosting::view(&app))
+}
+
+#[tauri::command]
+fn compartir_mundo(app: AppHandle, activo: bool) {
+    hosting::set_share_world(&app, activo);
+}
+
+#[tauri::command]
+fn preparar_servidor(app: AppHandle, instancia: String) -> Result<hosting::Preparation, String> {
+    hosting::prepare(&app, &instancia)
+}
+
+#[tauri::command]
+async fn crear_servidor(app: AppHandle, state: State<'_, AppState>, opciones: servidor::NewServer) -> Result<String, String> {
+    let instance = instance_or_error(&state, &opciones.instance)?;
+    let host = state.settings.lock().unwrap().username.clone();
+    let config = servidor::create(opciones, instance, state.paths.clone(), host, progress_emitter(&app, "servidor")).await?;
+    hosting::emit_view(&app);
+    Ok(config.id)
+}
+
+#[tauri::command]
+fn iniciar_servidor(app: AppHandle, id: String) -> Result<(), String> {
+    hosting::start_server(&app, &id)
+}
+
+#[tauri::command]
+fn detener_servidor(app: AppHandle, id: String) {
+    hosting::stop_server(&app, &id);
+}
+
+#[tauri::command]
+fn comando_servidor(app: AppHandle, id: String, texto: String) {
+    hosting::send_command(&app, &id, &texto);
+}
+
+#[tauri::command]
+fn consola_servidor(app: AppHandle, id: String) -> Vec<String> {
+    hosting::console(&app, &id)
+}
+
+#[tauri::command]
+fn ajustes_servidor(state: State<AppState>, id: String) -> Result<servidor::Settings, String> {
+    let config = servidor::find(&state.paths, &id).ok_or(t!("Ese servidor ya no existe.", "That server no longer exists."))?;
+    Ok(servidor::read_settings(&config))
+}
+
+#[tauri::command]
+fn guardar_servidor(app: AppHandle, state: State<AppState>, id: String, ajustes: servidor::Settings) -> Result<(), String> {
+    let mut config = servidor::find(&state.paths, &id).ok_or(t!("Ese servidor ya no existe.", "That server no longer exists."))?;
+    servidor::apply_settings(&mut config, &ajustes)?;
+    hosting::emit_view(&app);
+    Ok(())
+}
+
+/// Guarda los invitados. Devuelve un aviso si no se pudo avisar a los amigos por Firebase.
+#[tauri::command]
+async fn invitados_servidor(app: AppHandle, id: String, invitados: Vec<servidor::Guest>) -> Result<Option<String>, String> {
+    hosting::set_guests(&app, &id, invitados).await
+}
+
+#[tauri::command]
+async fn eliminar_servidor(app: AppHandle, id: String) -> Result<(), String> {
+    hosting::delete_server(&app, &id).await
+}
+
+#[tauri::command]
+async fn sincronizar_servidor(app: AppHandle, id: String) -> Result<usize, String> {
+    hosting::sync_server(&app, &id).await
+}
+
+#[tauri::command]
+fn carpeta_servidor(state: State<AppState>, id: String) -> Result<(), String> {
+    let config = servidor::find(&state.paths, &id).ok_or(t!("Ese servidor ya no existe.", "That server no longer exists."))?;
+    std::process::Command::new("explorer").arg(config.folder).spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Arreglo del doctor para un servidor. Instalar un mod va a la instancia (los jugadores también
+/// lo necesitan) y después se copia al servidor.
+#[tauri::command]
+async fn arreglar_servidor(app: AppHandle, state: State<'_, AppState>, id: String, arreglo: diagnostico::Fix) -> Result<String, String> {
+    if let diagnostico::Fix::InstallMod { .. } = arreglo {
+        let config = servidor::find(&state.paths, &id).ok_or(t!("Ese servidor ya no existe.", "That server no longer exists."))?;
+        let instance = instance_or_error(&state, &config.instance)?;
+        let cached = state.catalog.lock().unwrap().clone();
+        let done = apply_fix(&instance, &state.paths, &state.config, cached, arreglo, progress_emitter(&app, "doctor")).await?;
+        hosting::sync_server(&app, &id).await?;
+        return Ok(done);
+    }
+    hosting::apply_server_fix(&app, &id, arreglo).await
+}
+
+/// Quita de tu lista un servidor al que te invitó un amigo.
+#[tauri::command]
+async fn salir_de_servidor(app: AppHandle, anfitrion: String, clave: String) -> Result<(), String> {
+    let social = cuenta::social_handle(&app).ok_or(t!("Inicia sesión con Google.", "Sign in with Google."))?;
+    social.leave_server(&anfitrion, &clave).await
+}
+
 /// Prepara la carpeta _parabellum con esta versión para subirla a Drive. None si se canceló.
 #[tauri::command]
 async fn publicar_launcher(app: AppHandle, state: State<'_, AppState>, notas: String, elegir: bool) -> Result<Option<String>, String> {
@@ -1583,6 +1718,9 @@ fn system_ram_gb() -> u32 {
 ///   --verificar <instancia> [rapido]                comprueba y repone los archivos del modpack
 ///   --diagnosticar <instancia>                      qué falla (revisión de mods y último informe de fallo)
 ///   --arreglar <instancia>                          prueba el arranque y aplica arreglos hasta que abra
+///   --crear-servidor <instancia> [nombre] [mundo]   servidor dedicado a partir de la instancia (sin aceptar el EULA)
+///   --probar-servidor <servidor> [seg]              lo enciende, espera a que esté listo y lo apaga
+///   --playit                                        estado de la cuenta y del túnel de playit.gg
 ///   --catalogo                                      modpacks y versiones de Drive y de la carpeta paquetes
 ///   --instalar-catalogo <id> [reparar]              instala, actualiza o repara (bajando solo lo que cambió)
 ///   --publicar-launcher <carpeta> [notas]           prepara _parabellum para subirla a Drive
@@ -1909,6 +2047,89 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             })?;
             Ok(format!("{} -> carpeta {:?} en {:.0} s", result.name, result.id, started.elapsed().as_secs_f64()))
         }
+        "--crear-servidor" => {
+            let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
+            let new = servidor::NewServer {
+                instance: instance.id.clone(),
+                name: args.get(2).cloned().unwrap_or_default(),
+                world: args.get(3).cloned(),
+                seed: String::new(),
+                ram_gb: 3,
+                jvm_args: Vec::new(),
+                eula: false,
+                gamemode: "survival".into(),
+                difficulty: "normal".into(),
+                max_players: 10,
+                pvp: true,
+            };
+            let started = std::time::Instant::now();
+            let config = tauri::async_runtime::block_on(servidor::create(new, instance, paths.clone(), settings.username.clone(), |stage, fraction| eprintln!("{:>3.0}% {stage}", fraction * 100.0)))?;
+            Ok(format!("{}\nmods en el servidor: {}\nen {:.0} s", serde_json::to_string_pretty(&config).unwrap(), servidor::mod_count(&config.folder), started.elapsed().as_secs_f64()))
+        }
+        "--probar-servidor" => {
+            use std::io::BufRead;
+            let config = servidor::find(paths, args.get(1).ok_or("Falta el servidor.")?).ok_or("No existe ese servidor.")?;
+            let limit: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(600);
+            servidor::write_eula(&config.folder, config.eula)?;
+            servidor::write_access_lists(&config, &settings.username)?;
+            let started = std::time::Instant::now();
+            let since = chrono::Utc::now().timestamp_millis();
+            let mut child = servidor::command(&config, paths)?.spawn().map_err(|e| e.to_string())?;
+            proceso::tie_to_launcher(&child);
+            let mut stdin = child.stdin.take();
+            let (sender, receiver) = std::sync::mpsc::channel::<String>();
+            for stream in [child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>), child.stderr.take().map(|s| Box::new(s) as _)].into_iter().flatten() {
+                let sender = sender.clone();
+                std::thread::spawn(move || {
+                    for line in std::io::BufReader::new(stream).lines().map_while(Result::ok) {
+                        let _ = sender.send(line);
+                    }
+                });
+            }
+            drop(sender);
+            let mut last = std::collections::VecDeque::new();
+            let mut ready = None;
+            while started.elapsed().as_secs() < limit {
+                match receiver.recv_timeout(std::time::Duration::from_millis(500)) {
+                    Ok(line) => {
+                        if servidor::parse_line(&line) == Some(servidor::LineEvent::Ready) {
+                            ready = Some(started.elapsed().as_secs_f64());
+                            break;
+                        }
+                        last.push_back(line);
+                        if last.len() > 12 {
+                            last.pop_front();
+                        }
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(_) => break,
+                }
+            }
+            let report = match ready {
+                Some(seconds) => {
+                    if let Some(stdin) = stdin.as_mut() {
+                        use std::io::Write;
+                        let _ = stdin.write_all(b"stop\n");
+                        let _ = stdin.flush();
+                    }
+                    let _ = child.wait();
+                    format!("LISTO en {seconds:.0} s con {} mods", servidor::mod_count(&config.folder))
+                }
+                None => {
+                    let _ = child.kill();
+                    let code = child.wait().ok().and_then(|s| s.code());
+                    let context = diagnostico::CrashContext { since_ms: since, exit_code: code, ram_gb: config.ram_gb, system_ram_gb: system_ram_gb() };
+                    let diagnosis = diagnostico::after_crash(&config.as_instance(), &context);
+                    format!("NO ARRANCÓ (código {code:?})\n{}\n{}", last.into_iter().collect::<Vec<_>>().join("\n"), serde_json::to_string_pretty(&diagnosis).unwrap())
+                }
+            };
+            Ok(report)
+        }
+        "--playit" => {
+            let secret = playit::load_secret(paths).ok_or("playit.gg no está conectado.")?;
+            let data = tauri::async_runtime::block_on(playit::run_data(&secret)).map_err(|e| e.explain())?;
+            Ok(serde_json::to_string_pretty(&data).unwrap())
+        }
         "--diagnosticar" => {
             let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
             let context = diagnostico::CrashContext { since_ms: 0, exit_code: None, ram_gb: instance.ram_gb.unwrap_or(settings.ram_gb), system_ram_gb: system_ram_gb() };
@@ -2047,6 +2268,7 @@ fn main() {
             stopped: Mutex::default(),
             catalog: Mutex::default(),
             social: cuenta::SocialState::default(),
+            hosting: hosting::Hosting::default(),
         })
         .setup(|app| {
             // El tamaño de la interfaz que eligió el jugador (Ajustes › Apariencia).
@@ -2060,6 +2282,7 @@ fn main() {
             avisos::register(&app.state::<AppState>().paths.data.join("cache"));
             cuenta::create_tray(app.handle())?;
             cuenta::startup(app.handle());
+            hosting::init(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -2153,13 +2376,35 @@ fn main() {
             registro,
             abrir_registro,
             listar_java,
-            abrir_carpeta
+            abrir_carpeta,
+            hosting_estado,
+            conectar_playit,
+            cancelar_playit,
+            reintentar_playit,
+            desconectar_playit,
+            compartir_mundo,
+            preparar_servidor,
+            crear_servidor,
+            iniciar_servidor,
+            detener_servidor,
+            comando_servidor,
+            consola_servidor,
+            ajustes_servidor,
+            guardar_servidor,
+            invitados_servidor,
+            eliminar_servidor,
+            sincronizar_servidor,
+            carpeta_servidor,
+            arreglar_servidor,
+            salir_de_servidor
         ])
         .build(tauri::generate_context!())
         .expect("no se pudo abrir Parabellum")
         .run(|app, event| {
             // Al salir del todo: los amigos te ven desconectado al momento.
             if let tauri::RunEvent::Exit = event {
+                // Los servidores guardan el mundo y se apagan antes de salir.
+                hosting::shutdown(app);
                 cuenta::shutdown(app);
             }
         });

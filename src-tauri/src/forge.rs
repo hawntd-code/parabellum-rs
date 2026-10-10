@@ -87,7 +87,7 @@ pub async fn loader_versions(loader: Loader, minecraft: &str) -> Result<Vec<Load
     Ok(versions)
 }
 
-fn installer_url(loader: Loader, minecraft: &str, version: &str) -> String {
+pub fn installer_url(loader: Loader, minecraft: &str, version: &str) -> String {
     match loader {
         Loader::NeoForge => format!("{NEOFORGE_MAVEN}/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar"),
         _ => format!("{FORGE_MAVEN}/net/minecraftforge/forge/{minecraft}-{version}/forge-{minecraft}-{version}-installer.jar"),

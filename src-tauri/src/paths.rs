@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 pub struct Paths {
     pub root: PathBuf,
     pub instances: PathBuf,
+    /// Servidores de «Hostear partida».
+    pub servers: PathBuf,
     pub base: PathBuf,
     pub versions: PathBuf,
     pub libraries: PathBuf,
@@ -24,6 +26,7 @@ impl Paths {
         let data = root.join("datos");
         Self {
             instances: root.join("instancias"),
+            servers: root.join("servidores"),
             versions: base.join("versions"),
             libraries: base.join("libraries"),
             assets: base.join("assets"),

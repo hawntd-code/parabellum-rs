@@ -722,6 +722,68 @@ pub fn after_crash(instance: &Instance, context: &CrashContext) -> Diagnosis {
         }
     }
 
+    // 5c. En un servidor: un mod hecho solo para el juego usa clases que el servidor no tiene.
+    static CLIENT_CLASS: OnceLock<Regex> = OnceLock::new();
+    let client_class = CLIENT_CLASS.get_or_init(|| {
+        regex(r"Attempted to load class (net/minecraft/client/\S+) for invalid dist DEDICATED_SERVER|Cannot load class (net[./]minecraft[./]client\S*) in environment type SERVER|NoClassDefFoundError: (net/minecraft/client/\S+)")
+    });
+    // Mixin solo prueba si la clase existe ("@Mixin target … was not found"): eso no tumba nada.
+    // Pueden fallar varios mods a la vez: se juntan todos para quitarlos de una.
+    let mut culprits: Vec<String> = Vec::new();
+    let mut unknown: Option<String> = None;
+    for capture in client_class.captures_iter(&text) {
+        let (start, end) = (capture.get(0).unwrap().start(), capture.get(0).unwrap().end());
+        let after: String = text[end..].chars().take(700).collect();
+        if after.contains("@Mixin target") && after.contains("was not found") {
+            continue;
+        }
+        match client_only_culprit(&text, start, end, &by_id, &names) {
+            Some(file) if !culprits.contains(&file) => culprits.push(file),
+            Some(_) => {}
+            None => unknown = unknown.or_else(|| Some(evidence(&text, start))),
+        }
+    }
+    for file in &culprits {
+        let name = names.get(file).cloned().unwrap_or_else(|| file.clone());
+        let line = text.find(file.as_str()).map(|at| evidence(&text, at));
+        add(Finding {
+            severity: "error",
+            title: t!("{name} es solo para el juego y tumba el servidor", "{name} is client-only and crashes the server"),
+            detail: t!(
+                "Usa partes de Minecraft que solo existen en el juego (gráficos, menús). Los jugadores pueden seguir teniéndolo; el servidor no lo necesita.",
+                "It uses parts of Minecraft that only exist in the game (graphics, menus). Players can keep it; the server does not need it."
+            ),
+            evidence: line,
+            fixes: vec![option(t!("Quitar {name} del servidor", "Remove {name} from the server"), Fix::DisableMod { file: file.clone() }, true)],
+        });
+    }
+    if let (true, Some(line)) = (culprits.is_empty(), unknown) {
+        add(Finding {
+            severity: "error",
+            title: t!("Un mod solo para el juego tumba el servidor", "A client-only mod crashes the server"),
+            detail: t!(
+                "Algún mod usa partes de Minecraft que solo existen en el juego. Revisa el registro para ver cuál y quítalo del servidor.",
+                "Some mod uses parts of Minecraft that only exist in the game. Check the log to see which one and remove it from the server."
+            ),
+            evidence: Some(line),
+            fixes: Vec::new(),
+        });
+    }
+
+    // 5d. En un servidor: el mundo no se puede leer. No se arregla solo (el mundo es del jugador).
+    if let Some(at) = text.find("World files may be corrupted") {
+        add(Finding {
+            severity: "error",
+            title: t!("El mundo del servidor está dañado", "The server world is damaged"),
+            detail: t!(
+                "Minecraft no pudo leer level.dat ni su copia. Si tienes una copia del mundo, ponla en la carpeta del servidor; si no, puedes empezar un mundo nuevo (el dañado va a la papelera y se puede recuperar).",
+                "Minecraft could not read level.dat or its backup. If you have a copy of the world, put it in the server folder; if not, you can start a new world (the damaged one goes to the Recycle Bin and can be restored)."
+            ),
+            evidence: Some(evidence(&text, at)),
+            fixes: vec![option(t!("Empezar un mundo nuevo", "Start a new world"), Fix::ResetConfig { path: "world".into() }, false)],
+        });
+    }
+
     // 6. Mixins que fallan: el mod que los trae es sospechoso.
     static MIXIN: OnceLock<Regex> = OnceLock::new();
     let mixin = MIXIN.get_or_init(|| regex(r"(?:MixinApplyError|InvalidInjectionException|InvalidMixinException|Critical injection failure|MixinTransformerError)[^\n]*?from mod ([\w\-]+)"));
@@ -801,6 +863,30 @@ fn already_done(instance: &Instance, fix: &Fix) -> bool {
     }
 }
 
+/// El mod culpable de un error de "clase de cliente en el servidor". Forge lo dice justo antes
+/// ("Failed to create mod instance. ModID: oculus" en el registro; "Mod File: …/oculus.jar" en el
+/// informe de fallo); si no, es el primer mod de la carpeta mods que aparece en la traza
+/// ("~[archivo.jar%23123!/:?]").
+fn client_only_culprit(text: &str, start: usize, end: usize, by_id: &HashMap<String, String>, names: &HashMap<String, String>) -> Option<String> {
+    static BEFORE: OnceLock<Regex> = OnceLock::new();
+    let before_pattern = BEFORE.get_or_init(|| regex(r"ModID: ([\w\-]+)|Mod File: [^\n]*?([^/\\\n]+\.jar)"));
+    // Solo las 3 líneas anteriores: más arriba puede haber otro mod que no tiene que ver.
+    let from = text[..start].match_indices('\n').rev().nth(3).map(|(i, _)| i).unwrap_or(0);
+    let before = &text[from..start];
+    let named = before_pattern.captures_iter(before).last().and_then(|c| match (c.get(1), c.get(2)) {
+        (Some(id), _) => by_id.get(&id.as_str().to_lowercase()).cloned(),
+        (_, Some(jar)) => Some(jar.as_str().to_string()).filter(|jar| names.contains_key(jar)),
+        _ => None,
+    });
+    if named.is_some() {
+        return named;
+    }
+    static FRAME: OnceLock<Regex> = OnceLock::new();
+    let frame = FRAME.get_or_init(|| regex(r"([^\[\]/\\%\s]+\.jar)(?:%23\d+|!/)"));
+    let window: String = text[end..].chars().take(8000).collect();
+    frame.captures_iter(&window).map(|c| c[1].to_string()).find(|jar| names.contains_key(jar))
+}
+
 /// El archivo de un módulo de Java: su nombre suele ser el id del mod, o sale del nombre del archivo.
 fn module_file(module: &str, by_id: &HashMap<String, String>, mods: &[(String, Vec<ModMeta>)]) -> Option<String> {
     let simple = |text: &str| text.to_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>();
@@ -838,6 +924,30 @@ mod tests {
         let text = "Caused by: java.lang.IllegalStateException: Patch 'x' matched protocol 0 but did not modify any bytecode. If you want to force CustomSkinLoader to ignore this patch failure, add -Dcustomskinloader.ignorePatchFailure=true to the JVM arguments.";
         let capture = Regex::new(r"(?i)add\s+(-D[\w.\-]+(?:=[^\s,;'`]+?)?)\.?\s+to\s+(?:the\s+|your\s+)?JVM\s+arg").unwrap().captures(text).unwrap();
         assert_eq!(&capture[1], "-Dcustomskinloader.ignorePatchFailure=true");
+    }
+
+    #[test]
+    fn culpable_de_solo_cliente() {
+        let names = HashMap::from([
+            ("BetterF3-7.0.2-Forge-1.20.1.jar".to_string(), "BetterF3".to_string()),
+            ("oculus-mc1.20.1-1.8.0.jar".to_string(), "Oculus".to_string()),
+        ]);
+        let by_id = HashMap::from([("oculus".to_string(), "oculus-mc1.20.1-1.8.0.jar".to_string())]);
+        let error = "RuntimeException: Attempted to load class net/minecraft/client/gui/screens/Screen for invalid dist DEDICATED_SERVER";
+        let culprit = |text: &str| {
+            let start = text.find(error).unwrap();
+            client_only_culprit(text, start, start + error.len(), &by_id, &names)
+        };
+        // En la traza, después del error.
+        let trace = format!("{error}\n\tat net.minecraftforge.fml.loading.RuntimeDistCleaner.processClassWithFlags(RuntimeDistCleaner.java:57) ~[fmlloader-1.20.1-47.4.0.jar%23103!/:1.0]\n\tat tech.betterf3.BetterF3Forge.<init>(BetterF3Forge.java:20) ~[BetterF3-7.0.2-Forge-1.20.1.jar%23186!/:7.0.2]");
+        assert_eq!(culprit(&trace).as_deref(), Some("BetterF3-7.0.2-Forge-1.20.1.jar"));
+        // En el registro de Forge, antes del error.
+        let log = format!("[modloading-worker-0/ERROR] [FMLModContainer/LOADING]: Failed to create mod instance. ModID: oculus, class net.irisshaders.iris.Iris\njava.lang.{error}\n\tat cpw.mods.Launcher.run(Launcher.java:1) ~[modlauncher-10.0.9.jar%2355!/:?]");
+        assert_eq!(culprit(&log).as_deref(), Some("oculus-mc1.20.1-1.8.0.jar"));
+        // En el informe de fallo, antes del error (la ruta tiene espacios).
+        let report = format!("-- MOD oculus --\n\tMod File: /C:/Mis servidores/Prueba forge/mods/oculus-mc1.20.1-1.8.0.jar\n\tFailure message: Oculus (oculus) has failed to load correctly\n\t\tjava.lang.{error}");
+        assert_eq!(culprit(&report).as_deref(), Some("oculus-mc1.20.1-1.8.0.jar"));
+        assert!(culprit(&format!("{error}\n\tat net.minecraft.server.Main.main(Main.java:1)")).is_none());
     }
 
     #[test]

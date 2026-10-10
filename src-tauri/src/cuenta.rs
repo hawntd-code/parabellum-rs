@@ -80,6 +80,11 @@ fn social(app: &AppHandle) -> Option<Arc<Social>> {
     app.state::<AppState>().social.social.lock().unwrap().clone()
 }
 
+/// La conexión con los amigos (None sin sesión de Google), para «Hostear partida».
+pub fn social_handle(app: &AppHandle) -> Option<Arc<Social>> {
+    social(app)
+}
+
 fn update_status(app: &AppHandle, change: impl FnOnce(&mut Status)) {
     change(&mut app.state::<AppState>().social.status.lock().unwrap());
     emit(app);
@@ -232,7 +237,7 @@ async fn connect(app: &AppHandle) {
                 Seen { quiet_until: Some(std::time::Instant::now() + Duration::from_secs(10)), ..Seen::default() };
             *app.state::<AppState>().social.social.lock().unwrap() = Some(social.clone());
             claim_name(app, &social).await;
-            social.set_presence(current_presence(app).unwrap_or_else(Presence::online));
+            social.set_presence(current_presence(app).map(|(p, _)| p).unwrap_or_else(Presence::online));
             social.start();
             start_chat(app, &social);
             update_status(app, |s| s.connecting = false);
@@ -545,13 +550,14 @@ fn notify_changes(app: &AppHandle) {
 
 // ================= Presencia: a qué juegas y si tu mundo está abierto
 
-fn current_presence(app: &AppHandle) -> Option<Presence> {
+/// La presencia y, si el jugador abrió su mundo en LAN, (puerto, instancia) para compartirlo por playit.gg.
+fn current_presence(app: &AppHandle) -> Option<(Presence, Option<(u16, String)>)> {
     let state = app.state::<AppState>();
     let running = state.games.lock().unwrap().keys().next().cloned();
     let mut tracker = state.social.tracker.lock().unwrap();
     let Some(id) = running else {
         *tracker = (None, Tracker::default());
-        return Some(Presence::online());
+        return Some((Presence::online(), None));
     };
     let instance = instances::find(&state.paths, &id)?;
     let started = std::fs::read_to_string(instance.state_dir().join("ultima-partida.txt")).ok().and_then(|t| t.trim().parse::<i64>().ok()).unwrap_or(0);
@@ -561,16 +567,19 @@ fn current_presence(app: &AppHandle) -> Option<Presence> {
     tracker.1.poll(Some(&instance.game_dir), started);
     let activity = &tracker.1.activity;
     let lan = activity.lan_port.and_then(|port| actividad::local_address().map(|ip| format!("{ip}:{port}")));
-    Some(Presence {
+    let shared = activity.lan_port.map(|port| (port, instance.id.clone()));
+    let presence = Presence {
         state: "playing".into(),
         pack: Some(instance.name.clone()),
         pack_folder: Some(instance.id.clone()),
         minecraft: Some(instance.minecraft_version.clone()),
         world: activity.world.clone(),
         server: activity.server.clone(),
-        address: activity.address.clone(),
+        // La dirección de playit.gg (fija) va antes que la de e4mc.
+        address: activity.lan_port.and_then(|_| crate::hosting::world_address(app)).or_else(|| activity.address.clone()),
         lan,
-    })
+    };
+    Some((presence, shared))
 }
 
 // ================= Arranque, bandeja y salida
@@ -606,13 +615,13 @@ pub fn startup(app: &AppHandle) {
         }
         loop {
             tokio::time::sleep(Duration::from_secs(2)).await;
+            // Se mira el juego aunque no haya sesión: el mundo abierto en LAN se comparte por playit.gg.
+            let Some((presence, shared)) = current_presence(&app) else { continue };
+            crate::hosting::world_tick(&app, shared);
             let Some(social) = social(&app) else { continue };
-            let before = social.my_presence();
-            if let Some(presence) = current_presence(&app) {
-                if presence != before {
-                    social.set_presence(presence);
-                    emit(&app);
-                }
+            if presence != social.my_presence() {
+                social.set_presence(presence);
+                emit(&app);
             }
         }
     });
@@ -622,7 +631,8 @@ pub fn startup(app: &AppHandle) {
 pub fn should_hide_on_close(app: &AppHandle) -> bool {
     let state = app.state::<AppState>();
     let close_to_tray = state.settings.lock().unwrap().close_to_tray;
-    close_to_tray && google_account(app).is_some()
+    // Con un servidor encendido, cerrar la ventana no lo apaga: Parabellum sigue junto al reloj.
+    (close_to_tray && google_account(app).is_some()) || crate::hosting::busy(app)
 }
 
 pub fn hid_to_tray(app: &AppHandle) {

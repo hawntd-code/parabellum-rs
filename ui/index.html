@@ -46,6 +46,7 @@
       <button class="rail-btn active" data-page="home" title="Inicio"><svg><use href="#i-play-outline"/></svg></button>
       <button class="rail-btn" data-page="explore" title="Explorar"><svg><use href="#i-compass"/></svg></button>
       <button class="rail-btn" data-page="servers" title="Servidores"><svg><use href="#i-server"/></svg></button>
+      <button class="rail-btn" data-page="host" title="Hostear partida"><svg><use href="#i-broadcast"/></svg><span class="rail-dot hidden" id="host-dot"></span></button>
       <button class="rail-btn" data-page="chat" title="Mensajes"><svg><use href="#i-chat"/></svg><span class="rail-badge hidden" id="chat-badge"></span></button>
       <div class="rail-sep"></div>
       <div class="rail-instances" id="rail-instances"></div>
@@ -207,6 +208,12 @@
           <div class="page-inner">
             <h1 class="section-title">Servidores</h1>
             <p class="muted lead">Guarda tus servidores no premium y entra con un clic: Parabellum abre la instancia elegida y se conecta directamente.</p>
+            <div class="hidden" id="friend-servers-box">
+              <h2 class="host-subtitle">De tus amigos</h2>
+              <p class="muted small-text host-hint">Servidores a los que te invitaron: la dirección se actualiza sola cada vez que tu amigo lo enciende.</p>
+              <div class="server-list" id="friend-servers"></div>
+              <h2 class="host-subtitle">Guardados</h2>
+            </div>
             <div class="add-server">
               <input id="server-name" placeholder="Nombre (p. ej. UniversoCraft)" autocomplete="off" spellcheck="false">
               <input id="server-address" placeholder="Dirección (p. ej. mc.universocraft.com)" autocomplete="off" spellcheck="false">
@@ -215,6 +222,117 @@
             </div>
             <div class="server-list" id="server-list"></div>
             <p class="no-results hidden" id="servers-empty">Todavía no tienes servidores guardados.</p>
+          </div>
+        </section>
+
+        <!-- HOSTEAR PARTIDA -->
+        <section class="page hidden" id="page-host">
+          <div class="page-inner">
+            <h1 class="section-title">Hostear partida</h1>
+            <p class="muted lead">Juega con tus amigos desde tu PC sin abrir puertos del router. Parabellum usa playit.gg (gratis) para darte una dirección pública que no cambia.</p>
+            <div class="card-panel host-tunnel" id="host-tunnel"></div>
+            <div class="host-modes">
+              <button class="option" id="host-new-server">
+                <div class="option-icon"><svg><use href="#i-server"/></svg></div>
+                <div class="grow"><b>Crear un servidor</b><span>Un servidor aparte con el modpack de una instancia. Sigue encendido aunque cierres el juego, pero usa más memoria.</span></div>
+                <svg class="chev"><use href="#i-right"/></svg>
+              </button>
+              <div class="option host-world">
+                <div class="option-icon"><svg><use href="#i-globe"/></svg></div>
+                <div class="grow"><b>Abrir mi mundo a amigos</b><span>En el juego: Pausa › Abrir en LAN. Parabellum lo comparte solo y tus amigos pulsan «Unirse». No usa memoria extra.</span></div>
+                <label class="toggle big" title="Compartir mi mundo abierto por playit.gg"><input type="checkbox" id="host-share-world"><span></span></label>
+              </div>
+            </div>
+            <div class="host-world-status hidden" id="host-world-status"></div>
+            <h2 class="host-subtitle">Tus servidores</h2>
+            <div class="server-list" id="host-servers"></div>
+            <p class="no-results hidden" id="host-empty">Todavía no tienes servidores. Crea uno con «Crear un servidor».</p>
+          </div>
+        </section>
+
+        <!-- UN SERVIDOR -->
+        <section class="page hidden" id="page-hosted">
+          <div class="page-inner">
+            <div class="instance-header">
+              <div class="server-icon xl" id="hosted-icon"><svg><use href="#i-server"/></svg></div>
+              <div class="grow">
+                <h1 id="hosted-name"></h1>
+                <div class="meta" id="hosted-meta"></div>
+              </div>
+              <button class="btn primary big" id="hosted-start"><svg><use href="#i-play"/></svg><span>Encender</span></button>
+              <button class="btn danger big hidden" id="hosted-stop"><svg><use href="#i-stop"/></svg><span>Apagar</span></button>
+              <button class="circle-btn big" id="hosted-more" title="Más opciones"><svg><use href="#i-more"/></svg></button>
+            </div>
+            <div class="hosted-top">
+              <div class="hosted-address" id="hosted-address"></div>
+              <div class="hosted-stats" id="hosted-stats"></div>
+            </div>
+            <div id="hosted-problem"></div>
+            <div class="tabs" id="hosted-tabs">
+              <button class="tab active" data-hosted-tab="console"><svg><use href="#i-terminal"/></svg>Consola</button>
+              <button class="tab" data-hosted-tab="players"><svg><use href="#i-user-plus"/></svg>Jugadores</button>
+              <button class="tab" data-hosted-tab="settings"><svg><use href="#i-settings"/></svg>Ajustes</button>
+            </div>
+            <div class="tab-panel" id="hosted-tab-console">
+              <pre class="log console" id="hosted-console" tabindex="0"></pre>
+              <div class="console-input">
+                <span class="console-prompt">&gt;</span>
+                <input id="hosted-command" placeholder="Escribe un comando (p. ej. say Hola, time set day, op TuAmigo)" autocomplete="off" spellcheck="false">
+                <button class="btn primary" id="hosted-send"><svg><use href="#i-send"/></svg>Enviar</button>
+              </div>
+            </div>
+            <div class="tab-panel hidden" id="hosted-tab-players">
+              <div class="host-columns">
+                <div class="card-panel">
+                  <h3>Invitados</h3>
+                  <p class="muted small-text">Solo ellos (y tú) pueden entrar: el servidor tiene lista blanca. Tus amigos de Parabellum ven la dirección actual en su página Servidores.</p>
+                  <div class="guest-list" id="hosted-guests"></div>
+                  <div class="row guest-add">
+                    <input id="hosted-guest-name" placeholder="Nombre de Minecraft de alguien sin Parabellum" maxlength="16" autocomplete="off" spellcheck="false">
+                    <button class="btn" id="hosted-guest-add"><svg><use href="#i-plus"/></svg>Agregar</button>
+                  </div>
+                  <div class="host-friends" id="hosted-friends"></div>
+                </div>
+                <div class="card-panel">
+                  <h3>En el servidor ahora</h3>
+                  <div class="guest-list" id="hosted-online"></div>
+                </div>
+              </div>
+            </div>
+            <div class="tab-panel hidden" id="hosted-tab-settings">
+              <div class="card-panel host-settings">
+                <p class="muted small-text hidden" id="hs-running-note">Los cambios se aplican la próxima vez que enciendas el servidor.</p>
+                <label class="label" for="hs-name">Nombre</label>
+                <input id="hs-name" maxlength="40" autocomplete="off" spellcheck="false">
+                <label class="label" for="hs-motd" style="margin-top:16px">Mensaje en la lista de servidores</label>
+                <input id="hs-motd" maxlength="59" autocomplete="off" spellcheck="false">
+                <div class="label-row"><span class="label">Memoria del servidor</span><span class="value-inline" id="hs-ram-value"></span></div>
+                <input type="range" id="hs-ram" min="1" max="16" step="1">
+                <div class="ram-plan" id="hs-plan"></div>
+                <div class="form-grid">
+                  <div><label class="label" for="hs-gamemode">Modo de juego</label><select id="hs-gamemode"></select></div>
+                  <div><label class="label" for="hs-difficulty">Dificultad</label><select id="hs-difficulty"></select></div>
+                  <div><label class="label" for="hs-max">Jugadores máximos</label><input type="number" id="hs-max" min="1" max="100"></div>
+                  <div><label class="label" for="hs-view">Distancia de visión</label><input type="number" id="hs-view" min="3" max="32"></div>
+                  <div><label class="label" for="hs-sim">Distancia de simulación</label><input type="number" id="hs-sim" min="3" max="32"></div>
+                </div>
+                <div class="host-toggles">
+                  <label class="toggle"><input type="checkbox" id="hs-pvp"><span></span>Jugadores pueden pelear entre ellos (PvP)</label>
+                  <label class="toggle"><input type="checkbox" id="hs-flight"><span></span>Permitir volar (evita que los mods con alas o mochilas echen al jugador)</label>
+                  <label class="toggle"><input type="checkbox" id="hs-eula"><span></span>Acepto el EULA de Minecraft</label>
+                </div>
+                <label class="label" for="hs-jvm" style="margin-top:16px">Argumentos de Java</label>
+                <input id="hs-jvm" placeholder="Opcional, p. ej. -XX:+UseZGC" autocomplete="off" spellcheck="false">
+                <div class="modal-actions">
+                  <button class="btn primary" id="hs-save"><svg><use href="#i-check"/></svg>Guardar</button>
+                </div>
+              </div>
+              <div class="card-panel host-left-out hidden" id="hs-left-box">
+                <h3 id="hs-left-title"></h3>
+                <p class="muted small-text">No hacen falta en el servidor (son para gráficos, cámara o menús) o lo tumbaban. Tus amigos pueden seguir usándolos en su juego.</p>
+                <ul id="hs-left"></ul>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -376,8 +494,8 @@
           <h4>Novedades</h4>
           <article class="news">
             <div class="news-art"><img src="logo.png" alt=""></div>
-            <h5>Parabellum, ahora en Rust</h5>
-            <p class="muted">Un launcher nuevo desde cero: más ligero, más rápido y con un diseño renovado. Crea instancias de cualquier versión de Minecraft.</p>
+            <h5>Hostea partidas con tus amigos</h5>
+            <p class="muted">Crea un servidor con tu modpack o abre tu mundo a tus amigos, con una dirección fija y sin abrir puertos. Lo encuentras en «Hostear partida».</p>
             <span class="faint">Octubre 2026</span>
           </article>
         </div>
@@ -630,6 +748,70 @@
               <button class="btn" id="open-root"><svg><use href="#i-folder"/></svg>Abrir</button>
             </div>
           </section>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= Crear servidor ================= -->
+  <div class="overlay hidden" id="host-create-dialog">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Crear servidor</h2>
+        <button class="circle-btn" id="hc-close" title="Cerrar"><svg><use href="#i-close"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <label class="label" for="hc-instance">Instancia</label>
+        <select id="hc-instance"></select>
+        <p class="muted small-text hc-info" id="hc-info"></p>
+        <label class="label" for="hc-name" style="margin-top:16px">Nombre del servidor</label>
+        <input id="hc-name" maxlength="40" autocomplete="off" spellcheck="false">
+        <label class="label" for="hc-world" style="margin-top:16px">Mundo</label>
+        <select id="hc-world"></select>
+        <div id="hc-seed-box">
+          <label class="label" for="hc-seed" style="margin-top:16px">Semilla (opcional)</label>
+          <input id="hc-seed" maxlength="40" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="label-row"><span class="label">Memoria del servidor</span><span class="value-inline" id="hc-ram-value"></span></div>
+        <input type="range" id="hc-ram" min="1" max="16" step="1">
+        <div class="ram-plan" id="hc-plan"></div>
+        <div class="form-grid">
+          <div><label class="label" for="hc-gamemode">Modo de juego</label><select id="hc-gamemode"></select></div>
+          <div><label class="label" for="hc-difficulty">Dificultad</label><select id="hc-difficulty"></select></div>
+          <div><label class="label" for="hc-max">Jugadores máximos</label><input type="number" id="hc-max" min="1" max="100" value="10"></div>
+        </div>
+        <div class="host-toggles">
+          <label class="toggle"><input type="checkbox" id="hc-pvp" checked><span></span>Jugadores pueden pelear entre ellos (PvP)</label>
+        </div>
+        <label class="label" for="hc-jvm" style="margin-top:16px">Argumentos de Java</label>
+        <input id="hc-jvm" placeholder="Opcional, p. ej. -XX:+UseZGC" autocomplete="off" spellcheck="false">
+        <div class="eula-box">
+          <label class="toggle"><input type="checkbox" id="hc-eula"><span></span><span class="eula-text">Acepto el <button class="link-btn" id="hc-eula-link">EULA de Minecraft</button></span></label>
+          <p class="muted small-text">Mojang pide aceptarlo para tener un servidor. Puedes crear el servidor sin aceptarlo, pero no encenderlo.</p>
+        </div>
+        <div class="doctor-progress hidden" id="hc-progress"><div class="spinner small"></div><span id="hc-status"></span></div>
+        <div class="modal-actions">
+          <button class="btn" id="hc-cancel">Cancelar</button>
+          <button class="btn primary" id="hc-create"><svg><use href="#i-server"/></svg>Crear servidor</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= Aceptar el EULA ================= -->
+  <div class="overlay hidden" id="host-eula-dialog">
+    <div class="modal small">
+      <div class="modal-head">
+        <h2>EULA de Minecraft</h2>
+        <button class="circle-btn" id="he-close" title="Cerrar"><svg><use href="#i-close"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p class="question">Para encender un servidor, Mojang pide aceptar el acuerdo de licencia de Minecraft (EULA).</p>
+        <p><button class="link-btn" id="he-link">Leer el EULA de Minecraft</button></p>
+        <label class="toggle eula-check"><input type="checkbox" id="he-accept"><span></span>Lo leí y lo acepto</label>
+        <div class="modal-actions">
+          <button class="btn" id="he-cancel">Cancelar</button>
+          <button class="btn primary" id="he-ok" disabled><svg><use href="#i-play"/></svg>Aceptar y encender</button>
         </div>
       </div>
     </div>
@@ -903,11 +1085,13 @@
       <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
       <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
       <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4.2 4.2 0 0 0 5.3 5.3l-8.6 8.6a2.1 2.1 0 0 1-3-3l8.6-8.6a4.2 4.2 0 0 1-5.3-5.3l2.7 2.7 1.9-.4.4-1.9z"/></symbol>
+      <symbol id="i-broadcast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M8.2 15.8a5.4 5.4 0 0 1 0-7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5.3 18.7a9.5 9.5 0 0 1 0-13.4M18.7 5.3a9.5 9.5 0 0 1 0 13.4"/></symbol>
       <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></symbol>
     </defs>
   </svg>
   <script src="i18n.js"></script>
   <script src="markdown.js"></script>
   <script src="app.js"></script>
+  <script src="hostear.js"></script>
 </body>
 </html>

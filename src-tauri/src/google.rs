@@ -357,7 +357,7 @@ pub fn clear_session(paths: &Paths) {
     let _ = std::fs::remove_file(paths.data.join(SESSION_FILE));
 }
 
-fn dpapi(data: &[u8], protect: bool) -> Option<Vec<u8>> {
+pub fn dpapi(data: &[u8], protect: bool) -> Option<Vec<u8>> {
     use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB};
     let input = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };

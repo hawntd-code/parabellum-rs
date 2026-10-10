@@ -74,6 +74,8 @@ const pages = {
   explore: { title: t("Explorar", "Explore"), icon: "compass", sidebar: false },
   project: { title: t("Proyecto", "Project"), icon: "compass", sidebar: false },
   servers: { title: t("Servidores", "Servers"), icon: "server", sidebar: true },
+  host: { title: t("Hostear partida", "Host a game"), icon: "broadcast", sidebar: true },
+  hosted: { title: "", icon: "server", sidebar: false },
   chat: { title: t("Mensajes", "Messages"), icon: "chat", sidebar: false },
   instance: { title: "", icon: "cubes", sidebar: false },
 };
@@ -233,6 +235,7 @@ function contextMenu(anchor, items, { matchWidth = false } = {}) {
 function currentParam() {
   if (state.page === "instance") return state.current?.id ?? null;
   if (state.page === "project") return state.projectId ?? null;
+  if (state.page === "hosted") return host.id ?? null;
   return null;
 }
 
@@ -256,6 +259,11 @@ function navigate(page, param = null, record = true) {
     else renderProjectInstall();
   }
   if (page === "explore") enterExplore();
+  if (page === "host") enterHost();
+  if (page === "hosted") {
+    if (!param) return navigate("host", null, false);
+    enterHosted(param);
+  }
   if (page === "chat") enterChat();
   else if (state.chatOpen) closeChat();
   for (const section of $$(".page")) {
@@ -268,12 +276,12 @@ function navigate(page, param = null, record = true) {
       section.scrollTop = 0;
     }
   }
-  const railPage = page === "project" ? "explore" : page;
+  const railPage = page === "project" ? "explore" : page === "hosted" ? "host" : page;
   for (const button of $$(".rail-btn[data-page]")) button.classList.toggle("active", button.dataset.page === railPage);
   $(".workspace").classList.toggle("no-sidebar", !pages[page].sidebar);
   $("#crumb-icon").innerHTML = `<use href="#i-${pages[page].icon}"/>`;
   $("#crumb-text").textContent =
-    page === "instance" ? state.current.name : page === "project" ? (state.projectData?.title ?? pages.project.title) : pages[page].title;
+    page === "instance" ? state.current.name : page === "project" ? (state.projectData?.title ?? pages.project.title) : page === "hosted" ? hostedTitle(param) : pages[page].title;
   $("#nav-back").disabled = state.back.length === 0;
   $("#nav-forward").disabled = state.forward.length === 0;
   renderRail();
@@ -1264,7 +1272,7 @@ function renderFriends() {
       show = false;
     } else if (s.signedIn) {
       note = t("No se pudo conectar con el servidor de amigos", "Could not connect to the friends server") + (s.error ? `: ${s.error}` : ".");
-      label = "Reintentar";
+      label = t("Reintentar", "Retry");
     } else if (s.error) {
       note = t(`No se pudo iniciar sesión: ${s.error}`, `Could not sign in: ${s.error}`);
     }
@@ -1299,7 +1307,7 @@ function renderFriends() {
     notice = s.warning;
     kind = "warn";
   } else if (open && !me.address) {
-    notice = t("Tu mundo está abierto en la red local. Si tus amigos están en otra red, el modpack necesita el mod e4mc.", "Your world is open on the local network. If your friends are on another network, the modpack needs the e4mc mod.");
+    notice = t("Tu mundo está abierto en la red local. Para que entren amigos de otras redes, conecta playit.gg en «Hostear partida».", "Your world is open on the local network. For friends on other networks to join, connect playit.gg in «Host a game».");
   } else if (open && me.world === "single") {
     notice = t("Tus amigos ya pueden pulsar Unirse. Deben abrir el juego desde Parabellum.", "Your friends can now press Join. They must open the game from Parabellum.");
   } else if (s.notice) {
@@ -1444,7 +1452,7 @@ function friendMenu(anchor, friend) {
   const p = friend.presence ?? {};
   const items = [{ icon: "chat", label: t("Enviar mensaje", "Send message"), action: () => messageFriend(friend.uid) }];
   if (friend.worldOpen) {
-    if (p.address) items.push({ icon: "globe", label: t("Unirse por Internet (e4mc)", "Join over the Internet (e4mc)"), action: () => joinFriend(friend, p.address) });
+    if (p.address) items.push({ icon: "globe", label: t("Unirse por Internet", "Join over the Internet"), action: () => joinFriend(friend, p.address) });
     if (p.lan) items.push({ icon: "server", label: t("Unirse por red local", "Join over the local network"), action: () => joinFriend(friend, p.lan) });
     items.push({ icon: "copy", label: t("Copiar dirección", "Copy address"), action: () => copyText(p.address ?? p.lan, t("Dirección copiada.", "Address copied.")) });
   }
@@ -1498,7 +1506,9 @@ function wireFriendsEvents() {
   listen("social", ({ payload }) => {
     state.social = payload;
     renderFriends();
+    renderFriendServers();
     if (state.page === "chat") renderChatList();
+    if (state.page === "hosted" && host.tab === "players") renderGuests();
   });
   listen("ajustes", ({ payload }) => {
     state.settings = payload;
@@ -2439,6 +2449,21 @@ function wireEvents() {
     try {
       explained = localStorage.getItem("bandeja-explicada") === "1";
     } catch {}
+    // Con un servidor encendido, cerrar la ventana no lo apaga: se avisa cada vez.
+    const hosting = host.view?.servers.filter((s) => s.state !== "off") ?? [];
+    if (hosting.length) {
+      const ok = await confirmAction({
+        title: t("Tu servidor sigue encendido", "Your server is still on"),
+        text: t(
+          `${hosting.map((s) => s.name).join(", ")} sigue encendido y Parabellum se queda junto al reloj. Para apagar todo: clic derecho en su icono › Salir (guarda el mundo antes de cerrar).`,
+          `${hosting.map((s) => s.name).join(", ")} is still on and Parabellum stays next to the clock. To turn everything off: right-click its icon › Quit (it saves the world before closing).`,
+        ),
+        ok: t("Dejarlo encendido", "Keep it on"),
+        primary: true,
+      });
+      if (ok) appWindow?.close();
+      return;
+    }
     if (state.social?.signedIn && state.settings.closeToTray && !explained) {
       await confirmAction({
         title: t("Parabellum sigue abierto", "Parabellum is still open"),
@@ -2878,6 +2903,15 @@ function wireEvents() {
       if (state.doctor?.busy) $("#doctor-status").textContent = payload.stage;
       return;
     }
+    if (payload.task === "servidor") {
+      $("#hc-status").textContent = payload.stage;
+      return;
+    }
+    if (payload.task === "playit") {
+      if (host.view) host.view.playit.message = payload.stage;
+      if (state.page === "host") renderTunnel();
+      return;
+    }
     if (payload.task === "verificar") {
       $("#download-percent").textContent = `${Math.round(payload.fraction * 100)}%`;
       $("#download-indicator").title = payload.stage;
@@ -2913,6 +2947,7 @@ async function init() {
   renderServers();
   state.social = await invoke("estado_social").catch(() => null);
   renderFriends();
+  renderFriendServers();
   state.chats = await invoke("chats").catch(() => []);
   updateChatBadge();
   navigate("home", null, false);
@@ -4191,6 +4226,20 @@ function demoInvoke(command, args = {}) {
     servers: [{ name: "UniversoCraft", address: "mc.universocraft.com", instance: "Vanilla 1.21.1" }],
   });
   const demo = {
+    hosting_estado: {
+      playit: { connected: true, agentInstalled: true, claimUrl: null, state: "on", address: "brave-creeper.gl.joinmc.link", target: "Survival con amigos", account: "verified", message: null },
+      shareWorld: true,
+      world: null,
+      totalMb: 8100,
+      freeMb: 2300,
+      servers: [
+        { id: "Survival con amigos", name: "Survival con amigos", key: "s0123456789ab", instance: "Better MC BMC4", instanceName: "Better MC BMC4", minecraft: "1.20.1", loader: "Forge", ramGb: 4, jvmArgs: [], javaMajor: 17, eula: true, port: 25565, guests: [{ name: "Hawntd", uid: "f1" }, { name: "Pepe_07", uid: null }], created: now - 86400e3, lastStarted: now - 1500e3, leftOut: [{ file: "oculus-mc1.20.1-1.8.0.jar", kind: "modrinth", detail: null }], startupSeconds: 74, state: "ready", players: ["Hawntd"], started: now - 1500e3, cpu: 23, memoryMb: 3120, mods: 56, maxPlayers: 10, address: "brave-creeper.gl.joinmc.link", lan: "192.168.1.20:25565", error: null, diagnosis: null },
+        { id: "Vanilla 1.21.1", name: "Vanilla 1.21.1", key: "s0123456789ac", instance: "Vanilla 1.21.1", instanceName: "Vanilla 1.21.1", minecraft: "1.21.1", loader: "Vanilla", ramGb: 2, jvmArgs: [], javaMajor: 21, eula: false, port: 25566, guests: [], created: now - 86400e3 * 3, lastStarted: null, leftOut: [], startupSeconds: null, state: "off", players: [], started: null, cpu: 0, memoryMb: 0, mods: 0, maxPlayers: 10, address: null, lan: null, error: null, diagnosis: null },
+      ],
+    },
+    consola_servidor: ["[12:00:01] [Server thread/INFO]: Starting minecraft server version 1.20.1", "[12:01:15] [Server thread/INFO]: Done (74.012s)! For help, type \"help\"", "[12:03:40] [Server thread/INFO]: Hawntd joined the game", "[12:04:02] [Server thread/INFO]: <Hawntd> ¡Hola!"],
+    preparar_servidor: { worlds: ["Mi mundo"], mods: 99, recommendedRam: 4, gameRam: 6, totalMb: 8100, freeMb: 2300 },
+    ajustes_servidor: { name: "Survival con amigos", ramGb: 4, jvmArgs: [], eula: true, motd: "Survival con amigos", maxPlayers: 10, gamemode: "survival", difficulty: "normal", pvp: true, viewDistance: 8, simulationDistance: 6, allowFlight: true },
     estado_inicial: { settings, offlineUuid: "8b67db88-c6fb-3d4d-bbee-71f84a0e752d", instances, version: "0.1.0 (demostración)", root: "C:\\Users\\Juan\\Desktop\\Parabellum", systemRamGb: 16 },
     listar_instancias: instances,
     uuid_offline: "8b67db88-c6fb-3d4d-bbee-71f84a0e752d",

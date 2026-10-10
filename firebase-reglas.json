@@ -52,6 +52,34 @@
         }
       }
     },
+    "servers": {
+      "$uid": {
+        "$server": {
+          ".read": "auth != null && (auth.uid === $uid || data.child('guests').child(auth.uid).val() === true)",
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "$server.matches(/^s[0-9a-f]{12}$/) && newData.child('name').isString() && newData.child('updated').isNumber()",
+          "guests": {
+            "$guest": {
+              ".validate": "newData.val() === true"
+            }
+          },
+          "$field": {
+            ".validate": "newData.isNumber() || newData.isBoolean() || (newData.isString() && newData.val().length <= 200)"
+          }
+        }
+      }
+    },
+    "invites": {
+      "$guest": {
+        ".read": "auth != null && auth.uid === $guest",
+        "$host": {
+          "$server": {
+            ".write": "auth != null && (auth.uid === $host || (auth.uid === $guest && !newData.exists()))",
+            ".validate": "newData.val() === true && root.child('friends').child($host).child($guest).val() === true"
+          }
+        }
+      }
+    },
     "chats": {
       "$chat": {
         ".read": "auth != null && data.child('members').child(auth.uid).val() === true",

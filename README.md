@@ -24,6 +24,7 @@ Todo cuelga de la carpeta del .exe (o de `PARABELLUM_ROOT`):
 ```
 Parabellum.exe
 instancias/   cada una con su instancia.json
+servidores/   los de «Hostear partida» (con su mundo y su configuración)
 base/         versions, libraries, assets, java compartidos por todas las instancias
 datos/        ajustes y registros
 paquetes/     (opcional) zips de modpacks copiados de una USB
@@ -56,6 +57,15 @@ se crean desde Ajustes › Comportamiento.
 - Todo se puede usar con el teclado: foco visible, diálogos que no dejan escapar el foco, menús con
   flechas y Escape, tarjetas con Enter. Avisos anunciados al lector de pantalla, contraste suficiente
   en los dos temas y tamaño de la interfaz de 90 a 150 % (Ctrl + / Ctrl − / Ctrl 0).
+
+## Hostear partida
+
+Juega con amigos desde tu PC sin abrir puertos ni pagar: un **servidor** hecho a partir de una
+instancia (vanilla, Fabric, Quilt, Forge o NeoForge, sin los mods que solo son de cliente) o **tu
+mundo abierto en LAN**. La dirección pública la da [playit.gg](https://playit.gg) (gratis): se vincula
+una vez desde la página «Hostear partida» y su agente oficial se baja solo. La dirección no cambia;
+los amigos invitados la ven en su página Servidores aunque Parabellum se reinicie. El EULA de
+Minecraft se acepta marcándolo al crear o encender el servidor.
 
 ## Configuración
 
@@ -92,6 +102,9 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--diagnosticar <instancia>` | Qué falla: revisión de mods (dependencias, loader, versión del juego, repetidos) y el último informe de fallo, con sus arreglos |
 | `--arreglar <instancia>` | Probar y arreglar: abre el juego hasta el menú principal y, si no llega, aplica los arreglos recomendados y repite (hasta 5 veces) |
 | `--verificar <instancia> [rapido]` | Comprueba la huella de cada archivo del modpack y repone lo que falte o esté dañado (`rapido`: solo lo que falte) |
+| `--crear-servidor <instancia> [nombre] [mundo]` | Servidor dedicado a partir de la instancia (sin aceptar el EULA) |
+| `--probar-servidor <servidor> [segundos]` | Lo enciende, espera a que esté listo y lo apaga; si no arranca, explica por qué |
+| `--playit` | Estado de la cuenta y del túnel de playit.gg |
 | `--catalogo` | Modpacks y versiones de Drive y de la carpeta paquetes, con su estado |
 | `--instalar-catalogo <id> [reparar]` | Instala, actualiza o repara un paquete (bajando solo lo que cambió) |
 | `--publicar-launcher <carpeta> [notas]` | Prepara _parabellum con esta versión para subirla a Drive |

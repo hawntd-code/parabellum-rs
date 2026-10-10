@@ -628,6 +628,23 @@ pub async fn identify(instance: &Instance) -> Vec<InstalledFile> {
         .collect()
 }
 
+/// Si cada proyecto funciona en un servidor dedicado: id -> "required", "optional" o "unsupported".
+pub async fn server_sides(ids: &[String]) -> HashMap<String, String> {
+    let mut sides = HashMap::new();
+    let mut unique: Vec<&String> = ids.iter().collect();
+    unique.sort();
+    unique.dedup();
+    for chunk in unique.chunks(200) {
+        let Ok(found) = get("/projects", &[("ids", serde_json::to_string(chunk).unwrap())]).await else { break };
+        for project in found.as_array().into_iter().flatten() {
+            if let (Some(id), Some(side)) = (project["id"].as_str(), project["server_side"].as_str()) {
+                sides.insert(id.to_string(), side.to_string());
+            }
+        }
+    }
+    sides
+}
+
 /// Proyecto de Modrinth de cada archivo según el índice (sin conexión ni calcular nada).
 /// Clave: "mods/sodium.jar" sin ".disabled".
 pub fn known_projects(instance: &Instance) -> HashMap<String, String> {
