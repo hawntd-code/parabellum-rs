@@ -394,6 +394,7 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
     // Un hilo espera a que el juego termine para avisar a la interfaz (y explicar el error si lo hubo).
     std::thread::spawn(move || {
         let code = child.wait().ok().and_then(|s| s.code());
+        launch::forget_pid(&instance);
         let state = app.state::<AppState>();
         let stopped = state.stopped.lock().unwrap().remove(&id);
         state.games.lock().unwrap().remove(&id);
@@ -1193,6 +1194,7 @@ async fn auto_fix(
             let mut child = launch::start(&plan, &launched)?;
             started_hook(Some(child.id()));
             let outcome = diagnostico::wait_for_menu(&mut child, &launched, started, 480);
+            launch::forget_pid(&launched);
             started_hook(None);
             Ok((outcome, started))
         })

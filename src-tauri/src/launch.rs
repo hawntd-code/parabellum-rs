@@ -368,9 +368,22 @@ fn extract_natives(archives: &[PathBuf], target: &Path) -> Result<(), String> {
 }
 
 /// PID de un juego que siga abierto desde antes de abrir el launcher (por el archivo juego.pid).
+/// Windows reutiliza los números de proceso: solo cuenta si ese proceso sigue siendo un Java. Si no,
+/// el archivo es de una partida que ya terminó y se borra.
 pub fn running_pid(instance: &Instance) -> Option<u32> {
-    let pid = std::fs::read_to_string(instance.state_dir().join("juego.pid")).ok()?.trim().parse::<u32>().ok()?;
-    process_alive(pid).then_some(pid)
+    let file = instance.state_dir().join("juego.pid");
+    let pid = std::fs::read_to_string(&file).ok()?.trim().parse::<u32>().ok()?;
+    if java_alive(pid) {
+        Some(pid)
+    } else {
+        let _ = std::fs::remove_file(&file);
+        None
+    }
+}
+
+/// La partida terminó: su juego.pid ya no sirve.
+pub fn forget_pid(instance: &Instance) {
+    let _ = std::fs::remove_file(instance.state_dir().join("juego.pid"));
 }
 
 /// Cierra el juego y los procesos que haya abierto.
@@ -465,12 +478,17 @@ pub fn crash_reason(instance: &Instance, since_ms: i64) -> Option<String> {
 "))
 }
 
-fn process_alive(pid: u32) -> bool {
+fn java_alive(pid: u32) -> bool {
     // tasklist evita depender de APIs de Windows; se llama como mucho cada pocos segundos.
+    // Su línea es "javaw.exe","19476","Console",…
     Command::new("tasklist")
         .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
         .creation_flags(CREATE_NO_WINDOW)
         .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains(&format!("\"{pid}\"")))
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .any(|line| line.contains(&format!("\"{pid}\"")) && line.to_lowercase().starts_with("\"java"))
+        })
         .unwrap_or(false)
 }
