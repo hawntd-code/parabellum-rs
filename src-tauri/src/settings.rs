@@ -28,6 +28,8 @@ pub struct Settings {
     pub close_to_tray: bool,
     /// Avisos de Windows cuando un amigo te manda solicitud o abre su mundo.
     pub notifications: bool,
+    /// Sonido cuando llega un mensaje (salvo que esa conversación esté a la vista).
+    pub message_sound: bool,
     /// Tamaño de la interfaz (1.0 = 100 %).
     pub ui_scale: f64,
     /// "es" o "en"; vacío hasta el primer arranque, que toma el de Windows.
@@ -67,6 +69,7 @@ impl Default for Settings {
             accounts: Vec::new(),
             close_to_tray: true,
             notifications: true,
+            message_sound: true,
             ui_scale: 1.0,
             language: String::new(),
             sidebar_hidden: false,

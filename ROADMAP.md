@@ -113,6 +113,14 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### 0.17.0: ajustes del servidor como en Aternos, sonido de mensajes (pedido de Juan)
+- [x] **Vista previa del chat al día:** al escribir varias rutas a la vez, Firebase avisa con claves como «meta/lastText» y Parabellum las guardaba tal cual; ahora las pone en su sitio (firebase.rs). Por lo mismo tampoco llegaban los avisos de mensajes nuevos
+- [x] **Sonido de mensajes** (sonido.rs): dos notas cortas generadas por Parabellum y tocadas por Windows, aunque se esté jugando o Parabellum esté junto al reloj; no si esa conversación está a la vista; una vez si llegan varios seguidos. Interruptor en Ajustes › Comportamiento; el aviso de Windows del mensaje sale sin su sonido
+- [x] **Ajustes del servidor** (opciones.rs): tarjetas por grupos (Jugadores, Partida, Reglas del juego, Mundo, Paquete de recursos, Servidor) con interruptores, +/− y listas; debajo, la línea real de server.properties o el /gamerule. Se guarda al cambiar. Solo se muestran las que existen en la versión (las que escribió el servidor o las que tiene su mundo). No se pueden tocar online-mode, puertos, rcon ni level-name
+- [x] Reglas del juego: hasta 1.21.10 en level.dat › Data › GameRules (texto, keepInventory); desde 26.1 en data/minecraft/game_rules.dat (minecraft:keep_inventory, 0/1). Encendido: /gamerule al momento; apagado: se escriben en el mundo (comprobando que se lee igual antes de reemplazarlo); sin mundo: pendientes hasta que el servidor esté listo
+- [x] Desde 1.21.11 PvP, Nether y monstruos son reglas del juego: el interruptor de PvP de antes no hacía nada en 26.x (también al crear el servidor)
+- [x] «Reiniciar» cuando hay cambios que el servidor solo lee al arrancar; icono del servidor (server-icon.png) y MOTD con colores y formato (§)
+
 ### 0.16.1: herramientas de publicar solo para el creador (pedido de Juan)
 - [x] En Ajustes › Acerca de los demás solo ven la versión y «Buscar actualizaciones». La carpeta para Drive, «Conectar Drive», «Publicar esta versión» y «Abrir mi Drive» (también los botones de Drive al exportar) se ven solo en el PC de quien publica: el que ya tiene Drive conectado para publicar (datos/drive-publicar.bin). En otro PC se activan (o se ocultan) con siete clics seguidos en la versión; queda en datos/creador.txt. Los textos para los demás ya no hablan de «tu Drive»
 

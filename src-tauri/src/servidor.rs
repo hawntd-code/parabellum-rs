@@ -132,6 +132,9 @@ pub struct ServerConfig {
     pub verify_players: bool,
     /// Cambios de nombre (anterior, nuevo) cuyas cosas falta pasar: el jugador estaba conectado.
     pub pending_moves: Vec<(String, String)>,
+    /// Reglas del juego elegidas que todavía no están en el mundo (id de la opción → valor): se
+    /// aplican con /gamerule en cuanto el servidor está listo (ver opciones.rs).
+    pub pending_rules: std::collections::BTreeMap<String, String>,
     #[serde(skip)]
     pub folder: PathBuf,
 }
@@ -466,15 +469,15 @@ pub struct Settings {
     pub verify_players: bool,
 }
 
-const GAMEMODES: [&str; 4] = ["survival", "creative", "adventure", "spectator"];
-const DIFFICULTIES: [&str; 4] = ["peaceful", "easy", "normal", "hard"];
+pub const GAMEMODES: [&str; 4] = ["survival", "creative", "adventure", "spectator"];
+pub const DIFFICULTIES: [&str; 4] = ["peaceful", "easy", "normal", "hard"];
 
 /// Las versiones antiguas (antes de 1.13) guardan el modo y la dificultad como número.
 fn legacy(minecraft: &str) -> bool {
     compare_versions(minecraft, "1.13") == std::cmp::Ordering::Less
 }
 
-fn named(value: &str, names: &[&str; 4], default: &str) -> String {
+pub fn named(value: &str, names: &[&str; 4], default: &str) -> String {
     match value.parse::<usize>() {
         Ok(number) => names.get(number).copied().unwrap_or(default).to_string(),
         Err(_) if names.contains(&value) => value.to_string(),
@@ -482,7 +485,7 @@ fn named(value: &str, names: &[&str; 4], default: &str) -> String {
     }
 }
 
-fn stored(value: &str, names: &[&str; 4], minecraft: &str) -> String {
+pub fn stored(value: &str, names: &[&str; 4], minecraft: &str) -> String {
     let index = names.iter().position(|n| *n == value).unwrap_or(0);
     if legacy(minecraft) { index.to_string() } else { names[index].to_string() }
 }
@@ -701,6 +704,8 @@ async fn build(
             ("level-seed", new.seed.trim().to_string()),
         ],
     )?;
+    // Desde 1.21.11 el PvP es una regla del juego (en server.properties ya no cuenta).
+    crate::opciones::initial_rules(&mut config, new.pvp);
     write_eula(folder, config.eula)?;
     write_access_lists(&config, host)?;
     save(&config)?;

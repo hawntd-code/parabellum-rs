@@ -2604,6 +2604,7 @@ function renderSettings() {
   $("#minimize-on-launch").checked = s.minimizeOnLaunch;
   $("#close-to-tray").checked = s.closeToTray ?? true;
   $("#notifications").checked = s.notifications ?? true;
+  $("#message-sound").checked = s.messageSound ?? true;
   $("#ram").max = Math.max(4, Math.min(32, state.systemRam - 2));
   $("#ram").value = s.ramGb;
   $("#ram-max").textContent = `${$("#ram").max} GB`;
@@ -2666,6 +2667,7 @@ async function saveSettings(extra = {}) {
         minimizeOnLaunch: $("#minimize-on-launch").checked,
         closeToTray: $("#close-to-tray").checked,
         notifications: $("#notifications").checked,
+        messageSound: $("#message-sound").checked,
         ...extra,
       },
     });
@@ -3023,6 +3025,11 @@ function wireEvents() {
   $("#minimize-on-launch").onchange = () => saveSettings();
   $("#close-to-tray").onchange = () => saveSettings();
   $("#notifications").onchange = () => saveSettings();
+  $("#message-sound").onchange = () => {
+    saveSettings();
+    // Al activarlo se oye cómo suena.
+    if ($("#message-sound").checked) invoke("sonido_mensaje").catch(() => {});
+  };
   $("#shortcut-desktop").onchange = () => toggleShortcut("escritorio", $("#shortcut-desktop"));
   $("#shortcut-start").onchange = () => toggleShortcut("inicio", $("#shortcut-start"));
   for (const button of $$("#theme button")) {

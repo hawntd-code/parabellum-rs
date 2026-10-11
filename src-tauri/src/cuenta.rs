@@ -410,14 +410,22 @@ fn start_chat(app: &AppHandle, social: &Arc<Social>) {
     *app.state::<AppState>().social.chat.lock().unwrap() = Some(service);
 }
 
-/// Aviso de Windows de un mensaje nuevo, salvo que esa conversación esté a la vista.
+/// Sonido y aviso de Windows de un mensaje nuevo, salvo que esa conversación esté a la vista.
 fn notify_message(app: &AppHandle, summary: chat::Summary) {
-    if !app.state::<AppState>().settings.lock().unwrap().notifications {
-        return;
-    }
+    let state = app.state::<AppState>();
+    let (sound, toast) = {
+        let settings = state.settings.lock().unwrap();
+        (settings.message_sound, settings.notifications)
+    };
     let in_front = app.get_webview_window("main").is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false));
     let open = chat_service(app).and_then(|c| c.open_chat());
     if in_front && open.as_deref() == Some(summary.id.as_str()) {
+        return;
+    }
+    if sound {
+        crate::sonido::message(false);
+    }
+    if !toast {
         return;
     }
     let title = if summary.kind == "grupo" { summary.name.clone() } else { t!("Mensaje de {}", "Message from {}", summary.name) };
@@ -425,7 +433,7 @@ fn notify_message(app: &AppHandle, summary: chat::Summary) {
     let (handle, id) = (app.clone(), summary.id.clone());
     let _ = app.run_on_main_thread(move || {
         let click = handle.clone();
-        let _ = crate::avisos::show(&title, &body, move || {
+        let _ = crate::avisos::show(&title, &body, sound, move || {
             show_window(&click);
             let _ = click.emit("abrir-chat", id.clone());
         });
@@ -552,7 +560,7 @@ fn notify_changes(app: &AppHandle) {
         // Los avisos usan WinRT: se muestran desde el hilo de la ventana, que ya lo tiene iniciado.
         let _ = app.run_on_main_thread(move || {
             let click = handle.clone();
-            let _ = crate::avisos::show(&title, &body, move || show_window(&click));
+            let _ = crate::avisos::show(&title, &body, false, move || show_window(&click));
         });
     }
 }

@@ -530,7 +530,7 @@ function renderHosted() {
     problem.innerHTML = "";
   }
   if (host.tab === "players") renderGuests();
-  if (host.tab === "settings") $("#hs-running-note").classList.toggle("hidden", !on);
+  $("#hs-restart").classList.toggle("hidden", !s.restartNeeded);
 }
 
 function selectHostedTab(tab) {
@@ -671,37 +671,386 @@ function playerMenu(anchor, name) {
   ]);
 }
 
-// ---------- Ajustes del servidor ----------
+// ---------- Opciones del servidor (como en Aternos) ----------
 async function loadHostedSettings() {
   const s = hostServer(host.id);
   if (!s) return;
+  const id = host.id;
   try {
-    const settings = await invoke("ajustes_servidor", { id: host.id });
-    host.settings = settings;
-    $("#hs-name").value = settings.name;
-    $("#hs-motd").value = settings.motd;
-    const ram = $("#hs-ram");
-    ram.max = Math.max(2, Math.min(16, Math.floor(host.view.totalMb / 1024) - 2));
-    ram.value = settings.ramGb;
-    fillOptions($("#hs-gamemode"), gamemodeNames(), settings.gamemode);
-    fillOptions($("#hs-difficulty"), difficultyNames(), settings.difficulty);
-    $("#hs-max").value = settings.maxPlayers;
-    $("#hs-view").value = settings.viewDistance;
-    $("#hs-sim").value = settings.simulationDistance;
-    $("#hs-pvp").checked = settings.pvp;
-    $("#hs-flight").checked = settings.allowFlight;
-    $("#hs-verify").checked = settings.verifyPlayers;
-    $("#hs-eula").checked = settings.eula;
-    $("#hs-jvm").value = settings.jvmArgs.join(" ");
-    $("#hs-running-note").classList.toggle("hidden", s.state === "off");
-    updateHostedRam();
-    const left = s.leftOut ?? [];
-    $("#hs-left-box").classList.toggle("hidden", !left.length);
-    $("#hs-left-title").textContent = t(`Mods que no van en el servidor (${left.length})`, `Mods that do not go on the server (${left.length})`);
-    $("#hs-left").innerHTML = left.map((l) => `<li><b>${escapeHtml(l.file)}</b><span>${escapeHtml(leftOutReason(l))}</span></li>`).join("");
+    const options = await invoke("opciones_servidor", { id });
+    if (host.id !== id) return;
+    host.options = options;
+    renderHostedOptions();
   } catch (error) {
     toast(String(error), "error");
   }
+  $("#hs-restart").classList.toggle("hidden", !s.restartNeeded);
+  const left = s.leftOut ?? [];
+  $("#hs-left-box").classList.toggle("hidden", !left.length);
+  $("#hs-left-title").textContent = t(`Mods que no van en el servidor (${left.length})`, `Mods that do not go on the server (${left.length})`);
+  $("#hs-left").innerHTML = left.map((l) => `<li><b>${escapeHtml(l.file)}</b><span>${escapeHtml(leftOutReason(l))}</span></li>`).join("");
+}
+
+/** Los colores de Minecraft (§0 … §f). */
+const MC_COLORS = {
+  0: "#000000", 1: "#0000AA", 2: "#00AA00", 3: "#00AAAA", 4: "#AA0000", 5: "#AA00AA", 6: "#FFAA00", 7: "#AAAAAA",
+  8: "#555555", 9: "#5555FF", a: "#55FF55", b: "#55FFFF", c: "#FF5555", d: "#FF55FF", e: "#FFFF55", f: "#FFFFFF",
+};
+const MC_STYLES = { l: "mc-bold", o: "mc-italic", n: "mc-underline", m: "mc-strike" };
+
+/** El MOTD con sus códigos de color y formato, como se ve en la lista de servidores. */
+function motdHtml(text) {
+  let color = null;
+  let styles = [];
+  let out = "";
+  let run = "";
+  const flush = () => {
+    if (!run) return;
+    out += `<span${color ? ` style="color:${color}"` : ""}${styles.length ? ` class="${styles.join(" ")}"` : ""}>${escapeHtml(run)}</span>`;
+    run = "";
+  };
+  for (let i = 0; i < text.length; i++) {
+    const code = text[i] === "§" ? (text[i + 1] ?? "").toLowerCase() : "";
+    if (code && (code in MC_COLORS || code in MC_STYLES || code === "r" || code === "k")) {
+      flush();
+      if (code in MC_COLORS) {
+        color = MC_COLORS[code];
+        styles = [];
+      } else if (code === "r") {
+        color = null;
+        styles = [];
+      } else if (code in MC_STYLES && !styles.includes(MC_STYLES[code])) {
+        styles.push(MC_STYLES[code]);
+      }
+      i++;
+      continue;
+    }
+    run += text[i];
+  }
+  flush();
+  return out;
+}
+
+function optionSource(source) {
+  const at = source.startsWith("gamerule ") ? source.lastIndexOf(" ") : source.indexOf("=");
+  if (at < 0) return `<code>${escapeHtml(source)}</code>`;
+  return `<code>${escapeHtml(source.slice(0, at + 1))}<b>${escapeHtml(source.slice(at + 1))}</b></code>`;
+}
+
+function optionControl(o) {
+  const label = escapeHtml(o.label);
+  switch (o.kind) {
+    case "bool":
+      return `<label class="toggle big"><input type="checkbox" data-opt-input aria-label="${label}" ${o.value ? "checked" : ""}><span></span></label>`;
+    case "number":
+      return `<div class="stepper">
+        <button data-opt-step="-1" aria-label="${t("Menos", "Less")}">${icon("minus")}</button>
+        <input type="number" data-opt-input aria-label="${label}" min="${o.min}" max="${o.max}" value="${o.value}">
+        <button data-opt-step="1" aria-label="${t("Más", "More")}">${icon("plus")}</button>
+      </div>`;
+    case "choice":
+      return `<select data-opt-input aria-label="${label}">${o.choices
+        .map(([value, name]) => `<option value="${escapeHtml(value)}" ${value === o.value ? "selected" : ""}>${escapeHtml(name)}</option>`)
+        .join("")}</select>`;
+    case "text":
+      return `<input data-opt-input aria-label="${label}" maxlength="${o.max}" value="${escapeHtml(o.value)}" placeholder="${escapeHtml(o.id === "jvm" ? o.help : t("Vacío", "Empty"))}" autocomplete="off" spellcheck="false">`;
+    case "ram":
+      return `<span class="value-inline" data-ram-value>${o.value} GB</span>
+        <div class="opt-ram"><input type="range" data-opt-input aria-label="${label}" min="${o.min}" max="${o.max}" step="1" value="${o.value}"><div class="ram-plan" data-ram-plan></div></div>`;
+    default:
+      return "";
+  }
+}
+
+function optionHtml(o) {
+  const wide = o.kind === "text" || o.kind === "ram";
+  const help = o.help && o.id !== "jvm" ? ` title="${escapeHtml(o.help)}"` : "";
+  return `<div class="opt ${o.kind} ${wide ? "wide" : ""}" data-opt="${escapeHtml(o.id)}"${help}>
+    <div class="opt-main"><span class="opt-label">${escapeHtml(o.label)}</span>${optionControl(o)}</div>
+    <div class="opt-key">${optionSource(o.source)}</div>
+  </div>`;
+}
+
+function renderHostedOptions() {
+  const view = host.options;
+  if (!view) return;
+  $("#hs-icon").innerHTML = view.icon ? `<img src="${view.icon}" alt="">` : icon("server");
+  $("#hs-name-view").textContent = view.name;
+  if (!host.editingMotd) showMotd(view.motd);
+  $("#hs-options").innerHTML = view.groups
+    .map((g) => `<section class="opt-group"><h3>${escapeHtml(g.title)}</h3><div class="opt-grid">${g.options.map(optionHtml).join("")}</div></section>`)
+    .join("");
+  updateOptionRam();
+}
+
+function showMotd(text) {
+  const view = $("#hs-motd-view");
+  view.dataset.empty = t("Sin mensaje", "No message");
+  view.innerHTML = motdHtml(text ?? "");
+}
+
+function findOption(id) {
+  for (const group of host.options?.groups ?? []) {
+    const index = group.options.findIndex((o) => o.id === id);
+    if (index >= 0) return { group, index, option: group.options[index] };
+  }
+  return null;
+}
+
+function updateOptionRam() {
+  const card = $('#hs-options [data-opt="ram"]');
+  if (!card) return;
+  const value = Number(card.querySelector("[data-opt-input]").value);
+  card.querySelector("[data-ram-value]").textContent = `${value} GB`;
+  const s = hostServer(host.id);
+  const instance = state.instances.find((i) => i.id === s?.instance);
+  card.querySelector("[data-ram-plan]").innerHTML = ramPlan(host.view.totalMb, value, instance?.ramGb ?? state.settings.ramGb);
+}
+
+function optionValue(card) {
+  const found = findOption(card.dataset.opt);
+  const input = card.querySelector("[data-opt-input]");
+  if (!found || !input) return null;
+  switch (found.option.kind) {
+    case "bool":
+      return input.checked;
+    case "number":
+    case "ram": {
+      const { min, max } = found.option;
+      const number = Math.round(Number(input.value));
+      return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : found.option.value;
+    }
+    default:
+      return input.value;
+  }
+}
+
+/** Guarda una opción y deja ver qué pasó (guardado, ya aplicado o al reiniciar). */
+async function commitOption(id, value) {
+  const serverId = host.id;
+  try {
+    const result = await invoke("cambiar_opcion_servidor", { id: serverId, opcion: id, valor: value });
+    if (host.id !== serverId) return result;
+    const card = $(`#hs-options [data-opt="${CSS.escape(id)}"]`);
+    if (result.option) {
+      const found = findOption(id);
+      if (found) found.group.options[found.index] = result.option;
+      if (card) {
+        card.querySelector(".opt-key").innerHTML = optionSource(result.option.source);
+        // El valor que quedó (p. ej. un número fuera de rango se ajusta).
+        const input = card.querySelector("[data-opt-input]");
+        if (input && result.option.kind === "number") input.value = result.option.value;
+      }
+    }
+    if (card) {
+      const note = result.applied ? t("Aplicado", "Applied") : result.needsRestart ? t("Al reiniciar", "On restart") : t("Guardado", "Saved");
+      card.querySelector(".opt-key").insertAdjacentHTML("beforeend", `<span class="opt-note">${note}</span>`);
+      card.classList.add("flash");
+      clearTimeout(card.flashTimer);
+      card.flashTimer = setTimeout(() => {
+        card.classList.remove("flash");
+        card.querySelector(".opt-note")?.remove();
+      }, 1800);
+    }
+    return result;
+  } catch (error) {
+    toast(String(error), "error");
+    loadHostedSettings();
+    return null;
+  }
+}
+
+function scheduleOption(card, delay) {
+  clearTimeout(card.commitTimer);
+  card.commitTimer = setTimeout(() => {
+    const value = optionValue(card);
+    const found = findOption(card.dataset.opt);
+    if (value === null || !found || value === found.option.value) return;
+    commitOption(card.dataset.opt, value);
+  }, delay);
+}
+
+function editServerName() {
+  const input = $("#hs-name-input");
+  input.value = host.options?.name ?? "";
+  $("#hs-name-view").classList.add("hidden");
+  $("#hs-name-edit").classList.add("hidden");
+  input.classList.remove("hidden");
+  input.focus();
+  input.select();
+}
+
+async function finishServerName(save) {
+  const input = $("#hs-name-input");
+  if (input.classList.contains("hidden")) return;
+  input.classList.add("hidden");
+  $("#hs-name-view").classList.remove("hidden");
+  $("#hs-name-edit").classList.remove("hidden");
+  const name = input.value.trim();
+  if (!save || !name || name === host.options?.name) return;
+  $("#hs-name-view").textContent = name;
+  if (await commitOption("name", name)) host.options.name = name;
+  else $("#hs-name-view").textContent = host.options?.name ?? "";
+}
+
+function motdTools() {
+  const swatches = Object.entries(MC_COLORS)
+    .map(([code, color]) => `<button class="swatch" data-code="${code}" style="background:${color}" title="§${code}"></button>`)
+    .join("");
+  const styles = [
+    ["l", "<b>B</b>", t("Negrita", "Bold")],
+    ["o", "<i>I</i>", t("Cursiva", "Italic")],
+    ["n", "<u>U</u>", t("Subrayado", "Underline")],
+    ["m", "<s>S</s>", t("Tachado", "Strikethrough")],
+    ["r", "↺", t("Quitar formato", "Reset format")],
+  ]
+    .map(([code, label, title]) => `<button data-code="${code}" title="${escapeHtml(title)} (§${code})">${label}</button>`)
+    .join("");
+  return `${swatches}<span class="sep"></span>${styles}`;
+}
+
+function editMotd() {
+  host.editingMotd = true;
+  const input = $("#hs-motd-input");
+  input.value = host.options?.motd ?? "";
+  $("#hs-motd-tools").innerHTML = motdTools();
+  $("#hs-motd-editor").classList.remove("hidden");
+  input.focus();
+}
+
+function closeMotd() {
+  host.editingMotd = false;
+  $("#hs-motd-editor").classList.add("hidden");
+  showMotd(host.options?.motd ?? "");
+}
+
+function motdInput() {
+  const input = $("#hs-motd-input");
+  // Dos renglones, como en la lista de servidores.
+  const lines = input.value.split("\n");
+  if (lines.length > 2) input.value = lines.slice(0, 2).join("\n");
+  showMotd(input.value);
+}
+
+function insertMotdCode(code) {
+  const input = $("#hs-motd-input");
+  const [start, end] = [input.selectionStart, input.selectionEnd];
+  const text = `§${code}`;
+  input.value = input.value.slice(0, start) + text + input.value.slice(end);
+  input.focus();
+  input.selectionStart = input.selectionEnd = start + text.length;
+  motdInput();
+}
+
+async function saveMotd() {
+  const motd = $("#hs-motd-input").value;
+  if (await commitOption("motd", motd)) {
+    host.options.motd = motd.split("\n").slice(0, 2).join("\n");
+    closeMotd();
+    if (hostServer(host.id)?.state !== "off") toast(t("Mensaje guardado. Se ve al reiniciar el servidor.", "Message saved. It shows after restarting the server."));
+  }
+}
+
+function serverIconClicked(anchor) {
+  if (!host.options?.icon) return $("#hs-icon-file").click();
+  contextMenu(anchor, [
+    { icon: "image", label: t("Cambiar icono", "Change icon"), action: () => $("#hs-icon-file").click() },
+    { icon: "trash", label: t("Quitar icono", "Remove icon"), danger: true, action: () => saveServerIcon(null) },
+  ]);
+}
+
+/** La imagen elegida, recortada al centro y reducida a 64×64 (lo que pide Minecraft). */
+async function serverIconFromFile(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error(t("Esa imagen no se pudo abrir.", "That image could not be opened.")));
+      img.src = url;
+    });
+    const side = Math.min(image.naturalWidth, image.naturalHeight);
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 64;
+    const context = canvas.getContext("2d");
+    // Las imágenes pequeñas (pixel art) se agrandan sin difuminar.
+    context.imageSmoothingEnabled = side > 64;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, 64, 64);
+    await saveServerIcon(canvas.toDataURL("image/png"));
+  } catch (error) {
+    toast(String(error.message ?? error), "error");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function saveServerIcon(data) {
+  try {
+    await invoke("icono_servidor", { id: host.id, datos: data });
+    host.options.icon = data;
+    renderHostedOptions();
+    const on = hostServer(host.id)?.state !== "off";
+    toast(data ? (on ? t("Icono guardado. Se ve al reiniciar el servidor.", "Icon saved. It shows after restarting the server.") : t("Icono guardado.", "Icon saved.")) : t("Icono quitado.", "Icon removed."));
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+function bindHostedOptions() {
+  const options = $("#hs-options");
+  options.addEventListener("change", (event) => {
+    const card = event.target.closest("[data-opt]");
+    if (card && event.target.matches("[data-opt-input]")) scheduleOption(card, 0);
+  });
+  options.addEventListener("input", (event) => {
+    if (event.target.closest('[data-opt="ram"]')) updateOptionRam();
+  });
+  options.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.target.matches("input[data-opt-input]")) event.target.blur();
+  });
+  options.addEventListener("click", (event) => {
+    const step = event.target.closest("[data-opt-step]");
+    if (!step) return;
+    const card = step.closest("[data-opt]");
+    const input = card.querySelector("[data-opt-input]");
+    const found = findOption(card.dataset.opt);
+    if (!found) return;
+    input.value = Math.max(found.option.min, Math.min(found.option.max, (Number(input.value) || 0) + Number(step.dataset.optStep)));
+    // Varios clics seguidos se guardan juntos.
+    scheduleOption(card, 450);
+  });
+  $("#hs-name-edit").onclick = () => editServerName();
+  $("#hs-name-input").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") finishServerName(true);
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      finishServerName(false);
+    }
+  });
+  $("#hs-name-input").addEventListener("blur", () => finishServerName(true));
+  $("#hs-motd-edit").onclick = () => (host.editingMotd ? closeMotd() : editMotd());
+  $("#hs-motd-input").addEventListener("input", () => motdInput());
+  $("#hs-motd-tools").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-code]");
+    if (button) insertMotdCode(button.dataset.code);
+  });
+  $("#hs-motd-cancel").onclick = () => closeMotd();
+  $("#hs-motd-save").onclick = () => saveMotd();
+  $("#hs-icon").onclick = (event) => serverIconClicked(event.currentTarget);
+  $("#hs-icon-file").onchange = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) serverIconFromFile(file);
+  };
+  $("#hs-restart-btn").onclick = async () => {
+    try {
+      await invoke("reiniciar_servidor", { id: host.id });
+      toast(t("Reiniciando el servidor…", "Restarting the server…"));
+    } catch (error) {
+      toast(String(error), "error");
+    }
+  };
 }
 
 /** Por qué un mod no va en el servidor (se guarda como código para mostrarlo en el idioma elegido). */
@@ -720,41 +1069,6 @@ function leftOutReason(item) {
       return t(`Abre su propia dirección (${id}); en el servidor la dirección la da playit.gg`, `It opens its own address (${id}); on the server the address comes from playit.gg`);
     default:
       return "";
-  }
-}
-
-function updateHostedRam() {
-  const value = Number($("#hs-ram").value);
-  $("#hs-ram-value").textContent = `${value} GB`;
-  const s = hostServer(host.id);
-  const instance = state.instances.find((i) => i.id === s?.instance);
-  const game = instance?.ramGb ?? state.settings.ramGb;
-  $("#hs-plan").innerHTML = ramPlan(host.view.totalMb, value, game);
-}
-
-async function saveHostedSettings() {
-  const settings = {
-    name: $("#hs-name").value.trim(),
-    motd: $("#hs-motd").value,
-    ramGb: Number($("#hs-ram").value),
-    jvmArgs: $("#hs-jvm").value.split(/\s+/).filter(Boolean),
-    eula: $("#hs-eula").checked,
-    maxPlayers: Number($("#hs-max").value) || 10,
-    gamemode: $("#hs-gamemode").value,
-    difficulty: $("#hs-difficulty").value,
-    pvp: $("#hs-pvp").checked,
-    viewDistance: Number($("#hs-view").value) || 10,
-    simulationDistance: Number($("#hs-sim").value) || 10,
-    allowFlight: $("#hs-flight").checked,
-    verifyPlayers: $("#hs-verify").checked,
-  };
-  try {
-    await invoke("guardar_servidor", { id: host.id, ajustes: settings });
-    await loadHosting();
-    const on = hostServer(host.id)?.state !== "off";
-    toast(on ? t("Guardado. Se aplica la próxima vez que lo enciendas.", "Saved. It applies the next time you start it.") : t("Guardado.", "Saved."));
-  } catch (error) {
-    toast(String(error), "error");
   }
 }
 
@@ -1049,8 +1363,7 @@ function wireHostEvents() {
       addGuestByName();
     }
   };
-  $("#hs-ram").oninput = () => updateHostedRam();
-  $("#hs-save").onclick = () => saveHostedSettings();
+  bindHostedOptions();
 
   // Crear servidor
   $("#hc-close").onclick = () => closeModal("#host-create-dialog");

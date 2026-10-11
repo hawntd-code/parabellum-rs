@@ -303,10 +303,12 @@ fn apply(root: &mut Value, merge: bool, message: &Value) {
     let segments: Vec<&str> = message["path"].as_str().unwrap_or("/").split('/').filter(|s| !s.is_empty()).collect();
     let value = &message["data"];
     match (merge, value) {
+        // Las claves de un patch pueden ser rutas: al escribir varias rutas a la vez («meta/lastText»,
+        // «meta/lastAt»…) Firebase manda {"meta/lastText": …} y no {"meta": {…}}.
         (true, Value::Object(children)) => {
             for (key, child) in children {
                 let mut path = segments.clone();
-                path.push(key);
+                path.extend(key.split('/').filter(|s| !s.is_empty()));
                 set_at(root, &path, child.clone());
             }
         }
@@ -349,6 +351,8 @@ mod tests {
         apply(&mut data, false, &serde_json::json!({ "path": "/a", "data": null }));
         apply(&mut data, true, &serde_json::json!({ "path": "/", "data": { "d": { "name": "x" }, "b": null } }));
         assert_eq!(data, serde_json::json!({ "c": true, "d": { "name": "x" } }));
+        apply(&mut data, true, &serde_json::json!({ "path": "/", "data": { "d/name": "y", "e/f/g": 1, "c": null } }));
+        assert_eq!(data, serde_json::json!({ "d": { "name": "y" }, "e": { "f": { "g": 1 } } }));
         apply(&mut data, false, &serde_json::json!({ "path": "/", "data": null }));
         assert_eq!(data, Value::Null);
     }

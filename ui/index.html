@@ -298,34 +298,34 @@
               </div>
             </div>
             <div class="tab-panel hidden" id="hosted-tab-settings">
-              <div class="card-panel host-settings">
-                <p class="muted small-text hidden" id="hs-running-note">Los cambios se aplican la próxima vez que enciendas el servidor.</p>
-                <label class="label" for="hs-name">Nombre</label>
-                <input id="hs-name" maxlength="40" autocomplete="off" spellcheck="false">
-                <label class="label" for="hs-motd" style="margin-top:16px">Mensaje en la lista de servidores</label>
-                <input id="hs-motd" maxlength="59" autocomplete="off" spellcheck="false">
-                <div class="label-row"><span class="label">Memoria del servidor</span><span class="value-inline" id="hs-ram-value"></span></div>
-                <input type="range" id="hs-ram" min="1" max="16" step="1">
-                <div class="ram-plan" id="hs-plan"></div>
-                <div class="form-grid">
-                  <div><label class="label" for="hs-gamemode">Modo de juego</label><select id="hs-gamemode"></select></div>
-                  <div><label class="label" for="hs-difficulty">Dificultad</label><select id="hs-difficulty"></select></div>
-                  <div><label class="label" for="hs-max">Jugadores máximos</label><input type="number" id="hs-max" min="1" max="100"></div>
-                  <div><label class="label" for="hs-view">Distancia de visión</label><input type="number" id="hs-view" min="3" max="32"></div>
-                  <div><label class="label" for="hs-sim">Distancia de simulación</label><input type="number" id="hs-sim" min="3" max="32"></div>
-                </div>
-                <div class="host-toggles">
-                  <label class="toggle"><input type="checkbox" id="hs-pvp"><span></span>Jugadores pueden pelear entre ellos (PvP)</label>
-                  <label class="toggle"><input type="checkbox" id="hs-flight"><span></span>Permitir volar (evita que los mods con alas o mochilas echen al jugador)</label>
-                  <label class="toggle"><input type="checkbox" id="hs-verify"><span></span>Solo se entra desde Parabellum con la cuenta de cada quien (nadie puede usar el nombre de otro)</label>
-                  <label class="toggle"><input type="checkbox" id="hs-eula"><span></span>Acepto el EULA de Minecraft</label>
-                </div>
-                <label class="label" for="hs-jvm" style="margin-top:16px">Argumentos de Java</label>
-                <input id="hs-jvm" placeholder="Opcional, p. ej. -XX:+UseZGC" autocomplete="off" spellcheck="false">
-                <div class="modal-actions">
-                  <button class="btn primary" id="hs-save"><svg><use href="#i-check"/></svg>Guardar</button>
+              <div class="opt-restart hidden" id="hs-restart">
+                <svg><use href="#i-refresh"/></svg><span class="grow">Hay cambios que se aplican al reiniciar el servidor.</span>
+                <button class="btn small primary" id="hs-restart-btn">Reiniciar</button>
+              </div>
+              <div class="motd-card">
+                <button class="motd-icon" id="hs-icon" title="Icono del servidor"></button>
+                <input type="file" id="hs-icon-file" accept="image/*" class="hidden">
+                <div class="grow motd-lines">
+                  <div class="motd-row">
+                    <b id="hs-name-view"></b>
+                    <input id="hs-name-input" class="hidden" maxlength="40" autocomplete="off" spellcheck="false">
+                    <button class="motd-edit" id="hs-name-edit" title="Cambiar el nombre"><svg><use href="#i-pencil"/></svg></button>
+                  </div>
+                  <div class="motd-row">
+                    <div class="motd-text" id="hs-motd-view"></div>
+                    <button class="motd-edit" id="hs-motd-edit" title="Cambiar el mensaje de la lista de servidores"><svg><use href="#i-pencil"/></svg></button>
+                  </div>
                 </div>
               </div>
+              <div class="motd-editor hidden" id="hs-motd-editor">
+                <textarea id="hs-motd-input" rows="2" maxlength="150" spellcheck="false"></textarea>
+                <div class="motd-tools" id="hs-motd-tools"></div>
+                <div class="modal-actions">
+                  <button class="btn" id="hs-motd-cancel">Cancelar</button>
+                  <button class="btn primary" id="hs-motd-save"><svg><use href="#i-check"/></svg>Guardar</button>
+                </div>
+              </div>
+              <div id="hs-options"></div>
               <div class="card-panel host-left-out hidden" id="hs-left-box">
                 <h3 id="hs-left-title"></h3>
                 <p class="muted small-text">No hacen falta en el servidor (son para gráficos, cámara o menús) o lo tumbaban. Tus amigos pueden seguir usándolos en su juego.</p>
@@ -638,8 +638,12 @@
               <label class="toggle big"><input type="checkbox" id="close-to-tray"><span></span></label>
             </div>
             <div class="setting">
-              <div class="grow"><b>Avisos de amigos</b><span>Un aviso de Windows cuando alguien te manda solicitud de amistad o un amigo abre su mundo (solo si Parabellum no está al frente).</span></div>
+              <div class="grow"><b>Avisos de amigos</b><span>Un aviso de Windows cuando te escriben, te mandan solicitud de amistad o un amigo abre su mundo.</span></div>
               <label class="toggle big"><input type="checkbox" id="notifications"><span></span></label>
+            </div>
+            <div class="setting">
+              <div class="grow"><b>Sonido de mensajes</b><span>Suena cuando te escriben, aunque estés jugando o Parabellum esté junto al reloj.</span></div>
+              <label class="toggle big"><input type="checkbox" id="message-sound"><span></span></label>
             </div>
             <div class="setting">
               <div class="grow"><b>Acceso directo en el Escritorio</b><span id="shortcut-desktop-hint">Para abrir Parabellum sin buscar su carpeta. Sigue siendo portable: no se instala nada.</span></div>
@@ -1087,6 +1091,8 @@
       <symbol id="i-broadcast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M8.2 15.8a5.4 5.4 0 0 1 0-7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5.3 18.7a9.5 9.5 0 0 1 0-13.4M18.7 5.3a9.5 9.5 0 0 1 0 13.4"/></symbol>
       <symbol id="i-octagon" viewBox="0 0 24 24"><path d="M8.3 3.5h7.4l4.8 4.8v7.4l-4.8 4.8H8.3l-4.8-4.8V8.3z"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5"/></symbol>
       <symbol id="i-triangle" viewBox="0 0 24 24"><path d="M10.3 4.6 3.2 17a2 2 0 0 0 1.7 3h14.2a2 2 0 0 0 1.7-3L13.7 4.6a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 16.8h.01"/></symbol>
+      <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4zM13.5 6.5l4 4"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
       <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></symbol>
     </defs>
   </svg>

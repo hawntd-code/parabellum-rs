@@ -1175,3 +1175,101 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 
 .friend-list .friend .grow span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .home-summary { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+
+/* ======================================================================
+   Opciones del servidor (0.17): tarjetas como en Aternos, con el nombre real debajo
+   ====================================================================== */
+.opt-restart {
+  display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; margin-bottom: 12px;
+  border-radius: var(--r); background: var(--raised); border: 1px solid var(--accent); font-weight: 600; font-size: 13px;
+  position: sticky; top: 8px; z-index: 5; box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+}
+.opt-restart > svg { width: 17px; height: 17px; color: var(--accent-fg); }
+
+.motd-card {
+  display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: var(--r-lg);
+  background: #141217; border: 1px solid var(--border); color: #fff;
+}
+.motd-icon {
+  width: 64px; height: 64px; flex: none; padding: 0; border: 0; border-radius: 6px; background: #2b2833; color: #8f8a9c;
+  display: grid; place-items: center; overflow: hidden; position: relative;
+}
+.motd-icon img { width: 64px; height: 64px; image-rendering: pixelated; display: block; }
+.motd-icon svg { width: 26px; height: 26px; }
+.motd-icon::after {
+  content: ""; position: absolute; inset: 0; background: rgba(0, 0, 0, .45) center / 22px no-repeat;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 16V4M7 9l5-5 5 5M5 20h14'/%3E%3C/svg%3E");
+  opacity: 0; transition: opacity .15s;
+}
+.motd-icon:hover::after, .motd-icon:focus-visible::after { opacity: 1; }
+.motd-lines { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.motd-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.motd-row b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.motd-row input { height: 32px; max-width: 360px; background: #221f29; color: #fff; }
+.motd-text { color: #aaa; font-size: 14px; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.motd-text:empty::before { content: attr(data-empty); color: #6f6a7a; }
+.motd-edit {
+  width: 26px; height: 26px; flex: none; display: grid; place-items: center; border: 0; border-radius: 6px;
+  background: rgba(255, 255, 255, .08); color: #d9d6e0; transition: background .15s;
+}
+.motd-edit:hover { background: rgba(255, 255, 255, .18); }
+.motd-edit svg { width: 14px; height: 14px; }
+.motd-text .mc-bold { font-weight: 800; }
+.motd-text .mc-italic { font-style: italic; }
+.motd-text .mc-underline { text-decoration: underline; }
+.motd-text .mc-strike { text-decoration: line-through; }
+.motd-text .mc-underline.mc-strike { text-decoration: underline line-through; }
+
+.motd-editor { margin-top: 10px; padding: 12px; border-radius: var(--r-lg); background: var(--panel); border: 1px solid var(--border); }
+.motd-editor textarea {
+  width: 100%; resize: none; padding: 10px 12px; border-radius: var(--r); border: 1px solid transparent; background: var(--field);
+  font: 13px/1.5 "Cascadia Mono", Consolas, monospace; outline: none; user-select: text;
+}
+.motd-editor textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.motd-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.motd-tools button {
+  height: 28px; min-width: 28px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--card);
+  font-weight: 700; font-size: 12.5px;
+}
+.motd-tools button.swatch { padding: 0; width: 24px; min-width: 24px; height: 24px; margin-top: 2px; border: 2px solid rgba(255, 255, 255, .15); }
+.motd-tools button:hover { border-color: var(--accent); }
+.motd-tools .sep { width: 1px; background: var(--border-strong); margin: 2px 4px; }
+.motd-editor .modal-actions { margin-top: 10px; }
+
+.opt-group { margin-top: 22px; }
+.opt-group h3 { font-size: 15px; margin-bottom: 10px; color: var(--muted); font-weight: 700; }
+.opt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 860px) { .opt-grid { grid-template-columns: minmax(0, 1fr); } }
+.opt {
+  display: flex; flex-direction: column; border-radius: var(--r); overflow: hidden; background: var(--panel); border: 1px solid var(--border);
+  transition: border-color .2s;
+}
+.opt.wide { grid-column: 1 / -1; }
+.opt.flash { border-color: var(--accent); }
+.opt-main { display: flex; align-items: center; gap: 12px; min-height: 54px; padding: 8px 10px 8px 14px; flex: 1; }
+.opt-label { flex: 1; min-width: 0; font-weight: 650; font-size: 14px; }
+.opt-main select { width: auto; min-width: 150px; height: 36px; background: var(--card); }
+.opt-main input:not([type]) { height: 36px; background: var(--card); }
+.opt.text .opt-main { flex-wrap: wrap; }
+.opt.text .opt-main input { flex: 2 1 260px; }
+.opt-key {
+  display: flex; align-items: center; gap: 8px; padding: 4px 14px; background: var(--field); border-top: 1px solid var(--border);
+  font: 11.5px/1.5 "Cascadia Mono", Consolas, monospace; color: var(--faint); min-height: 24px;
+}
+.opt-key code { font: inherit; overflow-wrap: anywhere; }
+.opt-key b { color: var(--accent-fg); font-weight: 600; }
+.opt-key .opt-note { margin-left: auto; font-family: var(--font); font-size: 11.5px; font-weight: 650; color: var(--success); white-space: nowrap; animation: menu-in .16s var(--ease) both; }
+
+.stepper { display: inline-flex; align-items: stretch; height: 36px; border-radius: var(--r-sm); background: var(--card); overflow: hidden; flex: none; }
+.stepper input[type="number"] {
+  width: 64px; height: 36px; padding: 0 4px; border-radius: 0; background: transparent; text-align: center; font-weight: 700;
+  -moz-appearance: textfield;
+}
+.stepper input[type="number"]::-webkit-inner-spin-button, .stepper input[type="number"]::-webkit-outer-spin-button { appearance: none; margin: 0; }
+.stepper input[type="number"]:focus { box-shadow: none; border-color: transparent; background: var(--card-hover); }
+.stepper button { width: 32px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; transition: background .15s, color .15s; }
+.stepper button:hover { background: var(--card-hover); color: var(--text); }
+.stepper button svg { width: 15px; height: 15px; }
+.opt.ram .opt-main { flex-wrap: wrap; }
+.opt.ram .opt-ram { flex: 1 1 100%; }
+.opt.ram .ram-plan { margin: 0; }

@@ -30,6 +30,7 @@ mod modrinth;
 mod mojang;
 mod mrpack;
 mod nbt;
+mod opciones;
 mod packs;
 mod paths;
 mod playit;
@@ -38,6 +39,7 @@ mod remote_zip;
 mod servidor;
 mod sesion_local;
 mod settings;
+mod sonido;
 mod version;
 
 use serde::Serialize;
@@ -167,6 +169,12 @@ fn panel_lateral(state: State<AppState>, oculto: bool) -> Result<(), String> {
     let mut settings = state.settings.lock().unwrap();
     settings.sidebar_hidden = oculto;
     settings.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))
+}
+
+/// Toca el sonido de mensaje nuevo (al activarlo en Ajustes, para oírlo).
+#[tauri::command]
+fn sonido_mensaje() {
+    sonido::message(false);
 }
 
 #[tauri::command]
@@ -1702,6 +1710,63 @@ fn detener_servidor(app: AppHandle, id: String) {
 }
 
 #[tauri::command]
+fn reiniciar_servidor(app: AppHandle, id: String) {
+    hosting::restart_server(&app, &id);
+}
+
+/// Las opciones del servidor (server.properties, reglas del juego y las de Parabellum).
+#[tauri::command]
+fn opciones_servidor(state: State<AppState>, id: String) -> Result<opciones::OptionsView, String> {
+    let config = servidor::find(&state.paths, &id).ok_or(t!("Ese servidor ya no existe.", "That server no longer exists."))?;
+    Ok(opciones::read(&config, system_ram_gb()))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OptionChanged {
+    option: Option<opciones::OptionView>,
+    /// Ya se aplicó en el servidor encendido.
+    applied: bool,
+    /// Se aplica al reiniciar el servidor.
+    needs_restart: bool,
+}
+
+/// Cambia una opción y, con el servidor encendido, la aplica si se puede.
+#[tauri::command]
+async fn cambiar_opcion_servidor(app: AppHandle, id: String, opcion: String, valor: serde_json::Value) -> Result<OptionChanged, String> {
+    let paths = app.state::<AppState>().paths.clone();
+    let mut config = servidor::find(&paths, &id).ok_or(t!("Ese servidor ya no existe.", "That server no longer exists."))?;
+    let running = hosting::is_running(&app, &id);
+    let change = opciones::change(&mut config, &opcion, &valor, running, system_ram_gb())?;
+    let applied = !change.commands.is_empty() && hosting::is_ready(&app, &id);
+    if applied {
+        for command in &change.commands {
+            hosting::send_command(&app, &id, command);
+        }
+    }
+    if change.needs_restart {
+        hosting::needs_restart(&app, &id);
+    } else {
+        hosting::emit_view(&app);
+    }
+    if opcion == "name" {
+        hosting::republish(&app, &id).await;
+    }
+    Ok(OptionChanged { option: change.option, applied, needs_restart: change.needs_restart })
+}
+
+/// Pone (PNG de 64×64 como data URL) o quita el icono del servidor.
+#[tauri::command]
+fn icono_servidor(app: AppHandle, state: State<AppState>, id: String, datos: Option<String>) -> Result<(), String> {
+    let config = servidor::find(&state.paths, &id).ok_or(t!("Ese servidor ya no existe.", "That server no longer exists."))?;
+    opciones::set_icon(&config, datos.as_deref())?;
+    if hosting::is_running(&app, &id) {
+        hosting::needs_restart(&app, &id);
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn comando_servidor(app: AppHandle, id: String, texto: String) {
     hosting::send_command(&app, &id, &texto);
 }
@@ -2219,6 +2284,13 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             let result = tauri::async_runtime::block_on(mrpack::export(&instance, &file, &options, |_, _| {}))?;
             Ok(format!("{result:#?}"))
         }
+        "--probar-sonido" => {
+            // Toca el sonido de mensaje nuevo (y lo guarda como .wav si se da una ruta).
+            if let Some(path) = args.get(1) {
+                sonido::save(std::path::Path::new(path)).map_err(|e| e.to_string())?;
+            }
+            Ok(if sonido::message(true) { "Sonó.".into() } else { "Windows no pudo tocarlo.".into() })
+        }
         "--probar-aviso" => {
             // Muestra un aviso de Windows y dice si llegó al centro de notificaciones.
             avisos::init_thread();
@@ -2226,7 +2298,7 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             let before = avisos::history_count().unwrap_or(0);
             let title = args.get(1).map(String::as_str).unwrap_or("Parabellum");
             let body = args.get(2).map(String::as_str).unwrap_or("Así se ven los avisos de tus amigos.");
-            avisos::show(title, body, || {}).map_err(|e| format!("No se pudo mostrar el aviso: {e}"))?;
+            avisos::show(title, body, false, || {}).map_err(|e| format!("No se pudo mostrar el aviso: {e}"))?;
             std::thread::sleep(std::time::Duration::from_secs(2));
             let after = avisos::history_count().unwrap_or(0);
             Ok(format!("Avisos de Parabellum en el centro de notificaciones: {before} -> {after}"))
@@ -2609,6 +2681,7 @@ fn main() {
             estado_inicial,
             guardar_ajustes,
             panel_lateral,
+            sonido_mensaje,
             uuid_offline,
             listar_instancias,
             listar_versiones,
@@ -2705,6 +2778,10 @@ fn main() {
             crear_servidor,
             iniciar_servidor,
             detener_servidor,
+            reiniciar_servidor,
+            opciones_servidor,
+            cambiar_opcion_servidor,
+            icono_servidor,
             comando_servidor,
             consola_servidor,
             ajustes_servidor,

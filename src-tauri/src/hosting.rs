@@ -44,6 +44,10 @@ struct Running {
     cpu_percent: f32,
     memory: u64,
     stop_requested: bool,
+    /// Se cambió algo que el servidor solo lee al arrancar (server.properties, memoria…).
+    restart_needed: bool,
+    /// Al apagarse, se vuelve a encender (Reiniciar).
+    restart: bool,
 }
 
 /// Cómo terminó la última vez (si fue mal): se muestra hasta el próximo arranque.
@@ -139,6 +143,8 @@ pub struct ServerView {
     lan: Option<String>,
     error: Option<String>,
     diagnosis: Option<Diagnosis>,
+    /// Hay cambios que se aplican al reiniciar.
+    restart_needed: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -195,6 +201,7 @@ pub fn view(app: &AppHandle) -> HostView {
                 lan: run.and(local_ip.as_ref()).map(|ip| format!("{ip}:{}", config.port)),
                 error: outcome.error,
                 diagnosis: outcome.diagnosis,
+                restart_needed: run.is_some_and(|r| r.restart_needed),
                 config,
             }
         })
@@ -739,6 +746,8 @@ pub fn start_server(app: &AppHandle, id: &str) -> Result<(), String> {
             cpu_percent: 0.0,
             memory: 0,
             stop_requested: false,
+            restart_needed: false,
+            restart: false,
         },
     );
     let streams: Vec<Box<dyn std::io::Read + Send>> = [child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>), child.stderr.take().map(|s| Box::new(s) as _)]
@@ -858,6 +867,10 @@ fn on_line(app: &AppHandle, id: &str, line: String) {
         if let Some(mut config) = servidor::find(&paths, id) {
             config.startup_seconds = config.last_started.map(|s| ((chrono::Utc::now().timestamp_millis() - s) / 1000) as u64);
             let _ = servidor::save(&config);
+            // Reglas del juego elegidas cuando todavía no había mundo (o mientras arrancaba).
+            for command in crate::opciones::pending_commands(&config) {
+                send_command(app, id, &command);
+            }
         }
     }
     if ready || players_changed {
@@ -875,9 +888,22 @@ fn on_line(app: &AppHandle, id: &str, line: String) {
 fn on_exit(app: &AppHandle, id: &str, code: Option<i32>) {
     let state = app.state::<AppState>();
     let Some(run) = state.hosting.running.lock().unwrap().remove(id) else { return };
+    // Las reglas cambiadas con el servidor encendido quedan escritas en el mundo.
+    if let Some(mut config) = servidor::find(&state.paths, id) {
+        crate::opciones::settle_pending(&mut config);
+    }
     let (app, id) = (app.clone(), id.to_string());
     tauri::async_runtime::spawn(async move {
         let paths = app.state::<AppState>().paths.clone();
+        if run.restart {
+            emit(&app);
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            if let Err(error) = start_server(&app, &id) {
+                hosting(&app).outcomes.lock().unwrap().insert(id.clone(), Outcome { error: Some(error), diagnosis: None });
+                emit(&app);
+            }
+            return;
+        }
         if !run.stop_requested {
             if let Some(config) = servidor::find(&paths, &id) {
                 let context = diagnostico::CrashContext {
@@ -932,6 +958,22 @@ fn on_exit(app: &AppHandle, id: &str, code: Option<i32>) {
         retarget(&app).await;
         publish(&app, &id).await;
     });
+}
+
+/// Apaga y vuelve a encender (para aplicar lo que el servidor solo lee al arrancar).
+pub fn restart_server(app: &AppHandle, id: &str) {
+    if let Some(run) = hosting(app).running.lock().unwrap().get_mut(id) {
+        run.restart = true;
+    }
+    stop_server(app, id);
+}
+
+/// Anota que hay cambios que se aplican al reiniciar.
+pub fn needs_restart(app: &AppHandle, id: &str) {
+    if let Some(run) = hosting(app).running.lock().unwrap().get_mut(id) {
+        run.restart_needed = true;
+    }
+    emit(app);
 }
 
 /// Apaga con "stop" (guarda el mundo). Si en 60 s no se cerró, se cierra a la fuerza.
@@ -1137,6 +1179,16 @@ fn verify_player(app: &AppHandle, id: &str, name: &str) {
 
 pub fn is_running(app: &AppHandle, id: &str) -> bool {
     hosting(app).running.lock().unwrap().contains_key(id)
+}
+
+/// Encendido y listo para recibir comandos.
+pub fn is_ready(app: &AppHandle, id: &str) -> bool {
+    hosting(app).running.lock().unwrap().get(id).is_some_and(|r| r.phase == Phase::Ready)
+}
+
+/// Vuelve a mandar a Firebase lo que ven los amigos (p. ej. tras cambiar el nombre).
+pub async fn republish(app: &AppHandle, id: &str) {
+    publish(app, id).await;
 }
 
 pub async fn delete_server(app: &AppHandle, id: &str) -> Result<(), String> {

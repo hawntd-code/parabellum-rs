@@ -72,6 +72,13 @@ Los invitados se siguen por su cuenta de Google: si alguien se cambia el nombre,
 permiso de administrador y sus cosas en el mundo pasan al nombre nuevo. Y quien entra con el nombre de
 un invitado tiene que estar jugando desde Parabellum con esa cuenta (si no, el servidor lo saca).
 
+En **Ajustes** de cada servidor, todo se cambia sin comandos, como en Aternos: cada opción de
+server.properties y las reglas del juego (conservar el inventario, ciclo de día, phantoms, fuego…) en
+tarjetas con su nombre claro y, debajo, el nombre real (`max-players=20`, `gamerule keepInventory true`).
+Se guarda al cambiarla. Con el servidor encendido, las reglas, la dificultad, el modo de juego y la lista
+blanca se aplican al momento; lo demás pide «Reiniciar». Arriba se ve como en la lista de servidores de
+Minecraft: icono (cualquier imagen, se recorta a 64×64), nombre y mensaje con colores (§).
+
 ## Publicar en Drive
 
 Quien mantiene el catálogo conecta Drive una vez en Ajustes › Acerca de (Google pide el permiso de
@@ -119,6 +126,7 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--crear-servidor <instancia> [nombre] [mundo]` | Servidor dedicado a partir de la instancia (sin aceptar el EULA) |
 | `--probar-servidor <servidor> [segundos]` | Lo enciende, espera a que esté listo y lo apaga; si no arranca, explica por qué |
 | `--playit` | Estado de la cuenta y del túnel de playit.gg |
+| `--probar-sonido [archivo.wav]` | Toca el sonido de mensaje nuevo (y lo guarda si se da un archivo) |
 | `--probar-tiempo-real [veces]` | Con la sesión de Google guardada: cuánto tarda en llegar por la escucha de Firebase algo recién escrito |
 | `--catalogo` | Modpacks y versiones de Drive y de la carpeta paquetes, con su estado |
 | `--instalar-catalogo <id> [reparar]` | Instala, actualiza o repara un paquete (bajando solo lo que cambió) |
