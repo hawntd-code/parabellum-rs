@@ -113,6 +113,14 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### 0.14.0: amigos, Inicio y Servidores (pedido de Juan)
+- [x] **Servidores › De tus amigos**: los servidores a los que te invitaron, los mundos abiertos de tus amigos, los servidores públicos donde están jugando (Unirse abre el mismo modpack y entra) y los que hostean sin haberte invitado (la presencia dice qué hostea; la dirección solo la ven los invitados). Se actualiza solo
+- [x] **Panel derecho = amigos**: por secciones (Jugando, En línea, Desconectados), botón de mensaje al pasar el mouse, y debajo los **grupos** de chat con su último mensaje. «Jugando como», «Primeros pasos» y «Novedades» salen del panel (la cuenta sigue en el botón de abajo a la izquierda)
+- [x] **Inicio**: sin «Continuar jugando»; tarjetas de Tu servidor (encender/apagar), Amigos (quién está en línea y cuántas partidas abiertas) y Primeros pasos mientras falten (después, Novedades). Sin el panel, el contenido se centra en vez de quedar pegado a la izquierda
+- [x] Menú del perfil (abajo a la izquierda) dentro de la ventana: se abre a un lado del botón; ningún menú se sale de la ventana
+- [x] «Tus servidores» ya no parpadea: las listas solo se repintan si cambió algo y la animación de entrada solo sale la primera vez
+- [x] **Mensajes y estados al momento**: las escuchas de Firebase se renuevan antes de que caduque el permiso (cada hora), reconectan enseguida tras un corte (antes podían esperar hasta 60 s) y no dañan letras con tilde ni emojis partidos entre trozos; al volver a la ventana se piden los datos al momento. Medido: lo escrito llega por la escucha en ~80 ms (`--probar-tiempo-real`)
+
 ### Fase 13: hostear partida (0.13.0)
 - [x] **Página «Hostear partida»** con dos formas de jugar con amigos desde tu PC, sin abrir puertos del router y sin depender de un mod (sirve para vanilla, Fabric, Quilt, Forge y NeoForge):
   - **Crear un servidor** a partir de una instancia: se elige la instancia, el mundo (nuevo o una copia de uno de la instancia, con tu inventario y posición), la memoria, los argumentos de Java, el modo de juego, la dificultad, los jugadores y el PvP. El **EULA de Minecraft** se acepta marcándolo (sin eso se crea pero no enciende)

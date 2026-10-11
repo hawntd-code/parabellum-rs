@@ -100,6 +100,16 @@ function ago(ms) {
   return new Date(ms).toLocaleDateString(locale());
 }
 
+/** Pone el HTML solo si cambió. Las listas se animan al aparecer la primera vez, no en cada
+ * actualización (si no, parpadean cada vez que llega un dato nuevo). */
+function setHtml(element, html) {
+  if (!element || element.dataset.html === html) return false;
+  element.classList.toggle("no-enter", element.dataset.html !== undefined);
+  element.innerHTML = html;
+  element.dataset.html = html;
+  return true;
+}
+
 const escapeHtml = (text) =>
   String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const icon = (name) => `<svg><use href="#i-${name}"/></svg>`;
@@ -190,11 +200,24 @@ function contextMenu(anchor, items, { matchWidth = false } = {}) {
     })
     .join("");
   if (matchWidth) menu.style.minWidth = `${Math.max(220, anchor.getBoundingClientRect().width)}px`;
+  menu.style.maxHeight = `${innerHeight - 20}px`;
   document.body.appendChild(menu);
   for (const canvas of menu.querySelectorAll("canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
+  // Siempre dentro de la ventana: bajo el botón y alineado a su derecha; si no cabe, encima; si el
+  // botón está pegado a la izquierda (la barra lateral), a su lado y hacia arriba.
   const rect = anchor.getBoundingClientRect();
-  menu.style.top = `${Math.min(rect.bottom + 6, innerHeight - menu.offsetHeight - 10)}px`;
-  menu.style.left = `${Math.min(rect.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 10)}px`;
+  const [width, height] = [menu.offsetWidth, menu.offsetHeight];
+  let left = rect.right - width;
+  let top = rect.bottom + 6;
+  if (left < 10) {
+    left = rect.right + 8;
+    top = rect.bottom - height;
+  } else if (top + height > innerHeight - 10) {
+    top = rect.top - height - 6;
+  }
+  const clamp = (value, max) => Math.max(10, Math.min(value, max));
+  menu.style.left = `${clamp(left, innerWidth - width - 10)}px`;
+  menu.style.top = `${clamp(top, innerHeight - height - 10)}px`;
   menu.setAttribute("role", "menu");
   const buttons = [...menu.querySelectorAll("button")];
   for (const button of buttons) button.setAttribute("role", "menuitem");
@@ -365,23 +388,95 @@ function renderHome() {
   $("#home-filled").classList.toggle("hidden", empty);
   $("#home-empty").classList.toggle("hidden", !empty);
   if (empty) return;
-
-  const recent = [...state.instances].sort((a, b) => (b.lastPlayed ?? b.created ?? 0) - (a.lastPlayed ?? a.created ?? 0)).slice(0, 3);
-  $("#jump-list").innerHTML = recent
-    .map((i, index) => {
-      const running = state.running.has(i.id);
-      return `<div class="jump" data-open="${escapeHtml(i.id)}" style="animation-delay:${index * 40}ms">
-        ${art(i, "small")}
-        <div class="grow">
-          <div class="title">${escapeHtml(i.name)}${isNew(i) ? `<span class="badge-new">${icon("sparkle")}${t("Nueva instancia", "New instance")}</span>` : ""}</div>
-          <div class="sub">${escapeHtml(subtitle(i))}<i></i>${running ? t("Jugando ahora", "Playing now") : escapeHtml(ago(i.lastPlayed))}</div>
-        </div>
-        <button class="btn primary play" data-play="${escapeHtml(i.id)}" ${running ? "disabled" : ""}>${icon("play")}${running ? t("En juego", "In game") : t("Jugar", "Play")}</button>
-        <button class="circle-btn" data-more="${escapeHtml(i.id)}" title="${t("Más opciones", "More options")}">${icon("more")}</button>
-      </div>`;
-    })
-    .join("");
+  renderHomeTiles();
   renderLibrary();
+}
+
+// ---------- Inicio: tarjetas de lo que pasa ahora ----------
+/** Partidas abiertas de tus amigos: servidores a los que te invitaron, mundos abiertos, servidores
+ * donde juegan y servidores que hostean (aunque no te hayan invitado). */
+function friendActivity() {
+  const view = state.social?.friends;
+  if (!view) return [];
+  const items = [];
+  const invitedHosts = new Set();
+  for (const server of view.servers ?? []) {
+    if (server.online) invitedHosts.add(server.host);
+    items.push({ kind: "hosted", key: `hosted:${server.host}:${server.key}`, server, online: server.online });
+  }
+  for (const friend of view.friends ?? []) {
+    const p = friend.presence;
+    if (!friend.online || !p) continue;
+    if (friend.worldOpen) items.push({ kind: "world", key: `world:${friend.uid}`, friend, online: true });
+    if (p.state === "playing" && p.world === "server" && p.server) items.push({ kind: "playing", key: `playing:${friend.uid}`, friend, online: true });
+    if (p.hosting && !invitedHosts.has(friend.uid)) items.push({ kind: "uninvited", key: `uninvited:${friend.uid}`, friend, online: true });
+  }
+  return items;
+}
+
+function renderHomeTiles() {
+  if (!$("#home-summary")) return;
+  renderSteps();
+  renderHomeServerTile();
+  renderHomeFriendsTile();
+}
+
+function renderHomeServerTile() {
+  const view = typeof host !== "undefined" ? host.view : null;
+  const servers = view?.servers ?? [];
+  const server = servers.find((s) => s.state !== "off") ?? servers[0];
+  let html;
+  if (!server) {
+    html = `<div class="tile-head"><span class="tile-icon">${icon("broadcast")}</span><h3>${t("Tu servidor", "Your server")}</h3></div>
+      <p class="muted">${t("Juega con tus amigos desde tu PC: crea un servidor con tu modpack o abre tu mundo.", "Play with your friends from your PC: create a server with your modpack or open your world.")}</p>
+      <div class="tile-actions"><button class="btn primary small" data-home-action="create-server">${icon("plus")}${t("Crear servidor", "Create server")}</button></div>`;
+  } else {
+    const names = stateNames();
+    const detail =
+      server.state === "ready"
+        ? [t(`${server.players.length} de ${server.maxPlayers} jugadores`, `${server.players.length} of ${server.maxPlayers} players`), server.address].filter(Boolean).join(" · ")
+        : `${server.instanceName} · ${server.loader} ${server.minecraft}`;
+    const action =
+      server.state === "off"
+        ? `<button class="btn primary small" data-host-start="${escapeHtml(server.id)}">${icon("play")}${t("Encender", "Start")}</button>`
+        : `<button class="btn danger small" data-host-stop="${escapeHtml(server.id)}" ${server.state === "stopping" ? "disabled" : ""}>${icon("stop")}${t("Apagar", "Stop")}</button>`;
+    html = `<div class="tile-head"><span class="tile-icon">${icon("broadcast")}</span><h3>${t("Tu servidor", "Your server")}</h3></div>
+      <button class="tile-link" data-hosted="${escapeHtml(server.id)}"><b>${escapeHtml(server.name)}</b><span class="state-pill ${server.state}">${escapeHtml(names[server.state])}</span></button>
+      <p class="muted">${escapeHtml(detail)}</p>
+      <div class="tile-actions">${action}${servers.length > 1 ? `<button class="btn small" data-home-action="host">${t(`Ver los ${servers.length}`, `See all ${servers.length}`)}</button>` : ""}</div>`;
+  }
+  setHtml($("#tile-server"), html);
+}
+
+function renderHomeFriendsTile() {
+  const s = state.social;
+  const connected = !!(s?.signedIn && s.connected);
+  let html;
+  if (!connected) {
+    html = `<div class="tile-head"><span class="tile-icon">${icon("user-plus")}</span><h3>${t("Amigos", "Friends")}</h3></div>
+      <p class="muted">${t("Inicia sesión con Google para ver a qué juegan tus amigos y entrar a sus partidas con un clic.", "Sign in with Google to see what your friends are playing and join their games with one click.")}</p>
+      ${s?.available === false ? "" : `<div class="tile-actions"><button class="btn primary small" data-home-action="sign-in">${icon("user")}${t("Iniciar sesión con Google", "Sign in with Google")}</button></div>`}`;
+  } else {
+    const friends = s.friends?.friends ?? [];
+    const online = friends.filter((f) => f.online);
+    const playing = online.filter((f) => f.presence?.state === "playing");
+    const open = friendActivity().filter((a) => a.online && a.kind !== "uninvited").length;
+    const heads = online
+      .slice(0, 7)
+      .map((f) => `<span class="tile-head-avatar" title="${escapeHtml(f.name)}"><canvas width="8" height="8" class="head" data-head="${escapeHtml(f.name)}"></canvas><i class="presence-dot ${f.presence?.state === "playing" ? "playing" : "online"}"></i></span>`)
+      .join("");
+    html = `<div class="tile-head"><span class="tile-icon">${icon("user-plus")}</span><h3>${t("Amigos", "Friends")}</h3></div>
+      <p class="muted">${
+        friends.length
+          ? t(`${online.length} en línea · ${playing.length} jugando`, `${online.length} online · ${playing.length} playing`)
+          : t("Todavía no tienes amigos en Parabellum: agrégalos en el panel de la derecha.", "You have no friends on Parabellum yet: add them in the panel on the right.")
+      }</p>
+      ${heads ? `<div class="tile-avatars">${heads}</div>` : ""}
+      <div class="tile-actions"><button class="btn ${open ? "primary" : ""} small" data-home-action="servers">${icon("server")}${
+        open ? t(`${open === 1 ? "1 partida abierta" : `${open} partidas abiertas`}`, `${open === 1 ? "1 open game" : `${open} open games`}`) : t("Servidores de amigos", "Friends' servers")
+      }</button></div>`;
+  }
+  if (setHtml($("#tile-friends"), html)) for (const canvas of $$("#tile-friends canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
 }
 
 function renderLibrary() {
@@ -1124,10 +1219,8 @@ async function pollRunning() {
 // Panel derecho
 // ======================================================================
 function renderSidebar() {
-  $("#side-name").textContent = state.settings.username;
-  $("#side-account-sub").textContent = state.settings.uuid ? t("Cuenta no premium · UUID fijo", "Non-premium account · fixed UUID") : t("Cuenta no premium", "Non-premium account");
-  drawHead($("#side-head"), state.settings.username);
   drawHead($("#rail-head"), state.settings.username);
+  $("#rail-avatar").title = t(`Jugando como ${state.settings.username}`, `Playing as ${state.settings.username}`);
 }
 
 // ---------- Cuentas ----------
@@ -1265,6 +1358,10 @@ function renderSteps() {
     )
     .join("")}</div>`;
   $$("#steps-list .step").forEach((button) => (button.onclick = () => steps[button.dataset.step].action?.()));
+  // Una sola fila: mientras falten pasos ocupan el lugar de las novedades.
+  const allDone = steps.every((s) => s.done);
+  $("#tile-steps")?.classList.toggle("hidden", allDone);
+  $("#tile-news")?.classList.toggle("hidden", !allDone);
 }
 
 // ======================================================================
@@ -1273,7 +1370,7 @@ function renderSteps() {
 function friendStatus(f) {
   if (!f.online) return f.lastSeen ? `${t("Desconectado", "Offline")} · ${ago(f.lastSeen).toLowerCase()}` : t("Desconectado", "Offline");
   const p = f.presence;
-  if (p?.state !== "playing") return t("En línea", "Online");
+  if (p?.state !== "playing") return p?.hosting ? t(`En línea · hosteando ${p.hosting}`, `Online · hosting ${p.hosting}`) : t("En línea", "Online");
   if (f.worldOpen) return t(`Jugando ${p.pack} · mundo abierto`, `Playing ${p.pack} · world open`);
   if (p.world === "server") return t(`Jugando ${p.pack} · en ${p.server}`, `Playing ${p.pack} · on ${p.server}`);
   if (p.world === "single") return t(`Jugando ${p.pack} · en su mundo`, `Playing ${p.pack} · in their world`);
@@ -1310,6 +1407,7 @@ function renderFriends() {
     $("#friends-note").textContent = note;
     $("#friends-sign-in span").textContent = label;
     $("#friends-sign-in").classList.toggle("hidden", !show);
+    renderHomeFriendsTile();
     return;
   }
 
@@ -1359,21 +1457,48 @@ function renderFriends() {
       </div>`,
     )
     .join("");
-  $("#friend-list").innerHTML = view.friends.length
-    ? view.friends
-        .map(
-          (f) => `<div class="friend ${f.online ? "online" : ""}">
-            <div class="friend-head"><canvas width="8" height="8" class="head" data-head="${escapeHtml(f.name)}"></canvas><span class="presence-dot ${f.online ? (f.presence?.state === "playing" ? "playing" : "online") : ""}"></span></div>
-            <div class="grow"><b>${escapeHtml(f.name)}</b><span>${escapeHtml(friendStatus(f))}</span></div>
-            ${f.worldOpen ? `<button class="btn primary small" data-join="${escapeHtml(f.uid)}">${t("Unirse", "Join")}</button>` : ""}
-            <button class="circle-btn small" data-friend-menu="${escapeHtml(f.uid)}" title="${t("Más", "More")}">${icon("more")}</button>
-          </div>`,
-        )
-        .join("")
+  const row = (f) => `<div class="friend ${f.online ? "online" : ""}">
+      <div class="friend-head"><canvas width="8" height="8" class="head" data-head="${escapeHtml(f.name)}"></canvas><span class="presence-dot ${f.online ? (f.presence?.state === "playing" ? "playing" : "online") : ""}"></span></div>
+      <div class="grow"><b>${escapeHtml(f.name)}</b><span title="${escapeHtml(friendStatus(f))}">${escapeHtml(friendStatus(f))}</span></div>
+      ${f.worldOpen ? `<button class="btn primary small" data-join="${escapeHtml(f.uid)}">${t("Unirse", "Join")}</button>` : ""}
+      <button class="circle-btn small friend-chat" data-friend-chat="${escapeHtml(f.uid)}" title="${t("Enviar mensaje", "Send message")}">${icon("chat")}</button>
+      <button class="circle-btn small" data-friend-menu="${escapeHtml(f.uid)}" title="${t("Más", "More")}">${icon("more")}</button>
+    </div>`;
+  const sections = [
+    [t("Jugando", "Playing"), view.friends.filter((f) => f.online && f.presence?.state === "playing")],
+    [t("En línea", "Online"), view.friends.filter((f) => f.online && f.presence?.state !== "playing")],
+    [t("Desconectados", "Offline"), view.friends.filter((f) => !f.online)],
+  ].filter(([, list]) => list.length);
+  const friendsHtml = view.friends.length
+    ? sections.map(([title, list]) => `<div class="friend-section">${escapeHtml(title)} <span>${list.length}</span></div>${list.map(row).join("")}`).join("")
     : `<p class="side-note">${t("Todavía no tienes amigos en Parabellum. Escribe el nombre de jugador de un amigo y pulsa +.", "You have no friends on Parabellum yet. Type a friend's player name and press +.")}</p>`;
+  setHtml($("#friend-list"), friendsHtml);
   for (const canvas of $$("#friends-block canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
   const online = view.friends.filter((f) => f.online).length;
   $("#friends-count").textContent = view.friends.length ? t(`${online} en línea`, `${online} online`) : "";
+  renderGroups();
+  renderHomeFriendsTile();
+}
+
+/** Los grupos de chat, debajo de los amigos. */
+function renderGroups() {
+  const box = $("#group-list");
+  if (!box) return;
+  const groups = (state.chats ?? []).filter((c) => c.kind === "grupo");
+  setHtml(
+    box,
+    groups.length
+      ? groups
+          .map(
+            (g) => `<button class="group-row ${g.unread ? "unread" : ""}" data-open-group="${escapeHtml(g.id)}">
+              <span class="group-avatar">${icon("chat")}</span>
+              <span class="grow"><b>${escapeHtml(g.name)}</b><span>${escapeHtml(g.lastText ? `${g.lastName}: ${chatPreview(g.lastText)}` : t(`${g.members.length} miembros`, `${g.members.length} members`))}</span></span>
+              ${g.unread ? `<i class="unread-dot"></i>` : ""}
+            </button>`,
+          )
+          .join("")
+      : `<p class="side-note no-top">${t("Crea un grupo para hablar con varios amigos a la vez.", "Create a group to talk with several friends at once.")}</p>`,
+  );
 }
 
 function renderGoogleBox() {
@@ -1521,7 +1646,17 @@ function wireFriendsEvents() {
       toast(String(error), "error");
     }
   };
+  $("#side-new-group").onclick = () => openGroupDialog("create");
+  $("#group-list").onclick = (event) => {
+    const group = event.target.closest("[data-open-group]");
+    if (group) openChat(group.dataset.openGroup);
+  };
   $("#friend-list").onclick = (event) => {
+    const chat = event.target.closest("[data-friend-chat]");
+    if (chat) {
+      messageFriend(chat.dataset.friendChat);
+      return;
+    }
     const join = event.target.closest("[data-join]");
     if (join) {
       const friend = findFriend(join.dataset.join);
@@ -1932,6 +2067,7 @@ function wireChatEvents() {
   });
   listen("chats", ({ payload }) => {
     state.chats = payload;
+    renderGroups();
     if (state.chatOpen && !payload.some((c) => c.id === state.chatOpen)) closeChat();
     if (state.page === "chat") renderChatList();
     else updateChatBadge();
@@ -2516,7 +2652,6 @@ function wireEvents() {
   for (const button of [$("#rail-new"), $("#home-new"), $("#empty-new")]) button.onclick = openCreate;
   $("#rail-settings").onclick = () => openSettings("appearance");
   $("#rail-avatar").onclick = () => openAccountMenu($("#rail-avatar"));
-  $("#account-card").onclick = () => openAccountMenu($("#account-card"));
   $("#status").onclick = () => {
     const running = state.instances.find((i) => state.running.has(i.id));
     navigate(running ? "instance" : "home", running?.id ?? null);
@@ -2988,6 +3123,30 @@ async function init() {
   state.chats = await invoke("chats").catch(() => []);
   updateChatBadge();
   navigate("home", null, false);
+  // Al volver a la ventana (o desde la bandeja) se piden los datos al momento, sin esperar avisos.
+  let lastSync = Date.now();
+  const resync = async () => {
+    if (Date.now() - lastSync < 4000) return;
+    lastSync = Date.now();
+    try {
+      state.social = await invoke("estado_social");
+      renderFriends();
+      renderFriendServers();
+      state.chats = await invoke("chats");
+      renderGroups();
+      if (state.page === "chat") renderChatList();
+      else updateChatBadge();
+      if (state.chatOpen) invoke("abrir_chat", { chat: state.chatOpen }).catch(() => {});
+    } catch {}
+  };
+  window.addEventListener("focus", resync);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) resync();
+  });
+  // Los «hace X min» de los amigos se ponen al día solos.
+  setInterval(() => {
+    if (state.social?.signedIn) renderFriends();
+  }, 60000);
   pollRunning();
   setInterval(pollRunning, 3000);
 }

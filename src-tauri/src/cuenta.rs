@@ -555,9 +555,10 @@ fn current_presence(app: &AppHandle) -> Option<(Presence, Option<(u16, String)>)
     let state = app.state::<AppState>();
     let running = state.games.lock().unwrap().keys().next().cloned();
     let mut tracker = state.social.tracker.lock().unwrap();
+    let hosting = crate::hosting::hosted_name(app);
     let Some(id) = running else {
         *tracker = (None, Tracker::default());
-        return Some((Presence::online(), None));
+        return Some((Presence { hosting, ..Presence::online() }, None));
     };
     let instance = instances::find(&state.paths, &id)?;
     let started = std::fs::read_to_string(instance.state_dir().join("ultima-partida.txt")).ok().and_then(|t| t.trim().parse::<i64>().ok()).unwrap_or(0);
@@ -578,6 +579,7 @@ fn current_presence(app: &AppHandle) -> Option<(Presence, Option<(u16, String)>)
         // La dirección de playit.gg (fija) va antes que la de e4mc.
         address: activity.lan_port.and_then(|_| crate::hosting::world_address(app)).or_else(|| activity.address.clone()),
         lan,
+        hosting,
     };
     Some((presence, shared))
 }

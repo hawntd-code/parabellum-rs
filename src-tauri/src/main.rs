@@ -2141,6 +2141,54 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             };
             Ok(report)
         }
+        "--probar-tiempo-real" => {
+            // Cuánto tarda en llegar por la escucha algo que se acaba de escribir (con la sesión guardada).
+            let config = config::Config::load(paths);
+            let refresh = google::load_session(paths).ok_or("No hay sesión de Google guardada.")?;
+            let rounds: u32 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(5);
+            tauri::async_runtime::block_on(async move {
+                let account = google::GoogleAccount::resume(&config, refresh).await?;
+                let token = account.id_token().await?;
+                let session = firebase::Session::sign_in_with_google(&config.firebase_api_key, &token).await?;
+                let uid = session.uid.clone();
+                let db = Arc::new(firebase::Database::new(&config.firebase_database_url, session));
+                let path = format!("reads/{uid}/_latencia");
+                let seen: Arc<Mutex<Vec<(i64, std::time::Instant)>>> = Arc::default();
+                let log = seen.clone();
+                let _listener = db.listen(
+                    format!("reads/{uid}"),
+                    move |data| {
+                        if let Some(value) = data["_latencia"].as_i64() {
+                            log.lock().unwrap().push((value, std::time::Instant::now()));
+                        }
+                    },
+                    |error| eprintln!("escucha: {error}"),
+                );
+                tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+                let mut report = String::new();
+                for round in 1..=rounds as i64 {
+                    let sent = std::time::Instant::now();
+                    db.put(&path, &serde_json::json!(round)).await.map_err(|e| e.to_string())?;
+                    let wrote = sent.elapsed();
+                    let mut arrived = None;
+                    for _ in 0..1000 {
+                        if let Some((_, at)) = seen.lock().unwrap().iter().find(|(value, _)| *value == round) {
+                            arrived = Some(at.duration_since(sent));
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    }
+                    report += &format!(
+                        "{round}: escribir {} ms · llegar por la escucha {}\n",
+                        wrote.as_millis(),
+                        arrived.map(|d| format!("{} ms", d.as_millis())).unwrap_or_else(|| "NO LLEGÓ en 10 s".into())
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+                }
+                let _ = db.delete(&path).await;
+                Ok::<String, String>(report)
+            })
+        }
         "--playit" => {
             let secret = playit::load_secret(paths).ok_or("playit.gg no está conectado.")?;
             let data = tauri::async_runtime::block_on(playit::run_data(&secret)).map_err(|e| e.explain())?;

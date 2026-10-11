@@ -78,6 +78,11 @@ impl Session {
         })
     }
 
+    /// Hasta cuándo sirve el token que se tiene ahora (después, `token()` pide otro).
+    pub async fn valid_until(&self) -> Instant {
+        self.token.lock().await.expires
+    }
+
     /// Token vigente para la base de datos; se renueva solo antes de caducar (dura una hora).
     pub async fn token(&self) -> Result<String, String> {
         let mut token = self.token.lock().await;
@@ -196,24 +201,37 @@ impl Database {
     ) -> Listener {
         let db = self.clone();
         let task = tauri::async_runtime::spawn(async move {
-            let mut delay = Duration::from_secs(2);
+            let mut delay = Duration::from_secs(1);
             loop {
                 let mut data = Value::Null;
-                if let Err(error) = db.stream(&path, &mut data, &on_change, &mut delay).await {
-                    on_error(error);
+                match db.stream(&path, &mut data, &on_change).await {
+                    // Terminó bien (token por caducar, conexión muda o el servidor la cerró): se
+                    // vuelve a conectar enseguida, sin esperas que dejen la lista desactualizada.
+                    Ok(()) => {
+                        delay = Duration::from_secs(1);
+                        tokio::time::sleep(Duration::from_millis(200)).await;
+                    }
+                    Err(error) => {
+                        on_error(error);
+                        tokio::time::sleep(delay).await;
+                        delay = (delay * 2).min(Duration::from_secs(20));
+                    }
                 }
-                tokio::time::sleep(delay).await;
-                delay = (delay * 2).min(Duration::from_secs(60));
             }
         });
         Listener(task)
     }
 
-    async fn stream(&self, path: &str, data: &mut Value, on_change: &(impl Fn(Value) + Send + Sync), delay: &mut Duration) -> Result<(), String> {
-        // El servidor manda un keep-alive cada 30 s: sin nada en 75 s, la conexión se dio por perdida.
-        const IDLE: Duration = Duration::from_secs(75);
+    async fn stream(&self, path: &str, data: &mut Value, on_change: &(impl Fn(Value) + Send + Sync)) -> Result<(), String> {
+        // El servidor manda un keep-alive cada 30 s: sin nada en 45 s, la conexión se dio por perdida
+        // (p. ej. tras suspender el PC o cambiar de red).
+        const IDLE: Duration = Duration::from_secs(45);
+        let url = self.url(path).await?;
+        // Antes de que caduque el token con el que se abrió, se vuelve a abrir con uno nuevo (si se
+        // espera a que Firebase lo corte, hay un rato en que no llega nada).
+        let rotate_at = self.session.valid_until().await + Duration::from_secs(1);
         let response = stream_http()
-            .get(self.url(path).await?)
+            .get(url)
             .header("Accept", "text/event-stream")
             .send()
             .await
@@ -222,17 +240,23 @@ impl Database {
             return Err(DbError::Permission(path.to_string()).to_string());
         }
         let mut response = response.error_for_status().map_err(|e| e.to_string())?;
-        let mut buffer = String::new();
+        // Bytes y no texto: una letra con tilde o un emoji puede quedar partida entre dos trozos.
+        let mut buffer: Vec<u8> = Vec::new();
         let mut event = String::new();
         loop {
-            let chunk = match tokio::time::timeout(IDLE, response.chunk()).await {
+            let left = rotate_at.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return Ok(());
+            }
+            let chunk = match tokio::time::timeout(IDLE.min(left), response.chunk()).await {
                 Ok(Ok(Some(chunk))) => chunk,
                 Ok(Ok(None)) | Err(_) => return Ok(()),
                 Ok(Err(e)) => return Err(e.to_string()),
             };
-            buffer.push_str(&String::from_utf8_lossy(&chunk));
-            while let Some(end) = buffer.find('\n') {
-                let line: String = buffer.drain(..=end).collect();
+            buffer.extend_from_slice(&chunk);
+            while let Some(end) = buffer.iter().position(|b| *b == b'\n') {
+                let bytes: Vec<u8> = buffer.drain(..=end).collect();
+                let line = String::from_utf8_lossy(&bytes);
                 let line = line.trim_end();
                 if let Some(name) = line.strip_prefix("event:") {
                     event = name.trim().to_string();
@@ -243,7 +267,6 @@ impl Database {
                             on_change(data.clone());
                         }
                     }
-                    *delay = Duration::from_secs(2);
                 }
                 // auth_revoked: el token caducó; cancel: se perdió el permiso. Se vuelve a conectar.
                 if event == "auth_revoked" || event == "cancel" {

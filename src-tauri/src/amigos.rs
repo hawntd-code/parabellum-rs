@@ -37,6 +37,9 @@ pub struct Presence {
     pub address: Option<String>,
     /// IP:puerto en la red local.
     pub lan: Option<String>,
+    /// Nombre del servidor que tiene encendido en «Hostear partida» (lo ven todos sus amigos;
+    /// la dirección solo los invitados).
+    pub hosting: Option<String>,
 }
 
 impl Presence {
@@ -54,6 +57,7 @@ impl Presence {
             ("server", &self.server),
             ("address", &self.address),
             ("lan", &self.lan),
+            ("hosting", &self.hosting),
         ];
         for (key, value) in fields {
             if let Some(value) = value.as_deref().filter(|v| !v.is_empty()) {
@@ -74,6 +78,7 @@ impl Presence {
             server: text("server"),
             address: text("address"),
             lan: text("lan"),
+            hosting: text("hosting"),
         }
     }
 }
@@ -579,6 +584,7 @@ mod tests {
             address: Some("silly-cat.sa.e4mc.link".into()),
             lan: Some("192.168.1.20:51234".into()),
             server: None,
+            hosting: Some("LosPanas".into()),
         };
         let json = presence.to_json("GxxseS");
         assert_eq!(json["mc"], "1.20.1");

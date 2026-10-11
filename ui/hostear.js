@@ -88,6 +88,7 @@ function applyHostView(view) {
   $("#host-dot").classList.toggle("hidden", !running && !(view.playit.state === "on"));
   if (state.page === "host") renderHost();
   if (state.page === "hosted") renderHosted();
+  if (state.page === "home") renderHomeServerTile();
 }
 
 async function loadHosting() {
@@ -287,7 +288,7 @@ function renderHost() {
     status.classList.add("hidden");
   }
   const names = stateNames();
-  $("#host-servers").innerHTML = view.servers
+  setHtml($("#host-servers"), view.servers
     .map((s, index) => {
       const sub = [s.instanceName, `${s.loader} ${s.minecraft}`];
       if (s.state === "ready") sub.push(t(`${s.players.length} de ${s.maxPlayers} jugadores`, `${s.players.length} of ${s.maxPlayers} players`));
@@ -307,7 +308,7 @@ function renderHost() {
         <button class="circle-btn" data-hosted-open="${escapeHtml(s.id)}" title="${t("Abrir", "Open")}">${icon("right")}</button>
       </div>`;
     })
-    .join("");
+    .join(""));
   $("#host-empty").classList.toggle("hidden", view.servers.length > 0);
 }
 
@@ -826,26 +827,77 @@ async function fixHostedProblem(findingIndex, optionIndex) {
 
 // ---------- Servidores de amigos (página Servidores) ----------
 function renderFriendServers() {
-  const servers = state.social?.friends?.servers ?? [];
-  $("#friend-servers-box").classList.toggle("hidden", !servers.length);
-  $("#friend-servers").innerHTML = servers
-    .map((s, index) => {
-      const status = s.online
-        ? s.address
-          ? t(`Encendido · ${s.players} de ${s.maxPlayers} jugadores`, `On · ${s.players} of ${s.maxPlayers} players`)
-          : t("Encendido, pero sin dirección pública todavía", "On, but without a public address yet")
-        : t("Apagado", "Off");
-      return `<div class="server" style="animation-delay:${index * 40}ms">
-        <div class="server-icon">${icon("broadcast")}</div>
+  const box = $("#friend-servers");
+  const s = state.social;
+  if (!(s?.signedIn && s.connected)) {
+    setHtml(box, `<p class="muted small-text friend-servers-empty">${t("Inicia sesión con Google (panel de amigos) para ver aquí las partidas de tus amigos.", "Sign in with Google (friends panel) to see your friends' games here.")}</p>`);
+    return;
+  }
+  // Encendidos primero; los servidores apagados a los que te invitaron, al final.
+  const items = friendActivity().sort((a, b) => Number(b.online) - Number(a.online));
+  if (!items.length) {
+    setHtml(box, `<p class="muted small-text friend-servers-empty">${t("Ninguno de tus amigos tiene una partida abierta ahora. Cuando la tengan, aparecerá aquí con «Unirse».", "None of your friends has a game open right now. When they do, it will show up here with «Join».")}</p>`);
+    return;
+  }
+  const html = items
+    .map((item) => {
+      const pill = (on, label) => `<span class="state-pill ${on ? "ready" : "off"}">${escapeHtml(label)}</span>`;
+      let iconName, title, pillHtml, sub, button;
+      if (item.kind === "hosted") {
+        const sv = item.server;
+        iconName = "broadcast";
+        title = sv.name;
+        pillHtml = pill(sv.online, sv.online ? t("Encendido", "On") : t("Apagado", "Off"));
+        const status = sv.online ? (sv.address ? t(`${sv.players} de ${sv.maxPlayers} jugadores`, `${sv.players} of ${sv.maxPlayers} players`) : t("Sin dirección pública todavía", "No public address yet")) : t("Te invitó", "Invited you");
+        sub = [t(`Servidor de ${sv.hostName}`, `${sv.hostName}'s server`), sv.pack, sv.minecraft && `${sv.loader ?? ""} ${sv.minecraft}`.trim(), status];
+        button = `<button class="btn primary play" data-friend-join="${escapeHtml(item.key)}" ${sv.online && sv.address ? "" : "disabled"}>${icon("play")}${t("Unirse", "Join")}</button>`;
+      } else {
+        const f = item.friend;
+        const p = f.presence;
+        if (item.kind === "world") {
+          iconName = "globe";
+          title = t(`Mundo de ${f.name}`, `${f.name}'s world`);
+          pillHtml = pill(true, t("Abierto", "Open"));
+          sub = [p.pack, p.minecraft && `Minecraft ${p.minecraft}`, p.address ? t("Por Internet", "Over the Internet") : t("Solo en tu red (LAN)", "Only on your network (LAN)")];
+          button = `<button class="btn primary play" data-friend-join="${escapeHtml(item.key)}">${icon("play")}${t("Unirse", "Join")}</button>`;
+        } else if (item.kind === "playing") {
+          iconName = "server";
+          title = p.server;
+          pillHtml = pill(true, t(`${f.name} está aquí`, `${f.name} is here`));
+          sub = [p.pack, p.minecraft && `Minecraft ${p.minecraft}`];
+          button = `<button class="btn primary play" data-friend-join="${escapeHtml(item.key)}">${icon("play")}${t("Unirse", "Join")}</button>`;
+        } else {
+          iconName = "broadcast";
+          title = p.hosting;
+          pillHtml = pill(true, t("Encendido", "On"));
+          sub = [t(`Servidor de ${f.name}`, `${f.name}'s server`), t("Pídele que te invite para ver la dirección", "Ask them to invite you to see the address")];
+          button = `<button class="btn play" disabled>${icon("play")}${t("Unirse", "Join")}</button>`;
+        }
+      }
+      return `<div class="server ${item.online ? "" : "dim"}">
+        <div class="server-icon">${icon(iconName)}</div>
         <div class="grow">
-          <div class="title">${escapeHtml(s.name)} <span class="state-pill ${s.online ? "ready" : "off"}">${escapeHtml(s.online ? t("Encendido", "On") : t("Apagado", "Off"))}</span></div>
-          <div class="sub">${escapeHtml([t(`De ${s.hostName}`, `By ${s.hostName}`), s.pack, s.minecraft && `${s.loader ?? ""} ${s.minecraft}`.trim(), status].filter(Boolean).join(" · "))}</div>
+          <div class="title">${escapeHtml(title)} ${pillHtml}</div>
+          <div class="sub">${escapeHtml(sub.filter(Boolean).join(" · "))}</div>
         </div>
-        <button class="btn primary play" data-friend-server="${index}" ${s.online && s.address ? "" : "disabled"}>${icon("play")}${t("Unirse", "Join")}</button>
-        <button class="circle-btn" data-friend-server-menu="${index}" title="${t("Más", "More")}">${icon("more")}</button>
+        ${button}
+        <button class="circle-btn" data-friend-server-menu="${escapeHtml(item.key)}" title="${t("Más", "More")}">${icon("more")}</button>
       </div>`;
     })
     .join("");
+  setHtml(box, html);
+}
+
+function findActivity(key) {
+  return friendActivity().find((item) => item.key === key);
+}
+
+/** Entrar a la partida de un amigo: servidor hosteado, mundo abierto o el servidor donde juega. */
+function joinActivity(item) {
+  if (item.kind === "hosted") return joinFriendServer(item.server);
+  const p = item.friend.presence;
+  if (item.kind === "world") return joinFriend(item.friend, p.address ?? p.lan);
+  if (item.kind === "playing") return joinFriend(item.friend, p.server);
 }
 
 async function joinFriendServer(server) {
@@ -875,9 +927,16 @@ async function joinFriendServer(server) {
   play(instance.id, server.address);
 }
 
-function friendServerMenu(anchor, server) {
+function friendServerMenu(anchor, item) {
   const items = [];
-  if (server.address) items.push({ icon: "copy", label: t("Copiar dirección", "Copy address"), action: () => copyText(server.address, t("Dirección copiada.", "Address copied.")) });
+  const address = item.kind === "hosted" ? item.server.address : item.kind === "world" ? (item.friend.presence.address ?? item.friend.presence.lan) : item.kind === "playing" ? item.friend.presence.server : null;
+  if (address) items.push({ icon: "copy", label: t("Copiar dirección", "Copy address"), action: () => copyText(address, t("Dirección copiada.", "Address copied.")) });
+  if (item.friend) items.push({ icon: "chat", label: t(`Mensaje a ${item.friend.name}`, `Message ${item.friend.name}`), action: () => messageFriend(item.friend.uid) });
+  if (item.kind !== "hosted") {
+    if (items.length) contextMenu(anchor, items);
+    return;
+  }
+  const server = item.server;
   items.push({
     icon: "trash",
     label: t("Quitar de mi lista", "Remove from my list"),
@@ -943,16 +1002,27 @@ function wireHostEvents() {
     }
     const player = event.target.closest("[data-player-menu]");
     if (player) return void playerMenu(player, player.dataset.playerMenu);
-    const join = event.target.closest("[data-friend-server]");
+    const join = event.target.closest("[data-friend-join]");
     if (join) {
-      const server = state.social?.friends?.servers?.[Number(join.dataset.friendServer)];
-      if (server) joinFriendServer(server);
+      const item = findActivity(join.dataset.friendJoin);
+      if (item) joinActivity(item);
       return;
     }
     const serverMenu = event.target.closest("[data-friend-server-menu]");
     if (serverMenu) {
-      const server = state.social?.friends?.servers?.[Number(serverMenu.dataset.friendServerMenu)];
-      if (server) friendServerMenu(serverMenu, server);
+      const item = findActivity(serverMenu.dataset.friendServerMenu);
+      if (item) friendServerMenu(serverMenu, item);
+      return;
+    }
+    const homeAction = event.target.closest("[data-home-action]");
+    if (homeAction) {
+      const action = homeAction.dataset.homeAction;
+      if (action === "create-server") {
+        navigate("host");
+        openHostCreate();
+      } else if (action === "host") navigate("host");
+      else if (action === "servers") navigate("servers");
+      else if (action === "sign-in") signInGoogle();
     }
   });
   $("#host-servers").addEventListener("keydown", (event) => {

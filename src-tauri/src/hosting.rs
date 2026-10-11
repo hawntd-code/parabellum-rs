@@ -282,6 +282,18 @@ pub fn init(app: &AppHandle) {
     });
 }
 
+/// El servidor encendido (listo) que se anuncia a los amigos en la presencia.
+pub fn hosted_name(app: &AppHandle) -> Option<String> {
+    let ids: Vec<String> = {
+        let running = hosting(app).running.lock().unwrap();
+        let mut ready: Vec<(&String, &Running)> = running.iter().filter(|(_, r)| r.phase == Phase::Ready).collect();
+        ready.sort_by_key(|(_, r)| r.started);
+        ready.into_iter().map(|(id, _)| id.clone()).collect()
+    };
+    let paths = app.state::<AppState>().paths.clone();
+    ids.into_iter().find_map(|id| servidor::find(&paths, &id)).map(|config| config.name)
+}
+
 /// ¿Hay algo que se cortaría al cerrar Parabellum? (servidores encendidos o el mundo compartido)
 pub fn busy(app: &AppHandle) -> bool {
     !hosting(app).running.lock().unwrap().is_empty()
