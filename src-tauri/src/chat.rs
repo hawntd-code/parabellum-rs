@@ -96,9 +96,10 @@ fn random_text(len: usize) -> String {
     bytes.iter().map(|b| ALPHABET[*b as usize % ALPHABET.len()] as char).collect()
 }
 
-/// Id de mensaje ordenable por hora (los ids de Firebase se ordenan como texto).
-fn message_id() -> String {
-    format!("{:013}{}", chrono::Utc::now().timestamp_millis(), random_text(7))
+/// Id de mensaje ordenable por hora (los ids de Firebase se ordenan como texto). `now`: la hora del
+/// servidor, no la del PC (si el reloj de alguien va atrasado, sus mensajes quedarían arriba).
+fn message_id(now: i64) -> String {
+    format!("{:013}{}", now, random_text(7))
 }
 
 pub fn direct_id(a: &str, b: &str) -> String {
@@ -368,7 +369,9 @@ impl Chat {
                         .collect()
                 })
                 .unwrap_or_default();
-            list.sort_by(|a, b| a.id.cmp(&b.id));
+            // En el orden en que llegaron al servidor (su hora, la misma para todos); los ids llevan la
+            // hora del PC que los escribió y antes de la 0.15 no se corregía.
+            list.sort_by(|a, b| a.at.cmp(&b.at).then_with(|| a.id.cmp(&b.id)));
             (id.clone(), list)
         };
         (self.messages)(id, list);
@@ -415,7 +418,7 @@ impl Chat {
         }
         let name = self.my_name.lock().unwrap().clone();
         let message = json!({ "from": self.uid, "name": name, "text": text, "at": firebase::server_timestamp() });
-        self.send(id, &message_id(), message, &preview(text), Map::new()).await
+        self.send(id, &message_id(self.db.server_now()), message, &preview(text), Map::new()).await
     }
 
     /// `data`: imagen ya reducida, como "data:image/jpeg;base64,…". Va aparte, con el id de su mensaje.
@@ -427,7 +430,7 @@ impl Chat {
         if data.len() > MAX_IMAGE {
             return Err(t!("La imagen es muy pesada incluso reducida.", "The image is too large even after shrinking it."));
         }
-        let message_id = message_id();
+        let message_id = message_id(self.db.server_now());
         let name = self.my_name.lock().unwrap().clone();
         let message = json!({ "from": self.uid, "name": name, "image": true, "w": width, "h": height, "at": firebase::server_timestamp() });
         let mut update = Map::new();
@@ -531,9 +534,8 @@ mod tests {
     fn ids_de_conversaciones_y_mensajes() {
         assert_eq!(direct_id("b", "a"), direct_id("a", "b"));
         assert_eq!(direct_id("zz", "aa"), "d_aa_zz");
-        let first = message_id();
-        std::thread::sleep(std::time::Duration::from_millis(2));
-        assert!(message_id() > first);
+        assert!(message_id(1_700_000_000_001) > message_id(1_700_000_000_000));
+        assert_eq!(message_id(1_700_000_000_000).len(), 20);
         assert!(safe("d_abc_DEF-1").is_ok());
         assert!(safe("../x").is_err() && safe("a/b").is_err() && safe("").is_err());
         assert_eq!(preview("  hola\n  mundo "), "hola mundo");

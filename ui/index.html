@@ -322,6 +322,7 @@
                 <div class="host-toggles">
                   <label class="toggle"><input type="checkbox" id="hs-pvp"><span></span>Jugadores pueden pelear entre ellos (PvP)</label>
                   <label class="toggle"><input type="checkbox" id="hs-flight"><span></span>Permitir volar (evita que los mods con alas o mochilas echen al jugador)</label>
+                  <label class="toggle"><input type="checkbox" id="hs-verify"><span></span>Solo se entra desde Parabellum con la cuenta de cada quien (nadie puede usar el nombre de otro)</label>
                   <label class="toggle"><input type="checkbox" id="hs-eula"><span></span>Acepto el EULA de Minecraft</label>
                 </div>
                 <label class="label" for="hs-jvm" style="margin-top:16px">Argumentos de Java</label>
@@ -968,45 +969,33 @@
     </div>
   </div>
 
-  <!-- ================= El juego se cerró con error ================= -->
-  <div class="overlay hidden" id="crash-dialog">
-    <div class="modal">
-      <div class="modal-head">
-        <span class="crash-icon"><svg><use href="#i-alert"/></svg></span>
-        <h2 id="crash-title">El juego se cerró con un error</h2>
-        <button class="circle-btn" id="crash-close" title="Cerrar"><svg><use href="#i-close"/></svg></button>
-      </div>
-      <div class="modal-body">
-        <p class="muted">Esto es lo que dice el registro del juego:</p>
-        <pre class="crash-reason" id="crash-reason"></pre>
-        <div class="modal-actions">
-          <button class="btn" id="crash-dismiss">Cerrar</button>
-          <button class="btn primary" id="crash-logs"><svg><use href="#i-terminal"/></svg>Ver registro completo</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ================= Doctor: qué falla y cómo arreglarlo ================= -->
+  <!-- ================= Doctor: qué falla y cómo arreglarlo (también cuando el juego se cierra con error) ================= -->
   <div class="overlay hidden" id="doctor-dialog">
-    <div class="modal doctor">
-      <div class="modal-head">
-        <span class="doctor-icon"><svg><use href="#i-wrench"/></svg></span>
-        <h2 id="doctor-title">Doctor</h2>
+    <div class="modal doctor" role="dialog" aria-labelledby="doctor-title">
+      <header class="doc-head">
+        <div class="doc-art" id="doctor-art"></div>
+        <div class="doc-heading">
+          <span class="doc-state" id="doctor-state"></span>
+          <h2 id="doctor-title"></h2>
+          <span class="doc-meta" id="doctor-meta"></span>
+        </div>
         <button class="circle-btn" id="doctor-close" title="Cerrar"><svg><use href="#i-close"/></svg></button>
-      </div>
-      <div class="modal-body">
-        <p class="muted" id="doctor-intro"></p>
-        <div class="doctor-progress hidden" id="doctor-progress"><span class="spinner tiny"></span><span id="doctor-status"></span></div>
-        <div class="doctor-findings" id="doctor-findings"></div>
-        <pre class="crash-reason hidden" id="doctor-reason"></pre>
-        <div class="modal-actions">
-          <button class="btn" id="doctor-logs"><svg><use href="#i-terminal"/></svg>Ver registro</button>
-          <button class="btn" id="doctor-anyway">Jugar de todos modos</button>
-          <button class="btn" id="doctor-fix-all"><svg><use href="#i-check"/></svg>Arreglar lo recomendado</button>
-          <button class="btn primary" id="doctor-auto"><svg><use href="#i-wrench"/></svg>Probar y arreglar solo</button>
+      </header>
+      <div class="doc-body">
+        <ol class="doc-steps hidden" id="doctor-steps"></ol>
+        <ol class="doc-findings" id="doctor-findings"></ol>
+        <div class="doc-raw hidden" id="doctor-raw">
+          <span class="doc-raw-label">Lo que dice el registro</span>
+          <pre id="doctor-reason"></pre>
         </div>
       </div>
+      <footer class="doc-foot">
+        <button class="btn ghost" id="doctor-logs"><svg><use href="#i-terminal"/></svg>Registro</button>
+        <span class="grow"></span>
+        <button class="btn ghost" id="doctor-anyway">Jugar de todos modos</button>
+        <button class="btn" id="doctor-auto"><svg><use href="#i-play-outline"/></svg>Probar y arreglar solo</button>
+        <button class="btn primary" id="doctor-fix-all"><svg><use href="#i-check"/></svg><span>Arreglar lo recomendado</span></button>
+      </footer>
     </div>
   </div>
 
@@ -1070,6 +1059,8 @@
       <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4.2 4.2 0 0 0 5.3 5.3l-8.6 8.6a2.1 2.1 0 0 1-3-3l8.6-8.6a4.2 4.2 0 0 1-5.3-5.3l2.7 2.7 1.9-.4.4-1.9z"/></symbol>
       <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></symbol>
       <symbol id="i-broadcast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M8.2 15.8a5.4 5.4 0 0 1 0-7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5.3 18.7a9.5 9.5 0 0 1 0-13.4M18.7 5.3a9.5 9.5 0 0 1 0 13.4"/></symbol>
+      <symbol id="i-octagon" viewBox="0 0 24 24"><path d="M8.3 3.5h7.4l4.8 4.8v7.4l-4.8 4.8H8.3l-4.8-4.8V8.3z"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5"/></symbol>
+      <symbol id="i-triangle" viewBox="0 0 24 24"><path d="M10.3 4.6 3.2 17a2 2 0 0 0 1.7 3h14.2a2 2 0 0 0 1.7-3L13.7 4.6a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 16.8h.01"/></symbol>
       <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></symbol>
     </defs>
   </svg>

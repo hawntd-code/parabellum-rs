@@ -114,6 +114,8 @@ pub struct Hosting {
     claim: Mutex<Option<String>>,
     world: Mutex<Option<WorldShare>>,
     saved: Mutex<Saved>,
+    /// Los nombres (anfitrión y amigos) la última vez que se revisaron los servidores.
+    names_seen: Mutex<String>,
 }
 
 // ================= Vista para la interfaz
@@ -687,14 +689,10 @@ pub fn start_server(app: &AppHandle, id: &str) -> Result<(), String> {
     if !config.eula {
         return Err(t!("Para encender el servidor hay que aceptar el EULA de Minecraft.", "To start the server you must accept the Minecraft EULA."));
     }
-    // Los amigos invitados pueden haber cambiado de nombre.
-    if let Some(names) = cuenta::social_handle(app).map(|s| s.friend_names()) {
-        for guest in config.guests.iter_mut() {
-            if let Some(name) = guest.uid.as_ref().and_then(|uid| names.get(uid)).filter(|n| servidor::valid_name(n)) {
-                guest.name = name.clone();
-            }
-        }
-    }
+    // El anfitrión o los amigos invitados pueden haber cambiado de nombre.
+    let host = state.settings.lock().unwrap().username.clone();
+    let friends = cuenta::social_handle(app).map(|s| s.friend_names());
+    let name_notes = follow_names(app, &mut config, &host, friends.as_ref());
     // server.properties manda (se puede editar a mano); si el puerto está ocupado, se cambia.
     if let Some(port) = servidor::property(&config.folder, "server-port").and_then(|p| p.parse::<u16>().ok()) {
         config.port = port;
@@ -705,7 +703,6 @@ pub fn start_server(app: &AppHandle, id: &str) -> Result<(), String> {
         servidor::set_properties(&config.folder, &[("server-port", port.to_string())])?;
     }
     servidor::write_eula(&config.folder, true)?;
-    let host = state.settings.lock().unwrap().username.clone();
     servidor::write_access_lists(&config, &host)?;
     config.last_started = Some(chrono::Utc::now().timestamp_millis());
     servidor::save(&config)?;
@@ -716,7 +713,7 @@ pub fn start_server(app: &AppHandle, id: &str) -> Result<(), String> {
     let _ = std::fs::create_dir_all(&state_dir);
     let output = std::fs::File::create(state_dir.join("salida-java.log")).ok().map(std::io::BufWriter::new);
     host_state.outcomes.lock().unwrap().remove(id);
-    let notes: Vec<String> = tunnel_mods
+    let mut notes: Vec<String> = tunnel_mods
         .iter()
         .map(|file| {
             t!(
@@ -725,6 +722,7 @@ pub fn start_server(app: &AppHandle, id: &str) -> Result<(), String> {
             )
         })
         .collect();
+    notes.extend(name_notes);
     host_state.running.lock().unwrap().insert(
         id.to_string(),
         Running {
@@ -805,6 +803,8 @@ fn on_line(app: &AppHandle, id: &str, line: String) {
     let event = servidor::parse_line(&line);
     let mut ready = false;
     let mut players_changed = false;
+    let mut joined = None;
+    let mut left = false;
     {
         let mut running = hosting(app).running.lock().unwrap();
         let Some(run) = running.get_mut(id) else { return };
@@ -819,10 +819,12 @@ fn on_line(app: &AppHandle, id: &str, line: String) {
             Some(servidor::LineEvent::Joined(name)) if !run.players.contains(name) => {
                 run.players.push(name.clone());
                 players_changed = true;
+                joined = Some(name.clone());
             }
             Some(servidor::LineEvent::Left(name)) => {
                 run.players.retain(|p| p != name);
                 players_changed = true;
+                left = true;
             }
             _ => {}
         }
@@ -842,6 +844,13 @@ fn on_line(app: &AppHandle, id: &str, line: String) {
     };
     if let Some(message) = message {
         hosting(app).outcomes.lock().unwrap().insert(id.to_string(), Outcome { error: Some(message), diagnosis: None });
+    }
+    if let Some(name) = joined {
+        let (app, id) = (app.clone(), id.to_string());
+        std::thread::spawn(move || verify_player(&app, &id, &name));
+    }
+    if left {
+        retry_moves(app, id);
     }
     if ready {
         hosting(app).auto_fixes.lock().unwrap().remove(id);
@@ -965,6 +974,165 @@ pub fn send_command(app: &AppHandle, id: &str, text: &str) {
     let echo = format!("> {command}");
     run.console.push_back(echo.clone());
     run.pending.push(echo);
+}
+
+/// Una nota de Parabellum en la consola del servidor (no va al servidor).
+fn console_note(app: &AppHandle, id: &str, text: String) {
+    let mut running = hosting(app).running.lock().unwrap();
+    let Some(run) = running.get_mut(id) else { return };
+    let line = format!("[Parabellum] {text}");
+    run.console.push_back(line.clone());
+    run.pending.push(line);
+}
+
+// ================= Los nombres siguen a la cuenta de cada jugador
+
+/// Pone en el servidor los nombres de ahora y pasa las cosas de quien cambió de nombre (si no está
+/// conectado; si lo está, al salir). Devuelve las notas para la consola.
+fn follow_names(app: &AppHandle, config: &mut ServerConfig, host: &str, friends: Option<&HashMap<String, String>>) -> Vec<String> {
+    let renames = servidor::follow_names(config, host, friends);
+    let mut notes = Vec::new();
+    for rename in &renames {
+        notes.push(if rename.host {
+            t!(
+                "[Parabellum] Ahora te llamas {}: sigues siendo el administrador y entras con tu nombre nuevo.",
+                "[Parabellum] You are now called {}: you are still the admin and you join with your new name.",
+                rename.new
+            )
+        } else {
+            t!("[Parabellum] {} ahora se llama {}: sigue invitado.", "[Parabellum] {} is now called {}: they are still invited.", rename.old, rename.new)
+        });
+        config.pending_moves.retain(|(_, new)| *new != rename.old);
+        config.pending_moves.push((rename.old.clone(), rename.new.clone()));
+    }
+    notes.extend(move_pending(app, config));
+    notes
+}
+
+/// Pasa las cosas pendientes de los cambios de nombre cuyo jugador no está conectado.
+fn move_pending(app: &AppHandle, config: &mut ServerConfig) -> Vec<String> {
+    let online: Vec<String> = hosting(app).running.lock().unwrap().get(&config.id).map(|r| r.players.clone()).unwrap_or_default();
+    let is_online = |name: &str| online.iter().any(|p| p.eq_ignore_ascii_case(name));
+    let mut notes = Vec::new();
+    config.pending_moves.retain(|(old, new)| {
+        if is_online(old) || is_online(new) {
+            return true;
+        }
+        if servidor::move_player_data(&config.folder, old, new) > 0 {
+            notes.push(t!(
+                "[Parabellum] El inventario, la posición y los logros de {old} pasaron a {new}.",
+                "[Parabellum] The inventory, position and advancements of {old} moved to {new}."
+            ));
+        }
+        false
+    });
+    notes
+}
+
+/// Revisa los nombres de todos los servidores propios (al cambiar el nombre del anfitrión o el de un
+/// amigo). Con el servidor encendido, recarga la lista blanca y pasa el permiso de administrador.
+pub fn sync_names(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let host = state.settings.lock().unwrap().username.clone();
+    let friends = cuenta::social_handle(app).map(|s| s.friend_names());
+    let seen = {
+        let mut sorted: Vec<(&String, &String)> = friends.iter().flatten().collect();
+        sorted.sort();
+        format!("{host}|{sorted:?}")
+    };
+    {
+        let mut last = hosting(app).names_seen.lock().unwrap();
+        if *last == seen {
+            return;
+        }
+        *last = seen;
+    }
+    let mut changed = false;
+    for mut config in servidor::list(&state.paths) {
+        let before = serde_json::to_string(&config).unwrap_or_default();
+        let old_host = config.host_name.clone();
+        let notes = follow_names(app, &mut config, &host, friends.as_ref());
+        if serde_json::to_string(&config).unwrap_or_default() == before {
+            continue;
+        }
+        changed = true;
+        let _ = servidor::save(&config);
+        if servidor::write_access_lists(&config, &host).is_err() || !is_running(app, &config.id) {
+            continue;
+        }
+        send_command(app, &config.id, "whitelist reload");
+        if let Some(old) = old_host.filter(|old| *old != host && servidor::valid_name(old)) {
+            send_command(app, &config.id, &format!("deop {old}"));
+            send_command(app, &config.id, &format!("op {host}"));
+        }
+        for note in notes {
+            console_note(app, &config.id, note.trim_start_matches("[Parabellum] ").to_string());
+        }
+    }
+    if changed {
+        emit(app);
+    }
+}
+
+/// Al salir un jugador se pasan las cosas que tenía pendientes por un cambio de nombre.
+fn retry_moves(app: &AppHandle, id: &str) {
+    let paths = app.state::<AppState>().paths.clone();
+    let Some(mut config) = servidor::find(&paths, id).filter(|c| !c.pending_moves.is_empty()) else { return };
+    let notes = move_pending(app, &mut config);
+    let _ = servidor::save(&config);
+    for note in notes {
+        console_note(app, id, note.trim_start_matches("[Parabellum] ").to_string());
+    }
+}
+
+/// Quien entra con el nombre del anfitrión o de un amigo invitado tiene que estar jugando desde
+/// Parabellum con esa cuenta (su Parabellum lo publica en la presencia). Si no, se le saca: así no
+/// basta con ponerse el nombre de otro, en Parabellum o en cualquier otro launcher.
+fn verify_player(app: &AppHandle, id: &str, name: &str) {
+    let state = app.state::<AppState>();
+    let Some(config) = servidor::find(&state.paths, id).filter(|c| c.verify_players) else { return };
+    let host = state.settings.lock().unwrap().username.clone();
+    let check: Box<dyn Fn() -> bool> = if name.eq_ignore_ascii_case(&host) {
+        // El anfitrión: con un juego abierto desde este Parabellum.
+        let app = app.clone();
+        Box::new(move || !app.state::<AppState>().games.lock().unwrap().is_empty())
+    } else {
+        // Invitados por nombre (sin cuenta de Parabellum): no hay con qué comprobarlo.
+        let Some(uid) = config.guests.iter().find(|g| g.name.eq_ignore_ascii_case(name)).and_then(|g| g.uid.clone()) else { return };
+        let Some(social) = cuenta::social_handle(app) else {
+            console_note(
+                app,
+                id,
+                t!(
+                    "No se pudo comprobar que {name} sea tu amigo de Parabellum: no hay conexión con el servidor de amigos.",
+                    "Could not check that {name} is your Parabellum friend: there is no connection to the friends server."
+                ),
+            );
+            return;
+        };
+        let name = name.to_string();
+        Box::new(move || social.playing_as(&uid, &name))
+    };
+    // La presencia puede tardar unos segundos en llegar.
+    for _ in 0..10 {
+        if check() {
+            return;
+        }
+        std::thread::sleep(Duration::from_secs(1));
+        if !hosting(app).running.lock().unwrap().get(id).is_some_and(|r| r.players.iter().any(|p| p == name)) {
+            return;
+        }
+    }
+    let reason = t!("Entra desde Parabellum con tu cuenta.", "Join from Parabellum with your account.");
+    send_command(app, id, &format!("kick {name} {reason}"));
+    console_note(
+        app,
+        id,
+        t!(
+            "Se sacó a {name}: no está jugando desde Parabellum con la cuenta de {name}. Si es tu amigo, que entre desde Parabellum (o quita la comprobación en Ajustes).",
+            "{name} was kicked: they are not playing from Parabellum with {name}'s account. If it is your friend, have them join from Parabellum (or turn off the check in Settings)."
+        ),
+    );
 }
 
 pub fn is_running(app: &AppHandle, id: &str) -> bool {

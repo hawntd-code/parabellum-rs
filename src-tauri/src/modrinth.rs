@@ -104,14 +104,18 @@ impl ContentType {
     const ALL: [ContentType; 3] = [Self::Mod, Self::ResourcePack, Self::Shader];
 }
 
-/// Loaders de Modrinth que sirven en la instancia. Quilt también carga mods de Fabric; los shaders
-/// (Iris, OptiFine…) no se filtran por loader.
+/// Loaders de Modrinth que sirven en la instancia; el primero es el suyo (se prefiere). Quilt también
+/// carga mods de Fabric, y en Minecraft 1.20.1 NeoForge todavía era Forge por dentro: ahí los mods de
+/// uno sirven en el otro. Los shaders (Iris, OptiFine…) no se filtran por loader.
 pub fn instance_loaders(instance: &Instance, kind: ContentType) -> Result<Vec<&'static str>, String> {
+    let shared = instance.minecraft_version == "1.20.1";
     match kind {
         ContentType::Mod => match instance.loader.as_str() {
             "Fabric" => Ok(vec!["fabric"]),
             "Quilt" => Ok(vec!["quilt", "fabric"]),
+            "Forge" if shared => Ok(vec!["forge", "neoforge"]),
             "Forge" => Ok(vec!["forge"]),
+            "NeoForge" if shared => Ok(vec!["neoforge", "forge"]),
             "NeoForge" => Ok(vec!["neoforge"]),
             _ => Err(t!("Las instancias vanilla no cargan mods. Crea una con un loader (Fabric, Quilt, Forge o NeoForge).", "Vanilla instances do not load mods. Create one with a loader (Fabric, Quilt, Forge or NeoForge).")),
         },
@@ -423,6 +427,41 @@ async fn version(id: &str) -> Result<Version, String> {
 /// La versión a instalar: la estable más nueva; si no hay, la beta más nueva; si no, la alpha.
 pub fn best(versions: &[Version]) -> Option<&Version> {
     ["release", "beta", "alpha"].iter().find_map(|kind| versions.iter().find(|v| v.version_type == *kind)).or(versions.first())
+}
+
+/// Como `best`, pero primero entre las versiones del loader de la instancia (el primero de
+/// `loaders`): en NeoForge 1.20.1 gana la versión para NeoForge aunque haya una de Forge más nueva.
+pub fn preferred<'a>(versions: &'a [Version], loaders: &[&str]) -> Option<&'a Version> {
+    let native: Vec<Version> = versions.iter().filter(|v| loaders.first().is_none_or(|l| v.loaders.iter().any(|x| x == l))).cloned().collect();
+    match best(&native) {
+        Some(chosen) => versions.iter().find(|v| v.id == chosen.id),
+        None => best(versions),
+    }
+}
+
+/// Las versiones de la lista ordenadas como se prueban: primero las del loader de la instancia.
+fn native_first(mut versions: Vec<Version>, loaders: &[&str]) -> Vec<Version> {
+    versions.sort_by_key(|v| loaders.first().is_some_and(|l| !v.loaders.iter().any(|x| x == l)));
+    versions
+}
+
+/// Una versión de Modrinth que dice servir para el loader y la versión de Minecraft de la instancia.
+fn version_fits(version: &Version, loaders: &[&str], minecraft: &str) -> bool {
+    (loaders.is_empty() || version.loaders.iter().any(|l| loaders.contains(&l.as_str()))) && version.game_versions.iter().any(|g| g == minecraft)
+}
+
+fn loader_names(loaders: &[String]) -> String {
+    let names: Vec<String> = loaders
+        .iter()
+        .map(|l| match l.as_str() {
+            "neoforge" => "NeoForge".to_string(),
+            other => {
+                let mut chars = other.chars();
+                chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
+            }
+        })
+        .collect();
+    names.join(", ")
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -747,6 +786,11 @@ fn clean_candidates(instance: &Instance) {
 
 /// Lo que declara un mod del plan (lo descarga a la carpeta temporal si hace falta).
 async fn planned_meta(instance: &Instance, file: &PlannedFile) -> Result<Vec<ModMeta>, String> {
+    planned_jar(instance, file).await.map(|(metas, _)| metas)
+}
+
+/// Lo que declara un mod del plan y para qué loaders es (lo descarga a la carpeta temporal si hace falta).
+async fn planned_jar(instance: &Instance, file: &PlannedFile) -> Result<(Vec<ModMeta>, compat::JarLoaders), String> {
     if !file.url.starts_with(CDN) || file.sha1.len() != 40 || !file.sha1.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(t!("El archivo {} no es válido.", "The file {} is not valid.", file.filename));
     }
@@ -756,9 +800,13 @@ async fn planned_meta(instance: &Instance, file: &PlannedFile) -> Result<Vec<Mod
         |_, _, _, _| {},
     )
     .await?;
-    tauri::async_runtime::spawn_blocking(move || std::fs::File::open(path).map(compat::read_jar).unwrap_or_default())
-        .await
-        .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        let metas = std::fs::File::open(&path).map(compat::read_jar).unwrap_or_default();
+        let loaders = std::fs::File::open(&path).map(compat::read_loaders).unwrap_or_default();
+        (metas, loaders)
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 fn same_problem(a: &Problem, b: &Problem) -> bool {
@@ -814,7 +862,7 @@ async fn repair(
             for slug in [id.clone(), id.replace('_', "-")] {
                 let Ok(slug) = checked_id(&slug).map(String::from) else { continue };
                 let Ok(list) = project_versions(&slug, loaders, &[minecraft]).await else { continue };
-                let Some(found) = best(&list) else { continue };
+                let Some(found) = preferred(&list, loaders) else { continue };
                 let candidate = PlannedFile::new(found, ContentType::Mod, true, None);
                 let meta = planned_meta(instance, &candidate).await?;
                 // Solo sirve si de verdad es ese mod.
@@ -920,8 +968,19 @@ async fn plan_version(instance: &Instance, project_id: &str, version_id: Option<
         installed.iter().filter_map(|f| Some((f.project_id.as_deref()?, f))).collect();
 
     let main = match version_id {
-        Some(id) => version(id).await?,
-        None => best(&project_versions(&project_id, &loaders, &[minecraft]).await?)
+        Some(id) => {
+            let chosen = version(id).await?;
+            if kind == ContentType::Mod && !version_fits(&chosen, &loaders, minecraft) {
+                return Err(t!(
+                    "Esa versión de {title} es para {} {}; esta instancia es {target}.",
+                    "That version of {title} is for {} {}; this instance is {target}.",
+                    loader_names(&chosen.loaders),
+                    chosen.game_versions.last().cloned().unwrap_or_default()
+                ));
+            }
+            chosen
+        }
+        None => preferred(&project_versions(&project_id, &loaders, &[minecraft]).await?, &loaders)
             .cloned()
             .ok_or(t!("{title} no tiene ninguna versión para {target}.", "{title} has no version for {target}."))?,
     };
@@ -964,9 +1023,15 @@ async fn plan_version(instance: &Instance, project_id: &str, version_id: Option<
                     if installed_by_project.contains_key(dependency_project.as_str()) || !queued.insert(dependency_project.clone()) {
                         continue;
                     }
-                    let chosen = match &dependency.version_id {
-                        Some(id) => version(id).await.ok(),
-                        None => project_versions(&dependency_project, &loaders, &[minecraft]).await.ok().and_then(|list| best(&list).cloned()),
+                    // Una dependencia que pide una versión exacta puede pedir la de otro loader (la de
+                    // Forge en una instancia de NeoForge): entonces se busca la que sirve.
+                    let exact = match &dependency.version_id {
+                        Some(id) => version(id).await.ok().filter(|v| kind != ContentType::Mod || version_fits(v, &loaders, minecraft)),
+                        None => None,
+                    };
+                    let chosen = match exact {
+                        Some(found) => Some(found),
+                        None => project_versions(&dependency_project, &loaders, &[minecraft]).await.ok().and_then(|list| preferred(&list, &loaders).cloned()),
                     };
                     match chosen {
                         Some(found) => {
@@ -996,10 +1061,41 @@ async fn plan_version(instance: &Instance, project_id: &str, version_id: Option<
         }
     }
 
-    // Rangos de versión de los propios mods (Fabric y Quilt): cambia dependencias si no encajan.
+    // Cada .jar se abre para ver para qué loader es de verdad: si Modrinth lo etiquetó mal, se busca
+    // otra versión del mismo proyecto que sí sirva.
     let mut compat_problem = None;
     let mut check_main = false;
-    if missing.is_empty() && conflicts.is_empty() && kind == ContentType::Mod && matches!(instance.loader.as_str(), "Fabric" | "Quilt") {
+    if missing.is_empty() && conflicts.is_empty() && kind == ContentType::Mod {
+        let connector = installed.iter().any(|f| f.mods.iter().any(|m| m.id == "connectormod"));
+        for index in 0..files.len() {
+            let (_, jar) = planned_jar(instance, &files[index]).await?;
+            if compat::loader_fits(jar, &instance.loader, minecraft, connector) {
+                continue;
+            }
+            let others = native_first(project_versions(&files[index].project_id, &loaders, &[minecraft]).await?, &loaders);
+            let mut replaced = false;
+            for other in others.iter().filter(|v| v.id != files[index].version_id).take(6) {
+                let candidate = PlannedFile::new(other, kind, files[index].dependency, files[index].replaces.clone());
+                if compat::loader_fits(planned_jar(instance, &candidate).await?.1, &instance.loader, minecraft, connector) {
+                    files[index] = candidate;
+                    replaced = true;
+                    break;
+                }
+            }
+            if !replaced {
+                compat_problem = Some(t!(
+                    "{} es un mod de {} (aunque Modrinth diga otra cosa) y esta instancia es {target}.",
+                    "{} is a {} mod (even if Modrinth says otherwise) and this instance is {target}.",
+                    if files[index].project_id == project_id { title.clone() } else { files[index].filename.clone() },
+                    jar.describe()
+                ));
+                check_main = index == 0;
+                break;
+            }
+        }
+    }
+    // Rangos de versión de los propios mods (fabric.mod.json, mods.toml): cambia dependencias si no encajan.
+    if compat_problem.is_none() && missing.is_empty() && conflicts.is_empty() && kind == ContentType::Mod {
         let main_file = files[0].filename.clone();
         compat_problem = repair(instance, &mut files, &installed, &loaders).await?;
         check_main = compat_problem.is_some() && files.first().is_some_and(|f| f.filename == main_file);
@@ -1182,6 +1278,29 @@ pub async fn apply_updates(
     // Una actualización que pida otro loader, otra versión del juego u otra dependencia se queda fuera.
     if instance.loader != "Vanilla" && files.iter().any(|f| f.kind == "mods") {
         let installed = identify(instance).await;
+        // Una actualización etiquetada para este loader que en realidad es para otro.
+        let connector = installed.iter().any(|f| f.mods.iter().any(|m| m.id == "connectormod"));
+        let mut index = 0;
+        while index < files.len() {
+            if files[index].kind == "mods" {
+                let (_, jar) = planned_jar(instance, &files[index]).await?;
+                if !compat::loader_fits(jar, &instance.loader, &instance.minecraft_version, connector) {
+                    let removed = files.remove(index);
+                    held_back.push(HeldBack {
+                        reason: t!(
+                            "Es un mod de {} aunque Modrinth diga {}.",
+                            "It is a {} mod even though Modrinth says {}.",
+                            jar.describe(),
+                            instance.loader
+                        ),
+                        title: format!("{} {}", removed.title, removed.version_number),
+                        version_id: removed.version_id,
+                    });
+                    continue;
+                }
+            }
+            index += 1;
+        }
         loop {
             let replaced: HashSet<&str> = files.iter().filter_map(|f| f.replaces.as_deref()).collect();
             let mut all: Vec<(String, Vec<ModMeta>)> = installed
@@ -1325,18 +1444,18 @@ pub async fn find_by_mod_id(instance: &Instance, mod_id: &str, requirements: &[S
     for project in candidates.into_iter().filter(|c| seen.insert(c.clone())) {
         let Ok(id) = checked_id(&project).map(String::from) else { continue };
         let Ok(versions) = project_versions(&id, &loaders, &[minecraft.as_str()]).await else { continue };
-        for version in versions.iter().take(6) {
+        for version in native_first(versions, &loaders).iter().take(6) {
             if downloads >= 14 {
                 return Ok(None);
             }
             downloads += 1;
             let file = PlannedFile::new(version, ContentType::Mod, true, None);
-            let Ok(metas) = planned_meta(instance, &file).await else { break };
+            let Ok((metas, jar)) = planned_jar(instance, &file).await else { break };
             let Some(meta) = metas.iter().find(|m| m.id == mod_id || m.provides.iter().any(|p| p == mod_id)) else {
                 // Este proyecto no es ese mod: se prueba el siguiente.
                 break;
             };
-            if requirements.iter().all(|r| compat::matches(&meta.version, r)) {
+            if requirements.iter().all(|r| compat::matches(&meta.version, r)) && compat::loader_fits(jar, &instance.loader, &minecraft, false) {
                 return Ok(Some((version.project_id.clone(), version.id.clone())));
             }
         }

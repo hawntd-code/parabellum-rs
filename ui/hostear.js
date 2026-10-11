@@ -524,18 +524,8 @@ function renderHosted() {
   // Problemas de la última vez (con sus arreglos)
   const problem = $("#hosted-problem");
   if (s.error || s.diagnosis?.findings?.length) {
-    const severity = severityNames();
-    const findings = (s.diagnosis?.findings ?? [])
-      .map(
-        (f, i) => `<div class="doctor-finding ${f.severity}">
-          <h3>${escapeHtml(f.title)}</h3>
-          <p><b>${escapeHtml(severity[f.severity] ?? "")}.</b> ${escapeHtml(f.detail)}</p>
-          ${f.evidence ? `<code>${escapeHtml(f.evidence)}</code>` : ""}
-          ${f.fixes.length ? `<div class="doctor-fixes">${f.fixes.map((o, j) => `<button class="btn ${o.recommended ? "primary" : ""}" data-server-fix="${i}:${j}">${escapeHtml(o.label)}</button>`).join("")}</div>` : ""}
-        </div>`,
-      )
-      .join("");
-    problem.innerHTML = `<div class="host-problem">${s.error ? `<div class="host-problem-head">${icon("alert")}<b>${escapeHtml(s.error)}</b></div>` : ""}<div class="doctor-findings">${findings}</div></div>`;
+    const findings = findingsHtml(s.diagnosis?.findings ?? [], { attr: "data-server-fix" });
+    problem.innerHTML = `<div class="host-problem">${s.error ? `<div class="host-problem-head">${icon("alert")}<b>${escapeHtml(s.error)}</b></div>` : ""}<ol class="doc-findings">${findings}</ol></div>`;
   } else {
     problem.innerHTML = "";
   }
@@ -700,6 +690,7 @@ async function loadHostedSettings() {
     $("#hs-sim").value = settings.simulationDistance;
     $("#hs-pvp").checked = settings.pvp;
     $("#hs-flight").checked = settings.allowFlight;
+    $("#hs-verify").checked = settings.verifyPlayers;
     $("#hs-eula").checked = settings.eula;
     $("#hs-jvm").value = settings.jvmArgs.join(" ");
     $("#hs-running-note").classList.toggle("hidden", s.state === "off");
@@ -755,6 +746,7 @@ async function saveHostedSettings() {
     viewDistance: Number($("#hs-view").value) || 10,
     simulationDistance: Number($("#hs-sim").value) || 10,
     allowFlight: $("#hs-flight").checked,
+    verifyPlayers: $("#hs-verify").checked,
   };
   try {
     await invoke("guardar_servidor", { id: host.id, ajustes: settings });

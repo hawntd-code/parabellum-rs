@@ -40,6 +40,8 @@ pub struct Presence {
     /// Nombre del servidor que tiene encendido en «Hostear partida» (lo ven todos sus amigos;
     /// la dirección solo los invitados).
     pub hosting: Option<String>,
+    /// Con qué nombre está jugando (los servidores de los amigos lo comprueban al entrar).
+    pub player: Option<String>,
 }
 
 impl Presence {
@@ -58,6 +60,7 @@ impl Presence {
             ("address", &self.address),
             ("lan", &self.lan),
             ("hosting", &self.hosting),
+            ("player", &self.player),
         ];
         for (key, value) in fields {
             if let Some(value) = value.as_deref().filter(|v| !v.is_empty()) {
@@ -79,6 +82,7 @@ impl Presence {
             address: text("address"),
             lan: text("lan"),
             hosting: text("hosting"),
+            player: text("player"),
         }
     }
 }
@@ -347,6 +351,17 @@ impl Social {
         View { friends, requests: inner.requests.clone(), servers, name: inner.name.clone() }
     }
 
+    /// El amigo está jugando ahora mismo desde Parabellum, con ese nombre (lo publica su Parabellum;
+    /// las versiones anteriores a la 0.15 solo publican el nombre de su cuenta).
+    pub fn playing_as(&self, uid: &str, name: &str) -> bool {
+        let inner = self.inner.lock().unwrap();
+        let now = chrono::Utc::now().timestamp_millis() + inner.server_offset_ms;
+        let Some(node) = inner.presence.get(uid).filter(|n| n.is_object()) else { return false };
+        let fresh = node["updated"].as_i64().is_some_and(|seen| now - seen < OFFLINE_AFTER_MS);
+        let player = node["player"].as_str().or(node["name"].as_str()).unwrap_or_default();
+        fresh && node["state"].as_str() == Some("playing") && player.eq_ignore_ascii_case(name)
+    }
+
     /// Nombre de cada amigo (uid -> nombre), para la lista blanca de los servidores.
     pub fn friend_names(&self) -> HashMap<String, String> {
         self.view().friends.into_iter().filter(|f| f.name != "…").map(|f| (f.uid, f.name)).collect()
@@ -549,6 +564,7 @@ impl Social {
                 if let Some(server) = result["updated"].as_i64() {
                     let local = (sent + chrono::Utc::now().timestamp_millis()) / 2;
                     self.inner.lock().unwrap().server_offset_ms = server - local;
+                    self.db.set_server_offset(server - local);
                 }
             }
             Err(error) => {
@@ -585,6 +601,7 @@ mod tests {
             lan: Some("192.168.1.20:51234".into()),
             server: None,
             hosting: Some("LosPanas".into()),
+            player: Some("Juan_07".into()),
         };
         let json = presence.to_json("GxxseS");
         assert_eq!(json["mc"], "1.20.1");

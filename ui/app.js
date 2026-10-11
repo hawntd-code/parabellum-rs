@@ -843,81 +843,190 @@ async function toggleShortcut(place, input) {
 async function openDoctor(id, mode, { diagnosis = null, reason = null, server = null } = {}) {
   const instance = state.instances.find((i) => i.id === id);
   if (!instance) return;
-  state.doctor = { id, mode, server, diagnosis, applied: [], busy: false, reason };
-  $("#doctor-title").textContent =
-    mode === "crash"
-      ? t(`${instance.name} se cerró con un error`, `${instance.name} closed with an error`)
-      : mode === "prelaunch"
-        ? t(`${instance.name} no va a abrir así`, `${instance.name} will not open like this`)
-        : t(`Doctor de ${instance.name}`, `${instance.name} doctor`);
-  $("#doctor-intro").textContent =
-    mode === "crash"
-      ? t("Esto es lo que encontré y cómo arreglarlo:", "This is what I found and how to fix it:")
-      : mode === "prelaunch"
-        ? t("Revisé los mods antes de abrir el juego y encontré esto:", "I checked the mods before opening the game and found this:")
-        : t("Reviso los mods y el último arranque…", "Checking the mods and the last launch…");
-  $("#doctor-reason").classList.add("hidden");
+  state.doctor = { id, mode, server, diagnosis, applied: [], busy: false, reason, steps: [], result: null, loading: !diagnosis, error: null };
+  $("#doctor-art").innerHTML = art(instance, "doc");
+  $("#doctor-title").textContent = instance.name;
+  state.doctor.meta = [instance.loader === "Vanilla" ? null : `${instance.loader} ${instance.loaderVersion ?? ""}`.trim(), `Minecraft ${instance.minecraftVersion}`].filter(Boolean);
   renderDoctor();
   openModal("#doctor-dialog");
   if (!diagnosis) {
     try {
       state.doctor.diagnosis = await invoke("diagnosticar", { id });
-      $("#doctor-intro").textContent = state.doctor.diagnosis.findings.length
-        ? t("Esto es lo que encontré y cómo arreglarlo:", "This is what I found and how to fix it:")
-        : t(
-            `Revisé ${plural(state.doctor.diagnosis.checkedMods, "mod", "mods")} y el último arranque y no encontré problemas. Si aun así falla, pulsa «Probar y arreglar solo»: abro el juego, veo qué pasa y lo arreglo.`,
-            `I checked ${plural(state.doctor.diagnosis.checkedMods, "mod", "mods")} and the last launch and found no problems. If it still fails, press «Test and fix on its own»: I open the game, see what happens and fix it.`,
-          );
     } catch (error) {
-      $("#doctor-intro").textContent = String(error);
+      state.doctor.error = String(error);
     }
+    state.doctor.loading = false;
     renderDoctor();
   }
 }
 
 const severityNames = () => ({ error: t("Impide abrir", "Blocks opening"), aviso: t("Posible causa", "Possible cause"), info: t("Para saber", "Good to know") });
+const severityIcons = { error: "octagon", aviso: "triangle", info: "info", ok: "check" };
+
+/** La prueba de un hallazgo: archivos (como fichas) o la línea del registro. */
+function evidenceHtml(text) {
+  if (!text) return "";
+  const parts = text.split(/\s+(→|✕|·)\s+/);
+  const isFile = (p) => /\.(jar|disabled|zip|json|json5|toml|cfg|txt|dat|mrpack)$/i.test(p.trim()) || p.trim() === "world";
+  if (parts.filter((_, i) => i % 2 === 0).every(isFile)) {
+    const sep = { "→": icon("right"), "✕": icon("close"), "·": "" };
+    return `<div class="finding-files">${parts
+      .map((p, i) => (i % 2 ? `<span class="finding-sep">${sep[p] ?? ""}</span>` : `<span class="file-chip">${icon(/\.jar(\.disabled)?$/i.test(p.trim()) ? "puzzle" : "file")}<span>${escapeHtml(p)}</span></span>`))
+      .join("")}</div>`;
+  }
+  return `<pre class="finding-log">${escapeHtml(text)}</pre>`;
+}
+
+/** Lista de hallazgos con sus arreglos (la usan el doctor y la página de un servidor). */
+function findingsHtml(findings, { applied = [], busy = false, attr = "data-doctor-fix" } = {}) {
+  const names = severityNames();
+  return findings
+    .map(
+      (f, i) => `<li class="finding ${f.severity}">
+        <span class="finding-mark" title="${escapeHtml(names[f.severity] ?? "")}">${icon(severityIcons[f.severity] ?? "info")}</span>
+        <div class="finding-main">
+          <h3>${escapeHtml(f.title)}</h3>
+          <p>${escapeHtml(f.detail)}</p>
+          ${evidenceHtml(f.evidence)}
+          ${
+            f.fixes.length
+              ? `<div class="finding-actions">${f.fixes
+                  .map((o, j) =>
+                    applied.some((a) => JSON.stringify(a) === JSON.stringify(o.fix))
+                      ? `<span class="fix-done">${icon("check")}${escapeHtml(o.label)}</span>`
+                      : `<button class="btn ${o.recommended ? "suggested" : "ghost"}" ${attr}="${i}:${j}" ${busy ? "disabled" : ""}>${escapeHtml(o.label)}</button>`,
+                  )
+                  .join("")}</div>`
+              : ""
+          }
+        </div>
+      </li>`,
+    )
+    .join("");
+}
+
+/** Una fila de estado (cargando, todo bien, ya abre…) con el mismo aspecto que un hallazgo. */
+function noteRow(kind, title, detail = "", extra = "") {
+  const mark = kind === "loading" ? `<span class="spinner tiny"></span>` : icon(severityIcons[kind] ?? "info");
+  return `<li class="finding ${kind}"><span class="finding-mark">${mark}</span><div class="finding-main"><h3>${escapeHtml(title)}</h3>${detail ? `<p>${escapeHtml(detail)}</p>` : ""}${extra}</div></li>`;
+}
+
+/** [tono, texto] de la línea de estado de arriba. */
+function doctorState(doctor, findings) {
+  const blocking = findings.filter((f) => f.severity === "error").length;
+  if (doctor.busy) return ["work", doctor.auto ? t("Probando el juego…", "Testing the game…") : t("Arreglando…", "Fixing…")];
+  if (doctor.loading) return ["work", t("Revisando…", "Checking…")];
+  if (doctor.result?.ok) return ["ok", t("Ya abre", "It opens now")];
+  if (doctor.result)
+    return [
+      "bad",
+      doctor.result.attempts
+        ? t(`Lo abrí ${plural(doctor.result.attempts, "vez", "veces")} y todavía no llega al menú`, `I opened it ${plural(doctor.result.attempts, "time", "times")} and it still does not reach the menu`)
+        : t("Todavía no abre", "It still does not open"),
+    ];
+  if (doctor.mode === "crash") return ["bad", t("Se cerró con un error", "It closed with an error")];
+  if (!findings.length) return ["ok", t("Todo en orden", "All good")];
+  if (blocking) {
+    return doctor.mode === "prelaunch"
+      ? ["bad", t(`${plural(blocking, "problema impide", "problemas impiden")} abrirlo`, `${plural(blocking, "problem keeps", "problems keep")} it from opening`)]
+      : ["bad", t(`${plural(blocking, "problema", "problemas")} por arreglar`, `${plural(blocking, "problem", "problems")} to fix`)];
+  }
+  return ["warn", t(`${plural(findings.length, "cosa", "cosas")} por revisar`, `${plural(findings.length, "thing", "things")} to check`)];
+}
 
 function renderDoctor() {
   const doctor = state.doctor;
   if (!doctor) return;
   const findings = doctor.diagnosis?.findings ?? [];
-  const names = severityNames();
-  $("#doctor-findings").innerHTML = findings
-    .map(
-      (f, i) => `<div class="doctor-finding ${f.severity}">
-        <h3>${escapeHtml(f.title)}</h3>
-        <p><b>${escapeHtml(names[f.severity] ?? "")}.</b> ${escapeHtml(f.detail)}</p>
-        ${f.evidence ? `<code>${escapeHtml(f.evidence)}</code>` : ""}
-        ${
-          f.fixes.length
-            ? `<div class="doctor-fixes">${f.fixes
-                .map((o, j) => {
-                  const done = doctor.applied.some((a) => JSON.stringify(a) === JSON.stringify(o.fix));
-                  return `<button class="btn ${o.recommended ? "primary" : ""} ${done ? "done" : ""}" data-doctor-fix="${i}:${j}" ${doctor.busy ? "disabled" : ""}>${done ? icon("check") : ""}${escapeHtml(o.label)}</button>`;
-                })
-                .join("")}</div>`
-            : ""
-        }
-      </div>`,
-    )
-    .join("");
-  if (doctor.done) $("#doctor-findings").insertAdjacentHTML("beforeend", doctor.done);
-  if (!findings.length && doctor.reason) {
-    $("#doctor-reason").textContent = doctor.reason;
-    $("#doctor-reason").classList.remove("hidden");
-  }
+  const [tone, label] = doctorState(doctor, findings);
+  const status = $("#doctor-state");
+  status.className = `doc-state ${tone}`;
+  status.innerHTML = `${tone === "work" ? `<span class="spinner tiny"></span>` : "<i></i>"}${escapeHtml(label)}`;
+  const checked = doctor.diagnosis?.checkedMods;
+  $("#doctor-meta").textContent = [...doctor.meta, checked ? t(`${plural(checked, "mod revisado", "mods revisados")}`, `${plural(checked, "mod checked", "mods checked")}`) : null].filter(Boolean).join(" · ");
+
+  let rows;
+  if (doctor.error) rows = noteRow("error", t("No se pudo revisar", "Could not check"), doctor.error);
+  else if (doctor.loading) rows = noteRow("loading", t("Leyendo los mods y el último registro…", "Reading the mods and the last log…"));
+  else if (doctor.result?.ok) {
+    const applied = doctor.result.applied.map((a) => `<span class="fix-done">${icon("check")}${escapeHtml(a)}</span>`).join("");
+    rows = noteRow(
+      "ok",
+      t("Llega al menú principal", "It reaches the main menu"),
+      doctor.result.applied.length ? t("Esto es lo que arreglé:", "This is what I fixed:") : t("No hizo falta arreglar nada.", "Nothing needed fixing."),
+      applied ? `<div class="finding-actions">${applied}</div>` : "",
+    );
+  } else if (findings.length) rows = findingsHtml(findings, { applied: doctor.applied, busy: doctor.busy });
+  else if (doctor.busy) rows = "";
+  else if (doctor.mode === "crash" || doctor.result)
+    rows = noteRow(
+      "info",
+      t("No reconozco la causa", "I do not recognize the cause"),
+      t("El registro no trae un error que conozca. «Probar y arreglar solo» abre el juego, mira qué pasa y lo arregla.", "The log has no error I know. «Test and fix» opens the game, sees what happens and fixes it."),
+    );
+  else
+    rows = noteRow(
+      "ok",
+      t("No encontré nada roto", "Nothing broken found"),
+      t("Si aun así falla, «Probar y arreglar solo» abre el juego, mira qué pasa y lo arregla.", "If it still fails, «Test and fix» opens the game, sees what happens and fixes it."),
+    );
+  $("#doctor-findings").innerHTML = rows;
+  $("#doctor-findings").classList.toggle("hidden", !rows);
+  renderDoctorSteps();
+  const raw = !!doctor.reason && !findings.length && !doctor.loading && !doctor.result?.ok;
+  $("#doctor-raw").classList.toggle("hidden", !raw);
+  if (raw) $("#doctor-reason").textContent = doctor.reason;
+
+  // Abajo, una sola acción principal: la que toca ahora.
   const recommended = findings.flatMap((f) => f.fixes.filter((o) => o.recommended)).filter((o) => !doctor.applied.some((a) => JSON.stringify(a) === JSON.stringify(o.fix)));
-  $("#doctor-fix-all").classList.toggle("hidden", !recommended.length);
-  $("#doctor-fix-all").lastChild.textContent = doctor.mode === "prelaunch" ? t("Arreglar y jugar", "Fix and play") : t("Arreglar lo recomendado", "Fix the recommended");
-  $("#doctor-anyway").classList.toggle("hidden", doctor.mode !== "prelaunch");
-  $("#doctor-logs").classList.toggle("hidden", doctor.mode === "prelaunch");
-  for (const button of [$("#doctor-fix-all"), $("#doctor-auto"), $("#doctor-anyway")]) button.disabled = doctor.busy;
+  const done = !!doctor.result?.ok;
+  const fixAll = $("#doctor-fix-all");
+  fixAll.classList.toggle("hidden", !recommended.length || done);
+  fixAll.querySelector("span").textContent = doctor.mode === "prelaunch" ? t("Arreglar y jugar", "Fix and play") : t("Arreglar lo recomendado", "Fix the recommended");
+  const anyway = $("#doctor-anyway");
+  anyway.classList.toggle("hidden", doctor.mode !== "prelaunch" && !done);
+  anyway.classList.toggle("primary", done);
+  anyway.classList.toggle("ghost", !done);
+  anyway.innerHTML = done ? `${icon("play")}${t("Jugar", "Play")}` : t("Jugar de todos modos", "Play anyway");
+  const auto = $("#doctor-auto");
+  auto.classList.toggle("hidden", done);
+  auto.classList.toggle("primary", !recommended.length);
+  $("#doctor-logs").classList.toggle("hidden", doctor.mode === "prelaunch" && !doctor.result);
+  for (const button of [fixAll, auto, anyway]) button.disabled = doctor.busy || doctor.loading;
+}
+
+/** Los pasos de «Probar y arreglar solo» (y de cada arreglo), como una línea de tiempo. */
+function renderDoctorSteps() {
+  const doctor = state.doctor;
+  const list = $("#doctor-steps");
+  // Si al final abre, lo que importa (qué se arregló) ya está en la fila de abajo.
+  const shown = doctor.result?.ok ? [] : doctor.steps;
+  list.classList.toggle("hidden", !shown.length);
+  list.innerHTML = shown
+    .map((step, i) => {
+      const last = i === shown.length - 1;
+      const status = last && doctor.busy ? "run" : last && doctor.result && !doctor.result.ok ? "fail" : "done";
+      const mark = status === "run" ? `<span class="spinner tiny"></span>` : icon(status === "fail" ? "close" : "check");
+      const text = status === "run" ? step.text : step.text.replace(/…$/, "");
+      return `<li class="doc-step ${status}"><span class="doc-step-mark">${mark}</span><span>${escapeHtml(text)}${step.detail && status === "run" ? `<small>${escapeHtml(step.detail)}</small>` : ""}</span></li>`;
+    })
+    .join("");
+}
+
+/** Un aviso de progreso del doctor: los pasos conocidos son filas; lo demás (descargas…), su detalle. */
+function doctorStep(text) {
+  const doctor = state.doctor;
+  if (!doctor?.busy || !text) return;
+  const last = doctor.steps.at(-1);
+  if (last?.text === text) return;
+  if (/^(Revisando los mods|Arreglando|Abriendo el juego|Llega al menú|Checking the mods|Fixing|Opening the game|It reaches)/.test(text) || !last) doctor.steps.push({ text });
+  else last.detail = text;
+  renderDoctorSteps();
 }
 
 function doctorBusy(busy, status = "") {
   state.doctor.busy = busy;
-  $("#doctor-progress").classList.toggle("hidden", !busy);
-  $("#doctor-status").textContent = status;
+  if (busy && status) doctorStep(status);
   renderDoctor();
 }
 
@@ -950,48 +1059,36 @@ async function doctorFixAll() {
   // Se vuelve a revisar: si ya no queda nada que impida abrir y era antes de jugar, se abre.
   try {
     doctor.diagnosis = await invoke("revisar_instancia", { id: doctor.id });
+    doctor.applied = [];
   } catch {}
   renderDoctor();
   if (doctor.mode === "prelaunch" && ok && !doctor.diagnosis.findings.some((f) => f.severity === "error")) {
     closeModal("#doctor-dialog");
     play(doctor.id, doctor.server, { skipCheck: true });
-  } else if (!doctor.diagnosis.findings.length) {
-    $("#doctor-intro").textContent = t("Listo: la revisión ya no encuentra problemas. Ábrelo o usa «Probar y arreglar solo» para comprobarlo.", "Done: the check no longer finds problems. Open it or use «Test and fix on its own» to make sure.");
   }
 }
 
 /** Abre el juego hasta el menú principal; si no llega, aplica los arreglos recomendados y repite. */
 async function doctorAuto() {
   const doctor = state.doctor;
+  doctor.steps = [];
+  doctor.result = null;
+  doctor.auto = true;
   doctorBusy(true, t("Revisando los mods…", "Checking the mods…"));
-  $("#doctor-intro").textContent = t(
-    "Voy a abrir el juego para ver si llega al menú principal (se abrirá una ventana de Minecraft y la cerraré yo). Si falla, lo arreglo y vuelvo a probar.",
-    "I will open the game to see if it reaches the main menu (a Minecraft window will open and I will close it). If it fails, I fix it and try again.",
-  );
   try {
     const result = await invoke("probar_y_arreglar", { id: doctor.id });
     await reloadInstances();
-    const applied = result.applied.length
-      ? `<ul>${result.applied.map((a) => `<li>${escapeHtml(a)}</li>`).join("")}</ul>`
-      : "";
+    doctor.result = result;
     if (result.ok) {
       doctor.diagnosis = { findings: [], checkedMods: doctor.diagnosis?.checkedMods ?? 0 };
-      $("#doctor-intro").textContent = "";
-      doctor.done = `<div class="doctor-finding ok"><h3>${t("¡Ya abre! Llega al menú principal.", "It opens now! It reaches the main menu.")}</h3><p>${
-        result.applied.length ? t("Esto es lo que arreglé:", "This is what I fixed:") : t("No hizo falta arreglar nada.", "Nothing needed fixing.")
-      }</p>${applied}</div>`;
       toast(t("El juego llega al menú principal.", "The game reaches the main menu."));
     } else {
       doctor.diagnosis = result.diagnosis ?? doctor.diagnosis;
-      $("#doctor-intro").textContent = t(
-        `Probé ${plural(result.attempts, "vez", "veces")} y todavía no abre. Esto es lo que queda; elige qué hacer:`,
-        `I tried ${plural(result.attempts, "time", "times")} and it still does not open. This is what is left; choose what to do:`,
-      );
-      doctor.done = result.applied.length ? `<div class="doctor-applied">${t("Lo que ya arreglé:", "What I already fixed:")}${applied}</div>` : "";
     }
   } catch (error) {
     toast(String(error), "error");
   } finally {
+    doctor.auto = false;
     doctorBusy(false);
   }
 }
@@ -1152,16 +1249,11 @@ function onGameClosed({ id, code, reason, diagnosis }) {
   if (state.page === "instance" && state.current?.id === id && state.tab === "logs") loadLog(false);
   if (code === null || code === undefined || code === 0) return;
   if (state.doctor?.busy) return;
-  if (diagnosis) {
-    appWindow?.unminimize?.();
-    return openDoctor(id, "crash", { diagnosis, reason });
-  }
-  const instance = state.instances.find((i) => i.id === id);
-  state.crashFor = id;
-  $("#crash-title").textContent = t(`${instance?.name ?? "El juego"} se cerró con un error`, `${instance?.name ?? "The game"} closed with an error`);
-  $("#crash-reason").textContent = reason ?? t(`Java terminó con el código ${code}. Revisa el registro completo para ver el motivo.`, `Java ended with code ${code}. Check the full log to see why.`);
   appWindow?.unminimize?.();
-  openModal("#crash-dialog");
+  openDoctor(id, "crash", {
+    diagnosis: diagnosis ?? null,
+    reason: reason ?? t(`Java terminó con el código ${code}.`, `Java ended with code ${code}.`),
+  });
 }
 
 async function play(id, server = null, { skipCheck = false } = {}) {
@@ -2794,7 +2886,6 @@ function wireEvents() {
   $("#confirm-dialog").onmousedown = (event) => {
     if (event.target.id === "confirm-dialog") state.confirmCancel?.();
   };
-  for (const id of ["#crash-close", "#crash-dismiss"]) $(id).onclick = () => closeModal("#crash-dialog");
   $("#doctor-close").onclick = () => {
     if (!state.doctor?.busy) closeModal("#doctor-dialog");
   };
@@ -2820,11 +2911,6 @@ function wireEvents() {
     const id = state.doctor.id;
     closeModal("#doctor-dialog");
     navigate("instance", id);
-    selectTab("logs");
-  };
-  $("#crash-logs").onclick = () => {
-    closeModal("#crash-dialog");
-    navigate("instance", state.crashFor);
     selectTab("logs");
   };
   $("#detail-join").onclick = () => {
@@ -2978,7 +3064,6 @@ function wireEvents() {
       closeModal("#create-dialog");
       closeModal("#settings-dialog");
       closeModal("#edit-dialog");
-      closeModal("#crash-dialog");
       if (!state.doctor?.busy) closeModal("#doctor-dialog");
       closeModal("#install-dialog");
       closeModal("#group-dialog");
@@ -3072,7 +3157,7 @@ function wireEvents() {
       return;
     }
     if (payload.task === "doctor") {
-      if (state.doctor?.busy) $("#doctor-status").textContent = payload.stage;
+      doctorStep(payload.stage);
       return;
     }
     if (payload.task === "servidor") {

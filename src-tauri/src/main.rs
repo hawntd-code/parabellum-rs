@@ -1169,7 +1169,7 @@ async fn auto_fix(
     let mut report = diagnostico::AutoFix::default();
     let mut tried: Vec<diagnostico::Fix> = Vec::new();
     const ATTEMPTS: u32 = 5;
-    for attempt in 1..=ATTEMPTS {
+    for _ in 1..=ATTEMPTS {
         // Cada arreglo cambia la instancia (loader, argumentos, memoria…): se vuelve a leer.
         let instance = instances::find(paths, id).ok_or(t!("No se encontró la instancia.", "The instance was not found."))?;
         progress(t!("Revisando los mods…", "Checking the mods…"), 0.0);
@@ -1190,9 +1190,10 @@ async fn auto_fix(
             }
             continue;
         }
-        // Abre el juego y espera al menú principal.
-        report.attempts = attempt;
-        progress(t!("Abriendo el juego para probar (intento {attempt} de {ATTEMPTS})…", "Opening the game to test (attempt {attempt} of {ATTEMPTS})…"), 0.3);
+        // Abre el juego y espera al menú principal (los intentos cuentan las veces que se abre).
+        report.attempts += 1;
+        let launch = report.attempts;
+        progress(t!("Abriendo el juego para probar (intento {launch})…", "Opening the game to test (attempt {launch})…"), 0.3);
         let ram_gb = instance.ram_gb.unwrap_or(settings.ram_gb);
         let (launched, settings_copy, paths_copy, session_copy, started_hook) = (instance.clone(), settings.clone(), paths.clone(), session.clone(), on_start.clone());
         let probe = tauri::async_runtime::spawn_blocking(move || -> Result<(Result<u64, Option<i32>>, i64), String> {

@@ -68,6 +68,10 @@ una vez desde la página «Hostear partida» y su agente oficial se baja solo. L
 los amigos invitados la ven en su página Servidores aunque Parabellum se reinicie. El EULA de
 Minecraft se acepta marcándolo al crear o encender el servidor.
 
+Los invitados se siguen por su cuenta de Google: si alguien se cambia el nombre, la lista blanca, el
+permiso de administrador y sus cosas en el mundo pasan al nombre nuevo. Y quien entra con el nombre de
+un invitado tiene que estar jugando desde Parabellum con esa cuenta (si no, el servidor lo saca).
+
 ## Configuración
 
 La carpeta de Drive y las claves de Google y Firebase se integran al compilar desde

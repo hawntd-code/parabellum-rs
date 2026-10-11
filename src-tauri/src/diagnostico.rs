@@ -73,7 +73,7 @@ fn option(label: String, fix: Fix, recommended: bool) -> FixOption {
 // ================= Lo que declara cada mod (con caché)
 
 const CACHE_FILE: &str = "dependencias.json";
-const CACHE_VERSION: u32 = 2;
+const CACHE_VERSION: u32 = 3;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Cache {
@@ -86,6 +86,8 @@ struct CachedJar {
     size: u64,
     modified: i64,
     metas: Vec<ModMeta>,
+    #[serde(default)]
+    loaders: compat::JarLoaders,
 }
 
 fn modified_seconds(meta: &std::fs::Metadata) -> i64 {
@@ -97,10 +99,15 @@ pub fn instance_mods(instance: &Instance) -> Vec<(String, Vec<ModMeta>)> {
     all_mods(instance).into_iter().filter(|(file, _)| !file.to_lowercase().ends_with(".disabled")).collect()
 }
 
-/// Todos los mods de la carpeta, también los desactivados (.jar.disabled). Lo leído se guarda
+/// Todos los mods de la carpeta, también los desactivados (.jar.disabled).
+fn all_mods(instance: &Instance) -> Vec<(String, Vec<ModMeta>)> {
+    all_jars(instance).into_iter().map(|(name, jar)| (name, jar.metas)).collect()
+}
+
+/// Cada .jar de la carpeta mods con lo que declara y para qué loaders es. Lo leído se guarda
 /// (archivo, tamaño y fecha) para que revisar antes de jugar sea instantáneo; la primera vez se
 /// leen en paralelo.
-fn all_mods(instance: &Instance) -> Vec<(String, Vec<ModMeta>)> {
+fn all_jars(instance: &Instance) -> Vec<(String, CachedJar)> {
     let folder = instance.game_dir.join("mods");
     let cache_path = instance.state_dir().join(CACHE_FILE);
     let mut cache: Cache = std::fs::read_to_string(&cache_path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
@@ -127,7 +134,7 @@ fn all_mods(instance: &Instance) -> Vec<(String, Vec<ModMeta>)> {
     if !stale.is_empty() {
         let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(2, 8);
         let chunk = stale.len().div_ceil(threads).max(1);
-        let read: Vec<(String, Vec<ModMeta>)> = std::thread::scope(|scope| {
+        let read: Vec<(String, Vec<ModMeta>, compat::JarLoaders)> = std::thread::scope(|scope| {
             let handles: Vec<_> = stale
                 .chunks(chunk)
                 .map(|names| {
@@ -135,16 +142,21 @@ fn all_mods(instance: &Instance) -> Vec<(String, Vec<ModMeta>)> {
                     scope.spawn(move || {
                         names
                             .iter()
-                            .map(|name| (name.clone(), std::fs::File::open(folder.join(name)).map(compat::read_jar).unwrap_or_default()))
+                            .map(|name| {
+                                let path = folder.join(name);
+                                let metas = std::fs::File::open(&path).map(compat::read_jar).unwrap_or_default();
+                                let loaders = std::fs::File::open(&path).map(compat::read_loaders).unwrap_or_default();
+                                (name.clone(), metas, loaders)
+                            })
                             .collect::<Vec<_>>()
                     })
                 })
                 .collect();
             handles.into_iter().flat_map(|h| h.join().unwrap_or_default()).collect()
         });
-        for (name, metas) in read {
+        for (name, metas, loaders) in read {
             if let Some((_, size, modified)) = jars.iter().find(|(n, _, _)| *n == name) {
-                cache.files.insert(name, CachedJar { size: *size, modified: *modified, metas });
+                cache.files.insert(name, CachedJar { size: *size, modified: *modified, metas, loaders });
             }
         }
     }
@@ -155,10 +167,12 @@ fn all_mods(instance: &Instance) -> Vec<(String, Vec<ModMeta>)> {
         let _ = std::fs::create_dir_all(instance.state_dir());
         let _ = std::fs::write(&cache_path, serde_json::to_vec(&cache).unwrap_or_default());
     }
-    jars.into_iter().map(|(name, _, _)| {
-        let metas = cache.files.get(&name).map(|c| c.metas.clone()).unwrap_or_default();
-        (name, metas)
-    }).collect()
+    jars.into_iter()
+        .map(|(name, size, modified)| {
+            let jar = cache.files.get(&name).cloned().unwrap_or(CachedJar { size, modified, metas: Vec::new(), loaders: Default::default() });
+            (name, jar)
+        })
+        .collect()
 }
 
 /// id de mod -> archivo que lo trae (el principal de cada .jar y los que lleva dentro).
@@ -214,10 +228,60 @@ pub fn check(instance: &Instance) -> Diagnosis {
     if instance.loader == "Vanilla" {
         return Diagnosis::default();
     }
-    let everything = all_mods(instance);
-    let (disabled, mods): (Vec<_>, Vec<_>) = everything.into_iter().partition(|(file, _)| file.to_lowercase().ends_with(".disabled"));
+    let jars = all_jars(instance);
+    let connector = jars.iter().any(|(file, jar)| !file.to_lowercase().ends_with(".disabled") && jar.metas.iter().any(|m| m.id == "connectormod"));
+    // Mods hechos para otro loader (uno de Forge en NeoForge 1.21, uno de Fabric en Forge…): no cargan.
+    let mut findings = Vec::new();
+    let mut wrong_loader = std::collections::HashSet::new();
+    let fits = |file: &str, jar: &CachedJar| {
+        !file.to_lowercase().ends_with(".disabled") && compat::loader_fits(jar.loaders, &instance.loader, &instance.minecraft_version, connector)
+    };
+    // Mods que ya están en su versión buena (la de otro loader sobra).
+    let good: std::collections::HashSet<String> = jars.iter().filter(|(file, jar)| fits(file, jar)).filter_map(|(_, jar)| jar.metas.first().map(|m| m.id.clone())).collect();
+    for (file, jar) in &jars {
+        if file.to_lowercase().ends_with(".disabled") || fits(file, jar) {
+            continue;
+        }
+        wrong_loader.insert(file.clone());
+        let name = jar.metas.first().map(|m| m.name.clone()).unwrap_or_else(|| file.clone());
+        let id = jar.metas.first().map(|m| m.id.clone());
+        let mut fixes = Vec::new();
+        match id {
+            Some(id) if good.contains(&id) => fixes.push(option(
+                t!("Quitar esta copia (ya está la de {})", "Remove this copy (the {} one is already there)", instance.loader),
+                Fix::DisableMod { file: file.clone() },
+                true,
+            )),
+            Some(id) => {
+                fixes.push(option(
+                    t!("Cambiarlo por el de {} (Modrinth)", "Replace it with the {} one (Modrinth)", instance.loader),
+                    Fix::InstallMod { id, requirements: Vec::new(), replaces: Some(file.clone()) },
+                    true,
+                ));
+                fixes.push(option(t!("Desactivar {name}", "Disable {name}"), Fix::DisableMod { file: file.clone() }, false));
+            }
+            None => fixes.push(option(t!("Desactivar {name}", "Disable {name}"), Fix::DisableMod { file: file.clone() }, true)),
+        }
+        findings.push(Finding {
+            severity: "error",
+            title: t!("{name} es un mod de {}", "{name} is a {} mod", jar.loaders.describe()),
+            detail: t!(
+                "Esta instancia usa {} {} y ese archivo no carga en ella.",
+                "This instance uses {} {} and that file does not load in it.",
+                instance.loader,
+                instance.minecraft_version
+            ),
+            evidence: Some(file.clone()),
+            fixes,
+        });
+    }
+    let (disabled, mods): (Vec<_>, Vec<_>) = jars
+        .into_iter()
+        .filter(|(file, _)| !wrong_loader.contains(file))
+        .map(|(file, jar)| (file, jar.metas))
+        .partition(|(file, _)| file.to_lowercase().ends_with(".disabled"));
     let game = Game::of(instance);
-    let mut findings = problems_to_findings(&mods, &compat::check_game(&mods, &game), &disabled);
+    findings.extend(problems_to_findings(&mods, &compat::check_game(&mods, &game), &disabled));
     for (_, name, files) in compat::duplicates(&mods, &game) {
         // Se queda la copia más nueva (por versión; si no se puede saber, la de nombre más largo).
         let version_of = |file: &String| mods.iter().find(|(f, _)| f == file).and_then(|(_, m)| m.first()).map(|m| m.version.clone()).unwrap_or_default();

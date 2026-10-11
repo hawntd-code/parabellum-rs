@@ -143,11 +143,23 @@ pub fn server_timestamp() -> Value {
 pub struct Database {
     url: String,
     pub session: Session,
+    /// Diferencia entre el reloj del servidor y el de este PC (ms). Los relojes de los PC pueden ir
+    /// minutos adelantados o atrasados: lo que se ordena por hora usa la del servidor.
+    server_offset_ms: std::sync::atomic::AtomicI64,
 }
 
 impl Database {
     pub fn new(url: &str, session: Session) -> Self {
-        Self { url: url.trim_end_matches('/').to_string(), session }
+        Self { url: url.trim_end_matches('/').to_string(), session, server_offset_ms: Default::default() }
+    }
+
+    pub fn set_server_offset(&self, offset_ms: i64) {
+        self.server_offset_ms.store(offset_ms, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// La hora del servidor (milisegundos Unix), calculada con el reloj de este PC corregido.
+    pub fn server_now(&self) -> i64 {
+        chrono::Utc::now().timestamp_millis() + self.server_offset_ms.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// `path` puede llevar una consulta: "messages/x?orderBy=\"$key\"&limitToLast=100".

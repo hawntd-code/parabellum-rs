@@ -337,6 +337,8 @@ async fn upload_profile(app: &AppHandle, account: &GoogleAccount) {
 /// Tras cambiar el nombre o la cuenta en uso: se reserva el nombre y se guarda el perfil en la
 /// cuenta (2 s después del último cambio, para no hacerlo en cada tecla).
 pub fn settings_changed(app: &AppHandle) {
+    // Los servidores propios siguen al anfitrión aunque no haya sesión de Google.
+    crate::hosting::sync_names(app);
     if google_account(app).is_none() {
         return;
     }
@@ -513,6 +515,8 @@ pub async fn salir_del_chat(app: AppHandle, chat: String) -> Result<(), String> 
 /// Avisa de solicitudes nuevas y de amigos que abren su mundo, si Parabellum no está al frente.
 fn notify_changes(app: &AppHandle) {
     let Some(social) = social(app) else { return };
+    // Un amigo invitado a un servidor propio pudo cambiar de nombre.
+    crate::hosting::sync_names(app);
     let view = social.view();
     let requests: std::collections::HashSet<String> = view.requests.iter().map(|r| r.uid.clone()).collect();
     let open_worlds: std::collections::HashSet<String> = view.friends.iter().filter(|f| f.world_open).map(|f| f.uid.clone()).collect();
@@ -580,6 +584,7 @@ fn current_presence(app: &AppHandle) -> Option<(Presence, Option<(u16, String)>)
         address: activity.lan_port.and_then(|_| crate::hosting::world_address(app)).or_else(|| activity.address.clone()),
         lan,
         hosting,
+        player: Some(state.settings.lock().unwrap().username.clone()),
     };
     Some((presence, shared))
 }

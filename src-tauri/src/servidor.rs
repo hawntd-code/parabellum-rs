@@ -120,8 +120,24 @@ pub struct ServerConfig {
     pub left_out: Vec<LeftOut>,
     /// Segundos que tardó en estar listo la última vez.
     pub startup_seconds: Option<u64>,
+    /// El nombre con el que el anfitrión jugó aquí la última vez: si se lo cambia, sus cosas
+    /// (inventario, logros) y el permiso de administrador pasan al nombre nuevo.
+    pub host_name: Option<String>,
+    /// Nombres anteriores del anfitrión: dejan de ser administradores (con /op el servidor los
+    /// guarda a su manera y ya no se distinguen de los que dio el jugador).
+    pub former_host_names: Vec<String>,
+    /// Quien entra con el nombre de un amigo invitado (o el del anfitrión) tiene que estar jugando desde
+    /// Parabellum con esa cuenta; si no, se le saca. Así nadie entra poniéndose el nombre de otro.
+    #[serde(default = "verify_by_default")]
+    pub verify_players: bool,
+    /// Cambios de nombre (anterior, nuevo) cuyas cosas falta pasar: el jugador estaba conectado.
+    pub pending_moves: Vec<(String, String)>,
     #[serde(skip)]
     pub folder: PathBuf,
+}
+
+fn verify_by_default() -> bool {
+    true
 }
 
 impl ServerConfig {
@@ -312,6 +328,7 @@ pub fn write_eula(folder: &Path, accepted: bool) -> Result<(), String> {
 }
 
 /// whitelist.json con los invitados y el anfitrión; ops.json con el anfitrión (puede usar comandos).
+/// Los nombres son los de ahora: el UUID de un servidor no premium sale del nombre exacto.
 pub fn write_access_lists(config: &ServerConfig, host: &str) -> Result<(), String> {
     let mut names: Vec<&str> = Vec::new();
     for name in std::iter::once(host).chain(config.guests.iter().map(|g| g.name.as_str())) {
@@ -323,16 +340,109 @@ pub fn write_access_lists(config: &ServerConfig, host: &str) -> Result<(), Strin
     let whitelist: Vec<Value> = names.iter().map(|n| entry(n)).collect();
     std::fs::write(config.folder.join("whitelist.json"), serde_json::to_vec_pretty(&whitelist).unwrap()).map_err(|e| e.to_string())?;
     if valid_name(host) {
-        let mut ops: Vec<Value> = std::fs::read_to_string(config.folder.join("ops.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-        if !ops.iter().any(|o| o["name"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(host))) {
+        let original: Vec<Value> = std::fs::read_to_string(config.folder.join("ops.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        // El administrador que pone Parabellum es el anfitrión de ahora, no sus nombres anteriores
+        // (los que dio el jugador con /op se quedan).
+        let former = |o: &Value| o["name"].as_str().is_some_and(|n| config.former_host_names.iter().any(|f| f == n));
+        let mut ops: Vec<Value> = original.iter().filter(|o| o["name"].as_str() == Some(host) || !(parabellum_op(o) || former(o))).cloned().collect();
+        if !ops.iter().any(|o| o["name"].as_str() == Some(host)) {
             let mut op = entry(host);
             op["level"] = json!(4);
             op["bypassesPlayerLimit"] = json!(true);
             ops.push(op);
+        }
+        if ops != original {
             std::fs::write(config.folder.join("ops.json"), serde_json::to_vec_pretty(&ops).unwrap()).map_err(|e| e.to_string())?;
         }
     }
     Ok(())
+}
+
+/// Los administradores que pone Parabellum (el anfitrión) van con nivel 4 y sin límite de jugadores;
+/// los de /op, no.
+fn parabellum_op(op: &Value) -> bool {
+    op["level"].as_u64() == Some(4) && op["bypassesPlayerLimit"].as_bool() == Some(true)
+}
+
+// ================= Los nombres siguen a la cuenta de cada jugador
+
+/// Un cambio de nombre en un servidor.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Rename {
+    pub old: String,
+    pub new: String,
+    /// Es el anfitrión (pasa también el permiso de administrador).
+    pub host: bool,
+}
+
+/// Pone los nombres de ahora: el del anfitrión y el de cada amigo invitado (que se sigue por su
+/// cuenta de Google, no por el nombre). `friends`: uid -> nombre, si hay sesión.
+pub fn follow_names(config: &mut ServerConfig, host: &str, friends: Option<&std::collections::HashMap<String, String>>) -> Vec<Rename> {
+    let mut renames = Vec::new();
+    if valid_name(host) {
+        let previous = match &config.host_name {
+            Some(name) => Some(name.clone()),
+            // Servidores de antes de la 0.15: el administrador que puso Parabellum era el anfitrión.
+            None => {
+                let ops: Vec<Value> = std::fs::read_to_string(config.folder.join("ops.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+                let others: Vec<String> = ops.iter().filter(|o| parabellum_op(o)).filter_map(|o| o["name"].as_str()).filter(|n| *n != host).map(String::from).collect();
+                (others.len() == 1).then(|| others[0].clone())
+            }
+        };
+        if let Some(old) = previous.filter(|old| old != host && valid_name(old)) {
+            config.former_host_names.retain(|n| n != host && n != &old);
+            config.former_host_names.push(old.clone());
+            renames.push(Rename { old, new: host.to_string(), host: true });
+        }
+        config.host_name = Some(host.to_string());
+    }
+    if let Some(friends) = friends {
+        for i in 0..config.guests.len() {
+            let Some(new) = config.guests[i].uid.as_ref().and_then(|uid| friends.get(uid)).filter(|n| valid_name(n)).cloned() else { continue };
+            let old = config.guests[i].name.clone();
+            // Otro invitado (o el anfitrión) ya usa ese nombre: se deja como estaba.
+            let taken = new.eq_ignore_ascii_case(host) || config.guests.iter().enumerate().any(|(j, g)| j != i && g.name.eq_ignore_ascii_case(&new));
+            if old == new || taken {
+                continue;
+            }
+            config.guests[i].name = new.clone();
+            renames.push(Rename { old, new, host: false });
+        }
+    }
+    renames
+}
+
+/// Pasa las cosas de un jugador de su nombre anterior al nuevo: inventario, posición, logros,
+/// estadísticas y lo que los mods guardan con su UUID en esas carpetas (en un servidor no premium el
+/// UUID sale del nombre). Si el nombre nuevo ya tiene cosas propias no se toca nada. Devuelve cuántos
+/// archivos pasó.
+pub fn move_player_data(folder: &Path, old: &str, new: &str) -> usize {
+    let level = property(folder, "level-name").filter(|l| !l.trim().is_empty()).unwrap_or_else(|| "world".into());
+    let world = folder.join(level);
+    let (from, to) = (dashed(&settings::offline_uuid(old)), dashed(&settings::offline_uuid(new)));
+    if from == to {
+        return 0;
+    }
+    let files: Vec<(PathBuf, PathBuf)> = ["playerdata", "advancements", "stats"]
+        .iter()
+        .flat_map(|dir| {
+            let dir = world.join(dir);
+            std::fs::read_dir(&dir)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .filter_map(|e| {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    let rest = name.strip_prefix(&from)?;
+                    Some((e.path(), dir.join(format!("{to}{rest}"))))
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    if files.iter().any(|(_, target)| target.exists()) {
+        return 0;
+    }
+    files.iter().filter(|(source, target)| std::fs::rename(source, target).is_ok()).count()
 }
 
 // ================= Ajustes que se cambian desde Parabellum
@@ -352,6 +462,8 @@ pub struct Settings {
     pub view_distance: u32,
     pub simulation_distance: u32,
     pub allow_flight: bool,
+    #[serde(default = "verify_by_default")]
+    pub verify_players: bool,
 }
 
 const GAMEMODES: [&str; 4] = ["survival", "creative", "adventure", "spectator"];
@@ -392,6 +504,7 @@ pub fn read_settings(config: &ServerConfig) -> Settings {
         view_distance: number("view-distance", 10),
         simulation_distance: number("simulation-distance", 10),
         allow_flight: get("allow-flight") == "true",
+        verify_players: config.verify_players,
     }
 }
 
@@ -403,6 +516,7 @@ pub fn apply_settings(config: &mut ServerConfig, settings: &Settings) -> Result<
     config.ram_gb = settings.ram_gb.clamp(1, 64);
     config.jvm_args = settings.jvm_args.iter().map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect();
     config.eula = settings.eula;
+    config.verify_players = settings.verify_players;
     set_properties(
         &config.folder,
         &[
@@ -542,6 +656,8 @@ async fn build(
         eula: new.eula,
         port: free_port(25565),
         created: chrono::Utc::now().timestamp_millis(),
+        host_name: valid_name(host).then(|| host.to_string()),
+        verify_players: true,
         folder: folder.to_path_buf(),
         ..Default::default()
     };
@@ -1070,6 +1186,70 @@ mod tests {
         assert_eq!(remove_tunnel_mods(&mut config), vec!["e4mc-fabric-6.2.1-modern.jar".to_string()]);
         assert!(folder.join("mods").join("e4mc-fabric-6.2.1-modern.jar.disabled").exists() && folder.join("mods").join("lithium.jar").exists());
         assert_eq!(config.left_out[0].kind, "tunnel");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn los_nombres_siguen_a_la_cuenta() {
+        let folder = std::env::temp_dir().join(format!("parabellum-nombres-{}", std::process::id()));
+        let world = folder.join("world");
+        for dir in ["playerdata", "advancements", "stats"] {
+            std::fs::create_dir_all(world.join(dir)).unwrap();
+        }
+        let old = dashed(&settings::offline_uuid("Pepito28"));
+        std::fs::write(world.join("playerdata").join(format!("{old}.dat")), b"inventario").unwrap();
+        std::fs::write(world.join("playerdata").join(format!("{old}.dat_old")), b"respaldo").unwrap();
+        std::fs::write(world.join("stats").join(format!("{old}.json")), b"{}").unwrap();
+        // Servidor de antes de la 0.15: el anfitrión se reconoce por el administrador que puso Parabellum.
+        std::fs::write(
+            folder.join("ops.json"),
+            serde_json::to_vec(&json!([
+                { "uuid": old, "name": "Pepito28", "level": 4, "bypassesPlayerLimit": true },
+                { "uuid": "x", "name": "Amigo", "level": 4, "bypassesPlayerLimit": false }
+            ]))
+            .unwrap(),
+        )
+        .unwrap();
+        let mut config = ServerConfig {
+            folder: folder.clone(),
+            guests: vec![Guest { name: "Hawntd".into(), uid: Some("u1".into()) }, Guest { name: "Manual".into(), uid: None }],
+            ..Default::default()
+        };
+        let friends = std::collections::HashMap::from([("u1".to_string(), "Hawntd_mx".to_string())]);
+        let renames = follow_names(&mut config, "Juanito28", Some(&friends));
+        assert_eq!(
+            renames,
+            vec![
+                Rename { old: "Pepito28".into(), new: "Juanito28".into(), host: true },
+                Rename { old: "Hawntd".into(), new: "Hawntd_mx".into(), host: false }
+            ]
+        );
+        assert_eq!(config.host_name.as_deref(), Some("Juanito28"));
+        assert_eq!(config.guests[0].name, "Hawntd_mx");
+        assert_eq!(move_player_data(&folder, "Pepito28", "Juanito28"), 3);
+        let new = dashed(&settings::offline_uuid("Juanito28"));
+        assert_eq!(std::fs::read(world.join("playerdata").join(format!("{new}.dat"))).unwrap(), b"inventario");
+        // Si el nombre nuevo ya tiene cosas, no se pisa nada.
+        std::fs::write(world.join("playerdata").join(format!("{old}.dat")), b"otro").unwrap();
+        assert_eq!(move_player_data(&folder, "Pepito28", "Juanito28"), 0);
+        write_access_lists(&config, "Juanito28").unwrap();
+        let ops: Vec<Value> = serde_json::from_slice(&std::fs::read(folder.join("ops.json")).unwrap()).unwrap();
+        let names: Vec<&str> = ops.iter().filter_map(|o| o["name"].as_str()).collect();
+        assert_eq!(names, vec!["Amigo", "Juanito28"]);
+        // El servidor encendido guarda el /op del nombre nuevo a su manera; al volver al nombre
+        // anterior, igual deja de ser administrador.
+        std::fs::write(folder.join("ops.json"), serde_json::to_vec(&json!([{ "uuid": "y", "name": "Juanito28", "level": 4, "bypassesPlayerLimit": false }])).unwrap()).unwrap();
+        assert_eq!(follow_names(&mut config, "Pepito28", None).len(), 1);
+        write_access_lists(&config, "Pepito28").unwrap();
+        let ops: Vec<Value> = serde_json::from_slice(&std::fs::read(folder.join("ops.json")).unwrap()).unwrap();
+        assert_eq!(ops.iter().filter_map(|o| o["name"].as_str()).collect::<Vec<_>>(), vec!["Pepito28"]);
+        assert_eq!(config.former_host_names, vec!["Juanito28".to_string()]);
+        follow_names(&mut config, "Juanito28", None);
+        write_access_lists(&config, "Juanito28").unwrap();
+        let whitelist: Vec<Value> = serde_json::from_slice(&std::fs::read(folder.join("whitelist.json")).unwrap()).unwrap();
+        assert_eq!(whitelist.iter().filter_map(|o| o["name"].as_str()).collect::<Vec<_>>(), vec!["Juanito28", "Hawntd_mx", "Manual"]);
+        // Sin cambios, nada que hacer.
+        assert!(follow_names(&mut config, "Juanito28", Some(&friends)).is_empty());
         let _ = std::fs::remove_dir_all(&folder);
     }
 

@@ -895,24 +895,78 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .scale-options.language-options { grid-template-columns: repeat(2, 1fr); max-width: 320px; }
 
-/* ================= Doctor */
-.modal.doctor { width: min(720px, calc(100vw - 48px)); }
-.doctor-icon { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-fg); flex: none; }
-.doctor-icon svg { width: 20px; height: 20px; }
+/* ================= Progreso dentro de un diálogo (crear servidor) */
 .doctor-progress { display: flex; align-items: center; gap: 10px; margin: 14px 0 0; padding: 12px 14px; border-radius: var(--r); background: var(--accent-softer); border: 1px solid var(--accent-soft); font-weight: 600; }
-.doctor-findings { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
-.doctor-finding { padding: 14px 16px; border-radius: var(--r-lg); background: var(--field); border: 1px solid var(--border); border-left: 4px solid var(--danger); }
-.doctor-finding.aviso { border-left-color: #e8a33d; }
-.doctor-finding.info { border-left-color: var(--accent); }
-.doctor-finding.ok { border-left-color: var(--success); }
-.doctor-finding h3 { font-size: 15px; margin: 0 0 4px; }
-.doctor-finding p { margin: 0; color: var(--muted); font-size: 13.5px; }
-.doctor-finding code { display: block; margin-top: 8px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--panel); font: 12px/1.45 "Cascadia Mono", Consolas, monospace; color: var(--faint); white-space: pre-wrap; word-break: break-word; user-select: text; }
-.doctor-fixes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.doctor-fixes .btn { padding: 7px 12px; font-size: 13px; }
-.doctor-fixes .btn.done { opacity: .6; pointer-events: none; }
-.doctor-applied { margin-top: 14px; padding: 12px 14px; border-radius: var(--r); background: color-mix(in srgb, var(--success) 10%, transparent); color: var(--text); font-size: 13.5px; }
-.doctor-applied ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); }
+
+/* ================= Doctor (0.15): estado arriba, hallazgos en una lista, una sola acción principal */
+:root, :root[data-theme="oscuro"] { --warning: #e8a33d; }
+:root[data-theme="claro"] { --warning: #a8670c; }
+.btn.ghost { background: transparent; color: var(--muted); }
+.btn.ghost:hover { background: var(--card); color: var(--text); }
+.btn.suggested { background: var(--accent-soft); color: var(--accent-fg); }
+.btn.suggested:hover { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+
+.modal.doctor { width: min(660px, calc(100vw - 48px)); overflow: hidden; }
+.doc-head { display: flex; align-items: center; gap: 16px; padding: 22px 24px 18px; }
+.art.doc { width: 54px; height: 54px; border-radius: 13px; }
+.doc-heading { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.doc-heading h2 { font-size: 20px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-state { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.doc-state i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent); }
+.doc-state .spinner { border-top-color: currentColor; }
+.doc-state.bad { color: var(--danger); }
+.doc-state.warn { color: var(--warning); }
+.doc-state.ok { color: var(--success); }
+.doc-state.work { color: var(--accent-fg); }
+.doc-meta { font-size: 12.5px; color: var(--faint); }
+.doc-head .circle-btn { align-self: flex-start; width: 34px; height: 34px; background: var(--card); border-color: transparent; }
+.doc-body { padding: 0 24px; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+
+.doc-findings { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--r-lg); }
+.doc-findings:empty { display: none; }
+.finding { --sev: var(--accent-fg); display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 14px; padding: 16px 18px; animation: rise .25s var(--ease) both; }
+.finding + .finding { border-top: 1px solid var(--border); }
+.finding.error { --sev: var(--danger); }
+.finding.aviso { --sev: var(--warning); }
+.finding.ok { --sev: var(--success); }
+.finding.loading { --sev: var(--muted); }
+.finding-mark { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; color: var(--sev); background: color-mix(in srgb, var(--sev) 14%, transparent); }
+.finding-mark svg { width: 17px; height: 17px; }
+.finding-mark .spinner { border-top-color: var(--accent); }
+.finding h3 { font-size: 14.5px; font-weight: 650; line-height: 1.35; margin: 5px 0 3px; }
+.finding.loading h3 { color: var(--muted); font-weight: 600; }
+.finding p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.finding-files { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.file-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 9px 4px 7px; border-radius: 7px; background: var(--field); border: 1px solid var(--border); font: 12px/1.35 "Cascadia Mono", Consolas, monospace; color: var(--text); user-select: text; }
+.file-chip span { overflow-wrap: anywhere; }
+.file-chip svg { width: 14px; height: 14px; color: var(--faint); flex: none; }
+.finding-sep { display: inline-grid; color: var(--faint); }
+.finding-sep svg { width: 14px; height: 14px; }
+.finding-log { margin: 10px 0 0; max-height: 120px; overflow: auto; padding: 9px 12px; border-radius: 8px; background: var(--field); border: 1px solid var(--border); font: 12px/1.5 "Cascadia Mono", Consolas, monospace; color: var(--muted); white-space: pre-wrap; word-break: break-word; user-select: text; }
+.finding-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.finding-actions .btn { height: 32px; padding: 0 12px; font-size: 13px; }
+.finding-actions .btn.ghost { box-shadow: inset 0 0 0 1px var(--border-strong); }
+.fix-done { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 6px 12px; border-radius: var(--r); font-size: 13px; font-weight: 650; color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+.fix-done svg { width: 15px; height: 15px; flex: none; }
+
+.doc-steps { list-style: none; margin: 0; padding: 2px 0 0; }
+.doc-step { position: relative; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 12px; padding: 5px 0; font-size: 13.5px; color: var(--muted); }
+.doc-step::before { content: ""; position: absolute; left: 10.5px; top: 29px; bottom: -3px; width: 1px; background: var(--border-strong); }
+.doc-step:last-child::before { display: none; }
+.doc-step > span:last-child { padding-top: 2px; }
+.doc-step small { display: block; margin-top: 2px; font-size: 12px; font-weight: 500; color: var(--faint); }
+.doc-step-mark { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--card); color: var(--muted); }
+.doc-step-mark svg { width: 13px; height: 13px; }
+.doc-step.done .doc-step-mark { background: color-mix(in srgb, var(--success) 16%, transparent); color: var(--success); }
+.doc-step.fail .doc-step-mark { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+.doc-step.run { color: var(--text); font-weight: 600; }
+
+.doc-raw { display: flex; flex-direction: column; gap: 6px; }
+.doc-raw-label { font-size: 12px; font-weight: 700; color: var(--faint); }
+.doc-raw pre { margin: 0; max-height: 220px; overflow: auto; padding: 12px 14px; border-radius: var(--r); background: var(--field); border: 1px solid var(--border); font: 12px/1.5 "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; word-break: break-word; user-select: text; color: var(--text); }
+.doc-foot { display: flex; align-items: center; gap: 8px; margin-top: 18px; padding: 14px 24px 18px; border-top: 1px solid var(--border); }
+.doc-foot .btn { height: 38px; }
+@media (max-width: 640px) { .doc-foot { flex-wrap: wrap; } .doc-foot .grow { display: none; } }
 
 /* ---------- Hostear partida ---------- */
 .rail-dot { position: absolute; top: 8px; right: 8px; width: 9px; height: 9px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 2px var(--chrome); }
@@ -963,7 +1017,7 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .host-problem { margin-bottom: 16px; padding: 14px 16px; border-radius: var(--r-xl); background: color-mix(in srgb, var(--danger) 7%, var(--panel)); border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); }
 .host-problem-head { display: flex; align-items: center; gap: 10px; }
 .host-problem-head svg { width: 20px; height: 20px; color: var(--danger); flex: none; }
-.host-problem .doctor-findings:empty { display: none; }
+.host-problem .doc-findings { margin-top: 12px; background: var(--panel); }
 .log.console { height: calc(100vh - 470px); min-height: 240px; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .log .l-parabellum { color: var(--accent-fg); font-weight: 700; }
 .log .l-command { color: #8fe3b0; }

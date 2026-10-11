@@ -28,6 +28,101 @@ pub struct ModMeta {
     pub forge: bool,
 }
 
+/// Para qué loaders está hecho un .jar según lo que trae dentro. Modrinth y CurseForge a veces lo
+/// etiquetan mal (un .jar de Forge marcado también como NeoForge), así que manda el archivo:
+///  - fabric.mod.json → Fabric (Quilt también lo carga); quilt.mod.json → Quilt.
+///  - META-INF/neoforge.mods.toml → NeoForge 1.20.5 o más nuevo.
+///  - META-INF/mods.toml → Forge, o NeoForge 1.20.2–1.20.4 si depende de "neoforge". Sin ninguna de
+///    las dos dependencias no se sabe: vale para los dos.
+///  - mcmod.info → Forge antiguo (1.12 y anteriores).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
+#[serde(default)]
+pub struct JarLoaders {
+    pub fabric: bool,
+    pub quilt: bool,
+    pub forge: bool,
+    /// neoforge.mods.toml (NeoForge 1.20.5+).
+    pub neoforge: bool,
+    /// mods.toml que sirve en NeoForge 1.20.2–1.20.4.
+    pub neoforge_old: bool,
+}
+
+impl JarLoaders {
+    /// Trae algo que diga para qué loader es (las bibliotecas sueltas no traen nada).
+    pub fn known(&self) -> bool {
+        self.fabric || self.quilt || self.forge || self.neoforge || self.neoforge_old
+    }
+
+    /// "Forge", "Fabric y Quilt"…
+    pub fn describe(&self) -> String {
+        let names: Vec<&str> = [(self.fabric, "Fabric"), (self.quilt, "Quilt"), (self.forge, "Forge"), (self.neoforge || self.neoforge_old, "NeoForge")]
+            .into_iter()
+            .filter(|(on, _)| *on)
+            .map(|(_, name)| name)
+            .collect();
+        match names.as_slice() {
+            [] => String::new(),
+            [one] => one.to_string(),
+            [rest @ .., last] => format!("{}{}{last}", rest.join(", "), t!(" y ", " and ")),
+        }
+    }
+}
+
+pub fn read_loaders(reader: impl Read + Seek) -> JarLoaders {
+    let Ok(mut zip) = zip::ZipArchive::new(reader) else { return JarLoaders::default() };
+    let has = |name: &str| zip.index_for_name(name).is_some();
+    let mut found = JarLoaders {
+        fabric: has("fabric.mod.json"),
+        quilt: has("quilt.mod.json"),
+        neoforge: has("META-INF/neoforge.mods.toml"),
+        forge: has("mcmod.info"),
+        neoforge_old: false,
+    };
+    if let Some(bytes) = read_entry(&mut zip, "META-INF/mods.toml", 2_000_000) {
+        let text = String::from_utf8_lossy(&bytes);
+        let depends_on = |loader: &str| {
+            text.parse::<toml::Table>().ok().is_some_and(|doc| {
+                doc.get("dependencies")
+                    .and_then(|d| d.as_table())
+                    .into_iter()
+                    .flat_map(|t| t.values())
+                    .filter_map(|v| v.as_array())
+                    .flatten()
+                    .any(|dependency| dependency.get("modId").and_then(|m| m.as_str()) == Some(loader))
+            })
+        };
+        match (depends_on("forge"), depends_on("neoforge")) {
+            (true, false) => found.forge = true,
+            (false, true) => found.neoforge_old = true,
+            _ => {
+                found.forge = true;
+                found.neoforge_old = true;
+            }
+        }
+    }
+    found
+}
+
+/// Si un .jar carga en la instancia. NeoForge para 1.20.1 todavía era Forge por dentro: ahí sirven los
+/// mods de los dos. Con Sinytra Connector, Forge y NeoForge también cargan mods de Fabric.
+pub fn loader_fits(jar: JarLoaders, loader: &str, minecraft: &str, connector: bool) -> bool {
+    use crate::loaders::compare_versions;
+    if !jar.known() {
+        return true;
+    }
+    let at_least = |version: &str| compare_versions(minecraft, version) != Ordering::Less;
+    let fits = match loader {
+        "Fabric" => jar.fabric,
+        "Quilt" => jar.quilt || jar.fabric,
+        "Forge" => jar.forge,
+        "NeoForge" if !at_least("1.20.2") => jar.forge || jar.neoforge_old,
+        "NeoForge" if !at_least("1.20.5") => jar.neoforge_old || jar.neoforge,
+        "NeoForge" => jar.neoforge,
+        _ => true,
+    };
+    fits || (connector && jar.fabric && matches!(loader, "Forge" | "NeoForge"))
+}
+
 /// Mods de un .jar: el principal y los que lleva dentro (META-INF/jars), como los módulos de Fabric API.
 pub fn read_jar(bytes_or_file: impl Read + Seek) -> Vec<ModMeta> {
     let mut result = Vec::new();
@@ -380,6 +475,16 @@ impl Game {
         matches!(self.loader.as_str(), "Forge" | "NeoForge")
     }
 
+    /// NeoForge no hace cumplir al pie de la letra el rango de Minecraft: JEI para 1.21.1 pide
+    /// "[1.21, 1.21.1)" y abre sin problema en 1.21.1. Ahí basta con que sea de la misma línea (1.21.x).
+    fn tolerates(&self, id: &str, have: &str, predicates: &[String]) -> bool {
+        if id != "minecraft" || self.loader != "NeoForge" {
+            return false;
+        }
+        let line: Vec<&str> = have.split('.').take(2).collect();
+        line.len() == 2 && predicates.iter().any(|p| matches(&line.join("."), p))
+    }
+
     /// La versión que tiene la instancia de algo que no es un mod de la carpeta (juego o loader).
     fn built_in_version(&self, id: &str) -> Option<&str> {
         match id {
@@ -445,7 +550,7 @@ pub fn check_game(mods: &[(String, Vec<ModMeta>)], game: &Game) -> Vec<Problem> 
                 if BUILT_IN.contains(&id.as_str()) {
                     // El juego y el loader: se comparan con la instancia (found_file vacío).
                     if let Some(have) = game.built_in_version(id) {
-                        if !predicates.iter().any(|p| matches(have, p)) {
+                        if !predicates.iter().any(|p| matches(have, p)) && !game.tolerates(id, have, predicates) {
                             problems.push(Problem::Wrong {
                                 owner: file.clone(),
                                 name: meta.name.clone(),
@@ -544,6 +649,55 @@ mod tests {
             breaks: breaks.iter().map(|(i, p)| (i.to_string(), vec![p.to_string()])).collect(),
             forge: false,
         }
+    }
+
+    fn jar(entries: &[(&str, &str)]) -> Vec<u8> {
+        let mut buffer = Cursor::new(Vec::new());
+        let mut zip = zip::ZipWriter::new(&mut buffer);
+        for (name, content) in entries {
+            zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            std::io::Write::write_all(&mut zip, content.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap();
+        buffer.into_inner()
+    }
+
+    #[test]
+    fn para_que_loader_es_cada_jar() {
+        let forge_toml = "modLoader=\"javafml\"\n[[mods]]\nmodId=\"parcool\"\n[[dependencies.parcool]]\nmodId=\"forge\"\nmandatory=true\nversionRange=\"[47,)\"\n";
+        let neo_old = "modLoader=\"javafml\"\n[[mods]]\nmodId=\"x\"\n[[dependencies.x]]\nmodId=\"neoforge\"\ntype=\"required\"\nversionRange=\"[20.4,)\"\n";
+        let forge = read_loaders(Cursor::new(jar(&[("META-INF/mods.toml", forge_toml)])));
+        let neo = read_loaders(Cursor::new(jar(&[("META-INF/neoforge.mods.toml", forge_toml)])));
+        let old = read_loaders(Cursor::new(jar(&[("META-INF/mods.toml", neo_old)])));
+        let fabric = read_loaders(Cursor::new(jar(&[("fabric.mod.json", "{}")])));
+        let library = read_loaders(Cursor::new(jar(&[("com/x/A.class", "")])));
+        assert_eq!(forge.describe(), "Forge");
+        // Un mod de Forge no carga en NeoForge 1.21.1, y uno de NeoForge no carga en Forge.
+        assert!(loader_fits(forge, "Forge", "1.21.1", false) && !loader_fits(forge, "NeoForge", "1.21.1", false));
+        assert!(loader_fits(neo, "NeoForge", "1.21.1", false) && !loader_fits(neo, "Forge", "1.21.1", false));
+        // En 1.20.1 NeoForge carga los mods de Forge.
+        assert!(loader_fits(forge, "NeoForge", "1.20.1", false));
+        assert!(loader_fits(old, "NeoForge", "1.20.4", false) && !loader_fits(old, "NeoForge", "1.21.1", false) && !loader_fits(old, "Forge", "1.20.4", false));
+        assert!(loader_fits(fabric, "Quilt", "1.21.1", false) && !loader_fits(fabric, "NeoForge", "1.21.1", false));
+        assert!(loader_fits(fabric, "NeoForge", "1.21.1", true), "con Sinytra Connector");
+        assert!(!library.known() && loader_fits(library, "Forge", "1.20.1", false));
+    }
+
+    #[test]
+    fn neoforge_no_exige_el_rango_de_minecraft_al_pie_de_la_letra() {
+        let jei = ModMeta {
+            id: "jei".into(),
+            name: "Just Enough Items".into(),
+            version: "19.52.0.422".into(),
+            depends: vec![("minecraft".into(), vec!["[1.21, 1.21.1)".into()])],
+            forge: true,
+            ..Default::default()
+        };
+        let mods = vec![("jei.jar".to_string(), vec![jei])];
+        let game = |loader: &str, minecraft: &str| Game { minecraft: minecraft.into(), loader: loader.into(), loader_version: None };
+        assert!(check_game(&mods, &game("NeoForge", "1.21.1")).is_empty());
+        assert_eq!(check_game(&mods, &game("Forge", "1.21.1")).len(), 1);
+        assert_eq!(check_game(&mods, &game("NeoForge", "1.20.4")).len(), 1, "otra línea de Minecraft sí es un problema");
     }
 
     #[test]
