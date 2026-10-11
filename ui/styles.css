@@ -1176,6 +1176,16 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .friend-list .friend .grow span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .home-summary { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 
+/* Actualización obligatoria: por encima de cualquier otro diálogo. */
+.update-overlay { z-index: 38; }
+.update-versions { display: flex; align-items: center; gap: 10px; font: 650 17px var(--font-display); margin-bottom: 12px; }
+.update-versions span { color: var(--muted); }
+.update-versions b { color: var(--accent-fg); }
+.update-versions svg { width: 18px; height: 18px; color: var(--faint); }
+#update-notes { margin-bottom: 8px; white-space: pre-line; }
+#update-notes:empty { display: none; }
+#update-status.error { color: var(--danger); }
+
 /* ======================================================================
    Opciones del servidor (0.17): tarjetas como en Aternos, con el nombre real debajo
    ====================================================================== */

@@ -131,6 +131,11 @@ impl Agent {
         Ok(Agent { child, log })
     }
 
+    /// Ya se conectó a playit.gg (lo que espera la página de playit.gg tras aceptar).
+    pub fn connected(&self) -> bool {
+        self.log.lock().unwrap().iter().any(|l| l.contains("agent registered") || l.contains("tunnel running"))
+    }
+
     /// Lo último que escribió (para explicar por qué se cerró).
     pub fn last_line(&self) -> Option<String> {
         self.log.lock().unwrap().iter().rev().find(|l| l.contains("ERROR") || l.contains("WARN")).or(self.log.lock().unwrap().back()).cloned()
@@ -200,6 +205,11 @@ impl ApiError {
         matches!(self, ApiError::Error { kind, message } if kind == "auth" && matches!(message.as_str(), "InvalidAgentKey" | "InvalidSignature" | "NoLongerValid" | "AccountDoesNotExist"))
     }
 
+    /// La cuenta todavía no puede tener dirección: falta verificar el correo (cuentas nuevas).
+    pub fn needs_verification(&self) -> bool {
+        matches!(self, ApiError::Fail(reason) | ApiError::Error { message: reason, .. } if matches!(reason.as_str(), "RequiresVerifiedAccount" | "EmailMustBeVerified"))
+    }
+
     fn missing_path(&self) -> bool {
         matches!(self, ApiError::Error { kind, .. } if kind == "path-not-found" || kind == "validation")
     }
@@ -265,20 +275,41 @@ pub fn claim_url(code: &str) -> String {
     format!("https://playit.gg/claim/{code}")
 }
 
-/// Paso de la vinculación: Ok(true) si ya se aceptó, Ok(false) si sigue esperando.
-pub async fn claim_poll(code: &str) -> Result<bool, String> {
+/// En qué va la vinculación.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ClaimStep {
+    /// Todavía no se abrió la página de vincular (p. ej. se quedó en iniciar sesión).
+    Visit,
+    /// La página está abierta: falta aceptar.
+    Accept,
+    Accepted,
+}
+
+impl ClaimStep {
+    pub fn code(self) -> &'static str {
+        match self {
+            ClaimStep::Visit => "visit",
+            ClaimStep::Accept => "accept",
+            ClaimStep::Accepted => "finishing",
+        }
+    }
+}
+
+/// Paso de la vinculación. Ok(None): sin respuesta clara (se vuelve a preguntar).
+pub async fn claim_poll(code: &str) -> Result<Option<ClaimStep>, String> {
     let body = json!({ "code": code, "agent_type": "self-managed", "version": format!("playit-cli {AGENT_VERSION}") });
     match call("/claim/setup", body, None).await {
         Ok(Value::String(status)) => match status.as_str() {
-            "UserAccepted" => Ok(true),
+            "UserAccepted" => Ok(Some(ClaimStep::Accepted)),
             "UserRejected" => Err(t!("Se rechazó la vinculación en playit.gg.", "The link was rejected on playit.gg.")),
-            _ => Ok(false),
+            "WaitingForUser" => Ok(Some(ClaimStep::Accept)),
+            _ => Ok(Some(ClaimStep::Visit)),
         },
-        Ok(_) => Ok(false),
+        Ok(_) => Ok(None),
         Err(ApiError::Fail(reason)) if reason == "CodeExpired" => {
             Err(t!("El código de vinculación caducó. Vuelve a pulsar «Conectar».", "The link code expired. Press «Connect» again."))
         }
-        Err(ApiError::Network) => Ok(false),
+        Err(ApiError::Network) => Ok(None),
         Err(error) => Err(error.explain()),
     }
 }

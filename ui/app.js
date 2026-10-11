@@ -3074,6 +3074,22 @@ function wireEvents() {
   for (const collapsible of $$(".collapsible")) $(".collapsible-head", collapsible).onclick = () => collapsible.classList.toggle("open");
   for (const button of $$("#ui-scale button")) button.onclick = () => setScale(Number(button.dataset.scale));
   for (const button of $$("#language button")) button.onclick = () => setLanguage(button.dataset.language);
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if ($("#update-dialog").classList.contains("hidden")) return;
+      if (event.key === "Tab") {
+        const buttons = [$("#update-quit"), $("#update-now")].filter((b) => !b.disabled);
+        const at = buttons.indexOf(document.activeElement);
+        buttons[(at + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
+      }
+      if (event.key !== "Enter" && event.key !== " ") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    },
+    true,
+  );
   document.addEventListener("keydown", (event) => {
     if (event.ctrlKey && !event.altKey && !event.shiftKey && (event.key === "b" || event.key === "B") && !isTyping()) {
       event.preventDefault();
@@ -3150,7 +3166,10 @@ function wireEvents() {
       return;
     }
     if (payload.task === "actualizacion") {
-      $("#update-text").textContent = t(`Descargando… ${Math.round(payload.fraction * 100)}%`, `Downloading… ${Math.round(payload.fraction * 100)}%`);
+      const percent = Math.round(payload.fraction * 100);
+      $("#update-text").textContent = t(`Descargando… ${percent}%`, `Downloading… ${percent}%`);
+      $("#update-progress div").style.width = `${Math.max(2, percent)}%`;
+      $("#update-status").textContent = payload.stage || t(`Descargando… ${percent}%`, `Downloading… ${percent}%`);
       return;
     }
     if (payload.task === "drive") {
@@ -3224,8 +3243,10 @@ async function init() {
   state.version = initial.version;
   state.driveUrl = initial.driveUrl;
   setCreator(initial.creator);
-  // Buscar una versión nueva de Parabellum sin estorbar el arranque.
-  setTimeout(() => checkLauncherUpdate(false, true), 4000);
+  // Al abrir se busca una versión nueva (y cada media hora, por si se queda junto al reloj): si la
+  // hay, hay que actualizar para seguir.
+  setTimeout(() => checkLauncherUpdate(false, true), 1200);
+  setInterval(() => checkLauncherUpdate(true, true), 30 * 60e3);
   $("#root-text").textContent = initial.root;
   $("#version-text").textContent = `Parabellum ${initial.version}`;
   applyTheme(state.settings.theme);
@@ -4451,28 +4472,77 @@ async function checkLauncherUpdate(reload = false, quiet = true) {
     $("#about-update").textContent = update
       ? t(`Hay una versión nueva: ${update.version}`, `There is a new version: ${update.version}`) + `${update.notes ? ` — ${update.notes.replace(/\.$/, "")}` : ""}.`
       : t("Tienes la versión más nueva.", "You have the newest version.");
-    if (!quiet) toast(update ? t(`Hay una versión nueva de Parabellum: ${update.version}.`, `There is a new version of Parabellum: ${update.version}.`) : t(`Ya tienes la versión más nueva (${state.version}).`, `You already have the newest version (${state.version}).`));
+    if (!update && !quiet) toast(t(`Ya tienes la versión más nueva (${state.version}).`, `You already have the newest version (${state.version}).`));
+    // Hay que actualizar para seguir usando Parabellum (fuera de Tauri, el modo de muestra no se bloquea).
+    if (update && (tauri || !quiet)) showUpdateDialog();
   } catch (error) {
     if (!quiet) toast(String(error), "error");
   }
 }
 
+/** Con un servidor encendido no se actualiza (se apagaría al reiniciar Parabellum): se espera. */
+function updateWaitsForServers() {
+  return (host?.view?.servers ?? []).some((s) => s.state !== "off");
+}
+
+/** La ventana de la versión nueva: no se puede cerrar; solo actualizar (o cerrar Parabellum). */
+function showUpdateDialog() {
+  const update = state.launcherUpdate;
+  if (!update || !$("#update-dialog").classList.contains("hidden")) return;
+  const waits = updateWaitsForServers();
+  $("#update-from").textContent = state.version;
+  $("#update-to").textContent = update.version;
+  $("#update-notes").textContent = update.notes ?? "";
+  $("#update-size").textContent = t(
+    `Para seguir usando Parabellum hay que actualizarlo. Se descarga (${formatSize(update.size)}) y se reinicia solo; los juegos abiertos no se cierran.`,
+    `To keep using Parabellum you must update it. It downloads (${formatSize(update.size)}) and restarts on its own; open games are not closed.`,
+  );
+  if (!state.updating) {
+    $("#update-progress").classList.add("hidden");
+    $("#update-status").classList.toggle("hidden", !waits);
+    $("#update-status").classList.remove("error");
+    $("#update-status").textContent = waits ? t("Primero apaga tus servidores: se cerrarían al reiniciar Parabellum.", "First stop your servers: they would close when Parabellum restarts.") : "";
+    $("#update-now").disabled = waits;
+    $("#update-quit").disabled = false;
+    $("#update-now span").textContent = t("Actualizar ahora", "Update now");
+  }
+  openModal("#update-dialog");
+  requestAnimationFrame(() => (waits ? $("#update-quit") : $("#update-now")).focus());
+}
+
+/** Al apagarse los servidores, ya se puede actualizar. */
+function updateServersChanged() {
+  if ($("#update-dialog").classList.contains("hidden") || state.updating) return;
+  const waits = updateWaitsForServers();
+  $("#update-now").disabled = waits;
+  $("#update-status").classList.toggle("hidden", !waits);
+}
+
 async function applyLauncherUpdate() {
   const update = state.launcherUpdate;
-  if (!update) return;
-  const ok = await confirmAction({
-    title: t(`Actualizar a Parabellum ${update.version}`, `Update to Parabellum ${update.version}`),
-    text: `${update.notes ? `${update.notes}\n\n` : ""}` + t(`Se descargará (${formatSize(update.size)}) y Parabellum se reiniciará solo. Los juegos abiertos no se cierran.`, `It will be downloaded (${formatSize(update.size)}) and Parabellum will restart on its own. Open games are not closed.`),
-    ok: t("Actualizar y reiniciar", "Update and restart"),
-    primary: true,
-  });
-  if (!ok) return;
+  if (!update || state.updating) return;
+  if (updateWaitsForServers()) return showUpdateDialog();
+  state.updating = true;
+  $("#update-now").disabled = true;
+  $("#update-quit").disabled = true;
+  $("#update-progress").classList.remove("hidden");
+  $("#update-progress div").style.width = "2%";
+  $("#update-status").classList.remove("hidden", "error");
+  $("#update-status").textContent = t("Descargando…", "Downloading…");
   $("#update-pill").disabled = true;
   $("#update-text").textContent = t("Descargando…", "Downloading…");
   try {
+    // Al terminar, Parabellum se cierra y se abre la versión nueva.
     await invoke("aplicar_actualizacion");
+    $("#update-status").textContent = t("Reiniciando…", "Restarting…");
   } catch (error) {
-    toast(String(error), "error");
+    state.updating = false;
+    $("#update-status").textContent = String(error);
+    $("#update-status").classList.add("error");
+    $("#update-progress").classList.add("hidden");
+    $("#update-now").disabled = false;
+    $("#update-quit").disabled = false;
+    $("#update-now span").textContent = t("Reintentar", "Retry");
     $("#update-pill").disabled = false;
     $("#update-text").textContent = t(`Actualizar a ${update.version}`, `Update to ${update.version}`);
   }
@@ -4625,7 +4695,9 @@ function wireDriveEvents() {
   $("#drive-sources").onclick = (event) => {
     if (event.target.closest("[data-open-packages]")) invoke("abrir_carpeta_paquetes").catch((error) => toast(String(error), "error"));
   };
-  $("#update-pill").onclick = applyLauncherUpdate;
+  $("#update-pill").onclick = () => showUpdateDialog();
+  $("#update-now").onclick = () => applyLauncherUpdate();
+  $("#update-quit").onclick = () => invoke("cerrar_parabellum").catch(() => window.close());
   $("#about-check").onclick = () => checkLauncherUpdate(true, false);
   $("#about-folder-change").onclick = async () => {
     try {

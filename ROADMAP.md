@@ -113,6 +113,12 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### 0.17.1: vincular playit.gg sin trabas y actualización obligatoria (pedido de Juan)
+- [x] **playit.gg:** al aceptar en el navegador, la página de playit.gg espera a que el agente se conecte; Parabellum solo lo encendía al compartir algo, así que la página se quedaba «esperando», no volvía a Parabellum y no había dirección. Ahora, al aceptar: el agente se conecta en ese momento, se crea la dirección y Parabellum vuelve al frente con ella lista
+- [x] Mientras se vincula se ve el paso que dice playit.gg (abrir la página, aceptar, terminando); si playit.gg dejó a alguien en otra página tras iniciar sesión, «Abrir de nuevo» lo regresa. Hasta 30 min para crear la cuenta
+- [x] Cuenta nueva sin correo verificado (playit.gg no da dirección): estado propio «Verifica tu correo» con «Ya lo verifiqué», también en la página del servidor encendido; «Reintentar» vuelve a dejar todo listo sin apagar el servidor ni volver a vincular
+- [x] **Actualización obligatoria:** al abrir Parabellum (y cada 30 min) se busca una versión nueva; si la hay, una ventana que no se cierra (ni con Esc ni con clic afuera ni con atajos) pide actualizar: «Actualizar ahora» (descarga, reemplaza el exe y se reinicia) o «Cerrar Parabellum». Con un servidor encendido espera a que se apague (se cerraría al reiniciar)
+
 ### 0.17.0: ajustes del servidor como en Aternos, sonido de mensajes (pedido de Juan)
 - [x] **Vista previa del chat al día:** al escribir varias rutas a la vez, Firebase avisa con claves como «meta/lastText» y Parabellum las guardaba tal cual; ahora las pone en su sitio (firebase.rs). Por lo mismo tampoco llegaban los avisos de mensajes nuevos
 - [x] **Sonido de mensajes** (sonido.rs): dos notas cortas generadas por Parabellum y tocadas por Windows, aunque se esté jugando o Parabellum esté junto al reloj; no si esa conversación está a la vista; una vez si llegan varios seguidos. Interruptor en Ajustes › Comportamiento; el aviso de Windows del mensaje sale sin su sonido

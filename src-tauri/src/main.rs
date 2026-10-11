@@ -1584,6 +1584,12 @@ async fn actualizacion_launcher(state: State<'_, AppState>, recargar: bool) -> R
     }))
 }
 
+/// Cierra Parabellum del todo (desde la ventana de la actualización obligatoria).
+#[tauri::command]
+fn cerrar_parabellum(app: AppHandle) {
+    app.exit(0);
+}
+
 /// Descarga la versión nueva, reemplaza el exe y reinicia Parabellum.
 #[tauri::command]
 async fn aplicar_actualizacion(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
@@ -1657,10 +1663,10 @@ async fn conectar_playit(app: AppHandle) -> Result<hosting::HostView, String> {
     Ok(hosting::view(&app))
 }
 
-/// Vuelve a intentar abrir la dirección pública (tras un error de playit.gg).
+/// Vuelve a dejar listo playit.gg (tras un error, o tras verificar el correo en playit.gg).
 #[tauri::command]
-async fn reintentar_playit(app: AppHandle) {
-    hosting::retarget(&app).await;
+async fn reintentar_playit(app: AppHandle) -> Result<(), String> {
+    hosting::recheck_playit(&app).await
 }
 
 #[tauri::command]
@@ -2771,6 +2777,7 @@ fn main() {
             conectar_playit,
             cancelar_playit,
             reintentar_playit,
+            cerrar_parabellum,
             desconectar_playit,
             compartir_mundo,
             preparar_servidor,

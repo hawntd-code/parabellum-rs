@@ -68,6 +68,9 @@ una vez desde la página «Hostear partida» y su agente oficial se baja solo. L
 los amigos invitados la ven en su página Servidores aunque Parabellum se reinicie. El EULA de
 Minecraft se acepta marcándolo al crear o encender el servidor.
 
+Al conectar playit.gg, Parabellum abre su página para aceptar y, en cuanto se acepta, conecta el
+agente y crea la dirección (si la cuenta es nueva, playit.gg pide verificar el correo antes de darla).
+
 Los invitados se siguen por su cuenta de Google: si alguien se cambia el nombre, la lista blanca, el
 permiso de administrador y sus cosas en el mundo pasan al nombre nuevo. Y quien entra con el nombre de
 un invitado tiene que estar jugando desde Parabellum con esa cuenta (si no, el servidor lo saca).
@@ -78,6 +81,12 @@ tarjetas con su nombre claro y, debajo, el nombre real (`max-players=20`, `gamer
 Se guarda al cambiarla. Con el servidor encendido, las reglas, la dificultad, el modo de juego y la lista
 blanca se aplican al momento; lo demás pide «Reiniciar». Arriba se ve como en la lista de servidores de
 Minecraft: icono (cualquier imagen, se recorta a 64×64), nombre y mensaje con colores (§).
+
+## Actualizaciones
+
+Al abrir Parabellum (y cada media hora) se busca una versión nueva en el catálogo de Drive o en la
+carpeta `paquetes`. Si la hay, hay que actualizar para seguir usándolo: se descarga, reemplaza el
+.exe y se reinicia solo (los juegos abiertos siguen; con un servidor encendido, espera a que se apague).
 
 ## Publicar en Drive
 

@@ -984,6 +984,26 @@
     </div>
   </div>
 
+  <!-- Actualización obligatoria: no se puede cerrar ni saltar -->
+  <div class="overlay hidden update-overlay" id="update-dialog">
+    <div class="modal small">
+      <div class="modal-head">
+        <h2>Actualiza Parabellum</h2>
+      </div>
+      <div class="modal-body">
+        <div class="update-versions"><span id="update-from"></span><svg><use href="#i-right"/></svg><b id="update-to"></b></div>
+        <p class="muted" id="update-notes"></p>
+        <p class="muted small-text" id="update-size"></p>
+        <div class="progress hidden" id="update-progress"><div></div></div>
+        <p class="small-text hidden" id="update-status"></p>
+        <div class="modal-actions">
+          <button class="btn" id="update-quit">Cerrar Parabellum</button>
+          <button class="btn primary" id="update-now"><svg><use href="#i-download"/></svg><span>Actualizar ahora</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay hidden" id="confirm-dialog">
     <div class="modal small">
       <div class="modal-head">

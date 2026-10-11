@@ -76,7 +76,9 @@ pub struct PlayitView {
     pub agent_installed: bool,
     /// Página de playit.gg que hay que aceptar (mientras se vincula).
     pub claim_url: Option<String>,
-    /// "off", "starting", "on" o "error".
+    /// En qué va la vinculación: "visit" (abrir la página), "accept" (aceptar) o "finishing".
+    pub claim_step: Option<String>,
+    /// "off", "starting", "on", "verify" (falta verificar el correo en playit.gg) o "error".
     pub state: String,
     /// Dirección pública (fija: la misma siempre que se use el túnel).
     pub address: Option<String>,
@@ -347,15 +349,22 @@ pub async fn connect_playit(app: &AppHandle, progress: impl Fn(String, f64) + Se
     let code = playit::claim_code();
     let url = playit::claim_url(&code);
     *hosting(app).claim.lock().unwrap() = Some(code.clone());
-    update_playit(app, |p| p.claim_url = Some(url.clone()));
+    update_playit(app, |p| {
+        p.claim_url = Some(url.clone());
+        p.claim_step = Some(playit::ClaimStep::Visit.code().into());
+    });
     let cancelled = || hosting(app).claim.lock().unwrap().as_deref() != Some(code.as_str());
     let finish = |app: &AppHandle| {
         *hosting(app).claim.lock().unwrap() = None;
-        update_playit(app, |p| p.claim_url = None);
+        update_playit(app, |p| {
+            p.claim_url = None;
+            p.claim_step = None;
+        });
     };
     // El código se registra antes de abrir la página (si no, playit.gg no lo encuentra).
     let mut opened = false;
-    let deadline = std::time::Instant::now() + Duration::from_secs(15 * 60);
+    // Crear la cuenta de playit.gg (y verificar el correo) puede tardar.
+    let deadline = std::time::Instant::now() + Duration::from_secs(30 * 60);
     loop {
         if cancelled() {
             return Err(t!("Se canceló la conexión con playit.gg.", "The playit.gg connection was cancelled."));
@@ -365,8 +374,9 @@ pub async fn connect_playit(app: &AppHandle, progress: impl Fn(String, f64) + Se
             return Err(t!("Pasó mucho tiempo sin aceptar en playit.gg. Vuelve a intentarlo.", "Too much time passed without accepting on playit.gg. Try again."));
         }
         match playit::claim_poll(&code).await {
-            Ok(true) => break,
-            Ok(false) => {}
+            Ok(Some(playit::ClaimStep::Accepted)) => break,
+            Ok(Some(step)) => update_playit(app, |p| p.claim_step = Some(step.code().into())),
+            Ok(None) => {}
             Err(error) => {
                 finish(app);
                 return Err(error);
@@ -378,6 +388,7 @@ pub async fn connect_playit(app: &AppHandle, progress: impl Fn(String, f64) + Se
         }
         tokio::time::sleep(Duration::from_millis(1500)).await;
     }
+    update_playit(app, |p| p.claim_step = Some(playit::ClaimStep::Accepted.code().into()));
     let mut secret = None;
     for _ in 0..30 {
         match playit::claim_exchange(&code).await {
@@ -392,28 +403,135 @@ pub async fn connect_playit(app: &AppHandle, progress: impl Fn(String, f64) + Se
             }
         }
     }
-    finish(app);
-    let secret = secret.ok_or(t!("playit.gg aceptó, pero no entregó la clave. Vuelve a intentarlo.", "playit.gg accepted but did not hand over the key. Try again."))?;
-    playit::save_secret(&paths, &secret)?;
-    let account = playit::run_data(&secret).await.ok().map(|d| d.account);
-    {
-        let mut saved = hosting(app).saved.lock().unwrap();
-        saved.account = account.clone();
+    let Some(secret) = secret else {
+        finish(app);
+        return Err(t!("playit.gg aceptó, pero no entregó la clave. Vuelve a intentarlo.", "playit.gg accepted but did not hand over the key. Try again."));
+    };
+    if let Err(error) = playit::save_secret(&paths, &secret) {
+        finish(app);
+        return Err(error);
     }
-    save_saved(app);
     update_playit(app, |p| {
         p.connected = true;
-        p.account = account;
-        p.state = "off".into();
         p.message = None;
     });
+    // Se termina de una vez (el agente conectado y la dirección creada) y Parabellum vuelve al frente.
+    let result = setup_playit(app, &secret).await;
+    finish(app);
+    crate::cuenta::show_window(app);
     retarget(app).await;
-    Ok(())
+    result
+}
+
+/// Deja playit.gg listo de una vez, sin esperar a compartir algo:
+///   1. El agente se conecta: es lo que espera la página de playit.gg tras aceptar («waiting for the
+///      agent»); si no, se queda esperando y parece que no funcionó.
+///   2. Se crea la dirección (el túnel), que ya no cambia.
+/// Si la cuenta todavía no puede tener dirección (correo sin verificar), queda en "verify" y se
+/// vuelve a comprobar con un botón, sin volver a vincular.
+async fn setup_playit(app: &AppHandle, secret: &str) -> Result<(), String> {
+    let paths = app.state::<AppState>().paths.clone();
+    update_playit(app, |p| {
+        p.state = "starting".into();
+        p.message = Some(t!("Conectando con playit.gg…", "Connecting to playit.gg…"));
+    });
+    let mut tunnel = hosting(app).tunnel.lock().await;
+    // Un agente con la clave anterior (al volver a vincular) se cierra.
+    if let Some(agent) = tunnel.agent.take() {
+        agent.stop();
+    }
+    tunnel.target = None;
+    let fail = |app: &AppHandle, state: &str, message: String| {
+        update_playit(app, |p| {
+            p.state = state.into();
+            p.message = Some(message.clone());
+        });
+        message
+    };
+    let mut agent = match playit::Agent::start(&paths, secret) {
+        Ok(agent) => agent,
+        Err(error) => return Err(fail(app, "error", error)),
+    };
+    let mut connected = false;
+    for _ in 0..90 {
+        if agent.connected() {
+            connected = true;
+            break;
+        }
+        if !agent.running() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    if !connected {
+        let detail = agent.last_line().unwrap_or_default();
+        agent.stop();
+        let message = t!("El agente de playit.gg no pudo conectarse. Revisa tu internet y pulsa «Reintentar». {detail}", "The playit.gg agent could not connect. Check your internet and press «Retry». {detail}");
+        return Err(fail(app, "error", message.trim().to_string()));
+    }
+    // Ya apunta a lo que se comparte ahora, si hay algo; si no, al puerto normal de Minecraft.
+    let port = desired_target(app).map(|(_, port)| port).unwrap_or(25565);
+    let report = app.clone();
+    match playit::ensure_tunnel(secret, port, move |message| update_playit(&report, |p| p.message = Some(message))).await {
+        Ok((address, data)) => {
+            tunnel.agent = Some(agent);
+            drop(tunnel);
+            {
+                let mut saved = hosting(app).saved.lock().unwrap();
+                saved.address = Some(address.clone());
+                saved.account = Some(data.account.clone());
+            }
+            save_saved(app);
+            update_playit(app, |p| {
+                p.connected = true;
+                p.state = "off".into();
+                p.address = Some(address);
+                p.account = Some(data.account);
+                p.message = None;
+            });
+            Ok(())
+        }
+        Err(error) => {
+            agent.stop();
+            drop(tunnel);
+            if error.invalid_key() {
+                playit::clear_secret(&paths);
+                update_playit(app, |p| p.connected = false);
+            }
+            if error.needs_verification() {
+                let account = playit::run_data(secret).await.ok().map(|d| d.account);
+                update_playit(app, |p| p.account = account.or(Some("email-not-verified".into())));
+                return Err(fail(app, "verify", error.explain()));
+            }
+            Err(fail(app, "error", error.explain()))
+        }
+    }
+}
+
+/// «Reintentar» o «Ya lo verifiqué»: vuelve a dejar listo playit.gg con la clave guardada.
+pub async fn recheck_playit(app: &AppHandle) -> Result<(), String> {
+    let paths = app.state::<AppState>().paths.clone();
+    let secret = playit::load_secret(&paths).ok_or(t!("Conecta playit.gg para tener una dirección pública.", "Connect playit.gg to get a public address."))?;
+    let result = setup_playit(app, &secret).await;
+    retarget(app).await;
+    result
+}
+
+/// Lo que se debe compartir ahora: el primer servidor listo o, si se eligió, el mundo abierto en LAN.
+fn desired_target(app: &AppHandle) -> Option<(Target, u16)> {
+    let hosting = hosting(app);
+    let running = hosting.running.lock().unwrap();
+    let server = running.iter().filter(|(_, r)| r.phase == Phase::Ready).min_by_key(|(_, r)| r.started).map(|(id, r)| (Target::Server(id.clone()), r.port));
+    let share = hosting.saved.lock().unwrap().share_world;
+    server.or_else(|| hosting.world.lock().unwrap().as_ref().filter(|_| share).map(|w| (Target::World, w.port)))
 }
 
 pub fn cancel_claim(app: &AppHandle) {
     *hosting(app).claim.lock().unwrap() = None;
-    update_playit(app, |p| p.claim_url = None);
+    update_playit(app, |p| {
+        p.claim_url = None;
+        p.claim_step = None;
+    });
 }
 
 /// Olvida la clave de este PC (el agente sigue en la cuenta de playit.gg hasta que lo borres allí).
@@ -468,15 +586,12 @@ pub fn world_address(app: &AppHandle) -> Option<String> {
 pub async fn retarget(app: &AppHandle) {
     let state = app.state::<AppState>();
     let hosting = &state.hosting;
-    let desired: Option<(Target, u16)> = {
-        let running = hosting.running.lock().unwrap();
-        let server = running.iter().filter(|(_, r)| r.phase == Phase::Ready).min_by_key(|(_, r)| r.started).map(|(id, r)| (Target::Server(id.clone()), r.port));
-        let share = hosting.saved.lock().unwrap().share_world;
-        server.or_else(|| hosting.world.lock().unwrap().as_ref().filter(|_| share).map(|w| (Target::World, w.port)))
-    };
+    let desired = desired_target(app);
     let mut tunnel = hosting.tunnel.lock().await;
     let alive = tunnel.agent.as_mut().is_some_and(|a| a.running());
-    if desired == tunnel.target && (desired.is_none() || alive) {
+    // Nada que cambiar (y, sin nada compartido, tampoco queda un agente encendido de más).
+    let settled = if desired.is_none() { tunnel.agent.is_none() } else { alive };
+    if desired == tunnel.target && settled {
         return;
     }
     let previous = tunnel.target.clone();
@@ -572,8 +687,9 @@ pub async fn retarget(app: &AppHandle) {
             drop(tunnel);
             let message = error.explain();
             let invalid = error.invalid_key();
+            let verify = error.needs_verification();
             update_playit(app, |p| {
-                p.state = "error".into();
+                p.state = if verify { "verify" } else { "error" }.into();
                 p.message = Some(message);
                 if invalid {
                     p.connected = false;

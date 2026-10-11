@@ -89,6 +89,7 @@ function applyHostView(view) {
   if (state.page === "host") renderHost();
   if (state.page === "hosted") renderHosted();
   if (state.page === "home") renderHomeServerTile();
+  updateServersChanged();
 }
 
 async function loadHosting() {
@@ -175,12 +176,26 @@ function renderTunnel() {
         ? t(" playit.gg pide verificar tu correo.", " playit.gg asks you to verify your email.")
         : "";
   if (p.claimUrl) {
+    // Los pasos los dice playit.gg: si alguien inicia sesión y su página lo deja en otra parte, aquí se
+    // ve que falta volver a la página de vincular.
+    const steps = {
+      visit: [
+        t("Abre la página de playit.gg", "Open the playit.gg page"),
+        t("Si te pidió iniciar sesión o crear tu cuenta, al terminar pulsa «Abrir de nuevo» para volver a la página de vincular.", "If it asked you to sign in or create your account, when you finish press «Open again» to go back to the link page."),
+      ],
+      accept: [t("Acepta en playit.gg", "Accept on playit.gg"), t("Pulsa «Add agent» (o «Accept») en la página que se abrió. Parabellum termina solo.", "Press «Add agent» (or «Accept») on the page that opened. Parabellum finishes on its own.")],
+      finishing: [t("Terminando de conectar…", "Finishing the connection…"), p.message ?? t("Creando tu dirección.", "Creating your address.")],
+    };
+    const [title, detail] = steps[p.claimStep] ?? steps.visit;
     box.innerHTML = tunnelRow({
       iconHtml: spinner,
       kind: "busy",
-      title: t("Acepta en tu navegador", "Accept in your browser"),
-      detail: t("Inicia sesión en playit.gg (o entra como invitado), pulsa «Add agent» y vuelve aquí.", "Sign in to playit.gg (or continue as a guest), press «Add agent» and come back here."),
-      actions: `<button class="btn small" id="tunnel-reopen">${icon("external")}${t("Abrir de nuevo", "Open again")}</button><button class="btn small" id="tunnel-cancel">${t("Cancelar", "Cancel")}</button>`,
+      title,
+      detail,
+      actions:
+        p.claimStep === "finishing"
+          ? ""
+          : `<button class="btn small" id="tunnel-reopen">${icon("external")}${t("Abrir de nuevo", "Open again")}</button><button class="btn small" id="tunnel-cancel">${t("Cancelar", "Cancel")}</button>`,
     });
     return;
   }
@@ -201,6 +216,12 @@ function renderTunnel() {
     on: { kind: "on", iconHtml: icon("globe"), title: t(`playit.gg activo · ${target}`, `playit.gg active · ${target}`), detail: account.trim() },
     starting: { kind: "starting", iconHtml: spinner, title: t("Abriendo tu dirección…", "Opening your address…"), detail: p.message ?? "" },
     error: { kind: "error", iconHtml: icon("alert"), title: t("La dirección no se pudo abrir", "The address could not be opened"), detail: p.message ?? "", error: true },
+    verify: {
+      kind: "error",
+      iconHtml: icon("alert"),
+      title: t("Verifica tu correo en playit.gg", "Verify your email on playit.gg"),
+      detail: t("playit.gg te mandó un correo al crear tu cuenta. Ábrelo, confirma tu cuenta y pulsa «Ya lo verifiqué»: no hace falta volver a conectar.", "playit.gg sent you an email when you created your account. Open it, confirm your account and press «I verified it»: no need to connect again."),
+    },
     off: {
       kind: "",
       iconHtml: icon("globe"),
@@ -212,8 +233,22 @@ function renderTunnel() {
   box.innerHTML = tunnelRow({
     ...current,
     address: p.address,
-    actions: (p.state === "error" ? `<button class="btn small" id="tunnel-retry">${icon("refresh")}${t("Reintentar", "Retry")}</button>` : "") + menu,
+    actions:
+      (p.state === "error" ? `<button class="btn small" id="tunnel-retry">${icon("refresh")}${t("Reintentar", "Retry")}</button>` : "") +
+      (p.state === "verify" ? `<button class="btn small primary" id="tunnel-retry">${icon("check")}${t("Ya lo verifiqué", "I verified it")}</button>` : "") +
+      menu,
   });
+}
+
+/** «Reintentar» o «Ya lo verifiqué»: vuelve a dejar lista la dirección con la cuenta ya vinculada. */
+async function retryPlayit() {
+  try {
+    await invoke("reintentar_playit");
+    const address = host.view?.playit.address;
+    if (address) toast(t(`Listo. Tu dirección: ${address}`, `Done. Your address: ${address}`));
+  } catch (error) {
+    toast(String(error), "error");
+  }
 }
 
 async function connectPlayit() {
@@ -234,7 +269,8 @@ async function connectPlayit() {
   renderTunnel();
   try {
     applyHostView(await invoke("conectar_playit"));
-    toast(t("playit.gg quedó conectado.", "playit.gg is connected."));
+    const address = host.view.playit.address;
+    toast(address ? t(`playit.gg quedó conectado. Tu dirección: ${address}`, `playit.gg is connected. Your address: ${address}`) : t("playit.gg quedó conectado.", "playit.gg is connected."));
   } catch (error) {
     toast(String(error), "error");
   } finally {
@@ -502,8 +538,14 @@ function renderHosted() {
     address = `<div class="address-card">${icon("info")}<div class="grow"><span class="faint">${t("Dirección pública", "Public address")}</span><b>${t("La está usando otro servidor encendido", "Another running server is using it")}</b></div></div>`;
   } else if (!p.connected) {
     address = `<div class="address-card">${icon("globe")}<div class="grow"><span class="faint">${t("Dirección pública", "Public address")}</span><b>${t("Conecta playit.gg en «Hostear partida»", "Connect playit.gg in «Host a game»")}</b></div><button class="btn small" id="hosted-go-connect">${t("Ir", "Go")}</button></div>`;
+  } else if (on && (p.state === "error" || p.state === "verify")) {
+    // Se arregla desde aquí: sin apagar el servidor ni volver a conectar playit.gg.
+    const verify = p.state === "verify";
+    address = `<div class="address-card">${icon("alert")}<div class="grow"><span class="faint">${t("Dirección pública", "Public address")}</span><b>${escapeHtml(
+      verify ? t("Verifica tu correo en playit.gg para tener dirección", "Verify your email on playit.gg to get an address") : (p.message ?? ""),
+    )}</b></div><button class="btn small ${verify ? "primary" : ""}" data-playit-retry>${verify ? t("Ya lo verifiqué", "I verified it") : t("Reintentar", "Retry")}</button></div>`;
   } else if (on) {
-    address = `<div class="address-card">${p.state === "error" ? icon("alert") : `<div class="spinner small"></div>`}<div class="grow"><span class="faint">${t("Dirección pública", "Public address")}</span><b>${escapeHtml(p.state === "error" ? (p.message ?? "") : t("Se abre cuando el servidor termine de encender…", "It opens when the server finishes starting…"))}</b></div></div>`;
+    address = `<div class="address-card"><div class="spinner small"></div><div class="grow"><span class="faint">${t("Dirección pública", "Public address")}</span><b>${escapeHtml(t("Se abre cuando el servidor termine de encender…", "It opens when the server finishes starting…"))}</b></div></div>`;
   } else {
     address = `<div class="address-card">${icon("globe")}<div class="grow"><span class="faint">${t("Dirección pública", "Public address")}</span><b>${escapeHtml(p.address ?? t("Se crea al encender", "Created when you start it"))}</b></div></div>`;
   }
@@ -1278,7 +1320,7 @@ function wireHostEvents() {
       if (url) invoke("abrir_enlace", { url });
       return;
     }
-    if (event.target.closest("#tunnel-retry")) return void invoke("reintentar_playit").catch((e) => toast(String(e), "error"));
+    if (event.target.closest("#tunnel-retry, [data-playit-retry]")) return void retryPlayit();
     const menu = event.target.closest("#tunnel-menu");
     if (menu) return void tunnelMenu(menu);
     if (event.target.closest("#hosted-go-connect")) return void navigate("host");
