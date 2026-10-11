@@ -822,13 +822,13 @@ function renderFriendServers() {
   const box = $("#friend-servers");
   const s = state.social;
   if (!(s?.signedIn && s.connected)) {
-    setHtml(box, `<p class="muted small-text friend-servers-empty">${t("Inicia sesión con Google (panel de amigos) para ver aquí las partidas de tus amigos.", "Sign in with Google (friends panel) to see your friends' games here.")}</p>`);
+    setHtml(box, `<p class="muted small-text friend-servers-empty">${t("Inicia sesión con Google para ver las partidas de tus amigos.", "Sign in with Google to see your friends' games.")}</p>`);
     return;
   }
   // Encendidos primero; los servidores apagados a los que te invitaron, al final.
   const items = friendActivity().sort((a, b) => Number(b.online) - Number(a.online));
   if (!items.length) {
-    setHtml(box, `<p class="muted small-text friend-servers-empty">${t("Ninguno de tus amigos tiene una partida abierta ahora. Cuando la tengan, aparecerá aquí con «Unirse».", "None of your friends has a game open right now. When they do, it will show up here with «Join».")}</p>`);
+    setHtml(box, `<p class="muted small-text friend-servers-empty">${t("Ninguno de tus amigos está jugando ahora.", "None of your friends is playing right now.")}</p>`);
     return;
   }
   const html = items

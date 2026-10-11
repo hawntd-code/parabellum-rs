@@ -113,6 +113,9 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### 0.15.2: Servidores más simple (pedido de Juan)
+- [x] Página Servidores sin descripciones (solo «Servidores», «De tus amigos» y «Guardados»); el formulario de cuatro campos se cambió por un botón «Agregar servidor» que abre un diálogo con nombre, dirección e instancia (Enter guarda), para que no llame más la atención que los servidores de tus amigos
+
 ### 0.15.1: los modpacks abren a la primera (prueba de Juan con Better MC BMC4)
 Instalando Better MC [FORGE] - BMC4 desde Modpacks en el PC de Juan (Iris Xe) salían avisos de mods que «faltaban» que el doctor no podía arreglar, y el doctor daba por bueno el juego aunque se cayera después. Lo que pasaba y lo que se hizo:
 - [x] **Avisos falsos antes de jugar**: los mods «multiloader» traen mods.toml (Forge) y neoforge.mods.toml (NeoForge 1.21) con dependencias distintas y el doctor leía el de NeoForge incluso en Forge (Blended Compat «pedía 1.21», Immersive Lanterns «necesitaba» accessories, Sodium Options API reeses_sodium_options). Ahora cada loader lee el suyo: Forge y NeoForge < 1.20.5 mods.toml, NeoForge ≥ 1.20.5 neoforge.mods.toml

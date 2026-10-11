@@ -2926,16 +2926,30 @@ function wireEvents() {
     if (event.key === "Enter") $("#detail-join").click();
   };
 
-  // Servidores
-  $("#server-add").onclick = () => {
-    const address = $("#server-address").value.trim();
-    const instance = $("#server-instance").value;
-    if (!address) return toast(t("Escribe la dirección del servidor.", "Type the server address."), "error");
-    if (!instance) return toast(t("Primero crea una instancia para entrar al servidor.", "Create an instance first to join the server."), "error");
-    saveServers([...(state.settings.servers ?? []), { name: $("#server-name").value.trim(), address, instance }]);
+  // Servidores: «Agregar servidor» abre un diálogo con nombre, dirección e instancia.
+  $("#server-new").onclick = () => {
     $("#server-name").value = "";
     $("#server-address").value = "";
+    renderServers();
+    openModal("#server-dialog");
   };
+  for (const id of ["#server-dialog-close", "#server-cancel"]) $(id).onclick = () => closeModal("#server-dialog");
+  $("#server-add").onclick = async () => {
+    const address = $("#server-address").value.trim();
+    const instance = $("#server-instance").value;
+    if (!address) {
+      $("#server-address").focus();
+      return toast(t("Escribe la dirección del servidor.", "Type the server address."), "error");
+    }
+    if (!instance) return toast(t("Primero crea una instancia para entrar al servidor.", "Create an instance first to join the server."), "error");
+    await saveServers([...(state.settings.servers ?? []), { name: $("#server-name").value.trim(), address, instance }]);
+    closeModal("#server-dialog");
+  };
+  for (const id of ["#server-name", "#server-address"]) {
+    $(id).onkeydown = (event) => {
+      if (event.key === "Enter") $("#server-add").click();
+    };
+  }
   $("#server-list").onclick = (event) => {
     const playButton = event.target.closest("[data-server-play]");
     if (playButton) {
@@ -3071,6 +3085,7 @@ function wireEvents() {
       if (!state.doctor?.busy) closeModal("#doctor-dialog");
       closeModal("#install-dialog");
       closeModal("#group-dialog");
+      closeModal("#server-dialog");
       closeModal("#account-dialog");
       if (!state.exporting?.busy) closeModal("#export-dialog");
       $("#lightbox").classList.add("hidden");
