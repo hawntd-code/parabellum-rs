@@ -3216,6 +3216,7 @@ async function init() {
   state.systemRam = initial.systemRamGb;
   state.version = initial.version;
   state.driveUrl = initial.driveUrl;
+  setCreator(initial.creator);
   // Buscar una versión nueva de Parabellum sin estorbar el arranque.
   setTimeout(() => checkLauncherUpdate(false, true), 4000);
   $("#root-text").textContent = initial.root;
@@ -3477,7 +3478,7 @@ async function runExplore(append = false) {
     if (id !== e.requestId) return;
     if (/No se puede conectar con Modrinth|Cannot connect to Modrinth/.test(String(error)) && !e.autoDrive) {
       e.autoDrive = true;
-      toast(t("Modrinth está bloqueado en esta red: aquí tienes los modpacks de tu Drive.", "Modrinth is blocked on this network: here are the modpacks from your Drive."));
+      toast(t("Modrinth está bloqueado en esta red: aquí tienes los modpacks del catálogo de Drive.", "Modrinth is blocked on this network: here are the modpacks from the Drive catalog."));
       return selectExploreKind("drive");
     }
     $("#explore-results").innerHTML = `<div class="content-empty">${escapeHtml(error)}</div>`;
@@ -4255,13 +4256,14 @@ async function runExport() {
       exporting.folder = result.folder.replace(/[\\/][^\\/]+$/, "");
       exporting.choose = false;
       updateExportDestination();
-      $("#export-drive").classList.toggle("hidden", !state.driveUrl);
-      $("#export-upload").classList.toggle("hidden", !state.driveUrl);
+      const publisher = state.creator && !!state.driveUrl;
+      $("#export-drive").classList.toggle("hidden", !publisher);
+      $("#export-upload").classList.toggle("hidden", !publisher);
       const folder = result.folder.split(/[\\/]/).pop();
       $("#export-status").textContent =
-        (state.driveUrl
+        (publisher
           ? t(`Listo (${formatSize(result.size)}). Súbelo al catálogo con «Subir a Drive», o copia la carpeta «${folder}» a una USB.`, `Done (${formatSize(result.size)}). Upload it to the catalog with «Upload to Drive», or copy the «${folder}» folder to a USB drive.`)
-          : t(`Listo (${formatSize(result.size)}). Sube la carpeta «${folder}» a tu Drive tal cual o cópiala a una USB: dentro van el modpack y Minecraft ${folder} con su Java.`, `Done (${formatSize(result.size)}). Upload the «${folder}» folder to your Drive as it is or copy it to a USB drive: it contains the modpack and Minecraft ${folder} with its Java.`)) +
+          : t(`Listo (${formatSize(result.size)}). Copia la carpeta «${folder}» a una USB para instalarlo en otro PC: dentro van el modpack y Minecraft ${folder} con su Java.`, `Done (${formatSize(result.size)}). Copy the «${folder}» folder to a USB drive to install it on another PC: it contains the modpack and Minecraft ${folder} with its Java.`)) +
         (result.baseReused ? t(" Minecraft ya estaba en esa carpeta y no se volvió a empaquetar.", " Minecraft was already in that folder and was not packed again.") : "");
     }
     $("#export-ok span").textContent = t("Mostrar en la carpeta", "Show in folder");
@@ -4297,7 +4299,7 @@ async function loadDriveCatalog(reload = false) {
   if (drive.loading) return;
   drive.loading = true;
   if (!drive.data || reload) {
-    $("#explore-results").innerHTML = `<div class="content-loading column"><div class="spinner"></div><span class="muted">${t("Leyendo tus paquetes de Drive…", "Reading your Drive packages…")}</span></div>`;
+    $("#explore-results").innerHTML = `<div class="content-loading column"><div class="spinner"></div><span class="muted">${t("Leyendo los paquetes de Drive…", "Reading the Drive packages…")}</span></div>`;
   }
   try {
     drive.data = await invoke("catalogo", { recargar: reload });
@@ -4385,7 +4387,9 @@ function renderDrive() {
         ? t("Nada coincide con la búsqueda.", "Nothing matches the search.")
         : data.entries.length
           ? t("No hay modpacks.", "There are no modpacks.")
-          : t("Todavía no hay paquetes. Exporta un modpack «Para Drive o USB» y súbelo a la carpeta de Drive, o copia los zips a la carpeta «paquetes» junto a Parabellum.", "There are no packages yet. Export a modpack «For Drive or USB» and upload it to the Drive folder, or copy the zips to the «paquetes» folder next to Parabellum.")
+          : state.creator
+            ? t("Todavía no hay paquetes. Exporta un modpack «Para Drive o USB» y súbelo a la carpeta de Drive, o copia los zips a la carpeta «paquetes» junto a Parabellum.", "There are no packages yet. Export a modpack «For Drive or USB» and upload it to the Drive folder, or copy the zips to the «paquetes» folder next to Parabellum.")
+            : t("Todavía no hay modpacks en el catálogo.", "There are no modpacks in the catalog yet.")
     }</div>`;
     return;
   }
@@ -4467,8 +4471,30 @@ async function applyLauncherUpdate() {
   }
 }
 
+/** Las herramientas de publicar solo se ven en el PC de quien mantiene el catálogo. */
+function setCreator(on) {
+  state.creator = !!on;
+  document.body.classList.toggle("creator", state.creator);
+}
+
+/** Siete clics seguidos en la versión (en Acerca de) activan o quitan las herramientas de publicar. */
+async function versionClicked() {
+  const now = Date.now();
+  state.versionClicks = (state.versionClicks ?? []).filter((t) => now - t < 4000).concat(now);
+  if (state.versionClicks.length < 7) return;
+  state.versionClicks = [];
+  try {
+    setCreator(await invoke("herramientas_creador", { activar: !state.creator }));
+    toast(state.creator ? t("Herramientas de publicar activadas en este PC.", "Publishing tools turned on on this PC.") : t("Herramientas de publicar ocultas en este PC.", "Publishing tools hidden on this PC."));
+    refreshAbout();
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
 async function refreshAbout() {
   $("#about-version").textContent = `Parabellum ${state.version}`;
+  if (!state.creator) return;
   const folder = await invoke("carpeta_exportar").catch(() => null);
   $("#about-folder").textContent = folder ?? t("Todavía no eliges una (se pide al publicar o exportar).", "You have not chosen one yet (it is asked when publishing or exporting).");
   $("#about-open-drive").classList.toggle("hidden", !state.driveUrl);
@@ -4603,6 +4629,7 @@ function wireDriveEvents() {
   };
   $("#about-publish").onclick = publishLauncher;
   $("#about-drive-connect").onclick = toggleDrivePublisher;
+  $("#about-version").onclick = versionClicked;
   $("#export-upload").onclick = uploadExport;
   $("#about-open-drive").onclick = () => state.driveUrl && invoke("abrir_enlace", { url: state.driveUrl });
   $("#export-drive").onclick = () => state.driveUrl && invoke("abrir_enlace", { url: state.driveUrl });
@@ -4616,7 +4643,7 @@ function updateExportDestination() {
   const exporting = state.exporting;
   $("#export-destination").classList.toggle("hidden", exporting.format !== "drive");
   $("#export-folder-text").textContent =
-    exporting.choose || !exporting.folder ? t("Elegirás la carpeta al exportar (la de tus paquetes para Drive, o una USB).", "You will choose the folder when exporting (your Drive packages folder, or a USB drive).") : t(`Se guardará en ${exporting.folder}`, `It will be saved in ${exporting.folder}`);
+    exporting.choose || !exporting.folder ? (state.creator ? t("Elegirás la carpeta al exportar (la de tus paquetes para Drive, o una USB).", "You will choose the folder when exporting (your Drive packages folder, or a USB drive).") : t("Elegirás la carpeta al exportar (por ejemplo, una USB).", "You will choose the folder when exporting (for example, a USB drive).")) : t(`Se guardará en ${exporting.folder}`, `It will be saved in ${exporting.folder}`);
   $("#export-folder-change").classList.toggle("hidden", exporting.choose || !exporting.folder);
 }
 

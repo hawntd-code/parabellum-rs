@@ -81,6 +81,8 @@ struct Initial {
     system_ram_gb: u32,
     /// Carpeta de Drive con los modpacks (si está configurada).
     drive_url: Option<String>,
+    /// Este PC es el de quien publica (ve las herramientas de publicar en Drive).
+    creator: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -113,8 +115,27 @@ fn estado_inicial(state: State<AppState>) -> Initial {
         root: state.paths.root.display().to_string(),
         system_ram_gb: system_ram_gb(),
         drive_url: state.config.drive_folder_url(),
+        creator: is_creator(&state.paths),
         settings,
     }
+}
+
+const CREATOR_FILE: &str = "creador.txt";
+
+/// Las herramientas de publicar (carpeta para Drive, conectar Drive, publicar versiones) son solo para
+/// quien mantiene el catálogo: se ven si este PC ya tiene Drive conectado para publicar, o si se
+/// activaron a mano (siete clics en la versión, en Acerca de). Lo elegido a mano manda.
+fn is_creator(paths: &Paths) -> bool {
+    match std::fs::read_to_string(paths.data.join(CREATOR_FILE)) {
+        Ok(choice) => choice.trim() == "si",
+        Err(_) => drive::load(paths).is_some(),
+    }
+}
+
+#[tauri::command]
+fn herramientas_creador(state: State<AppState>, activar: bool) -> Result<bool, String> {
+    std::fs::write(state.paths.data.join(CREATOR_FILE), if activar { "si" } else { "no" }).map_err(|e| e.to_string())?;
+    Ok(is_creator(&state.paths))
 }
 
 #[tauri::command]
@@ -2664,6 +2685,7 @@ fn main() {
             abrir_carpeta_paquetes,
             publicar_launcher,
             drive_publicar,
+            herramientas_creador,
             conectar_drive,
             desconectar_drive,
             subir_paquete_drive,

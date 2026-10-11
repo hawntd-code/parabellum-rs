@@ -113,6 +113,9 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### 0.16.1: herramientas de publicar solo para el creador (pedido de Juan)
+- [x] En Ajustes › Acerca de los demás solo ven la versión y «Buscar actualizaciones». La carpeta para Drive, «Conectar Drive», «Publicar esta versión» y «Abrir mi Drive» (también los botones de Drive al exportar) se ven solo en el PC de quien publica: el que ya tiene Drive conectado para publicar (datos/drive-publicar.bin). En otro PC se activan (o se ocultan) con siete clics seguidos en la versión; queda en datos/creador.txt. Los textos para los demás ya no hablan de «tu Drive»
+
 ### 0.16.0: publicar en Drive y batería de modpacks
 - [x] **Publicar en Drive desde Parabellum** (fin de la fase 9): en Ajustes › Acerca de, «Conectar Drive» pide en el navegador el permiso de escribir en Drive (aparte del inicio de sesión normal: solo lo da quien publica; queda cifrado con DPAPI en datos/drive-publicar.bin). Después:
   - Al exportar un modpack «Para Drive o USB», el botón **Subir a Drive** sube el modpack (zip, icono y .json) y Minecraft de esa versión a la carpeta del catálogo, con la misma estructura (versión/modpack/…); las carpetas que falten se crean

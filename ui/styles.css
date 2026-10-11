@@ -375,6 +375,9 @@ input:disabled { opacity: .6; }
 .details dd { margin: 0; overflow-wrap: anywhere; font-weight: 600; }
 
 /* ---------- Servidores ---------- */
+/* Herramientas de publicar: solo en el PC de quien mantiene el catálogo. */
+body:not(.creator) .creator-only { display: none !important; }
+
 /* Título de una lista con su botón a la derecha («Guardados» + «Agregar servidor»). */
 .list-head { display: flex; align-items: center; gap: 12px; margin: 26px 0 12px; }
 .list-head .host-subtitle { flex: 1; margin: 0; }
