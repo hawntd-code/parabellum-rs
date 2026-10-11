@@ -66,7 +66,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Configuración integrada en el exe (config-integrada.json fuera del repositorio; lanzador-config.json junto al exe la sustituye)
 - [x] La ventana se abre maximizada
 - [x] **Versión C# retirada** (2026-10-08): sus instancias, mundos y bases pasaron a la carpeta de Parabellum; Parabellum lee sus ajustes (nombre, UUID fijo, memoria) y su actualizador lleva a quienes la usen a esta versión en cuanto se publique en Drive
-- [ ] (Fase 9) Subir a Drive directamente desde Parabellum, con la sesión de Google
+- [x] (Fase 9) Subir a Drive directamente desde Parabellum (0.16)
 
 ### Fase 8: Forge, NeoForge e importación
 - [x] **Instancias Forge y NeoForge** con su instalador oficial: bibliotecas y "processors" (las herramientas que preparan el juego parcheado), también para Minecraft 26; cambiar su versión desde la instancia
@@ -75,7 +75,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] **Importar de otro launcher**: CurseForge, Prism y MultiMC se encuentran solos (o se elige la carpeta); se copian mods, mundos y opciones y el loader lo instala Parabellum
 - [x] *Prueba:* Better MC BMC4 (Forge 47.4.20, 444 mods) llega al menú; desde cero, Forge 1.20.1, NeoForge 1.21.1, Forge 26.1.2 y NeoForge 26.1.2 se instalan y llegan al menú; Better MC [BMC6] (NeoForge, 228 mods) importado de CurseForge llega al menú; paquetes de Forge y NeoForge exportados e instalados en una carpeta vacía sin internet llegan al menú
 - [ ] (Opcional) CurseForge: requiere solicitar una clave de API y respetar qué autores permiten descargas externas
-- [ ] Probar Forge 1.12.2 (su instalador más nuevo no tiene processors; los muy antiguos usan otro formato)
+- [x] Probar Forge 1.12.2: abre (0.16.0, con Java 8 los argumentos van en la línea de comandos)
 
 ### Modpacks completos e íntegros (0.10.1)
 - [x] **Mods que el modpack pide a CurseForge**: algunos modpacks de Modrinth (Better MC BMC2) no pueden traer los mods que solo están en CurseForge y los piden con Missing Mods Checker, que abre una ventana para bajarlos a mano y cierra el juego. Parabellum los baja solo, de la CDN de CurseForge, al instalar el modpack (y al importar o instalar desde Drive)
@@ -102,7 +102,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Cuentas de Parabellum: cambiar de jugador con un clic y UUID fijo
 - [x] Avisos de Windows (solicitud nueva, un amigo abrió su mundo) sin instalador: Parabellum se registra solo para el usuario; se pueden apagar en Comportamiento
 - [ ] *Prueba:* iniciar sesión, agregarse con un compañero y entrar a su mundo con Unirse
-- [ ] Subir a Drive directamente desde Parabellum (pide más permisos de Drive que los de ahora)
+- [x] Subir a Drive directamente desde Parabellum (0.16): ver «Publicar en Drive» más abajo
 
 ### Fase 10: chat
 - [x] **Mensajes** con amigos y **grupos** (crear, agregar amigos, cambiar nombre, salir); página Mensajes con conversaciones recientes y marca de no leídos
@@ -112,6 +112,39 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Reglas publicadas en Firebase (Juan, 2026-10-10)
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
+
+### 0.16.0: publicar en Drive y batería de modpacks
+- [x] **Publicar en Drive desde Parabellum** (fin de la fase 9): en Ajustes › Acerca de, «Conectar Drive» pide en el navegador el permiso de escribir en Drive (aparte del inicio de sesión normal: solo lo da quien publica; queda cifrado con DPAPI en datos/drive-publicar.bin). Después:
+  - Al exportar un modpack «Para Drive o USB», el botón **Subir a Drive** sube el modpack (zip, icono y .json) y Minecraft de esa versión a la carpeta del catálogo, con la misma estructura (versión/modpack/…); las carpetas que falten se crean
+  - «Publicar esta versión» de Parabellum sube la carpeta _parabellum y manda a la papelera de Drive las versiones anteriores: quien abra Parabellum se actualiza
+  - Lo que ya está igual en Drive (mismo tamaño y huella MD5) no se vuelve a subir; lo que cambió se reemplaza en el mismo archivo (el enlace no cambia). Subida en trozos de 8 MB que sigue donde iba si se corta la conexión; los .json van al final para que el catálogo no anuncie un paquete a medio subir
+  - Si la cuenta no puede escribir en la carpeta del catálogo, lo dice (compartirla como Editor con esa cuenta)
+- [ ] *Prueba de Juan:* conectar Drive con la cuenta que edita la carpeta del catálogo y subir un modpack y una versión de Parabellum
+- [x] **Batería de modpacks** (los 11 más descargados de Modrinth que cubren cada loader y versión: instalar como el botón Instalar, revisar como antes de jugar y abrir hasta el menú con capturas). Antes de los arreglos: 1 no abría, 1 «abría» sin sus mods y 4 tenían avisos falsos que habrían detenido el juego. Ahora los 11 llegan al menú y ninguno muestra avisos falsos:
+
+  | Modpack | Loader | Resultado |
+  |---|---|---|
+  | Fabulously Optimized | Fabric 26.2 | Menú en 79 s |
+  | Cobblemon Official | Fabric 1.21.1 | Menú en 129 s |
+  | Zombie Invade 100 Days | Forge 1.20.1 | Menú en 208 s |
+  | Better MC BMC2 | Fabric 1.20.1 | Menú en 125 s (aviso falso corregido) |
+  | The Pixelmon Modpack | NeoForge 1.21.1 | Menú en 51 s |
+  | Create+ | Forge 1.19.2 | Menú en 83 s (2 avisos falsos corregidos) |
+  | Better MC BMC5 | NeoForge 1.21.1 | Menú en 87 s |
+  | Prominence II | Fabric 1.20.1 | Menú en 161 s con sus 678 mods (antes abría con 4) |
+  | Cave Horror Project | Forge 1.20.1 | Menú en 72 s |
+  | Cobbleverse | Fabric 1.21.1 | Menú en 112 s |
+  | Parasites: Reloaded | Forge 1.12.2 | Menú en 97 s (antes no abría) |
+
+  Lo que se arregló (para todos los modpacks, no solo para estos):
+  - **Rutas con «™», acentos o «ñ»**: Java lee su archivo de argumentos en la codificación de Windows (ANSI), no en UTF-8; con UTF-8 «Prominence™» llegaba roto y el juego abría otra carpeta sin mods (pasaría igual con una cuenta de Windows como «José»). Ahora va en ANSI y, si una letra no cabe, la ruta usa su nombre corto de Windows
+  - **Java 8 (Minecraft hasta 1.16) no entiende el archivo de argumentos**: los argumentos van en la línea de comandos. Forge 1.12.2 ya abre
+  - **Copias de un mod incluidas en otros (jar-in-jar)**: el doctor revisa la copia que usa el loader (la suelta en la carpeta, o la más nueva que encaja con el juego y con lo que piden los demás), y lee hasta cuatro niveles de jars dentro de jars (LambDynamicLights trae así sus bibliotecas). Lo que le falta a una biblioteca incluida no se da por perdido
+  - **Correcciones de dependencias del modpack** (config/fabric_loader_dependencies.json de Fabric): se aplican como lo hace Fabric
+  - **Mods repetidos en Forge/NeoForge 1.17+** ya no impiden abrir (el loader usa la copia más nueva): queda como nota con «quitar la vieja». Un mod de otro loader (un Geckolib de Fabric en Forge) es un aviso: el loader se lo salta
+  - **Rangos de versión mal escritos** («[1.19.0,1.19.1,1.19.2)») ya no son un problema: Forge los acepta. Forge antes de 1.13 no lee mods.toml: ahí no se revisan
+  - La pantalla de título también se reconoce por la revisión de Realms (1.20) para terminar la prueba antes
+- [x] Forge 1.12.2 probado (Parasites: Reloaded)
 
 ### 0.15.2: Servidores más simple (pedido de Juan)
 - [x] Página Servidores sin descripciones (solo «Servidores», «De tus amigos» y «Guardados»); el formulario de cuatro campos se cambió por un botón «Agregar servidor» que abre un diálogo con nombre, dirección e instancia (Enter guarda), para que no llame más la atención que los servidores de tus amigos

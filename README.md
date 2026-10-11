@@ -72,6 +72,14 @@ Los invitados se siguen por su cuenta de Google: si alguien se cambia el nombre,
 permiso de administrador y sus cosas en el mundo pasan al nombre nuevo. Y quien entra con el nombre de
 un invitado tiene que estar jugando desde Parabellum con esa cuenta (si no, el servidor lo saca).
 
+## Publicar en Drive
+
+Quien mantiene el catálogo conecta Drive una vez en Ajustes › Acerca de (Google pide el permiso de
+escribir en Drive; los demás jugadores nunca lo ven). Después, «Subir a Drive» al exportar un modpack y
+«Publicar en Drive» con una versión nueva de Parabellum suben los paquetes a la carpeta del catálogo con
+la misma estructura que la carpeta local; lo que ya está igual no se vuelve a subir. La cuenta tiene
+que poder editar esa carpeta.
+
 ## Configuración
 
 La carpeta de Drive y las claves de Google y Firebase se integran al compilar desde
@@ -104,6 +112,7 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--importar-externa <carpeta>` | Copia una de ellas a Parabellum, con su loader |
 | `--instalar-modpack <proyecto> [versión]` | Instala un modpack de Modrinth como instancia nueva |
 | `--instalar-datapack <instancia> <mundo> <proyecto>` | Instala un data pack de Modrinth en un mundo |
+| `--revisar <instancia>` | La revisión de antes de jugar (lo que abriría el doctor) |
 | `--diagnosticar <instancia>` | Qué falla: revisión de mods (dependencias, loader, versión del juego, repetidos) y el último informe de fallo, con sus arreglos |
 | `--arreglar <instancia>` | Probar y arreglar: abre el juego hasta el menú principal y, si no llega, aplica los arreglos recomendados y repite (hasta 5 veces) |
 | `--verificar <instancia> [rapido]` | Comprueba la huella de cada archivo del modpack y repone lo que falte o esté dañado (`rapido`: solo lo que falte) |

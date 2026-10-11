@@ -3146,6 +3146,10 @@ function wireEvents() {
       $("#update-text").textContent = t(`Descargando… ${Math.round(payload.fraction * 100)}%`, `Downloading… ${Math.round(payload.fraction * 100)}%`);
       return;
     }
+    if (payload.task === "drive") {
+      showDriveProgress(payload.stage, payload.fraction);
+      return;
+    }
     if (payload.task === "exportar") {
       $("#export-progress").classList.remove("hidden");
       $("#export-progress div").style.width = `${Math.max(2, payload.fraction * 100)}%`;
@@ -4161,8 +4165,9 @@ function formatSize(bytes) {
 async function openExport(id) {
   const instance = state.instances.find((i) => i.id === id);
   if (!instance) return;
-  state.exporting = { id, format: "drive", entries: [], busy: false, file: null, folder: await invoke("carpeta_exportar").catch(() => null), choose: false };
+  state.exporting = { id, format: "drive", entries: [], busy: false, file: null, result: null, folder: await invoke("carpeta_exportar").catch(() => null), choose: false };
   $("#export-drive").classList.add("hidden");
+  $("#export-upload").classList.add("hidden");
   $("#export-title").textContent = t(`Exportar ${instance.name}`, `Export ${instance.name}`);
   $("#export-name").value = instance.name;
   $("#export-version").value = "1.0.0";
@@ -4194,6 +4199,7 @@ function selectExportFormat(format) {
   for (const option of $$("#export-formats [data-format]")) option.classList.toggle("active", option.dataset.format === format);
   $("#export-mrpack-fields").classList.toggle("hidden", format !== "mrpack");
   $("#export-drive").classList.add("hidden");
+  $("#export-upload").classList.add("hidden");
   updateExportDestination();
   resetExportButton();
   $("#export-status").textContent = "";
@@ -4245,13 +4251,17 @@ async function runExport() {
       $("#export-status").textContent = t(`Listo: ${plural(result.downloads, "archivo se descargará", "archivos se descargarán")} de Modrinth y ${plural(result.included, "va", "van")} dentro del .mrpack.`, `Done: ${plural(result.downloads, "file will be", "files will be")} downloaded from Modrinth and ${plural(result.included, "goes", "go")} inside the .mrpack.`) + (result.warning ? ` ${result.warning}` : "");
     } else {
       exporting.file = result.modpack;
+      exporting.result = result;
       exporting.folder = result.folder.replace(/[\\/][^\\/]+$/, "");
       exporting.choose = false;
       updateExportDestination();
       $("#export-drive").classList.toggle("hidden", !state.driveUrl);
+      $("#export-upload").classList.toggle("hidden", !state.driveUrl);
       const folder = result.folder.split(/[\\/]/).pop();
       $("#export-status").textContent =
-        t(`Listo (${formatSize(result.size)}). Sube la carpeta «${folder}» a tu Drive tal cual o cópiala a una USB: dentro van el modpack y Minecraft ${folder} con su Java.`, `Done (${formatSize(result.size)}). Upload the «${folder}» folder to your Drive as it is or copy it to a USB drive: it contains the modpack and Minecraft ${folder} with its Java.`) +
+        (state.driveUrl
+          ? t(`Listo (${formatSize(result.size)}). Súbelo al catálogo con «Subir a Drive», o copia la carpeta «${folder}» a una USB.`, `Done (${formatSize(result.size)}). Upload it to the catalog with «Upload to Drive», or copy the «${folder}» folder to a USB drive.`)
+          : t(`Listo (${formatSize(result.size)}). Sube la carpeta «${folder}» a tu Drive tal cual o cópiala a una USB: dentro van el modpack y Minecraft ${folder} con su Java.`, `Done (${formatSize(result.size)}). Upload the «${folder}» folder to your Drive as it is or copy it to a USB drive: it contains the modpack and Minecraft ${folder} with its Java.`)) +
         (result.baseReused ? t(" Minecraft ya estaba en esa carpeta y no se volvió a empaquetar.", " Minecraft was already in that folder and was not packed again.") : "");
     }
     $("#export-ok span").textContent = t("Mostrar en la carpeta", "Show in folder");
@@ -4462,6 +4472,66 @@ async function refreshAbout() {
   const folder = await invoke("carpeta_exportar").catch(() => null);
   $("#about-folder").textContent = folder ?? t("Todavía no eliges una (se pide al publicar o exportar).", "You have not chosen one yet (it is asked when publishing or exporting).");
   $("#about-open-drive").classList.toggle("hidden", !state.driveUrl);
+  await refreshDrivePublisher();
+}
+
+/** Con quién se publica en Drive (o que todavía no se conectó). */
+async function refreshDrivePublisher() {
+  try {
+    state.drivePublisher = await invoke("drive_publicar");
+  } catch (error) {
+    state.drivePublisher = null;
+    $("#about-drive-state").textContent = String(error);
+  }
+  const email = state.drivePublisher;
+  if (email || !$("#about-drive-state").textContent) {
+    $("#about-drive-state").textContent = email
+      ? t(`Con ${email}: lo que publiques o exportes se sube solo al catálogo.`, `With ${email}: what you publish or export is uploaded to the catalog on its own.`)
+      : t("Sin conectar: lo subes tú a mano.", "Not connected: you upload it by hand.");
+  }
+  $("#about-drive-connect span").textContent = email ? t("Desconectar", "Disconnect") : t("Conectar Drive", "Connect Drive");
+  $("#about-drive-connect").classList.toggle("hidden", !state.driveUrl);
+  $("#about-publish span").textContent = email ? t("Publicar en Drive", "Publish to Drive") : t("Publicar en la carpeta", "Publish to the folder");
+}
+
+/** Pide en el navegador el permiso de escribir en el Drive del catálogo. Devuelve si quedó conectado. */
+async function connectDrive() {
+  const ok = await confirmAction({
+    title: t("Conectar Drive para publicar", "Connect Drive to publish"),
+    text: t(
+      "Se abrirá Google para que permitas a Parabellum escribir en tu Drive. Elige la cuenta que puede editar la carpeta del catálogo. Solo lo necesita quien publica: los demás no ven este permiso.",
+      "Google will open so you allow Parabellum to write to your Drive. Choose the account that can edit the catalog folder. Only whoever publishes needs it: the others never see this permission.",
+    ),
+    ok: t("Abrir Google", "Open Google"),
+    primary: true,
+  });
+  if (!ok) return false;
+  toast(t("Termina en el navegador y vuelve aquí.", "Finish in the browser and come back here."));
+  try {
+    const email = await invoke("conectar_drive");
+    toast(t(`Drive conectado con ${email}.`, `Drive connected with ${email}.`));
+    await refreshDrivePublisher();
+    return true;
+  } catch (error) {
+    toast(String(error), "error");
+    return false;
+  }
+}
+
+async function toggleDrivePublisher() {
+  if (!state.drivePublisher) return connectDrive();
+  await invoke("desconectar_drive").catch((error) => toast(String(error), "error"));
+  await refreshDrivePublisher();
+}
+
+/** Muestra el avance de una subida a Drive (en la exportación o en Acerca de). */
+function showDriveProgress(stage, fraction) {
+  const where = state.driveUpload === "export" ? "export" : "about";
+  $(`#${where}-progress`).classList.remove("hidden");
+  $(`#${where}-progress > div`).style.width = `${Math.round(fraction * 100)}%`;
+  const status = $(`#${where}-status`);
+  status.classList.remove("hidden");
+  status.textContent = stage;
 }
 
 async function publishLauncher() {
@@ -4469,14 +4539,51 @@ async function publishLauncher() {
   button.disabled = true;
   try {
     const folder = await invoke("publicar_launcher", { notas: $("#about-notes").value, elegir: false });
-    if (folder) {
+    if (!folder) return;
+    refreshAbout();
+    if (!state.drivePublisher) {
       toast(t(`Listo: sube la carpeta «_parabellum» (está en ${folder.replace(/[\\/]_parabellum$/, "")}) a tu Drive. Quien abra Parabellum se actualizará.`, `Done: upload the «_parabellum» folder (it is in ${folder.replace(/[\\/]_parabellum$/, "")}) to your Drive. Whoever opens Parabellum will update.`));
-      refreshAbout();
+      return;
     }
+    state.driveUpload = "about";
+    const message = await invoke("subir_launcher_drive", { carpeta: folder });
+    $("#about-progress").classList.add("hidden");
+    $("#about-status").textContent = message;
+    toast(message);
   } catch (error) {
+    $("#about-progress").classList.add("hidden");
+    $("#about-status").classList.add("hidden");
     toast(String(error), "error");
   } finally {
+    state.driveUpload = null;
     button.disabled = false;
+  }
+}
+
+/** Sube a Drive el paquete que se acaba de exportar (pide conectar Drive la primera vez). */
+async function uploadExport() {
+  const exporting = state.exporting;
+  if (!exporting?.result || exporting.busy) return;
+  if (!state.drivePublisher) {
+    await refreshDrivePublisher();
+    if (!state.drivePublisher && !(await connectDrive())) return;
+  }
+  exporting.busy = true;
+  state.driveUpload = "export";
+  $("#export-upload").disabled = true;
+  try {
+    const message = await invoke("subir_paquete_drive", { modpack: exporting.result.modpack, base: exporting.result.base });
+    $("#export-progress").classList.add("hidden");
+    $("#export-status").textContent = message;
+    $("#export-upload").classList.add("hidden");
+    toast(message);
+  } catch (error) {
+    $("#export-progress").classList.add("hidden");
+    $("#export-status").textContent = String(error);
+  } finally {
+    exporting.busy = false;
+    state.driveUpload = null;
+    $("#export-upload").disabled = false;
   }
 }
 
@@ -4495,6 +4602,8 @@ function wireDriveEvents() {
     }
   };
   $("#about-publish").onclick = publishLauncher;
+  $("#about-drive-connect").onclick = toggleDrivePublisher;
+  $("#export-upload").onclick = uploadExport;
   $("#about-open-drive").onclick = () => state.driveUrl && invoke("abrir_enlace", { url: state.driveUrl });
   $("#export-drive").onclick = () => state.driveUrl && invoke("abrir_enlace", { url: state.driveUrl });
   $("#export-folder-change").onclick = () => {

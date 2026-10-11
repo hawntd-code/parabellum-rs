@@ -31,6 +31,9 @@ pub struct ModMeta {
     /// distintas: hay que mirar el que lee el loader de la instancia.
     #[serde(default)]
     pub neo_toml: bool,
+    /// Viene incluido dentro de otro mod (jar-in-jar), no suelto en la carpeta mods.
+    #[serde(default)]
+    pub nested: bool,
 }
 
 /// Para qué loaders está hecho un .jar según lo que trae dentro. Modrinth y CurseForge a veces lo
@@ -156,14 +159,20 @@ fn read_into(reader: impl Read + Seek, depth: u32, result: &mut Vec<ModMeta>) {
         }
     }
     // Mods incluidos dentro de otro (los módulos de Fabric API, las bibliotecas de Forge con Jar-in-Jar).
-    let nested: Vec<String> = if depth < 2 {
+    // Hasta cuatro niveles: los mods «universales» (LambDynamicLights) traen bibliotecas dentro de
+    // bibliotecas dentro del mod.
+    let nested: Vec<String> = if depth < 4 {
         zip.file_names().filter(|n| n.ends_with(".jar") && nested_dirs.iter().any(|d| n.starts_with(d))).map(String::from).collect()
     } else {
         Vec::new()
     };
     for name in nested {
         if let Some(bytes) = read_entry(&mut zip, &name, 50_000_000) {
+            let before = result.len();
             read_into(Cursor::new(bytes), depth + 1, result);
+            for meta in &mut result[before..] {
+                meta.nested = true;
+            }
         }
     }
 }
@@ -211,6 +220,7 @@ fn parse_forge(bytes: &[u8], jar_version: Option<&str>) -> Vec<ModMeta> {
                 breaks,
                 forge: true,
                 neo_toml: false,
+                nested: false,
             })
         })
         .collect()
@@ -254,6 +264,7 @@ fn parse_fabric(bytes: &[u8]) -> Option<ModMeta> {
         breaks: rules("breaks"),
         forge: false,
         neo_toml: false,
+        nested: false,
     })
 }
 
@@ -481,6 +492,11 @@ fn matches_maven(version: &str, range: &str) -> bool {
         any = true;
         let (lower_inclusive, upper_inclusive) = (group.starts_with('['), group.ends_with(']'));
         let inner = &group[1..group.len() - 1];
+        // Un rango mal escrito ("[1.19.0,1.19.1,1.19.2)", Entity Texture Features): Forge lo acepta
+        // igual, así que no se toma como problema.
+        if inner.matches(',').count() > 1 {
+            return true;
+        }
         let inside = match inner.split_once(',') {
             None => compare_versions(version, inner.trim()) == Ordering::Equal,
             Some((low, high)) => {
@@ -666,7 +682,10 @@ impl Game {
 /// NeoForge 1.20.5 o más nuevo solo neoforge.mods.toml, y Fabric/Quilt los fabric.mod.json.
 fn relevant<'a>(mods: &'a [(String, Vec<ModMeta>)], game: &Game) -> Vec<(&'a str, Vec<&'a ModMeta>)> {
     let new_neoforge = game.loader == "NeoForge" && crate::loaders::compare_versions(&game.minecraft, "1.20.5") != Ordering::Less;
+    // Forge antes de 1.13 no lee mods.toml (sus mods dicen lo que necesitan en el código): no hay qué revisar.
+    let legacy_forge = game.loader == "Forge" && crate::loaders::compare_versions(&game.minecraft, "1.13") == Ordering::Less;
     let wanted = |meta: &ModMeta| match game.loader.as_str() {
+        "Forge" if legacy_forge => false,
         "Forge" => meta.forge && !meta.neo_toml,
         "NeoForge" => meta.forge && meta.neo_toml == new_neoforge,
         _ => !meta.forge,
@@ -688,6 +707,99 @@ pub fn duplicates(mods: &[(String, Vec<ModMeta>)], game: &Game) -> Vec<(String, 
     by_id.into_iter().filter(|(_, _, files)| files.len() > 1).collect()
 }
 
+/// Las correcciones de dependencias que trae el modpack para Fabric/Quilt
+/// (config/fabric_loader_dependencies.json): "-depends" quita, "+depends" agrega y "depends" reemplaza
+/// (igual con "breaks"). Prominence II quita así el requisito de ftbquests de Create Questing.
+pub fn apply_fabric_overrides(mods: &mut [(String, Vec<ModMeta>)], overrides: &Value) {
+    let Some(overrides) = overrides["overrides"].as_object() else { return };
+    let rules = |value: &Value| -> Vec<(String, Vec<String>)> {
+        value.as_object().into_iter().flatten().map(|(id, range)| (id.clone(), vec![range.as_str().unwrap_or("*").to_string()])).collect()
+    };
+    for (_, metas) in mods.iter_mut() {
+        for meta in metas.iter_mut().filter(|m| !m.forge) {
+            let Some(changes) = overrides.get(&meta.id).and_then(|c| c.as_object()) else { continue };
+            for (key, value) in changes {
+                let (operation, field) = match key.chars().next() {
+                    Some(c @ ('+' | '-')) => (c, &key[1..]),
+                    _ => ('=', key.as_str()),
+                };
+                let list = match field {
+                    "depends" => &mut meta.depends,
+                    "breaks" => &mut meta.breaks,
+                    _ => continue,
+                };
+                let given = rules(value);
+                match operation {
+                    '-' => list.retain(|(id, _)| !given.iter().any(|(g, _)| g == id)),
+                    '+' => {
+                        list.retain(|(id, _)| !given.iter().any(|(g, _)| g == id));
+                        list.extend(given);
+                    }
+                    _ => *list = given,
+                }
+            }
+        }
+    }
+}
+
+/// Del mismo mod puede haber varias copias incluidas dentro de otros (jar-in-jar; Statement trae una
+/// para Minecraft 1.14–1.15 y otra para 1.16+). El loader carga una sola: la que está suelta en la
+/// carpeta si la hay; si no, la más nueva cuyo juego y loader encajan. Las demás no cuentan.
+fn chosen_copies(mods: &[(String, Vec<ModMeta>)], game: &Game) -> Vec<(String, Vec<ModMeta>)> {
+    let fits = |meta: &ModMeta| {
+        meta.depends.iter().filter(|(id, _)| BUILT_IN.contains(&id.as_str())).all(|(id, predicates)| match game.built_in_version(id) {
+            Some(have) => predicates.iter().any(|p| matches(have, p)) || game.tolerates(id, have, predicates),
+            None => true,
+        })
+    };
+    // Lo que los mods piden de cada id: el loader prefiere la copia que se lo da a todos (Fabric
+    // resuelve así: You're in Grave Danger trae Cloth Config 11 y otro mod la 13).
+    let mut wanted: HashMap<&str, Vec<&Vec<String>>> = HashMap::new();
+    for (_, metas) in mods {
+        for meta in metas {
+            for (id, predicates) in &meta.depends {
+                wanted.entry(id.as_str()).or_default().push(predicates);
+            }
+        }
+    }
+    let pleases_all = |meta: &ModMeta| wanted.get(meta.id.as_str()).is_none_or(|list| list.iter().all(|p| p.iter().any(|p| matches(&meta.version, p))));
+    // id -> (archivo, posición) de la copia que usa el loader.
+    let mut chosen: HashMap<&str, (usize, usize)> = HashMap::new();
+    let mut copies: HashMap<&str, Vec<(usize, usize)>> = HashMap::new();
+    for (f, (_, metas)) in mods.iter().enumerate() {
+        for (m, meta) in metas.iter().enumerate() {
+            copies.entry(meta.id.as_str()).or_default().push((f, m));
+        }
+    }
+    for (id, list) in &copies {
+        if list.len() < 2 {
+            continue;
+        }
+        let meta = |(f, m): (usize, usize)| &mods[f].1[m];
+        let rank = |&(f, m): &(usize, usize)| {
+            let meta = meta((f, m));
+            (!meta.nested, fits(meta), pleases_all(meta), parse_semver(&meta.version))
+        };
+        let best = list.iter().copied().max_by(|a, b| {
+            let (ra, rb) = (rank(a), rank(b));
+            ra.0.cmp(&rb.0).then(ra.1.cmp(&rb.1)).then(ra.2.cmp(&rb.2)).then_with(|| match (&ra.3, &rb.3) {
+                (Some(x), Some(y)) => compare(x, y),
+                _ => Ordering::Equal,
+            })
+        });
+        if let Some(best) = best {
+            chosen.insert(id, best);
+        }
+    }
+    mods.iter()
+        .enumerate()
+        .map(|(f, (file, metas))| {
+            let kept = metas.iter().enumerate().filter(|(m, meta)| chosen.get(meta.id.as_str()).is_none_or(|c| *c == (f, *m))).map(|(_, meta)| meta.clone()).collect();
+            (file.clone(), kept)
+        })
+        .collect()
+}
+
 /// Revisa un conjunto de mods (archivo -> lo que declara) para Fabric o Quilt con esa versión del loader.
 #[cfg(test)]
 pub fn check(mods: &[(String, Vec<ModMeta>)], loader_version: Option<&str>) -> Vec<Problem> {
@@ -697,8 +809,10 @@ pub fn check(mods: &[(String, Vec<ModMeta>)], loader_version: Option<&str>) -> V
 
 /// Revisa un conjunto de mods contra la instancia: dependencias, versiones del juego y del loader, choques.
 pub fn check_game(mods: &[(String, Vec<ModMeta>)], game: &Game) -> Vec<Problem> {
-    let mods: Vec<(String, Vec<ModMeta>)> =
-        relevant(mods, game).into_iter().map(|(file, metas)| (file.to_string(), metas.into_iter().cloned().collect())).collect();
+    let mods: Vec<(String, Vec<ModMeta>)> = chosen_copies(
+        &relevant(mods, game).into_iter().map(|(file, metas)| (file.to_string(), metas.into_iter().cloned().collect())).collect::<Vec<_>>(),
+        game,
+    );
     let mods = mods.as_slice();
     // id -> (versión, archivo); si hay varias copias (incluidas en otros mods) gana la más nueva.
     let mut present: HashMap<&str, (&str, &str)> = HashMap::new();
@@ -735,6 +849,9 @@ pub fn check_game(mods: &[(String, Vec<ModMeta>)], game: &Game) -> Vec<Problem> 
                     continue;
                 }
                 match present.get(id.as_str()) {
+                    // Lo que le falta a una biblioteca incluida dentro de otro mod no se da por perdido: su
+                    // autor la empaqueta con lo que necesita (a veces más adentro de lo que se lee).
+                    None if meta.nested => {}
                     None => problems.push(Problem::Missing { owner: file.clone(), name: meta.name.clone(), id: id.clone(), predicates: predicates.clone() }),
                     Some((version, found_file)) if !predicates.iter().any(|p| matches(version, p)) => problems.push(Problem::Wrong {
                         owner: file.clone(),
@@ -820,6 +937,7 @@ mod tests {
             breaks: breaks.iter().map(|(i, p)| (i.to_string(), vec![p.to_string()])).collect(),
             forge: false,
             neo_toml: false,
+            nested: false,
         }
     }
 
@@ -853,6 +971,58 @@ mod tests {
         assert!(loader_fits(fabric, "Quilt", "1.21.1", false) && !loader_fits(fabric, "NeoForge", "1.21.1", false));
         assert!(loader_fits(fabric, "NeoForge", "1.21.1", true), "con Sinytra Connector");
         assert!(!library.known() && loader_fits(library, "Forge", "1.20.1", false));
+    }
+
+    #[test]
+    fn de_varias_copias_incluidas_cuenta_la_que_usa_el_loader() {
+        // Statement (dentro de Auto Slabs) trae el mismo módulo para 1.14–1.15 y para 1.16+.
+        let copy = |version: &str, range: &str| ModMeta {
+            id: "statement_vanilla_compatibility".into(),
+            name: "Statement Vanilla Compatibility Module".into(),
+            version: version.into(),
+            depends: vec![("minecraft".into(), vec![range.into()])],
+            nested: true,
+            ..Default::default()
+        };
+        let main = ModMeta { id: "autoslabs".into(), name: "Auto Slabs".into(), version: "1.1.3".into(), ..Default::default() };
+        let mods = vec![("autoslabs-1.1.3.jar".to_string(), vec![main, copy("1.0.1+1.14.4-1.15.2", ">=1.14.0-0 <1.16.0-0"), copy("1.0.1+1.16.5-1.17", ">=1.16.0-0")])];
+        let game = Game { minecraft: "1.20.1".into(), loader: "Fabric".into(), loader_version: Some("0.19.3".into()) };
+        assert!(check_game(&mods, &game).is_empty());
+        // Si ninguna copia sirve, sí es un problema.
+        let old = vec![("viejo.jar".to_string(), vec![copy("1.0.1+1.14.4-1.15.2", ">=1.14.0-0 <1.16.0-0"), copy("1.0.0", ">=1.14.0-0 <1.16.0-0")])];
+        assert_eq!(check_game(&old, &game).len(), 1);
+    }
+
+    #[test]
+    fn correcciones_de_dependencias_del_modpack() {
+        let questing = ModMeta {
+            id: "create_questing".into(),
+            name: "Create Questing".into(),
+            version: "1.0.0".into(),
+            depends: vec![("ftbquests".into(), vec!["*".into()]), ("fabricloader".into(), vec![">=0.16".into()])],
+            ..Default::default()
+        };
+        let mut mods = vec![("Create_Questing-FABRIC-1.0.1.jar".to_string(), vec![questing])];
+        let game = Game { minecraft: "1.20.1".into(), loader: "Fabric".into(), loader_version: Some("0.19.3".into()) };
+        assert_eq!(check_game(&mods, &game).len(), 1);
+        let overrides: Value = serde_json::from_str(r#"{ "version": 1, "overrides": { "create_questing": { "-depends": { "ftbquests": "IGNORED" } } } }"#).unwrap();
+        apply_fabric_overrides(&mut mods, &overrides);
+        assert!(check_game(&mods, &game).is_empty());
+        assert_eq!(mods[0].1[0].depends.len(), 1, "solo se quitó ftbquests");
+    }
+
+    #[test]
+    fn la_copia_que_pide_todo_el_mundo() {
+        let cloth = |version: &str| ModMeta { id: "cloth-config".into(), name: "Cloth Config v11".into(), version: version.into(), nested: true, ..Default::default() };
+        let grave = ModMeta { id: "yigd".into(), name: "You're in Grave Danger".into(), version: "2.0.16".into(), depends: vec![("cloth-config".into(), vec!["^11.0.0".into()])], ..Default::default() };
+        let elevator = ModMeta { id: "quartz-elevator".into(), name: "Quartz Elevator".into(), version: "2.2.7".into(), ..Default::default() };
+        let mods = vec![
+            ("youre-in-grave-danger.jar".to_string(), vec![grave, cloth("11.1.136")]),
+            ("quartz-elevator.jar".to_string(), vec![elevator, cloth("13.0.121")]),
+        ];
+        let game = Game { minecraft: "1.20.1".into(), loader: "Fabric".into(), loader_version: Some("0.16.0".into()) };
+        assert!(check_game(&mods, &game).is_empty(), "Fabric usa la 11, que sirve a todos");
+        assert!(matches("1.19.2", "[1.19.0,1.19.1,1.19.2)"), "rango mal escrito: no se toma como problema");
     }
 
     #[test]

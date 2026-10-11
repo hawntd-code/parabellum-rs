@@ -75,7 +75,7 @@ fn option(label: String, fix: Fix, recommended: bool) -> FixOption {
 // ================= Lo que declara cada mod (con caché)
 
 const CACHE_FILE: &str = "dependencias.json";
-const CACHE_VERSION: u32 = 4;
+const CACHE_VERSION: u32 = 6;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Cache {
@@ -453,12 +453,14 @@ pub fn check(instance: &Instance) -> Diagnosis {
             }
             None => fixes.push(option(t!("Desactivar {name}", "Disable {name}"), Fix::DisableMod { file: file.clone() }, true)),
         }
+        // El loader se salta el archivo y abre igual (Cave Horror trae un Geckolib de Fabric en Forge):
+        // no impide jugar, pero ese mod no funciona.
         findings.push(Finding {
-            severity: "error",
+            severity: "aviso",
             title: t!("{name} es un mod de {}", "{name} is a {} mod", jar.loaders.describe()),
             detail: t!(
-                "Esta instancia usa {} {} y ese archivo no carga en ella.",
-                "This instance uses {} {} and that file does not load in it.",
+                "Esta instancia usa {} {}: el juego se salta ese archivo, así que ese mod no funciona.",
+                "This instance uses {} {}: the game skips that file, so that mod does not work.",
                 instance.loader,
                 instance.minecraft_version
             ),
@@ -466,11 +468,15 @@ pub fn check(instance: &Instance) -> Diagnosis {
             fixes,
         });
     }
-    let (disabled, mods): (Vec<_>, Vec<_>) = jars
+    let (disabled, mut mods): (Vec<_>, Vec<_>) = jars
         .into_iter()
         .filter(|(file, _)| !wrong_loader.contains(file))
         .map(|(file, jar)| (file, jar.metas))
         .partition(|(file, _)| file.to_lowercase().ends_with(".disabled"));
+    // Las correcciones de dependencias que trae el modpack (Fabric/Quilt las aplica al cargar).
+    if let Some(overrides) = std::fs::read_to_string(instance.game_dir.join("config").join("fabric_loader_dependencies.json")).ok().and_then(|t| serde_json::from_str(&t).ok()) {
+        compat::apply_fabric_overrides(&mut mods, &overrides);
+    }
     let game = Game::of(instance);
     findings.extend(problems_to_findings(&mods, &compat::check_game(&mods, &game), &disabled));
     // Con gráficos Intel, Twilight Forest tumba el juego sin TF-Intel-Fix.
@@ -492,14 +498,26 @@ pub fn check(instance: &Instance) -> Diagnosis {
         let mut sorted = files.clone();
         sorted.sort_by(|a, b| crate::loaders::compare_versions(&version_of(a), &version_of(b)).then(a.len().cmp(&b.len())));
         let keep = sorted.pop().unwrap_or_default();
+        // Desde 1.17, Forge y NeoForge usan la copia más nueva y siguen; Fabric y Quilt no abren.
+        let tolerated = matches!(instance.loader.as_str(), "Forge" | "NeoForge")
+            && crate::loaders::compare_versions(&instance.minecraft_version, "1.17") != std::cmp::Ordering::Less;
         findings.push(Finding {
-            severity: "error",
+            severity: if tolerated { "info" } else { "error" },
             title: t!("{name} está repetido", "{name} is duplicated"),
-            detail: t!(
-                "Hay {} copias en la carpeta mods y el loader no abre así. Se queda {keep}.",
-                "There are {} copies in the mods folder and the loader will not start like that. {keep} stays.",
-                files.len()
-            ),
+            detail: if tolerated {
+                t!(
+                    "Hay {} copias en la carpeta mods; {} usa la más nueva ({keep}), así que abre igual. Conviene quitar las otras.",
+                    "There are {} copies in the mods folder; {} uses the newest one ({keep}), so it opens anyway. It is better to remove the others.",
+                    files.len(),
+                    instance.loader
+                )
+            } else {
+                t!(
+                    "Hay {} copias en la carpeta mods y el loader no abre así. Se queda {keep}.",
+                    "There are {} copies in the mods folder and the loader will not start like that. {keep} stays.",
+                    files.len()
+                )
+            },
             evidence: Some(files.join(" · ")),
             fixes: sorted
                 .iter()
@@ -749,8 +767,10 @@ pub fn wait_for_menu(child: &mut std::process::Child, instance: &Instance, start
                 if loaded.is_none() && (tail.contains("Sound engine started") || tail.contains("-atlas")) {
                     loaded = Some(std::time::Instant::now());
                 }
-                // FancyMenu (lo traen muchos modpacks) anota cada pantalla: la de título es el menú.
-                if loaded.is_some() && (tail.contains("registered: title_screen") || tail.contains("registered: net.minecraft.client.gui.screens.TitleScreen")) {
+                // La pantalla de título: FancyMenu (lo traen muchos modpacks) anota cada pantalla, y en 1.20 la
+                // de título arranca la revisión de avisos de Realms.
+                let title = ["registered: title_screen", "registered: net.minecraft.client.gui.screens.TitleScreen", "Realms Notification Availability checker"];
+                if loaded.is_some() && title.iter().any(|marker| tail.contains(marker)) {
                     finish(child);
                     return Ok(started.elapsed().as_secs());
                 }

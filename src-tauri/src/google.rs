@@ -79,26 +79,37 @@ pub fn open_browser(url: &str) -> Result<(), String> {
 impl GoogleAccount {
     /// Abre el navegador para elegir la cuenta y espera la respuesta en un puerto local (hasta 5 minutos).
     pub async fn sign_in(config: &Config) -> Result<Self, String> {
+        Self::sign_in_with(config, SCOPES, None).await
+    }
+
+    /// Como `sign_in`, con otros permisos (p. ej. escribir en Drive para publicar). `hint`: la cuenta
+    /// que se propone en la página de Google.
+    pub async fn sign_in_with(config: &Config, scopes: &str, hint: Option<&str>) -> Result<Self, String> {
         let verifier = random_text(32);
         let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
         let state = random_text(16);
         // Un mini servidor en 127.0.0.1 recibe la respuesta de Google.
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| e.to_string())?;
         let redirect = format!("http://127.0.0.1:{}/", listener.local_addr().map_err(|e| e.to_string())?.port());
-        let url = reqwest::Url::parse_with_params(
+        let mut url = reqwest::Url::parse_with_params(
             AUTH_URL,
             &[
                 ("client_id", config.google_client_id.as_str()),
                 ("redirect_uri", &redirect),
                 ("response_type", "code"),
-                ("scope", SCOPES),
+                ("scope", scopes),
                 ("code_challenge", &challenge),
                 ("code_challenge_method", "S256"),
                 ("state", &state),
-                ("prompt", "select_account"),
+                ("access_type", "offline"),
+                // Con permisos extra se pide confirmarlos siempre: así Google devuelve el token para guardarlo.
+                ("prompt", if scopes == SCOPES { "select_account" } else { "consent select_account" }),
             ],
         )
         .map_err(|e| e.to_string())?;
+        if let Some(hint) = hint.filter(|h| !h.is_empty()) {
+            url.query_pairs_mut().append_pair("login_hint", hint);
+        }
         open_browser(url.as_str())?;
 
         let wait = async {
@@ -192,7 +203,7 @@ impl GoogleAccount {
         self.accept(&token).await
     }
 
-    async fn access_token(&self) -> Result<String, String> {
+    pub(crate) async fn access_token(&self) -> Result<String, String> {
         if let Some(token) = self.token.lock().await.as_ref().filter(|t| Instant::now() < t.expires) {
             return Ok(token.access.clone());
         }

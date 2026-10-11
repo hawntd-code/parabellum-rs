@@ -15,6 +15,7 @@ mod content;
 mod diagnostico;
 mod cuenta;
 mod download;
+mod drive;
 mod externos;
 mod firebase;
 mod forge;
@@ -65,6 +66,8 @@ struct AppState {
     social: cuenta::SocialState,
     /// «Hostear partida»: servidores en marcha y el túnel de playit.gg.
     hosting: hosting::Hosting,
+    /// Permiso para publicar en el Drive del catálogo (solo quien publica lo tiene).
+    drive_publisher: tokio::sync::Mutex<Option<Arc<drive::Publisher>>>,
 }
 
 #[derive(Serialize)]
@@ -1754,6 +1757,108 @@ async fn publicar_launcher(app: AppHandle, state: State<'_, AppState>, notas: St
     Ok(Some(result.display().to_string()))
 }
 
+// ================= Publicar en el Drive del catálogo
+
+/// El permiso de Drive para publicar, si se dio en este PC (se recupera la primera vez).
+async fn drive_publisher(state: &AppState) -> Result<Option<Arc<drive::Publisher>>, String> {
+    let mut slot = state.drive_publisher.lock().await;
+    if slot.is_none() {
+        if let Some(refresh) = drive::load(&state.paths) {
+            *slot = Some(Arc::new(drive::Publisher::resume(&state.config, refresh).await?));
+        }
+    }
+    Ok(slot.clone())
+}
+
+/// La cuenta con la que se publica en Drive (None si todavía no se conectó).
+#[tauri::command]
+async fn drive_publicar(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    Ok(drive_publisher(&state).await?.map(|p| p.email().to_string()))
+}
+
+/// Pide (en el navegador) el permiso de escribir en Drive. Propone la cuenta con la que ya se inició sesión.
+#[tauri::command]
+async fn conectar_drive(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+    if !state.config.has_drive() {
+        return Err(t!("Parabellum no tiene configurada la carpeta de Drive del catálogo.", "Parabellum has no catalog Drive folder configured."));
+    }
+    let hint = cuenta::google_email(&app);
+    let publisher = drive::Publisher::connect(&state.config, hint.as_deref()).await?;
+    drive::save(&state.paths, publisher.refresh_token())?;
+    let email = publisher.email().to_string();
+    *state.drive_publisher.lock().await = Some(Arc::new(publisher));
+    Ok(email)
+}
+
+#[tauri::command]
+async fn desconectar_drive(state: State<'_, AppState>) -> Result<(), String> {
+    drive::clear(&state.paths);
+    *state.drive_publisher.lock().await = None;
+    Ok(())
+}
+
+/// Los archivos en el orden en que se suben: los .json al final, para que el catálogo no anuncie un
+/// paquete cuyo .zip todavía se está subiendo.
+fn upload_order(mut files: Vec<PathBuf>) -> Vec<PathBuf> {
+    files.sort_by_key(|f| (f.extension().is_some_and(|e| e.eq_ignore_ascii_case("json")), f.clone()));
+    files
+}
+
+fn drive_result(uploaded: usize, same: usize) -> String {
+    match (uploaded, same) {
+        (0, _) => t!("Ya estaba igual en Drive: no hubo que subir nada.", "It was already the same in Drive: nothing had to be uploaded."),
+        (n, 0) => t!("Listo: se subieron {n} archivos a Drive. Tus compañeros ya lo ven en el catálogo.", "Done: {n} files were uploaded to Drive. Your classmates already see it in the catalog."),
+        (n, m) => t!(
+            "Listo: se subieron {n} archivos a Drive ({m} ya estaban iguales). Tus compañeros ya lo ven en el catálogo.",
+            "Done: {n} files were uploaded to Drive ({m} were already the same). Your classmates already see it in the catalog."
+        ),
+    }
+}
+
+/// Sube a Drive el paquete recién exportado: el modpack (con su icono) y Minecraft de esa versión
+/// (si ya estaba igual en Drive, no se vuelve a subir).
+#[tauri::command]
+async fn subir_paquete_drive(app: AppHandle, state: State<'_, AppState>, modpack: String, base: String) -> Result<String, String> {
+    let root = remembered_export_folder(&state.paths).ok_or(t!("No hay carpeta de paquetes para Drive.", "There is no Drive packages folder."))?;
+    let (modpack, base) = (PathBuf::from(modpack), PathBuf::from(base));
+    // Solo lo que está en la carpeta de paquetes.
+    if ![&modpack, &base].iter().all(|f| f.is_file() && f.starts_with(&root)) {
+        return Err(t!("El paquete no está en la carpeta de paquetes para Drive.", "The package is not in the Drive packages folder."));
+    }
+    let publisher = drive_publisher(&state).await?.ok_or(t!("Primero conecta Drive.", "Connect Drive first."))?;
+    let mut files = drive::files_in(modpack.parent().unwrap_or(&root));
+    files.push(base.clone());
+    if base.with_extension("json").is_file() {
+        files.push(base.with_extension("json"));
+    }
+    let (uploaded, same) = publisher.publish(&root, &upload_order(files), progress_emitter(&app, "drive")).await?;
+    *state.catalog.lock().unwrap() = None;
+    Ok(drive_result(uploaded, same))
+}
+
+/// Sube a Drive la carpeta _parabellum que dejó «Publicar esta versión» y quita de ahí las versiones
+/// anteriores (a la papelera de Drive). Quien abra Parabellum se actualizará.
+#[tauri::command]
+async fn subir_launcher_drive(app: AppHandle, state: State<'_, AppState>, carpeta: String) -> Result<String, String> {
+    let root = remembered_export_folder(&state.paths).ok_or(t!("No hay carpeta de paquetes para Drive.", "There is no Drive packages folder."))?;
+    let folder = PathBuf::from(carpeta);
+    if !folder.is_dir() || folder.parent() != Some(root.as_path()) {
+        return Err(t!("La carpeta no está en la carpeta de paquetes para Drive.", "The folder is not in the Drive packages folder."));
+    }
+    let publisher = drive_publisher(&state).await?.ok_or(t!("Primero conecta Drive.", "Connect Drive first."))?;
+    let files = upload_order(drive::files_in(&folder));
+    let (uploaded, same) = publisher.publish(&root, &files, progress_emitter(&app, "drive")).await?;
+    let keep: Vec<String> = files.iter().filter_map(|f| f.file_name()).map(|n| n.to_string_lossy().to_string()).collect();
+    let name = folder.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let removed = publisher.remove_old_launchers(&name, &keep).await?;
+    *state.catalog.lock().unwrap() = None;
+    let mut message = drive_result(uploaded, same);
+    if removed > 0 {
+        message += &t!(" Las versiones anteriores se fueron a la papelera de Drive.", " The previous versions went to the Drive trash.");
+    }
+    Ok(message)
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct JavaInfo {
@@ -2158,7 +2263,29 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                 let _ = std::fs::remove_file(&download.file);
                 result
             })?;
-            Ok(format!("{} -> carpeta {:?} en {:.0} s", result.name, result.id, started.elapsed().as_secs_f64()))
+            let mut out = format!("{} -> carpeta {:?} en {:.0} s
+", result.name, result.id, started.elapsed().as_secs_f64());
+            if let Some(warning) = &result.warning {
+                out += &format!("AVISO: {warning}
+");
+            }
+            for note in &result.notes {
+                out += &format!("ARREGLO: {note}
+");
+            }
+            Ok(out)
+        }
+        "--revisar" => {
+            // La revisión de antes de jugar (la que abre el doctor si encuentra algo que impide abrir).
+            let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
+            let diagnosis = diagnostico::check(&instance);
+            let mut out = format!("{} mods revisados
+", diagnosis.checked_mods);
+            for finding in &diagnosis.findings {
+                out += &format!("{}: {} — {} [{}]
+", finding.severity, finding.title, finding.detail, finding.evidence.as_deref().unwrap_or(""));
+            }
+            Ok(out)
         }
         "--crear-servidor" => {
             let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
@@ -2430,6 +2557,7 @@ fn main() {
             catalog: Mutex::default(),
             social: cuenta::SocialState::default(),
             hosting: hosting::Hosting::default(),
+            drive_publisher: Default::default(),
         })
         .setup(|app| {
             // El tamaño de la interfaz que eligió el jugador (Ajustes › Apariencia).
@@ -2535,6 +2663,11 @@ fn main() {
             elegir_carpeta_exportar,
             abrir_carpeta_paquetes,
             publicar_launcher,
+            drive_publicar,
+            conectar_drive,
+            desconectar_drive,
+            subir_paquete_drive,
+            subir_launcher_drive,
             registro,
             abrir_registro,
             listar_java,

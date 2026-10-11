@@ -696,13 +696,19 @@
               <button class="btn" id="about-folder-change"><svg><use href="#i-folder"/></svg>Cambiar</button>
             </div>
             <div class="setting">
-              <div class="grow"><b>Publicar esta versión</b><span>Prepara la carpeta _parabellum con este Parabellum para que la subas a tu Drive. Los demás se actualizarán solos al abrirlo.</span></div>
+              <div class="grow"><b>Publicar directo en Drive</b><span id="about-drive-state"></span></div>
+              <button class="btn" id="about-drive-connect"><svg><use href="#i-cloud"/></svg><span>Conectar Drive</span></button>
+            </div>
+            <div class="setting">
+              <div class="grow"><b>Publicar esta versión</b><span>Los demás se actualizarán solos al abrir Parabellum.</span></div>
             </div>
             <input id="about-notes" maxlength="200" autocomplete="off" placeholder="Qué cambió (opcional, lo verán al actualizar)">
             <div class="row-actions">
-              <button class="btn primary" id="about-publish"><svg><use href="#i-upload"/></svg>Publicar en la carpeta</button>
+              <button class="btn primary" id="about-publish"><svg><use href="#i-upload"/></svg><span>Publicar en la carpeta</span></button>
               <button class="btn hidden" id="about-open-drive"><svg><use href="#i-external"/></svg>Abrir mi Drive</button>
             </div>
+            <div class="progress hidden" id="about-progress"><div></div></div>
+            <p class="muted small-text hidden" id="about-status"></p>
           </section>
           <section data-section="resources" class="hidden">
             <div class="setting">
@@ -874,6 +880,7 @@
         <p class="muted small-text" id="export-status"></p>
         <div class="modal-actions">
           <button class="btn hidden" id="export-drive"><svg><use href="#i-external"/></svg>Abrir mi Drive</button>
+          <button class="btn primary hidden" id="export-upload"><svg><use href="#i-cloud"/></svg>Subir a Drive</button>
           <button class="btn" id="export-cancel">Cerrar</button>
           <button class="btn primary" id="export-ok"><svg><use href="#i-download"/></svg><span>Exportar…</span></button>
         </div>

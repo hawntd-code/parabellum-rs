@@ -85,6 +85,11 @@ pub fn social_handle(app: &AppHandle) -> Option<Arc<Social>> {
     social(app)
 }
 
+/// El correo de la cuenta de Google con la que se inició sesión (si hay).
+pub fn google_email(app: &AppHandle) -> Option<String> {
+    google_account(app).map(|a| a.email.clone()).filter(|e| !e.is_empty())
+}
+
 fn update_status(app: &AppHandle, change: impl FnOnce(&mut Status)) {
     change(&mut app.state::<AppState>().social.status.lock().unwrap());
     emit(app);

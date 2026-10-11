@@ -524,7 +524,7 @@ struct Index {
     meta_version: u32,
 }
 
-const META_VERSION: u32 = 4;
+const META_VERSION: u32 = 6;
 
 fn index_path(instance: &Instance) -> std::path::PathBuf {
     instance.state_dir().join(INDEX_FILE)
