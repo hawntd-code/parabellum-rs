@@ -36,6 +36,8 @@ pub enum Fix {
     UseJava { major: u32 },
     /// Verificar y reponer los archivos del modpack.
     Repair,
+    /// Instalar un proyecto de Modrinth (un mod que corrige un fallo conocido, como TF-Intel-Fix).
+    InstallProject { project: String, title: String },
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -73,7 +75,7 @@ fn option(label: String, fix: Fix, recommended: bool) -> FixOption {
 // ================= Lo que declara cada mod (con caché)
 
 const CACHE_FILE: &str = "dependencias.json";
-const CACHE_VERSION: u32 = 3;
+const CACHE_VERSION: u32 = 4;
 
 #[derive(Serialize, Deserialize, Default)]
 struct Cache {
@@ -221,6 +223,195 @@ fn list(names: &[String]) -> String {
     if more > 0 { t!("{text} y {more} más", "{text} and {more} more") } else { text }
 }
 
+// ================= Fallos y avisos conocidos
+
+/// Twilight Forest (1.20.x) hace caer los controladores recientes de Intel al preparar uno de sus
+/// shaders; TF-Intel-Fix evita ese shader (github.com/TeamTwilight/twilightforest/issues/2516).
+fn needs_tf_intel_fix(instance: &Instance, ids: &HashMap<String, String>) -> bool {
+    let minecraft = instance.minecraft_version.as_str();
+    matches!(instance.loader.as_str(), "Forge" | "NeoForge")
+        && crate::loaders::compare_versions(minecraft, "1.20.1") != std::cmp::Ordering::Less
+        && crate::loaders::compare_versions(minecraft, "1.21") == std::cmp::Ordering::Less
+        && ids.contains_key("twilightforest")
+        && !ids.contains_key("tffix")
+}
+
+fn tf_intel_fix() -> FixOption {
+    option(
+        t!("Instalar TF-Intel-Fix (Modrinth)", "Install TF-Intel-Fix (Modrinth)"),
+        Fix::InstallProject { project: "tf-intel-fix".into(), title: "TF-Intel-Fix".into() },
+        true,
+    )
+}
+
+/// Java se cayó dentro de una DLL (hs_err_pid…log): el controlador de gráficos y el mod que lo llamó.
+fn native_crash(instance: &Instance, text: &str, by_id: &HashMap<String, String>) -> Option<Finding> {
+    static FRAME: OnceLock<Regex> = OnceLock::new();
+    static MODULE: OnceLock<Regex> = OnceLock::new();
+    let frame = FRAME.get_or_init(|| regex(r"Problematic frame:\s*\r?\n#\s*C\s+\[([^\]+]+)"));
+    let capture = frame.captures(text)?;
+    let dll = capture[1].trim().to_string();
+    let lower = dll.to_lowercase();
+    let vendor = if lower.starts_with("ig") {
+        Some("Intel")
+    } else if lower.starts_with("nvoglv") || lower.starts_with("nvwgf") {
+        Some("NVIDIA")
+    } else if lower.starts_with("atio") || lower.starts_with("amd") {
+        Some("AMD")
+    } else {
+        None
+    };
+    // El primer mod de la pila de Java ("twilightforest@4.3.2508" al final de cada marco).
+    let module = MODULE.get_or_init(|| regex(r"(?m)^[jJ]\s+\S+.*\s([a-z][a-z0-9_]*)@\S+\s*$"));
+    let culprit = module.captures_iter(text).map(|c| c[1].to_string()).find(|id| by_id.contains_key(id));
+    let names: HashMap<String, String> = instance_mods(instance).into_iter().filter_map(|(file, metas)| Some((file, metas.first()?.name.clone()))).collect();
+    let culprit_name = culprit.as_ref().and_then(|id| by_id.get(id)).and_then(|file| names.get(file)).cloned().or(culprit.clone());
+    let evidence = Some(format!("{dll}{}", culprit_name.as_deref().map(|n| format!(" · {n}")).unwrap_or_default()));
+    if vendor == Some("Intel") && culprit.as_deref() == Some("twilightforest") && needs_tf_intel_fix(instance, by_id) {
+        return Some(Finding {
+            severity: "error",
+            title: t!("El controlador de gráficos Intel se cae con Twilight Forest", "The Intel graphics driver crashes with Twilight Forest"),
+            detail: t!(
+                "Es un fallo conocido de los controladores recientes de Intel al preparar un shader de Twilight Forest. TF-Intel-Fix evita ese shader y el juego abre igual.",
+                "It is a known bug of recent Intel drivers when preparing a Twilight Forest shader. TF-Intel-Fix skips that shader and the game opens normally."
+            ),
+            evidence,
+            fixes: vec![tf_intel_fix()],
+        });
+    }
+    let mut fixes = Vec::new();
+    if let (Some(id), Some(name)) = (culprit.as_ref(), culprit_name.as_ref()) {
+        if let Some(file) = by_id.get(id) {
+            fixes.push(option(t!("Desactivar {name}", "Disable {name}"), Fix::DisableMod { file: file.clone() }, false));
+        }
+    }
+    let during = culprit_name.map(|n| t!(" mientras {n} lo usaba", " while {n} was using it")).unwrap_or_default();
+    Some(match vendor {
+        Some(vendor) => Finding {
+            severity: "error",
+            title: t!("El controlador de gráficos {vendor} se cayó", "The {vendor} graphics driver crashed"),
+            detail: t!(
+                "Java se cerró dentro del controlador ({dll}){during}. Suele arreglarse actualizando el controlador de la tarjeta de video desde la página de {vendor} o del fabricante del PC.",
+                "Java closed inside the driver ({dll}){during}. It is usually fixed by updating the graphics driver from the {vendor} website or the PC maker's."
+            ),
+            evidence,
+            fixes,
+        },
+        None => Finding {
+            severity: "error",
+            title: t!("Java se cerró por un error en {dll}", "Java closed because of an error in {dll}"),
+            detail: t!("El fallo fue fuera de Minecraft, en una biblioteca nativa{during}.", "The crash was outside Minecraft, in a native library{during}."),
+            evidence,
+            fixes,
+        },
+    })
+}
+
+/// La memoria que pide el mod Memory Settings para este PC (MB), con su tabla «memoria del PC:
+/// recomendada» interpolada como lo hace él, y la mínima que acepta sin avisar (según su tolerancia).
+fn memory_settings(instance: &Instance, system_mb: u64) -> Option<(u64, u64)> {
+    let text = std::fs::read_to_string(instance.game_dir.join("config").join("memorysettings.json")).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&text).ok()?;
+    if json.pointer("/disableWarnings/disableWarnings").and_then(|v| v.as_bool()) == Some(true) {
+        return None;
+    }
+    let mut table: Vec<(u64, u64)> = json
+        .pointer("/recommendedMemory/memory values")
+        .and_then(|v| v.as_array())?
+        .iter()
+        .filter_map(|v| {
+            let (system, recommended) = v.as_str()?.split_once(':')?;
+            Some((system.trim().parse().ok()?, recommended.trim().parse().ok()?))
+        })
+        .collect();
+    table.sort();
+    let (first, last) = (*table.first()?, *table.last()?);
+    let recommended = if system_mb <= first.0 {
+        first.1
+    } else if system_mb >= last.0 {
+        last.1
+    } else {
+        let i = table.iter().position(|(s, _)| *s >= system_mb)?;
+        let ((s0, r0), (s1, r1)) = (table[i - 1], table[i]);
+        r0 + (r1.saturating_sub(r0)) * (system_mb - s0) / (s1 - s0).max(1)
+    };
+    let tolerance = json.pointer("/warningTolerance/warningTolerance").and_then(|v| v.as_u64()).unwrap_or(30).min(100);
+    let minimum_client = json.pointer("/minimumClient/minimumClient").and_then(|v| v.as_u64()).unwrap_or(0);
+    let enough = (recommended * (100 - tolerance) / 100).max(minimum_client);
+    Some((recommended, enough))
+}
+
+/// GB para la instancia que quitan el aviso de Memory Settings sin dejar a Windows sin memoria.
+pub fn memory_settings_gb(instance: &Instance, current_gb: u32) -> Option<u32> {
+    let (total, _) = crate::proceso::system_memory();
+    let system_mb = total / 1_048_576;
+    let (_, enough_mb) = memory_settings(instance, system_mb)?;
+    let room_gb = (system_mb / 1024).saturating_sub(3) as u32;
+    let wanted = (enough_mb.div_ceil(1024) as u32).min(room_gb.max(2));
+    (wanted > current_gb).then_some(wanted)
+}
+
+/// Arreglos que se aplican solos al instalar un modpack, para que abra a la primera en este PC:
+/// TF-Intel-Fix con gráficos Intel y la memoria que el propio modpack pide (Memory Settings).
+pub fn known_fixes(instance: &Instance, ram_gb: u32) -> Vec<(String, Fix)> {
+    let mods = instance_mods(instance);
+    let ids = files_by_id(&mods);
+    let mut fixes = Vec::new();
+    if crate::proceso::intel_graphics() && needs_tf_intel_fix(instance, &ids) {
+        let option = tf_intel_fix();
+        fixes.push((option.label, option.fix));
+    }
+    if let Some(gb) = memory_settings_gb(instance, ram_gb) {
+        fixes.push((t!("Darle {gb} GB, lo que pide el modpack", "Give it {gb} GB, what the modpack asks for"), Fix::SetRam { gb }));
+    }
+    fixes
+}
+
+/// Lo que el juego mostró después de cargar (pantallas de aviso de los modpacks): no impide jugar,
+/// pero el jugador las ve al abrir. `ram_gb`: la memoria que tenía el juego.
+pub fn in_game_warnings(instance: &Instance, since_ms: i64, ram_gb: u32) -> Diagnosis {
+    let latest = instance.game_dir.join("logs").join("latest.log");
+    let text = if modified_ms(&latest).is_some_and(|m| m >= since_ms - 2000) { read_lossy_tail(&latest, 3_000_000) } else { String::new() };
+    let mut findings = Vec::new();
+    // Memory Settings: «Less memory allocated than recommended for your system».
+    static MEMORY: OnceLock<Regex> = OnceLock::new();
+    let memory = MEMORY.get_or_init(|| regex(r"(?i)less (?:more )?memory allocated than recommended for your system, the recommended amount for your system is: (\d+)"));
+    if let Some(capture) = memory.captures(&text) {
+        let recommended = capture[1].to_string();
+        let fixes = memory_settings_gb(instance, ram_gb)
+            .map(|gb| vec![option(t!("Darle {gb} GB a la instancia", "Give the instance {gb} GB"), Fix::SetRam { gb }, true)])
+            .unwrap_or_default();
+        findings.push(Finding {
+            severity: "aviso",
+            title: t!("El modpack avisa que le falta memoria", "The modpack warns that it is short on memory"),
+            detail: t!(
+                "Al abrir muestra una pantalla: para este PC recomienda {recommended} MB y la instancia tiene {} MB.",
+                "When it opens it shows a screen: for this PC it recommends {recommended} MB and the instance has {} MB.",
+                ram_gb * 1024
+            ),
+            evidence: Some(evidence(&text, capture.get(0).unwrap().start())),
+            fixes,
+        });
+    }
+    findings.extend(missing_mods_checker(&text));
+    Diagnosis { findings, checked_mods: 0 }
+}
+
+/// Missing Mods Checker: si falta algo abre su propia ventana pidiendo bajarlo a mano (y no escribe
+/// «All mods found!»). La ventana puede dejar el juego sin cargar.
+fn missing_mods_checker(text: &str) -> Option<Finding> {
+    (text.contains("[Missing Mods Checker") && !text.contains("All mods found!")).then(|| Finding {
+        severity: "error",
+        title: t!("Faltan mods que el modpack baja de CurseForge", "Mods the modpack gets from CurseForge are missing"),
+        detail: t!(
+            "Missing Mods Checker abre una ventana pidiendo bajarlos a mano. Parabellum los puede reponer.",
+            "Missing Mods Checker opens a window asking to download them by hand. Parabellum can restore them."
+        ),
+        evidence: None,
+        fixes: vec![option(t!("Reponer los archivos del modpack", "Restore the modpack files"), Fix::Repair, true)],
+    })
+}
+
 // ================= Antes de jugar
 
 /// Revisa los mods de la instancia sin abrir el juego.
@@ -282,6 +473,19 @@ pub fn check(instance: &Instance) -> Diagnosis {
         .partition(|(file, _)| file.to_lowercase().ends_with(".disabled"));
     let game = Game::of(instance);
     findings.extend(problems_to_findings(&mods, &compat::check_game(&mods, &game), &disabled));
+    // Con gráficos Intel, Twilight Forest tumba el juego sin TF-Intel-Fix.
+    if crate::proceso::intel_graphics() && needs_tf_intel_fix(instance, &files_by_id(&mods)) {
+        findings.push(Finding {
+            severity: "error",
+            title: t!("El controlador de gráficos Intel se cae con Twilight Forest", "The Intel graphics driver crashes with Twilight Forest"),
+            detail: t!(
+                "Los controladores recientes de Intel se caen al preparar un shader de Twilight Forest. TF-Intel-Fix lo evita.",
+                "Recent Intel drivers crash when preparing a Twilight Forest shader. TF-Intel-Fix avoids it."
+            ),
+            evidence: None,
+            fixes: vec![tf_intel_fix()],
+        });
+    }
     for (_, name, files) in compat::duplicates(&mods, &game) {
         // Se queda la copia más nueva (por versión; si no se puede saber, la de nombre más largo).
         let version_of = |file: &String| mods.iter().find(|(f, _)| f == file).and_then(|(_, m)| m.first()).map(|m| m.version.clone()).unwrap_or_default();
@@ -483,6 +687,8 @@ pub struct AutoFix {
     pub applied: Vec<String>,
     /// Lo que no se pudo arreglar solo (si no llegó al menú).
     pub diagnosis: Option<Diagnosis>,
+    /// Llegó al menú, pero el juego muestra avisos que no se pudieron quitar solos.
+    pub warnings: Option<Diagnosis>,
 }
 
 /// Los arreglos recomendados que todavía no se probaron.
@@ -499,15 +705,33 @@ pub fn recommended(diagnosis: &Diagnosis, tried: &[Fix]) -> Vec<(String, Fix)> {
 }
 
 /// Espera a que el juego llegue al menú principal (o se cierre). Al llegar, lo cierra.
+/// Tiempo que se sigue mirando después de que el juego termina de cargar: muchos modpacks se caen o
+/// muestran una pantalla de aviso justo después (BMC4 con gráficos Intel: el controlador se cae
+/// 16 s después de arrancar el sonido, al preparar un shader de Twilight Forest).
+const SETTLE_SECONDS: u64 = 45;
+
 pub fn wait_for_menu(child: &mut std::process::Child, instance: &Instance, started_ms: i64, limit_seconds: u64) -> Result<u64, Option<i32>> {
     let log = instance.game_dir.join("logs").join("latest.log");
     let started = std::time::Instant::now();
     let mut offset = 0u64;
     let mut tail = String::new();
+    let mut loaded: Option<std::time::Instant> = None;
+    let finish = |child: &mut std::process::Child| {
+        crate::launch::kill(child.id());
+        let _ = child.wait();
+    };
     loop {
         std::thread::sleep(std::time::Duration::from_millis(800));
         if let Ok(Some(status)) = child.try_wait() {
-            return Err(status.code());
+            // Un cierre con código 0 antes de llegar al menú también es un fallo (pantallas de error
+            // que se cierran y Java que se cae dentro del controlador de gráficos).
+            return Err(status.code().filter(|c| *c != 0).or(Some(1)));
+        }
+        // Ya cargó y aguantó lo suficiente sin caerse: es el menú principal (o un aviso del modpack,
+        // que se revisa aparte en el registro).
+        if loaded.is_some_and(|at| at.elapsed().as_secs() >= SETTLE_SECONDS) {
+            finish(child);
+            return Ok(started.elapsed().as_secs());
         }
         if modified_ms(&log).is_some_and(|m| m >= started_ms - 2000) {
             use std::io::{Read, Seek, SeekFrom};
@@ -522,15 +746,17 @@ pub fn wait_for_menu(child: &mut std::process::Child, instance: &Instance, start
                 offset += bytes.len() as u64;
                 tail.push_str(&String::from_utf8_lossy(&bytes));
                 // El juego terminó de cargar cuando arranca el sonido o crea los atlas de texturas.
-                if tail.contains("Sound engine started") || tail.contains("-atlas") {
-                    crate::launch::kill(child.id());
-                    let _ = child.wait();
+                if loaded.is_none() && (tail.contains("Sound engine started") || tail.contains("-atlas")) {
+                    loaded = Some(std::time::Instant::now());
+                }
+                // FancyMenu (lo traen muchos modpacks) anota cada pantalla: la de título es el menú.
+                if loaded.is_some() && (tail.contains("registered: title_screen") || tail.contains("registered: net.minecraft.client.gui.screens.TitleScreen")) {
+                    finish(child);
                     return Ok(started.elapsed().as_secs());
                 }
                 // Forge: los errores al cargar mods se muestran en una pantalla dentro del juego.
                 if tail.contains("Mod loading has failed") || tail.contains("Mod Loading has failed") {
-                    crate::launch::kill(child.id());
-                    let _ = child.wait();
+                    finish(child);
                     return Err(Some(1));
                 }
                 if tail.len() > 2_000_000 {
@@ -560,9 +786,24 @@ fn read_lossy_tail(path: &Path, max: u64) -> String {
     String::from_utf8_lossy(&bytes).to_string()
 }
 
-/// Lo que dejó el juego: el informe de fallo más nuevo, latest.log y la salida de Java.
+/// Lo que dejó el juego: el informe de fallo más nuevo, el de Java si se cayó en código nativo
+/// (hs_err_pid…log), latest.log y la salida de Java.
 fn gather(instance: &Instance, since_ms: i64) -> String {
     let mut text = String::new();
+    let native = std::fs::read_dir(&instance.game_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with("hs_err_pid"))
+        .filter_map(|e| Some((e.path(), modified_ms(&e.path())?)))
+        .filter(|(_, m)| *m >= since_ms - 2000)
+        .max_by_key(|(_, m)| *m);
+    if let Some((path, _)) = native {
+        // Lo que importa está al principio: el marco que falló y la pila de Java.
+        let head: String = read_lossy_tail(&path, u64::MAX).lines().take(120).collect::<Vec<_>>().join("\n");
+        text += &head;
+        text.push('\n');
+    }
     let newest_report = std::fs::read_dir(instance.game_dir.join("crash-reports"))
         .into_iter()
         .flatten()
@@ -607,6 +848,14 @@ pub fn after_crash(instance: &Instance, context: &CrashContext) -> Diagnosis {
             findings.push(finding);
         }
     };
+
+    // 0. Java se cayó en código nativo: casi siempre el controlador de gráficos.
+    if let Some(finding) = native_crash(instance, &text, &by_id) {
+        add(finding);
+    }
+    if let Some(finding) = missing_mods_checker(&text) {
+        add(finding);
+    }
 
     // 1. El propio mod dice qué argumento de Java agregar (CustomSkinLoader y otros).
     static JVM_ARG: OnceLock<Regex> = OnceLock::new();
@@ -923,7 +1172,7 @@ fn already_done(instance: &Instance, fix: &Fix) -> bool {
         Fix::ResetConfig { path } => !instance.game_dir.join(path).exists(),
         Fix::SetRam { gb } => instance.ram_gb == Some(*gb),
         Fix::UseJava { major } => instance.java_major == Some(*major),
-        Fix::InstallMod { .. } | Fix::Repair => false,
+        Fix::InstallMod { .. } | Fix::Repair | Fix::InstallProject { .. } => false,
     }
 }
 
@@ -1012,6 +1261,75 @@ mod tests {
         let report = format!("-- MOD oculus --\n\tMod File: /C:/Mis servidores/Prueba forge/mods/oculus-mc1.20.1-1.8.0.jar\n\tFailure message: Oculus (oculus) has failed to load correctly\n\t\tjava.lang.{error}");
         assert_eq!(culprit(&report).as_deref(), Some("oculus-mc1.20.1-1.8.0.jar"));
         assert!(culprit(&format!("{error}\n\tat net.minecraft.server.Main.main(Main.java:1)")).is_none());
+    }
+
+    fn test_instance(name: &str) -> Instance {
+        let folder = std::env::temp_dir().join(format!("parabellum-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(folder.join("mods")).unwrap();
+        std::fs::create_dir_all(folder.join("config")).unwrap();
+        Instance {
+            id: name.into(),
+            name: name.into(),
+            version_id: "1.20.1-forge-47.4.20".into(),
+            minecraft_version: "1.20.1".into(),
+            loader: "Forge".into(),
+            loader_version: Some("47.4.20".into()),
+            folder: folder.clone(),
+            game_dir: folder,
+            ram_gb: None,
+            jvm_args: Vec::new(),
+            last_played: None,
+            created: None,
+            icon: None,
+            modpack: None,
+            modpack_project: None,
+            java_major: None,
+        }
+    }
+
+    fn write_jar(path: &Path, entries: &[(&str, &str)]) {
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+        for (name, content) in entries {
+            zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+            std::io::Write::write_all(&mut zip, content.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap();
+    }
+
+    #[test]
+    fn el_controlador_de_intel_y_twilight_forest() {
+        let instance = test_instance("intel-tf");
+        let toml = "modLoader=\"javafml\"\n[[mods]]\nmodId=\"twilightforest\"\ndisplayName=\"The Twilight Forest\"\nversion=\"4.3.2508\"\n";
+        write_jar(&instance.game_dir.join("mods").join("twilightforest-1.20.1-4.3.2508-universal.jar"), &[("META-INF/mods.toml", toml)]);
+        // El principio de un hs_err_pid…log de verdad (BMC4 en un Iris Xe con el controlador 32.0.101.7092).
+        let text = "#\n# A fatal error has been detected by the Java Runtime Environment:\n#\n#  EXCEPTION_ACCESS_VIOLATION (0xc0000005) at pc=0x00007fff1e2fbbb4, pid=25356, tid=16568\n#\n# Problematic frame:\n# C  [igxelpicd64.dll+0xc2bbb4]\n#\nJava frames: (J=compiled Java code, j=interpreted, Vv=VM code)\nj  org.lwjgl.opengl.GL20C.glLinkProgram(I)V+0 org.lwjgl.opengl@3.3.1+7\nj  com.mojang.blaze3d.platform.GlStateManager.glLinkProgram(I)V+4 minecraft@1.20.1\nj  twilightforest.client.TFShaders$BindableShaderInstance.<init>(Lnet/minecraft/server/packs/resources/ResourceProvider;)V+4 twilightforest@4.3.2508\n";
+        let by_id = files_by_id(&instance_mods(&instance));
+        let finding = native_crash(&instance, text, &by_id).unwrap();
+        assert_eq!(finding.title, t!("El controlador de gráficos Intel se cae con Twilight Forest", "The Intel graphics driver crashes with Twilight Forest"));
+        assert_eq!(finding.fixes[0].fix, Fix::InstallProject { project: "tf-intel-fix".into(), title: "TF-Intel-Fix".into() });
+        assert_eq!(finding.evidence.as_deref(), Some("igxelpicd64.dll · The Twilight Forest"));
+        // Con TF-Intel-Fix ya puesto, otro cierre del controlador se explica sin ese arreglo.
+        write_jar(&instance.game_dir.join("mods").join("tffix-1.0.0.jar"), &[("META-INF/mods.toml", "modLoader=\"javafml\"\n[[mods]]\nmodId=\"tffix\"\n")]);
+        let by_id = files_by_id(&instance_mods(&instance));
+        let other = native_crash(&instance, text, &by_id).unwrap();
+        assert!(other.fixes.iter().all(|o| !matches!(o.fix, Fix::InstallProject { .. })));
+        assert!(native_crash(&instance, "java.lang.NullPointerException", &by_id).is_none());
+        let _ = std::fs::remove_dir_all(&instance.folder);
+    }
+
+    #[test]
+    fn la_memoria_que_pide_memory_settings() {
+        let instance = test_instance("memoria");
+        // La configuración de BMC4.
+        let config = r#"{ "minimumClient": { "minimumClient": 3000 }, "warningTolerance": { "warningTolerance": 30 }, "disableWarnings": { "disableWarnings": false },
+            "recommendedMemory": { "memory values": ["3000:2000","4000:2000","5000:3000","6000:3000","7000:4000","8000:4000","10000:5000","12000:5000","16000:6000","20000:7000","24000:8000","32000:9000","64000:10000"] } }"#;
+        std::fs::write(instance.game_dir.join("config").join("memorysettings.json"), config).unwrap();
+        // Un PC de 40 GB: recomienda 9269 MB (lo que dijo el juego) y basta con 6488 (30 % de tolerancia).
+        assert_eq!(memory_settings(&instance, 40633), Some((9269, 6488)));
+        // Un PC de 8 GB: recomienda 4000 y con 3000 (su mínimo) ya no avisa: 4 GB alcanzan.
+        assert_eq!(memory_settings(&instance, 8000), Some((4000, 3000)));
+        let _ = std::fs::remove_dir_all(&instance.folder);
     }
 
     #[test]

@@ -391,6 +391,28 @@ pub fn kill(pid: u32) {
     let _ = Command::new("taskkill").args(["/PID", &pid.to_string(), "/T", "/F"]).creation_flags(CREATE_NO_WINDOW).output();
 }
 
+/// Crash Assistant (lo traen modpacks como Better MC) abre su propio Java para vigilar el juego y se
+/// relanza suelto, así que no muere con el juego. Si Parabellum cierra el juego (al terminar una
+/// prueba o con «Detener»), cree que se cayó y muestra su ventana: también se cierra. Se reconoce por
+/// los archivos que deja en local/crash_assistant de la instancia ("<números>_args.info").
+pub fn close_helpers(instance: &Instance) {
+    let stems: Vec<String> = std::fs::read_dir(instance.game_dir.join("local").join("crash_assistant"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().to_string_lossy().strip_suffix("_args.info").map(String::from))
+        .filter(|stem| !stem.is_empty() && stem.chars().all(|c| c.is_ascii_digit() || c == '_'))
+        .collect();
+    if stems.is_empty() {
+        return;
+    }
+    let matches = stems.iter().map(|stem| format!("$_.CommandLine -like '*crash_assistant*{stem}_*'")).collect::<Vec<_>>().join(" -or ");
+    let script = format!(
+        "Get-CimInstance Win32_Process -Filter \"Name='javaw.exe' or Name='java.exe'\" | Where-Object {{ {matches} }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}"
+    );
+    let _ = Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &script]).creation_flags(CREATE_NO_WINDOW).output();
+}
+
 /// Últimas líneas del registro del juego (latest.log; si aún no existe, la salida de Java).
 pub fn read_log(instance: &Instance, max_bytes: u64) -> (String, String) {
     let latest = instance.game_dir.join("logs").join("latest.log");

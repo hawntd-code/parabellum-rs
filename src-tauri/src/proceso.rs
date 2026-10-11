@@ -81,6 +81,36 @@ pub fn system_memory() -> (u64, u64) {
     }
 }
 
+/// Las tarjetas de video del PC (su nombre), leídas una vez del registro de Windows.
+pub fn graphics_cards() -> &'static [String] {
+    static CARDS: OnceLock<Vec<String>> = OnceLock::new();
+    CARDS.get_or_init(|| {
+        use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
+        let wide = |text: &str| text.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+        let value = wide("DriverDesc");
+        let mut cards = Vec::new();
+        for index in 0..16 {
+            let key = wide(&format!(r"SYSTEM\CurrentControlSet\Control\Class\{{4d36e968-e325-11ce-bfc1-08002be10318}}\{index:04}"));
+            let mut buffer = [0u16; 256];
+            let mut size = (buffer.len() * 2) as u32;
+            // SAFETY: búfer y tamaño válidos; la función escribe como mucho `size` bytes.
+            let status = unsafe {
+                RegGetValueW(HKEY_LOCAL_MACHINE, key.as_ptr(), value.as_ptr(), RRF_RT_REG_SZ, std::ptr::null_mut(), buffer.as_mut_ptr().cast(), &mut size)
+            };
+            if status == 0 {
+                let length = (size as usize / 2).saturating_sub(1).min(buffer.len());
+                cards.push(String::from_utf16_lossy(&buffer[..length]));
+            }
+        }
+        cards
+    })
+}
+
+/// El PC tiene gráficos Intel (con ellos se juega casi siempre en las laptops).
+pub fn intel_graphics() -> bool {
+    graphics_cards().iter().any(|card| card.to_lowercase().contains("intel"))
+}
+
 /// Núcleos del procesador (para pasar el tiempo de CPU a porcentaje del PC).
 pub fn cores() -> u32 {
     std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(1)

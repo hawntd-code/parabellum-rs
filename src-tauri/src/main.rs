@@ -381,6 +381,17 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
             )
         });
     }
+    // La memoria que pide el propio modpack para este PC (Memory Settings), si el jugador no eligió
+    // otra a mano: así no sale su pantalla de aviso al abrir.
+    let mut instance = instance;
+    if instance.ram_gb.is_none() {
+        if let Some(gb) = diagnostico::memory_settings_gb(&instance, settings.ram_gb) {
+            if instances::update(&instance, &instance.name, Some(gb), &instance.jvm_args).is_ok() {
+                instance.ram_gb = Some(gb);
+                progress_emitter(&app, "jugar")(t!("{} usa {gb} GB: lo pide el modpack para este PC.", "{} uses {gb} GB: the modpack asks for it on this PC.", instance.name), 0.0);
+            }
+        }
+    }
     let launched = instance.clone();
     let session = cuenta::session_arguments(&app);
     let ram_gb = instance.ram_gb.unwrap_or(settings.ram_gb);
@@ -421,8 +432,11 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
 #[tauri::command]
 fn detener(state: State<AppState>, id: String) -> Result<(), String> {
     let pid = *state.games.lock().unwrap().get(&id).ok_or(t!("Ese juego no está abierto.", "That game is not open."))?;
-    state.stopped.lock().unwrap().insert(id);
+    state.stopped.lock().unwrap().insert(id.clone());
     launch::kill(pid);
+    if let Some(instance) = instances::find(&state.paths, &id) {
+        std::thread::spawn(move || launch::close_helpers(&instance));
+    }
     Ok(())
 }
 
@@ -752,6 +766,9 @@ struct Imported {
     updated: bool,
     /// Lo que no se pudo completar (por ejemplo, mods de CurseForge sin internet).
     warning: Option<String>,
+    /// Arreglos que se aplicaron solos para que abra en este PC.
+    #[serde(default)]
+    notes: Vec<String>,
 }
 
 /// Aviso de lo que quedó sin reponer, o None si está todo.
@@ -893,6 +910,7 @@ async fn import_modpack(
     icon: Option<Vec<u8>>,
     source: serde_json::Value,
     running: &HashSet<String>,
+    default_ram: u32,
     progress: impl Fn(String, f64) + Send + Sync + Clone + 'static,
 ) -> Result<Imported, String> {
     // Paquete de Parabellum (también los de la versión C#)
@@ -914,10 +932,12 @@ async fn import_modpack(
         let installed = tauri::async_runtime::spawn_blocking(move || packs::install(&file, &paths_copy, report)).await.map_err(|e| e.to_string())??;
         // Si el paquete se exportó antes de bajar lo que el modpack pide a CurseForge, se baja ahora.
         let mut warning = None;
+        let mut notes = Vec::new();
         if let Some(instance) = installed.folder.as_deref().and_then(|f| instances::find(paths, f)) {
             warning = missing_warning(&integridad::repair(&instance.game_dir, false, progress.clone()).await);
+            notes = apply_known_fixes(&instance, default_ram, progress.clone()).await;
         }
-        return Ok(Imported { id: installed.folder, name: installed.name, kind: installed.kind, updated: installed.updated, warning });
+        return Ok(Imported { id: installed.folder, name: installed.name, kind: installed.kind, updated: installed.updated, warning, notes });
     }
 
     // .mrpack
@@ -948,8 +968,14 @@ async fn import_modpack(
     // Lo que el modpack no puede traer de Modrinth y pide a CurseForge (Missing Mods Checker).
     let report = progress.clone();
     let completed = integridad::repair(&instance.game_dir, false, move |stage, f| report(stage, 0.95 + f * 0.05)).await;
+    // Lo que se sabe que este modpack necesita en este PC para abrir a la primera.
+    progress(t!("Revisando que abra en este PC…", "Checking that it opens on this PC…"), 0.99);
+    let notes = match instances::find(paths, &instance.id) {
+        Some(current) => apply_known_fixes(&current, default_ram, progress.clone()).await,
+        None => Vec::new(),
+    };
     progress(t!("Listo", "Done"), 1.0);
-    Ok(Imported { id: Some(instance.id), name, kind: "modpack".into(), updated: false, warning: missing_warning(&completed) })
+    Ok(Imported { id: Some(instance.id), name, kind: "modpack".into(), updated: false, warning: missing_warning(&completed), notes })
 }
 
 fn progress_emitter(app: &AppHandle, task: &'static str) -> impl Fn(String, f64) + Send + Sync + Clone + 'static {
@@ -1029,7 +1055,8 @@ async fn importar_modpack(app: AppHandle, state: State<'_, AppState>, ruta: Opti
     };
     let running: HashSet<String> = state.games.lock().unwrap().keys().cloned().collect();
     let progress = progress_emitter(&app, "importar");
-    import_modpack(&file, &state.paths, None, None, serde_json::json!({ "source": "archivo" }), &running, progress).await.map(Some)
+    let ram = state.settings.lock().unwrap().ram_gb;
+    import_modpack(&file, &state.paths, None, None, serde_json::json!({ "source": "archivo" }), &running, ram, progress).await.map(Some)
 }
 
 /// Instancias de CurseForge, Prism y MultiMC encontradas en este PC.
@@ -1081,7 +1108,7 @@ async fn import_external(folder: &Path, paths: &Paths, progress: impl Fn(String,
     let _ = instances::set_field(&instance, "importadaDe", serde_json::json!({ "launcher": external.launcher, "carpeta": external.folder }));
     let completed = integridad::repair(&instance.game_dir, false, progress.clone()).await;
     progress(t!("Listo", "Done"), 1.0);
-    Ok(Imported { id: Some(instance.id), name, kind: "instancia".into(), updated: false, warning: missing_warning(&completed) })
+    Ok(Imported { id: Some(instance.id), name, kind: "instancia".into(), updated: false, warning: missing_warning(&completed), notes: Vec::new() })
 }
 
 #[tauri::command]
@@ -1107,7 +1134,8 @@ async fn instalar_modpack(app: AppHandle, state: State<'_, AppState>, proyecto: 
         "versionNumber": download.version_number,
     });
     let running: HashSet<String> = state.games.lock().unwrap().keys().cloned().collect();
-    let result = import_modpack(&download.file, &paths, Some(download.title.clone()), icon, source, &running, progress).await;
+    let ram = state.settings.lock().unwrap().ram_gb;
+    let result = import_modpack(&download.file, &paths, Some(download.title.clone()), icon, source, &running, ram, progress).await;
     let _ = std::fs::remove_file(&download.file);
     result
 }
@@ -1203,6 +1231,7 @@ async fn auto_fix(
             let mut child = launch::start(&plan, &launched)?;
             started_hook(Some(child.id()));
             let outcome = diagnostico::wait_for_menu(&mut child, &launched, started, 480);
+            launch::close_helpers(&launched);
             launch::forget_pid(&launched);
             started_hook(None);
             Ok((outcome, started))
@@ -1210,9 +1239,33 @@ async fn auto_fix(
         .await
         .map_err(|e| e.to_string())??;
         match probe {
-            (Ok(_), _) => {
+            (Ok(_), started) => {
                 report.ok = true;
                 report.diagnosis = None;
+                // Llegó, pero puede haber mostrado avisos (memoria, mods que faltan): lo que se puede
+                // arreglar solo se arregla; lo demás queda a la vista.
+                let warnings = {
+                    let instance = instance.clone();
+                    tauri::async_runtime::spawn_blocking(move || diagnostico::in_game_warnings(&instance, started, ram_gb)).await.unwrap_or_default()
+                };
+                let mut left = Vec::new();
+                for finding in warnings.findings {
+                    let fixable: Vec<(String, diagnostico::Fix)> =
+                        finding.fixes.iter().filter(|o| o.recommended && !tried.contains(&o.fix)).map(|o| (o.label.clone(), o.fix.clone())).collect();
+                    if fixable.is_empty() {
+                        left.push(finding);
+                        continue;
+                    }
+                    for (label, fix) in fixable {
+                        progress(t!("Arreglando: {label}…", "Fixing: {label}…"), 0.9);
+                        tried.push(fix.clone());
+                        match apply_fix(&instance, paths, config, catalog.clone(), fix, progress.clone()).await {
+                            Ok(done) => report.applied.push(done),
+                            Err(error) => report.applied.push(t!("No se pudo: {label} ({error})", "Could not: {label} ({error})")),
+                        }
+                    }
+                }
+                report.warnings = (!left.is_empty()).then(|| diagnostico::Diagnosis { findings: left, checked_mods: 0 });
                 progress(t!("Llega al menú principal.", "It reaches the main menu."), 1.0);
                 return Ok(report);
             }
@@ -1350,6 +1403,7 @@ async fn apply_fix(
             instances::set_field(instance, "javaMajor", serde_json::json!(major))?;
             Ok(t!("La instancia ahora usa Java {major}.", "The instance now uses Java {major}."))
         }
+        Fix::InstallProject { project, title } => install_project(instance, &project, &title, progress).await,
         Fix::Repair => {
             let report = ensure_complete(instance, paths, config, catalog, true, progress).await;
             Ok(match (report.repaired.len(), report.failed.len()) {
@@ -1359,6 +1413,49 @@ async fn apply_fix(
             })
         }
     }
+}
+
+/// Instala un proyecto de Modrinth en la instancia (con sus dependencias).
+async fn install_project(instance: &Instance, project: &str, title: &str, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<String, String> {
+    progress(t!("Instalando {title}…", "Installing {title}…"), 0.0);
+    let plan = modrinth::plan(instance, project, None).await?;
+    if let Some(problem) = plan.problem {
+        return Err(problem);
+    }
+    if !plan.installed {
+        modrinth::install(instance, &plan.files, move |count, total, _, _| {
+            if total > 0 {
+                progress(t!("Instalando… {count} de {total}", "Installing… {count} of {total}"), count as f64 / total as f64);
+            }
+        })
+        .await?;
+    }
+    Ok(t!("Se instaló {} {}.", "{} {} was installed.", plan.title, plan.version_number))
+}
+
+/// Los arreglos conocidos que necesita el modpack en este PC (TF-Intel-Fix, la memoria que pide):
+/// se aplican al instalarlo. Devuelve qué se hizo.
+async fn apply_known_fixes(instance: &Instance, default_ram: u32, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Vec<String> {
+    let ram = instance.ram_gb.unwrap_or(default_ram);
+    let fixes = {
+        let instance = instance.clone();
+        tauri::async_runtime::spawn_blocking(move || diagnostico::known_fixes(&instance, ram)).await.unwrap_or_default()
+    };
+    let mut done = Vec::new();
+    for (label, fix) in fixes {
+        let result = match fix {
+            diagnostico::Fix::InstallProject { project, title } => install_project(instance, &project, &title, progress.clone()).await,
+            diagnostico::Fix::SetRam { gb } => {
+                instances::update(instance, &instance.name, Some(gb.clamp(1, 64)), &instance.jvm_args).map(|_| t!("La instancia usa {gb} GB, lo que pide el modpack para este PC.", "The instance uses {gb} GB, what the modpack asks for on this PC."))
+            }
+            _ => continue,
+        };
+        match result {
+            Ok(message) => done.push(message),
+            Err(error) => done.push(t!("No se pudo: {label} ({error})", "Could not: {label} ({error})")),
+        }
+    }
+    done
 }
 
 /// Comprueba la huella de cada archivo del modpack y repone lo que falte o esté dañado.
@@ -1804,27 +1901,25 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             let mut child = launch::start(&plan, &instance)?;
             let log = instance.game_dir.join("logs").join("latest.log");
             let mut out = format!("{} ({} {})\n", instance.name, instance.loader, instance.version_id);
-            let outcome = loop {
-                std::thread::sleep(std::time::Duration::from_secs(1));
-                if let Ok(Some(status)) = child.try_wait() {
-                    break format!("SE CERRÓ con código {:?}: {:?}", status.code(), launch::crash_reason(&instance, started_ms));
+            // Igual que «Probar y arreglar»: espera a que cargue y a que aguante sin caerse.
+            let ram_gb = instance.ram_gb.unwrap_or(settings.ram_gb);
+            let outcome = diagnostico::wait_for_menu(&mut child, &instance, started_ms, limit);
+            launch::close_helpers(&instance);
+            match outcome {
+                Ok(_) => {
+                    out += &format!("MENÚ PRINCIPAL en {:.0} s\n", started.elapsed().as_secs_f64());
+                    for finding in diagnostico::in_game_warnings(&instance, started_ms, ram_gb).findings {
+                        out += &format!("  AVISO EN EL JUEGO: {} — {}\n", finding.title, finding.detail);
+                    }
                 }
-                let fresh = std::fs::metadata(&log)
-                    .and_then(|m| m.modified())
-                    .is_ok_and(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as i64 >= started_ms);
-                let text = if fresh { String::from_utf8_lossy(&std::fs::read(&log).unwrap_or_default()).to_string() } else { String::new() };
-                // El juego terminó de cargar cuando crea los atlas de texturas o arranca el sonido.
-                if text.contains("Sound engine started") || text.contains("-atlas") {
-                    break format!("MENÚ PRINCIPAL en {:.0} s", started.elapsed().as_secs_f64());
+                Err(code) => {
+                    out += &format!("NO LLEGÓ AL MENÚ (código {code:?}) en {:.0} s\n", started.elapsed().as_secs_f64());
+                    let context = diagnostico::CrashContext { since_ms: started_ms, exit_code: code, ram_gb, system_ram_gb: system_ram_gb() };
+                    for finding in diagnostico::after_crash(&instance, &context).findings {
+                        out += &format!("  {}: {} — {}\n", finding.severity, finding.title, finding.detail);
+                    }
                 }
-                if started.elapsed().as_secs() > limit {
-                    break format!("SIN TERMINAR tras {limit} s");
-                }
-            };
-            launch::kill(child.id());
-            let _ = child.wait();
-            out += &outcome;
-            out += "\n";
+            }
             // Lo que dijo el loader sobre los mods
             let text = String::from_utf8_lossy(&std::fs::read(&log).unwrap_or_default()).to_string();
             let mut lines = text.lines().skip_while(|l| !l.contains("Loading ") || !l.contains(" mods"));
@@ -2043,6 +2138,7 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                 None,
                 serde_json::json!({ "source": "archivo" }),
                 &HashSet::new(),
+                settings.ram_gb,
                 |_, _| {},
             ))?;
             Ok(format!("{} ({}) carpeta {:?}, actualizada: {}, en {:.0} s", result.name, result.kind, result.id, result.updated, started.elapsed().as_secs_f64()))
@@ -2058,7 +2154,7 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                     None => None,
                 };
                 let source = serde_json::json!({ "source": "modrinth", "projectId": download.project_id, "versionId": download.version_id });
-                let result = import_modpack(&download.file, paths, Some(download.title.clone()), icon, source, &HashSet::new(), |_, _| {}).await;
+                let result = import_modpack(&download.file, paths, Some(download.title.clone()), icon, source, &HashSet::new(), settings.ram_gb, |_, _| {}).await;
                 let _ = std::fs::remove_file(&download.file);
                 result
             })?;

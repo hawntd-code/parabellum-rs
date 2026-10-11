@@ -26,6 +26,11 @@ pub struct ModMeta {
     /// Viene de mods.toml (Forge o NeoForge) y no de fabric.mod.json.
     #[serde(default)]
     pub forge: bool,
+    /// Viene de neoforge.mods.toml (lo que lee NeoForge 1.20.5 o más nuevo) y no de mods.toml (lo que
+    /// leen Forge y los NeoForge anteriores). Los mods «multiloader» traen los dos con dependencias
+    /// distintas: hay que mirar el que lee el loader de la instancia.
+    #[serde(default)]
+    pub neo_toml: bool,
 }
 
 /// Para qué loaders está hecho un .jar según lo que trae dentro. Modrinth y CurseForge a veces lo
@@ -138,11 +143,17 @@ fn read_into(reader: impl Read + Seek, depth: u32, result: &mut Vec<ModMeta>) {
     if let Some(meta) = read_entry(&mut zip, "fabric.mod.json", 2_000_000).and_then(|bytes| parse_fabric(&bytes)) {
         result.push(meta);
     }
-    let toml = read_entry(&mut zip, "META-INF/neoforge.mods.toml", 2_000_000).or_else(|| read_entry(&mut zip, "META-INF/mods.toml", 2_000_000));
-    if let Some(bytes) = toml {
+    let old_toml = read_entry(&mut zip, "META-INF/mods.toml", 2_000_000);
+    let neo_toml = read_entry(&mut zip, "META-INF/neoforge.mods.toml", 2_000_000);
+    if old_toml.is_some() || neo_toml.is_some() {
         let manifest = read_entry(&mut zip, "META-INF/MANIFEST.MF", 200_000).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
         let jar_version = manifest.lines().find_map(|l| l.strip_prefix("Implementation-Version:")).map(|v| v.trim().to_string());
-        result.extend(parse_forge(&bytes, jar_version.as_deref()));
+        if let Some(bytes) = old_toml {
+            result.extend(parse_forge(&bytes, jar_version.as_deref()));
+        }
+        if let Some(bytes) = neo_toml {
+            result.extend(parse_forge(&bytes, jar_version.as_deref()).into_iter().map(|meta| ModMeta { neo_toml: true, ..meta }));
+        }
     }
     // Mods incluidos dentro de otro (los módulos de Fabric API, las bibliotecas de Forge con Jar-in-Jar).
     let nested: Vec<String> = if depth < 2 {
@@ -199,6 +210,7 @@ fn parse_forge(bytes: &[u8], jar_version: Option<&str>) -> Vec<ModMeta> {
                 depends,
                 breaks,
                 forge: true,
+                neo_toml: false,
             })
         })
         .collect()
@@ -241,6 +253,7 @@ fn parse_fabric(bytes: &[u8]) -> Option<ModMeta> {
         depends: rules("depends"),
         breaks: rules("breaks"),
         forge: false,
+        neo_toml: false,
     })
 }
 
@@ -302,8 +315,163 @@ pub fn matches(version: &str, predicate: &str) -> bool {
 }
 
 /// Rangos de Maven: "[1.0,2.0)", "[47.4.23,)", "(,1.0]", "[1.0]" (exacta) o varios separados por comas.
+/// Comparación de versiones como la hace Maven (`ComparableVersion`), que es la que usan Forge y
+/// NeoForge con los rangos de mods.toml. No es semver: lo que va tras un guion es otra lista y no una
+/// versión previa ("1.20.1-1.5.2-neoforge" es MAYOR que "1.20.1"), y solo los calificadores conocidos
+/// van antes de la versión final ("1.0-beta" < "1.0" < "1.0-sp").
+pub fn maven_compare(a: &str, b: &str) -> Ordering {
+    maven::compare(&maven::parse(a), &maven::parse(b))
+}
+
+mod maven {
+    use std::cmp::Ordering;
+
+    #[derive(Debug, Clone)]
+    pub enum Item {
+        Int(u128),
+        Text(String),
+        List(Vec<Item>),
+    }
+
+    const QUALIFIERS: [&str; 7] = ["alpha", "beta", "milestone", "rc", "snapshot", "", "sp"];
+    /// La posición de "" (la versión final) en QUALIFIERS.
+    const RELEASE: &str = "5";
+
+    fn qualifier(text: &str) -> String {
+        match QUALIFIERS.iter().position(|q| *q == text) {
+            Some(index) => index.to_string(),
+            None => format!("{}-{text}", QUALIFIERS.len()),
+        }
+    }
+
+    fn text_item(text: &str, followed_by_digit: bool) -> Item {
+        let text = match (text, followed_by_digit) {
+            ("a", true) => "alpha",
+            ("b", true) => "beta",
+            ("m", true) => "milestone",
+            ("ga" | "final" | "release", _) => "",
+            ("cr", _) => "rc",
+            (other, _) => other,
+        };
+        Item::Text(text.to_string())
+    }
+
+    fn item(digits: bool, text: &str, followed_by_digit: bool) -> Item {
+        if digits {
+            Item::Int(text.trim_start_matches('0').parse().unwrap_or(if text.chars().all(|c| c == '0') { 0 } else { u128::MAX }))
+        } else {
+            text_item(text, followed_by_digit)
+        }
+    }
+
+    fn is_null(item: &Item) -> bool {
+        match item {
+            Item::Int(n) => *n == 0,
+            Item::Text(text) => qualifier(text) == RELEASE,
+            Item::List(list) => list.is_empty(),
+        }
+    }
+
+    /// Quita los ceros y calificadores de versión final del final ("1.0.0" = "1").
+    fn normalize(list: &mut Vec<Item>) {
+        while let Some(last) = list.last() {
+            if is_null(last) {
+                list.pop();
+            } else if matches!(last, Item::List(_)) {
+                // Maven sigue mirando antes de una sublista no vacía; esta implementación la conserva.
+                break;
+            } else {
+                break;
+            }
+        }
+    }
+
+    pub fn parse(version: &str) -> Item {
+        let version = version.trim().to_lowercase();
+        let chars: Vec<char> = version.chars().collect();
+        let mut stack: Vec<Vec<Item>> = vec![Vec::new()];
+        let mut digits = false;
+        let mut start = 0;
+        let piece = |from: usize, to: usize| chars[from..to].iter().collect::<String>();
+        for i in 0..chars.len() {
+            let c = chars[i];
+            if c == '.' || c == '-' {
+                let value = if i == start { Item::Int(0) } else { item(digits, &piece(start, i), false) };
+                stack.last_mut().unwrap().push(value);
+                start = i + 1;
+                if c == '-' {
+                    stack.push(Vec::new());
+                }
+            } else if c.is_ascii_digit() {
+                if !digits && i > start {
+                    stack.last_mut().unwrap().push(text_item(&piece(start, i), true));
+                    start = i;
+                    stack.push(Vec::new());
+                }
+                digits = true;
+            } else {
+                if digits && i > start {
+                    stack.last_mut().unwrap().push(item(true, &piece(start, i), false));
+                    start = i;
+                    stack.push(Vec::new());
+                }
+                digits = false;
+            }
+        }
+        if chars.len() > start {
+            stack.last_mut().unwrap().push(item(digits, &piece(start, chars.len()), false));
+        }
+        while stack.len() > 1 {
+            let mut child = stack.pop().unwrap();
+            normalize(&mut child);
+            stack.last_mut().unwrap().push(Item::List(child));
+        }
+        let mut root = stack.pop().unwrap();
+        normalize(&mut root);
+        Item::List(root)
+    }
+
+    fn compare_to(left: &Item, right: Option<&Item>) -> Ordering {
+        match (left, right) {
+            (Item::Int(n), None) => {
+                if *n == 0 {
+                    Ordering::Equal
+                } else {
+                    Ordering::Greater
+                }
+            }
+            (Item::Int(n), Some(Item::Int(m))) => n.cmp(m),
+            (Item::Int(_), Some(_)) => Ordering::Greater,
+            (Item::Text(text), None) => qualifier(text).cmp(&RELEASE.to_string()),
+            (Item::Text(_), Some(Item::Int(_))) => Ordering::Less,
+            (Item::Text(a), Some(Item::Text(b))) => qualifier(a).cmp(&qualifier(b)),
+            (Item::Text(_), Some(Item::List(_))) => Ordering::Less,
+            (Item::List(list), None) => list.first().map_or(Ordering::Equal, |first| compare_to(first, None)),
+            (Item::List(_), Some(Item::Int(_))) => Ordering::Less,
+            (Item::List(_), Some(Item::Text(_))) => Ordering::Greater,
+            (Item::List(a), Some(Item::List(b))) => {
+                for i in 0..a.len().max(b.len()) {
+                    let order = match (a.get(i), b.get(i)) {
+                        (None, None) => Ordering::Equal,
+                        (None, Some(r)) => compare_to(r, None).reverse(),
+                        (Some(l), r) => compare_to(l, r),
+                    };
+                    if order != Ordering::Equal {
+                        return order;
+                    }
+                }
+                Ordering::Equal
+            }
+        }
+    }
+
+    pub fn compare(a: &Item, b: &Item) -> Ordering {
+        compare_to(a, Some(b))
+    }
+}
+
 fn matches_maven(version: &str, range: &str) -> bool {
-    use crate::loaders::compare_versions;
+    let compare_versions = maven_compare;
     let mut rest = range;
     let mut any = false;
     while let Some(start) = rest.find(['[', '(']) {
@@ -471,10 +639,6 @@ impl Game {
         Self { minecraft: instance.minecraft_version.clone(), loader: instance.loader.clone(), loader_version: instance.loader_version.clone() }
     }
 
-    fn forge_like(&self) -> bool {
-        matches!(self.loader.as_str(), "Forge" | "NeoForge")
-    }
-
     /// NeoForge no hace cumplir al pie de la letra el rango de Minecraft: JEI para 1.21.1 pide
     /// "[1.21, 1.21.1)" y abre sin problema en 1.21.1. Ahí basta con que sea de la misma línea (1.21.x).
     fn tolerates(&self, id: &str, have: &str, predicates: &[String]) -> bool {
@@ -498,9 +662,16 @@ impl Game {
     }
 }
 
-/// Lo que carga el loader de la instancia: en Forge/NeoForge, los mods.toml; en Fabric/Quilt, los fabric.mod.json.
+/// Lo que carga el loader de la instancia: Forge y los NeoForge anteriores a 1.20.5 leen mods.toml,
+/// NeoForge 1.20.5 o más nuevo solo neoforge.mods.toml, y Fabric/Quilt los fabric.mod.json.
 fn relevant<'a>(mods: &'a [(String, Vec<ModMeta>)], game: &Game) -> Vec<(&'a str, Vec<&'a ModMeta>)> {
-    mods.iter().map(|(file, metas)| (file.as_str(), metas.iter().filter(|m| m.forge == game.forge_like()).collect())).collect()
+    let new_neoforge = game.loader == "NeoForge" && crate::loaders::compare_versions(&game.minecraft, "1.20.5") != Ordering::Less;
+    let wanted = |meta: &ModMeta| match game.loader.as_str() {
+        "Forge" => meta.forge && !meta.neo_toml,
+        "NeoForge" => meta.forge && meta.neo_toml == new_neoforge,
+        _ => !meta.forge,
+    };
+    mods.iter().map(|(file, metas)| (file.as_str(), metas.iter().filter(|m| wanted(m)).collect())).collect()
 }
 
 /// Mods que están dos veces (el mismo id en dos archivos de la carpeta): (id, nombre, archivos).
@@ -648,6 +819,7 @@ mod tests {
             depends: depends.iter().map(|(i, p)| (i.to_string(), vec![p.to_string()])).collect(),
             breaks: breaks.iter().map(|(i, p)| (i.to_string(), vec![p.to_string()])).collect(),
             forge: false,
+            neo_toml: false,
         }
     }
 
@@ -681,6 +853,36 @@ mod tests {
         assert!(loader_fits(fabric, "Quilt", "1.21.1", false) && !loader_fits(fabric, "NeoForge", "1.21.1", false));
         assert!(loader_fits(fabric, "NeoForge", "1.21.1", true), "con Sinytra Connector");
         assert!(!library.known() && loader_fits(library, "Forge", "1.20.1", false));
+    }
+
+    #[test]
+    fn versiones_como_maven() {
+        use std::cmp::Ordering::*;
+        // Lo que va tras el guion es otra lista, no una versión previa (The Aether de BMC4).
+        assert_eq!(maven_compare("1.20.1-1.5.2-neoforge", "1.20.1"), Greater);
+        assert!(matches("1.20.1-1.5.2-neoforge", "[1.20.1,]"));
+        assert_eq!(maven_compare("1.0-beta", "1.0"), Less);
+        assert_eq!(maven_compare("1.0-rc1", "1.0-beta2"), Greater);
+        assert_eq!(maven_compare("1.0.0", "1"), Equal);
+        assert_eq!(maven_compare("1.0-sp", "1.0"), Greater);
+        assert_eq!(maven_compare("47.4.20", "47.4.3"), Greater);
+        assert_eq!(maven_compare("2.15.1", "2.15.1.0"), Equal);
+        assert_eq!(maven_compare("1.20.1", "1.21"), Less);
+        assert!(matches("47.4.20", "[47.1.0,)") && !matches("1.21.1", "[1.20.1,1.21)") && matches("1.20.1", "[1.20.1]"));
+    }
+
+    #[test]
+    fn cada_loader_lee_su_archivo() {
+        // Immersive Lanterns trae los dos: para Forge accessories es opcional, para NeoForge 1.21 no.
+        let forge = "modLoader=\"javafml\"\n[[mods]]\nmodId=\"immersivelanterns\"\n[[dependencies.\"immersivelanterns\"]]\nmodId=\"accessories\"\nmandatory=false\nversionRange=\"*\"\n";
+        let neo = "modLoader=\"javafml\"\n[[mods]]\nmodId=\"immersivelanterns\"\n[[dependencies.\"immersivelanterns\"]]\nmodId=\"accessories\"\nmandatory=true\nversionRange=\"*\"\n";
+        let metas = read_jar(Cursor::new(jar(&[("META-INF/mods.toml", forge), ("META-INF/neoforge.mods.toml", neo)])));
+        assert_eq!(metas.len(), 2);
+        let mods = vec![("immersivelanterns.jar".to_string(), metas)];
+        let game = |loader: &str, minecraft: &str| Game { minecraft: minecraft.into(), loader: loader.into(), loader_version: None };
+        assert!(check_game(&mods, &game("Forge", "1.20.1")).is_empty(), "en Forge no falta nada");
+        assert!(check_game(&mods, &game("NeoForge", "1.20.1")).is_empty(), "NeoForge 1.20.1 lee mods.toml");
+        assert_eq!(check_game(&mods, &game("NeoForge", "1.21.1")).len(), 1, "NeoForge 1.21 lee neoforge.mods.toml y ahí accessories es obligatorio");
     }
 
     #[test]

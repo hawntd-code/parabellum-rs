@@ -956,7 +956,10 @@ function renderDoctor() {
       doctor.result.applied.length ? t("Esto es lo que arreglé:", "This is what I fixed:") : t("No hizo falta arreglar nada.", "Nothing needed fixing."),
       applied ? `<div class="finding-actions">${applied}</div>` : "",
     );
-  } else if (findings.length) rows = findingsHtml(findings, { applied: doctor.applied, busy: doctor.busy });
+    // Avisos que el juego muestra al abrir y no se pudieron quitar solos.
+    rows += findingsHtml(doctor.result.warnings?.findings ?? [], { applied: doctor.applied, busy: doctor.busy, attr: "data-doctor-warning" });
+  } else if (doctor.busy && doctor.auto) rows = ""; // mientras prueba, los pasos dicen lo que hace
+  else if (findings.length) rows = findingsHtml(findings, { applied: doctor.applied, busy: doctor.busy });
   else if (doctor.busy) rows = "";
   else if (doctor.mode === "crash" || doctor.result)
     rows = noteRow(
@@ -2890,10 +2893,11 @@ function wireEvents() {
     if (!state.doctor?.busy) closeModal("#doctor-dialog");
   };
   $("#doctor-findings").onclick = (event) => {
-    const button = event.target.closest("[data-doctor-fix]");
+    const button = event.target.closest("[data-doctor-fix], [data-doctor-warning]");
     if (!button || state.doctor?.busy) return;
-    const [i, j] = button.dataset.doctorFix.split(":").map(Number);
-    const option = state.doctor.diagnosis.findings[i].fixes[j];
+    const warning = !!button.dataset.doctorWarning;
+    const [i, j] = (button.dataset.doctorFix ?? button.dataset.doctorWarning).split(":").map(Number);
+    const option = (warning ? state.doctor.result.warnings : state.doctor.diagnosis).findings[i].fixes[j];
     applyDoctorFix(option.fix, option.label).then(async (ok) => {
       if (!ok) return;
       await reloadInstances();
@@ -3964,6 +3968,7 @@ async function installModpack(projectId, versionId = null) {
     await reloadInstances();
     toast(t(`${result.name} está lista para jugar. La encuentras en tu biblioteca.`, `${result.name} is ready to play. You will find it in your library.`));
     if (result.warning) toast(result.warning, "error");
+    if (result.notes?.length) toast(result.notes.join(" "));
   } catch (error) {
     toast(String(error), "error");
   } finally {
@@ -4067,6 +4072,7 @@ async function importExternal(external) {
     await reloadInstances();
     toast(t(`${result.name} está lista para jugar.`, `${result.name} is ready to play.`));
     if (result.warning) toast(result.warning, "error");
+    if (result.notes?.length) toast(result.notes.join(" "));
     navigate("instance", result.id);
   } catch (error) {
     $("#import-title").textContent = t("No se pudo importar", "Could not import");
@@ -4104,6 +4110,7 @@ async function importModpack(path = null) {
     } else {
       toast(result.updated ? t(`${result.name} se actualizó: tus mundos y opciones se conservaron.`, `${result.name} was updated: your worlds and options were kept.`) : t(`${result.name} está lista para jugar.`, `${result.name} is ready to play.`));
       if (result.warning) toast(result.warning, "error");
+    if (result.notes?.length) toast(result.notes.join(" "));
       navigate("instance", result.id);
     }
   } catch (error) {
