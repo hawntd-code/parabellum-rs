@@ -40,6 +40,8 @@ pub struct Settings {
     pub favorite_chats: Vec<String>,
     /// Mods, resource packs y shaders favoritos de Modrinth (para meterlos en cualquier instancia).
     pub favorite_mods: Vec<FavoriteMod>,
+    /// Cuenta de Google con la que se sincronizaron los favoritos (ver favoritos.rs).
+    pub favorites_owner: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
@@ -89,6 +91,7 @@ impl Default for Settings {
             sidebar_hidden: false,
             favorite_chats: Vec::new(),
             favorite_mods: Vec::new(),
+            favorites_owner: None,
         }
     }
 }

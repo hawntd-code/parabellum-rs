@@ -113,6 +113,10 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### 0.19.1: los favoritos siguen a la cuenta (pedido de Juan)
+- [x] favoritos.rs: con la sesión de Google, los favoritos (conversaciones y mods) viven en favorites/{uid} de la base de datos y manda lo que hay ahí (quitar uno en otro PC también lo quita aquí); la primera vez se sube lo de este PC, salvo que fueran de otra cuenta (PC compartido: favorites_owner). Los iconos locales no suben (solo los https de Modrinth)
+- [ ] Juan: publicar firebase-reglas.json (nueva sección «favorites») en la consola de Firebase. Sin eso, los favoritos siguen funcionando solo en cada PC
+
 ### 0.19.0: favoritos (pedido de Juan)
 - [x] **Conversaciones y grupos favoritos:** estrella en el encabezado del chat, clic derecho en la lista o «Agregar a favoritos» en el menú de un amigo. Salen primero: «Favoritos» y «Recientes» en Mensajes, y una sección «Favoritos» arriba en el panel de amigos y en grupos. Se guardan en ajustes.json de este PC (favorite_chats), sin tocar las reglas de Firebase
 - [x] **Mods favoritos** (también resource packs y shaders de Modrinth): estrella en su página de Explorar y en la lista de Contenido. Botón «Favoritos» en Contenido para instalar los que falten en esa instancia (cada uno con su versión compatible y dependencias; los que no son compatibles se dicen). Al crear una instancia, «Con mis favoritos» los instala de una vez (en vanilla, solo los resource packs)

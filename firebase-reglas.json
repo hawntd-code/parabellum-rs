@@ -180,6 +180,43 @@
           ".validate": "newData.isNumber()"
         }
       }
+    },
+    "favorites": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "since": {
+          ".validate": "newData.isNumber()"
+        },
+        "chats": {
+          "$chat": {
+            ".validate": "newData.val() === true && $chat.length <= 200"
+          }
+        },
+        "mods": {
+          "$project": {
+            ".validate": "$project.matches(/^[A-Za-z0-9_-]{1,64}$/) && newData.child('title').isString() && newData.child('title').val().length <= 100 && (newData.child('kind').val() === 'mod' || newData.child('kind').val() === 'resourcepack' || newData.child('kind').val() === 'shader') && newData.child('at').isNumber()",
+            "title": {
+              ".validate": "newData.isString()"
+            },
+            "kind": {
+              ".validate": "newData.isString()"
+            },
+            "icon": {
+              ".validate": "newData.isString() && newData.val().length <= 500 && newData.val().beginsWith('https://')"
+            },
+            "at": {
+              ".validate": "newData.isNumber()"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
     }
   }
 }

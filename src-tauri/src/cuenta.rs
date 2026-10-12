@@ -20,6 +20,8 @@ pub struct SocialState {
     google: Mutex<Option<Arc<GoogleAccount>>>,
     social: Mutex<Option<Arc<Social>>>,
     chat: Mutex<Option<Arc<Chat>>>,
+    /// Escucha de los favoritos de la cuenta (favoritos.rs).
+    favorites: Mutex<Option<crate::firebase::Listener>>,
     status: Mutex<Status>,
     /// Puerto del servidor de sesión local (None si no se pudo abrir).
     pub session_port: Mutex<Option<u16>>,
@@ -245,6 +247,7 @@ async fn connect(app: &AppHandle) {
             social.set_presence(current_presence(app).map(|(p, _)| p).unwrap_or_else(Presence::online));
             social.start();
             start_chat(app, &social);
+            *app.state::<AppState>().social.favorites.lock().unwrap() = Some(crate::favoritos::start(app, social.database()));
             update_status(app, |s| s.connecting = false);
         }
         Err(error) => update_status(app, |s| {
@@ -258,6 +261,7 @@ async fn disconnect(app: &AppHandle) {
     if let Some(chat) = app.state::<AppState>().social.chat.lock().unwrap().take() {
         chat.stop();
     }
+    app.state::<AppState>().social.favorites.lock().unwrap().take();
     let _ = app.emit("chats", Vec::<chat::Summary>::new());
     let social = app.state::<AppState>().social.social.lock().unwrap().take();
     if let Some(social) = social {

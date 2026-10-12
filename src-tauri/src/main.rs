@@ -16,6 +16,7 @@ mod content;
 mod diagnostico;
 mod cuenta;
 mod download;
+mod favoritos;
 mod drive;
 mod externos;
 mod firebase;
@@ -148,6 +149,7 @@ fn guardar_ajustes(app: AppHandle, state: State<AppState>, mut ajustes: Settings
         let current = state.settings.lock().unwrap();
         ajustes.favorite_chats = current.favorite_chats.clone();
         ajustes.favorite_mods = current.favorite_mods.clone();
+        ajustes.favorites_owner = current.favorites_owner.clone();
     }
     ajustes.ram_gb = ajustes.ram_gb.clamp(1, 64);
     ajustes.ui_scale = if ajustes.ui_scale.is_finite() { ajustes.ui_scale.clamp(0.8, 1.5) } else { 1.0 };
@@ -179,22 +181,27 @@ fn panel_lateral(state: State<AppState>, oculto: bool) -> Result<(), String> {
 
 /// Marca o quita una conversación (o grupo) de favoritos. Devuelve la lista nueva.
 #[tauri::command]
-fn favorito_chat(state: State<AppState>, chat: String, activo: bool) -> Result<Vec<String>, String> {
+fn favorito_chat(app: AppHandle, state: State<AppState>, chat: String, activo: bool) -> Result<Vec<String>, String> {
     if chat.is_empty() || chat.len() > 200 || !chat.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
         return Err(t!("Conversación no válida.", "Invalid conversation."));
     }
-    let mut settings = state.settings.lock().unwrap();
-    settings.favorite_chats.retain(|c| *c != chat);
-    if activo {
-        settings.favorite_chats.insert(0, chat);
-    }
-    settings.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
-    Ok(settings.favorite_chats.clone())
+    let list = {
+        let mut settings = state.settings.lock().unwrap();
+        settings.favorite_chats.retain(|c| *c != chat);
+        if activo {
+            settings.favorite_chats.insert(0, chat.clone());
+        }
+        settings.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
+        settings.favorite_chats.clone()
+    };
+    // Con la sesión de Google iniciada, también en la cuenta (te siguen a otro PC).
+    favoritos::push_chat(&app, &chat, activo);
+    Ok(list)
 }
 
 /// Marca o quita un mod (o resource pack, o shader) de Modrinth de favoritos. Devuelve la lista nueva.
 #[tauri::command]
-fn favorito_mod(state: State<AppState>, proyecto: settings::FavoriteMod, activo: bool) -> Result<Vec<settings::FavoriteMod>, String> {
+fn favorito_mod(app: AppHandle, state: State<AppState>, proyecto: settings::FavoriteMod, activo: bool) -> Result<Vec<settings::FavoriteMod>, String> {
     let id = proyecto.project_id.trim().to_string();
     if id.is_empty() || id.len() > 64 || !id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) || !["mod", "resourcepack", "shader"].contains(&proyecto.kind.as_str()) {
         return Err(t!("Ese contenido no se puede marcar como favorito.", "That content cannot be marked as a favorite."));
@@ -206,13 +213,17 @@ fn favorito_mod(state: State<AppState>, proyecto: settings::FavoriteMod, activo:
         icon_url: proyecto.icon_url.filter(|u| u.len() <= 500 && (u.starts_with("https://") || u.starts_with("http://icono.localhost/"))),
         kind: proyecto.kind,
     };
-    let mut settings = state.settings.lock().unwrap();
-    settings.favorite_mods.retain(|m| m.project_id != id);
-    if activo {
-        settings.favorite_mods.insert(0, favorite);
-    }
-    settings.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
-    Ok(settings.favorite_mods.clone())
+    let list = {
+        let mut settings = state.settings.lock().unwrap();
+        settings.favorite_mods.retain(|m| m.project_id != id);
+        if activo {
+            settings.favorite_mods.insert(0, favorite.clone());
+        }
+        settings.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
+        settings.favorite_mods.clone()
+    };
+    favoritos::push_mod(&app, &favorite, activo);
+    Ok(list)
 }
 
 /// Toca el sonido de mensaje nuevo (al activarlo en Ajustes, para oírlo).

@@ -2520,6 +2520,17 @@ function wireChatEvents() {
     if (state.page === "chat") renderChatList();
     else updateChatBadge();
   });
+  // Favoritos que llegan de la cuenta de Google (cambiados en otro PC).
+  listen("favoritos", ({ payload }) => {
+    state.settings.favoriteChats = payload.chats;
+    state.settings.favoriteMods = payload.mods;
+    renderGroups();
+    renderFriends();
+    if (state.page === "chat") renderChatList();
+    if (state.page === "instance") renderContent();
+    if (state.page === "project" && state.projectData) renderProjectInstall();
+    if (!$("#fav-dialog").classList.contains("hidden")) renderFavoritesDialog();
+  });
   listen("chat-mensajes", ({ payload }) => {
     if (payload.chat !== state.chatOpen) return;
     state.chatMessages = payload.messages;
