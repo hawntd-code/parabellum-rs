@@ -596,7 +596,7 @@ fn current_presence(app: &AppHandle) -> Option<(Presence, Option<(u16, String)>)
     let hosting = crate::hosting::hosted_name(app);
     let Some(id) = running else {
         *tracker = (None, Tracker::default());
-        return Some((Presence { hosting, ..Presence::online() }, None));
+        return Some((Presence { hosting, p2p: p2p_address(app), ..Presence::online() }, None));
     };
     let instance = instances::find(&state.paths, &id)?;
     let started = std::fs::read_to_string(instance.state_dir().join("ultima-partida.txt")).ok().and_then(|t| t.trim().parse::<i64>().ok()).unwrap_or(0);
@@ -619,8 +619,15 @@ fn current_presence(app: &AppHandle) -> Option<(Presence, Option<(u16, String)>)
         lan,
         hosting,
         player: Some(state.settings.lock().unwrap().username.clone()),
+        p2p: p2p_address(app),
     };
     Some((presence, shared))
+}
+
+/// La dirección P2P de este Parabellum (se publica siempre: también sirve para que tus servidores
+/// sepan qué amigo se conecta).
+pub fn p2p_address(app: &AppHandle) -> Option<String> {
+    app.state::<AppState>().p2p.lock().unwrap().as_ref().and_then(|p2p| p2p.address())
 }
 
 // ================= Arranque, bandeja y salida
@@ -629,6 +636,14 @@ fn current_presence(app: &AppHandle) -> Option<(Presence, Option<(u16, String)>)
 pub fn startup(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        // Conexión directa con los amigos: entran a tus servidores y mundos abiertos (los que estén
+        // encendidos) sin pasar por playit.gg.
+        crate::p2p::log_to(app.state::<AppState>().paths.logs.join("p2p.log"));
+        let gate_app = app.clone();
+        match crate::p2p::P2p::start(Arc::new(move |remote: &str, target: &str| crate::hosting::p2p_port(&gate_app, remote, target))).await {
+            Ok(p2p) => *app.state::<AppState>().p2p.lock().unwrap() = Some(p2p),
+            Err(error) => eprintln!("p2p: no arrancó ({error})"),
+        }
         let log = app.state::<AppState>().paths.logs.join("sesion-local.log");
         if let Ok(port) = sesion_local::start(log).await {
             *app.state::<AppState>().social.session_port.lock().unwrap() = Some(port);
@@ -727,6 +742,10 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<()> {
 pub fn shutdown(app: &AppHandle) {
     if let Some(social) = app.state::<AppState>().social.social.lock().unwrap().take() {
         tauri::async_runtime::block_on(async move { social.go_offline().await });
+    }
+    // Los amigos conectados por P2P se enteran al momento (y no cuando se agota la espera).
+    if let Some(p2p) = app.state::<AppState>().p2p.lock().unwrap().take() {
+        tauri::async_runtime::block_on(async move { p2p.close().await });
     }
 }
 

@@ -748,6 +748,19 @@ fn public_ipv6() -> Option<std::net::Ipv6Addr> {
     }
 }
 
+/// Conexión directa (P2P): a qué puerto de este PC entra un amigo. Solo amigos de Parabellum (su
+/// identidad P2P está en su presencia) y solo a lo que está encendido: un servidor (`target` es su
+/// clave) o el mundo abierto en LAN ("world"). Quién puede jugar lo sigue decidiendo la lista blanca.
+pub fn p2p_port(app: &AppHandle, remote: &str, target: &str) -> Option<u16> {
+    cuenta::social_handle(app)?.friend_by_p2p(remote)?;
+    if target == "world" {
+        return hosting(app).world.lock().unwrap().as_ref().map(|w| w.port);
+    }
+    let paths = app.state::<AppState>().paths.clone();
+    let config = servidor::list(&paths).into_iter().find(|c| c.key == target)?;
+    hosting(app).running.lock().unwrap().get(&config.id).map(|r| r.port)
+}
+
 /// Publica el servidor para los amigos invitados (encendido, dirección y jugadores).
 async fn publish(app: &AppHandle, id: &str) {
     let Some(social) = cuenta::social_handle(app) else { return };
@@ -786,7 +799,9 @@ async fn publish(app: &AppHandle, id: &str) {
     if let Some(tps) = tps {
         data["tps"] = json!((tps * 10.0).round() / 10.0);
     }
-    for (field, value) in [("address", address), ("lan", lan), ("ipv6", ipv6), ("modpack", config.modpack.clone()), ("project", config.modpack_project.clone())] {
+    // Conexión directa entre las dos PCs (P2P): la más rápida desde otra casa.
+    let p2p = if online { cuenta::p2p_address(app) } else { None };
+    for (field, value) in [("address", address), ("lan", lan), ("ipv6", ipv6), ("p2p", p2p), ("modpack", config.modpack.clone()), ("project", config.modpack_project.clone())] {
         if let Some(value) = value.filter(|v| !v.is_empty()) {
             data[field] = json!(value.chars().take(200).collect::<String>());
         }

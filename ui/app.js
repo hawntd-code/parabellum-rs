@@ -1800,7 +1800,7 @@ function wireFriendsEvents() {
     const join = event.target.closest("[data-join]");
     if (join) {
       const friend = findFriend(join.dataset.join);
-      if (friend) joinFriend(friend, friend.presence.address ?? friend.presence.lan);
+      if (friend) joinFriendWorld(friend);
       return;
     }
     const more = event.target.closest("[data-friend-menu]");
@@ -2006,7 +2006,7 @@ function renderChatHeader() {
 function joinTarget(friend) {
   const p = friend.presence ?? {};
   if (!friend.online || p.state !== "playing") return null;
-  if (friend.worldOpen && (p.address || p.lan)) return { friend, address: p.address ?? p.lan, title: t(`Entrar al mundo de ${friend.name}`, `Join ${friend.name}'s world`) };
+  if (friend.worldOpen && (p.address || p.lan)) return { friend, world: true, address: p.address ?? p.lan, title: t(`Entrar al mundo de ${friend.name}`, `Join ${friend.name}'s world`) };
   if (p.world === "server" && p.server) return { friend, address: p.server, title: t(`Entrar a ${p.server} con ${friend.name}`, `Join ${p.server} with ${friend.name}`) };
   return null;
 }
@@ -2520,7 +2520,7 @@ function wireChatEvents() {
   });
   $("#chat-join").onclick = () => {
     const join = state.chatJoin;
-    if (join) joinFriend(join.friend, join.address);
+    if (join) join.world ? joinFriendWorld(join.friend) : joinFriend(join.friend, join.address);
   };
   $("#chat-messages").onclick = (event) => {
     const install = event.target.closest("[data-share-install]");

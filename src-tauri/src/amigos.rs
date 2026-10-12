@@ -42,6 +42,9 @@ pub struct Presence {
     pub hosting: Option<String>,
     /// Con qué nombre está jugando (los servidores de los amigos lo comprueban al entrar).
     pub player: Option<String>,
+    /// Dirección P2P de su Parabellum ("id|relevo"): con ella sus amigos entran directo a sus
+    /// servidores y mundos abiertos, y él sabe quién se le conecta.
+    pub p2p: Option<String>,
 }
 
 impl Presence {
@@ -61,6 +64,7 @@ impl Presence {
             ("lan", &self.lan),
             ("hosting", &self.hosting),
             ("player", &self.player),
+            ("p2p", &self.p2p),
         ];
         for (key, value) in fields {
             if let Some(value) = value.as_deref().filter(|v| !v.is_empty()) {
@@ -83,6 +87,7 @@ impl Presence {
             lan: text("lan"),
             hosting: text("hosting"),
             player: text("player"),
+            p2p: text("p2p"),
         }
     }
 }
@@ -123,6 +128,8 @@ pub struct FriendServer {
     /// Rutas directas: misma red e IPv6 (al unirse se prueban junto con la de playit.gg).
     pub lan: Option<String>,
     pub ipv6: Option<String>,
+    /// Dirección P2P del anfitrión (conexión directa entre las dos PCs).
+    pub p2p: Option<String>,
     pub online: bool,
     pub players: u64,
     pub max_players: u64,
@@ -348,6 +355,7 @@ impl Social {
                     address: text("address"),
                     lan: text("lan"),
                     ipv6: text("ipv6"),
+                    p2p: text("p2p"),
                     online: fresh && data["online"].as_bool() == Some(true),
                     players: data["players"].as_u64().unwrap_or(0),
                     max_players: data["max"].as_u64().unwrap_or(0),
@@ -368,6 +376,16 @@ impl Social {
         let fresh = node["updated"].as_i64().is_some_and(|seen| now - seen < OFFLINE_AFTER_MS);
         let player = node["player"].as_str().or(node["name"].as_str()).unwrap_or_default();
         fresh && node["state"].as_str() == Some("playing") && player.eq_ignore_ascii_case(name)
+    }
+
+    /// El amigo que tiene esa identidad P2P (la publica su Parabellum en la presencia): (uid, nombre).
+    pub fn friend_by_p2p(&self, id: &str) -> Option<(String, String)> {
+        let inner = self.inner.lock().unwrap();
+        inner.friend_ids.iter().find_map(|uid| {
+            let node = inner.presence.get(uid)?;
+            let published = node["p2p"].as_str()?;
+            (published.split('|').next() == Some(id)).then(|| (uid.clone(), node["name"].as_str().unwrap_or("?").to_string()))
+        })
     }
 
     /// Nombre de cada amigo (uid -> nombre), para la lista blanca de los servidores.
@@ -610,6 +628,7 @@ mod tests {
             server: None,
             hosting: Some("LosPanas".into()),
             player: Some("Juan_07".into()),
+            p2p: Some("0a1b2c|https://use1-1.relay.n0.iroh.link./".into()),
         };
         let json = presence.to_json("GxxseS");
         assert_eq!(json["mc"], "1.20.1");

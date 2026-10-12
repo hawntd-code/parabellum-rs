@@ -1,6 +1,6 @@
 [package]
 name = "parabellum"
-version = "0.21.0"
+version = "0.22.0"
 description = "Parabellum: launcher de Minecraft no premium"
 edition = "2021"
 publish = false
@@ -39,6 +39,8 @@ sha2 = "0.10"
 flate2 = "1"
 crc32fast = "1"
 getrandom = "0.2"
+# Conexión directa entre PCs (P2P): QUIC con perforación de NAT y relevo si no se puede directo
+iroh = "1.3"
 
 # Solo Windows (ver src/plataforma/windows): sesión cifrada con DPAPI, procesos atados a Parabellum
 # (job), uso de memoria y procesador, avisos sin instalador, sonido, imágenes (WIC) y registro SRV.

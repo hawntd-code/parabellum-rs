@@ -1381,12 +1381,12 @@ function activityInfo(item) {
       hostLine: t(`Servidor de ${sv.hostName}`, `${sv.hostName}'s server`),
       pill: pill(sv.online, sv.online ? t("Encendido", "On") : t("Apagado", "Off")),
       players,
-      canJoin: sv.online && !!sv.address,
+      canJoin: sv.online && !!(sv.address || sv.p2p || sv.lan || sv.ipv6),
       address: sv.address,
       pack: sv.pack,
       version: [sv.loader, sv.minecraft].filter(Boolean).join(" "),
       status,
-      note: sv.online ? (sv.address ? null : t("Sin dirección pública todavía", "No public address yet")) : t("Te invitó: se puede entrar cuando lo encienda", "Invited you: you can join when they start it"),
+      note: sv.online ? (sv.address || sv.p2p ? null : t("Sin dirección pública todavía", "No public address yet")) : t("Te invitó: se puede entrar cuando lo encienda", "Invited you: you can join when they start it"),
     };
   }
   const f = item.friend;
@@ -1526,7 +1526,7 @@ function routesFactHtml(detail) {
   const measured = state.routeTimes?.[detail.item.key];
   const chips = measured
     ? measured
-        .map((r, i) => `<span class="route-chip ${i === 0 && r.latencyMs != null ? "best" : ""}">${escapeHtml(routeName(r.kind))} · ${r.latencyMs != null ? `${r.latencyMs} ms` : t("no responde", "no answer")}</span>`)
+        .map((r, i) => `<span class="route-chip ${i === 0 && r.latencyMs != null ? "best" : ""}">${escapeHtml(routeName(r.kind, r.via))} · ${r.latencyMs != null ? `${r.latencyMs} ms` : t("no responde", "no answer")}</span>`)
         .join("")
     : `<span class="route-chip"><span class="spinner tiny"></span>${t("Midiendo…", "Measuring…")}</span>`;
   return `<div class="srv-fact"><span>${t("Conexión", "Connection")}</span><div class="route-list">${chips}</div></div>`;
@@ -1610,14 +1610,23 @@ function findActivity(key) {
 function joinActivity(item) {
   if (item.kind === "hosted") return joinFriendServer(item.server);
   const p = item.friend.presence;
-  if (item.kind === "world") {
-    return fastestRoute(routesFor(item)).then((route) => joinFriend(item.friend, route?.address ?? p.address ?? p.lan));
-  }
+  if (item.kind === "world") return joinFriendWorld(item.friend);
   if (item.kind === "playing") return joinFriend(item.friend, p.server);
 }
 
-/** Nombre de una ruta para mostrarla. */
-function routeName(kind) {
+/** Entrar al mundo abierto de un amigo por la ruta más rápida (red local, P2P o playit.gg). */
+async function joinFriendWorld(friend) {
+  const p = friend.presence ?? {};
+  const routes = routesFor({ kind: "world", friend });
+  if (routes.length > 1) toast(t("Buscando la conexión más rápida…", "Looking for the fastest connection…"));
+  const route = await fastestRoute(routes);
+  if (route?.latencyMs != null) toast(t(`Entrando por ${routeName(route.kind, route.via)} (${route.latencyMs} ms).`, `Joining through ${routeName(route.kind, route.via)} (${route.latencyMs} ms).`));
+  return joinFriend(friend, route?.address ?? p.address ?? p.lan);
+}
+
+/** Nombre de una ruta para mostrarla (P2P: directo entre las dos PCs o por el relevo). */
+function routeName(kind, via) {
+  if (kind === "p2p") return via === "relay" ? t("P2P por relevo", "P2P via relay") : t("P2P directo", "Direct P2P");
   return { local: t("Este PC", "This PC"), lan: t("Red local", "Local network"), ipv6: t("IPv6 directo", "Direct IPv6"), playit: "playit.gg" }[kind] ?? kind;
 }
 
@@ -1627,12 +1636,13 @@ function routesFor(item) {
     const sv = item.server;
     return [
       sv.lan && { address: sv.lan, kind: "lan" },
+      sv.p2p && { address: `p2p:${sv.p2p}#${sv.key}`, kind: "p2p" },
       sv.ipv6 && { address: sv.ipv6, kind: "ipv6" },
       sv.address && { address: sv.address, kind: "playit" },
     ].filter(Boolean);
   }
   const p = item.friend?.presence ?? {};
-  if (item.kind === "world") return [p.lan && { address: p.lan, kind: "lan" }, p.address && { address: p.address, kind: "playit" }].filter(Boolean);
+  if (item.kind === "world") return [p.lan && { address: p.lan, kind: "lan" }, p.p2p && { address: `p2p:${p.p2p}#world`, kind: "p2p" }, p.address && { address: p.address, kind: "playit" }].filter(Boolean);
   if (item.kind === "playing" && p.server) return [{ address: p.server, kind: "direct" }];
   return [];
 }
@@ -1669,7 +1679,7 @@ async function joinFriendServer(server) {
   const route = await fastestRoute(routesFor({ kind: "hosted", server }), server.maxPlayers);
   const address = route?.address ?? server.address;
   if (!address) return toast(t("El servidor todavía no tiene dirección.", "The server has no address yet."), "error");
-  if (route?.latencyMs != null) toast(t(`Entrando por ${routeName(route.kind)} (${route.latencyMs} ms).`, `Joining through ${routeName(route.kind)} (${route.latencyMs} ms).`));
+  if (route?.latencyMs != null) toast(t(`Entrando por ${routeName(route.kind, route.via)} (${route.latencyMs} ms).`, `Joining through ${routeName(route.kind, route.via)} (${route.latencyMs} ms).`));
   if (state.running.size) {
     await copyText(address, t(`Ya tienes Minecraft abierto. Copié la dirección: en el juego ve a Multijugador › Conexión directa y pégala.`, `Minecraft is already open. I copied the address: in the game go to Multiplayer › Direct Connection and paste it.`));
     return;

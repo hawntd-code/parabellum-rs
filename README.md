@@ -87,6 +87,11 @@ Minecraft se acepta marcándolo al crear o encender el servidor.
 Al conectar playit.gg, Parabellum abre su página para aceptar y, en cuanto se acepta, conecta el
 agente y crea la dirección (si la cuenta es nueva, playit.gg pide verificar el correo antes de darla).
 
+Entre amigos de Parabellum, **Unirse** prueba además la **conexión directa entre las dos PCs (P2P)**,
+sin pasar por el túnel: QUIC con perforación de NAT (biblioteca [iroh](https://iroh.computer)) y, si las
+redes no lo permiten, un relevo. Solo pasan los amigos y solo a lo que está encendido; playit.gg queda
+para quien no tiene Parabellum y de respaldo.
+
 Los invitados se siguen por su cuenta de Google: si alguien se cambia el nombre, la lista blanca, el
 permiso de administrador y sus cosas en el mundo pasan al nombre nuevo. Y quien entra con el nombre de
 un invitado tiene que estar jugando desde Parabellum con esa cuenta (si no, el servidor lo saca).
@@ -154,6 +159,7 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--probar-receta <instancia>` | Comparte la instancia como por el chat y la vuelve a armar como otra instancia (compara los archivos) |
 | `--probar-sonido [archivo.wav]` | Toca el sonido de mensaje nuevo (y lo guarda si se da un archivo) |
 | `--ping <dirección>` | Estado de un servidor como en la lista de Multijugador: icono, mensaje, jugadores, versión (con SRV) |
+| `--probar-p2p <puerto> [segundos]` | Abre un túnel P2P en este PC hacia un servidor encendido y le hace ping; con segundos lo deja abierto (puerto en `datos/logs/p2p-puerto.txt`) |
 | `--convertir-imagen <entrada> <salida.png>` | Abre una imagen con Windows (HEIC, TIFF…) y la guarda como PNG |
 | `--probar-favoritos` | Con la sesión guardada: lee los favoritos de la cuenta, escribe uno de prueba (y lo borra) y comprueba las reglas de Firebase |
 | `--probar-tiempo-real [veces]` | Con la sesión de Google guardada: cuánto tarda en llegar por la escucha de Firebase algo recién escrito |

@@ -76,6 +76,8 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
 - Argumentos de Java en UTF-8 (en Windows hacía falta ANSI; en Mac no).
 - Ejecutable de Java de los runtimes de Mojang (`jre.bundle/Contents/Home/bin/java`).
 - Carpeta de datos en `~/Library/Application Support/Parabellum` cuando corre desde una `.app`.
+- Conexión directa entre PCs (P2P, `p2p.rs` con iroh): es código compartido y iroh funciona en Mac,
+  así que no hay nada que hacer en `macos/` (falta probarla).
 - El juego se abre en su propio grupo de procesos (sigue abierto si se cierra Parabellum).
 - Lo compartido ya pregunta por Mac donde Mojang distingue sistemas: reglas `"os": "osx"` (así se
   agrega `-XstartOnFirstThread`), nativos `natives-macos`, Java de Mojang `mac-os-arm64` y separador

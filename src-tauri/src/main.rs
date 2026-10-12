@@ -34,6 +34,7 @@ mod mojang;
 mod mrpack;
 mod nbt;
 mod opciones;
+mod p2p;
 mod packs;
 mod paths;
 mod plataforma;
@@ -75,6 +76,8 @@ struct AppState {
     hosting: hosting::Hosting,
     /// Permiso para publicar en el Drive del catálogo (solo quien publica lo tiene).
     drive_publisher: tokio::sync::Mutex<Option<Arc<drive::Publisher>>>,
+    /// Conexión directa con los amigos (P2P); None hasta que arranca.
+    p2p: Mutex<Option<Arc<p2p::P2p>>>,
 }
 
 #[derive(Serialize)]
@@ -248,11 +251,12 @@ async fn convertir_imagen(datos: String) -> Result<String, String> {
     Ok(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png)))
 }
 
-/// Prueba todas las rutas a un servidor (este PC, misma red, IPv6, playit.gg) y las devuelve con su
-/// tiempo, la más rápida primero.
+/// Prueba todas las rutas a un servidor (este PC, misma red, P2P, IPv6, playit.gg) y las devuelve con
+/// su tiempo, la más rápida primero.
 #[tauri::command]
-async fn mejor_ruta(rutas: Vec<ping::Route>, max_jugadores: Option<u32>) -> Vec<ping::Route> {
-    ping::best_routes(rutas, max_jugadores).await
+async fn mejor_ruta(state: State<'_, AppState>, rutas: Vec<ping::Route>, max_jugadores: Option<u32>) -> Result<Vec<ping::Route>, String> {
+    let p2p = state.p2p.lock().unwrap().clone();
+    Ok(ping::best_routes(rutas, max_jugadores, p2p).await)
 }
 
 /// Si el firewall deja entrar a los servidores (conexión directa por la red o por IPv6).
@@ -2654,6 +2658,45 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                 status.sample.join(", ")
             ))
         }
+        "--probar-p2p" => {
+            // Dos extremos P2P en este PC: un «anfitrión» que deja pasar al puerto dado y un «invitado»
+            // que abre el túnel y le hace ping como la lista de Multijugador. Con segundos, el túnel
+            // queda abierto ese tiempo (para entrar con el juego a 127.0.0.1:puerto; ver p2p.log).
+            let port: u16 = args.get(1).and_then(|p| p.parse().ok()).ok_or("Falta el puerto del servidor.")?;
+            let seconds: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(0);
+            p2p::log_to(paths.logs.join("p2p.log"));
+            tauri::async_runtime::block_on(async move {
+                let host = p2p::P2p::start(Arc::new(move |_: &str, target: &str| (target == "world").then_some(port))).await?;
+                let guest = p2p::P2p::start(Arc::new(|_: &str, _: &str| None)).await?;
+                if !host.online(std::time::Duration::from_secs(15)).await {
+                    return Err("Sin relevo (¿sin internet?).".to_string());
+                }
+                let address = host.address().ok_or("Sin dirección P2P.")?;
+                let link = guest.open(&address, "world").await?;
+                let status = ping::status(&format!("127.0.0.1:{}", link.port)).await?;
+                let mut report = format!(
+                    "{} · túnel en 127.0.0.1:{} · {} · ida y vuelta {} ms · ping del servidor {} ms · {}/{} jugadores · {}",
+                    address,
+                    link.port,
+                    if link.direct { "directo" } else { "relevo" },
+                    link.rtt_ms.unwrap_or(0),
+                    status.latency_ms.unwrap_or(0),
+                    status.players,
+                    status.max_players,
+                    status.version
+                );
+                if seconds > 0 {
+                    let _ = std::fs::write(paths.logs.join("p2p-puerto.txt"), format!("{}
+{address}", link.port));
+                    tokio::time::sleep(std::time::Duration::from_secs(seconds)).await;
+                    report.push_str(&format!("
+abierto {seconds} s"));
+                }
+                guest.close().await;
+                host.close().await;
+                Ok(report)
+            })
+        }
         "--convertir-imagen" => {
             // Abre una imagen con Windows y la guarda como PNG (lo que hace el chat con HEIC, TIFF…).
             let input = args.get(1).ok_or("Falta la imagen.")?;
@@ -2897,6 +2940,7 @@ fn main() {
             social: cuenta::SocialState::default(),
             hosting: hosting::Hosting::default(),
             drive_publisher: Default::default(),
+            p2p: Default::default(),
         })
         .setup(|app| {
             // El tamaño de la interfaz que eligió el jugador (Ajustes › Apariencia).

@@ -113,13 +113,21 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### 0.22.0: conexión directa entre PCs, P2P (pedido de Juan: «como Essential, pero no premium»)
+- [x] **P2P dentro de Parabellum** (`p2p.rs`, biblioteca iroh): QUIC sobre UDP con perforación de NAT, también por IPv6; si las redes no lo permiten, pasa por un relevo de n0 (gratis, para uso personal, con límite de velocidad). Funciona en todas las versiones y loaders sin mods: quien se une abre un puerto en 127.0.0.1 y Minecraft entra ahí; cada conexión del juego es un flujo QUIC hacia el anfitrión
+- [x] Cada Parabellum publica su dirección P2P en la presencia (identidad nueva en cada arranque; sin cambiar las reglas de Firebase). El anfitrión solo deja pasar a sus amigos y solo a lo que está encendido (un servidor o el mundo abierto); la lista blanca sigue decidiendo quién juega
+- [x] «Unirse» (servidores y mundos abiertos, también desde el chat y la lista de amigos) suma la ruta P2P a la carrera: red local, P2P, IPv6 y playit.gg. En el detalle: «P2P directo» o «P2P por relevo» con su tiempo. Un servidor sin playit.gg ya se puede unir por P2P
+- [x] `--probar-p2p <puerto> [segundos]`; registro en `datos/logs/p2p.log`. Probado en este PC: entrar a «Prueba vanilla» por el túnel P2P (directo)
+- [ ] *Prueba:* Juan y un amigo en otra casa (los dos con la 0.22): ver en el detalle si sale «P2P directo» y el ping
+- [ ] Después: playit.gg opcional (hostear sin vincular nada), relevo propio cerca si hace falta, mod ligero para la interfaz dentro del juego (invitar/unirse sin salir de Minecraft)
+
 ### 0.21.0: menos lag al jugar en los servidores (pedido de Juan)
 - [x] Medido: el túnel de playit.gg de Juan entra por un centro de datos a 140–180 ms (el agente se conecta a uno a 16 ms); su servidor respondía en ~665 ms por playit.gg y 3–14 ms en su PC, sin «Can't keep up» (no era la PC). Golpear entidades espera al servidor; romper bloques no (por eso solo se notaba al pelear)
 - [x] **«Unirse» elige la ruta más rápida:** el anfitrión publica, además de playit.gg, su dirección de la misma red y su IPv6 pública; al unirse se prueban todas a la vez (ping del juego) y se usa la más rápida que responda y sea el mismo servidor (mismo máximo de jugadores). También con los mundos abiertos. En el detalle de Servidores: cada ruta con su tiempo
 - [x] **«Jugar» para el anfitrión** en la página del servidor: entra por 127.0.0.1 (sin túnel)
 - [x] **Conexión directa:** botón «Permitir» que agrega una regla del firewall de Windows (puertos 25565–25600, pide administrador una vez); plataforma::firewall_open / open_firewall
 - [x] **TPS del servidor** (con «time query gametime» cada ~6 s, sirve en todas las versiones, sin ensuciar la consola) y aviso si se atrasa; se publica a los amigos y se ve en el detalle
-- [ ] Siguiente: abrir el puerto del módem con UPnP (IPv4 directo); playit.gg Premium para elegir región (de pago)
+- [x] ~~Siguiente: abrir el puerto del módem con UPnP~~ → en su lugar, P2P (0.22.0; iroh también usa UPnP/PCP del módem cuando hay)
 
 ### 0.20.1: un proyecto, dos plataformas (pedido de Juan)
 - [x] Lo que depende del sistema se movió a `src-tauri/src/plataforma/` con un contrato común (`plataforma/mod.rs`): `windows/` (lo que ya funcionaba: DPAPI, job de Windows, ANSI/8.3 de Java, WIC, DnsQuery, PlaySound, avisos, accesos directos, Explorador…) y `macos/` (lo fácil hecho con herramientas de macOS y lo demás con `TODO(mac)`). Lo compartido ya pregunta por la plataforma donde Mojang distingue sistemas (reglas `os`, nativos, Java de Mojang, separador del classpath)

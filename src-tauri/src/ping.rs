@@ -245,8 +245,9 @@ fn color_code(color: &str) -> Option<char> {
 
 // ================= Elegir la ruta más rápida
 
-/// Una forma de llegar al mismo servidor: "local" (este PC), "lan" (misma red), "ipv6" (directo por
-/// internet) o "playit" (el túnel de playit.gg).
+/// Una forma de llegar al mismo servidor: "local" (este PC), "lan" (misma red), "p2p" (conexión
+/// directa entre las dos PCs; la dirección es "p2p:id|relevo#destino"), "ipv6" (directo por internet)
+/// o "playit" (el túnel de playit.gg).
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Route {
@@ -255,18 +256,38 @@ pub struct Route {
     /// Lo que tardó en responder (None si no respondió o era otro servidor).
     #[serde(default)]
     pub latency_ms: Option<u32>,
+    /// P2P: "direct" (directo entre las dos PCs) o "relay" (por el relevo).
+    #[serde(default)]
+    pub via: Option<String>,
 }
 
 /// Prueba todas las rutas a la vez y devuelve cada una con su tiempo, la más rápida primero. Las
 /// directas tienen poco tiempo para responder (si no responden rápido, no sirven); el túnel, más.
 /// `max_players`: para comprobar que es el mismo servidor (una dirección de red local puede ser de
 /// otro equipo en la red de quien se une).
-pub async fn best_routes(routes: Vec<Route>, max_players: Option<u32>) -> Vec<Route> {
-    let checks = routes.into_iter().take(6).map(|mut route| async move {
+/// Las rutas P2P se abren primero (el túnel queda en 127.0.0.1 y esa es la dirección que devuelve).
+pub async fn best_routes(routes: Vec<Route>, max_players: Option<u32>, p2p: Option<std::sync::Arc<crate::p2p::P2p>>) -> Vec<Route> {
+    let checks = routes.into_iter().take(6).map(|mut route| {
+        let p2p = p2p.clone();
+        async move {
+        if route.kind == "p2p" {
+            let opened = async {
+                let (address, target) = route.address.strip_prefix("p2p:")?.rsplit_once('#')?;
+                tokio::time::timeout(Duration::from_secs(8), p2p?.open(address, target)).await.ok()?.ok()
+            };
+            match opened.await {
+                Some(link) => {
+                    route.address = format!("127.0.0.1:{}", link.port);
+                    route.via = Some(if link.direct { "direct" } else { "relay" }.into());
+                }
+                None => return route,
+            }
+        }
         let limit = if route.kind == "playit" { Duration::from_secs(6) } else { Duration::from_millis(1500) };
         let answer = tokio::time::timeout(limit, status(&route.address)).await.ok().and_then(Result::ok);
         route.latency_ms = answer.filter(|s| s.online && max_players.is_none_or(|max| max == 0 || s.max_players == max)).and_then(|s| s.latency_ms);
         route
+        }
     });
     let mut routes = futures::future::join_all(checks).await;
     routes.sort_by_key(|r| r.latency_ms.unwrap_or(u32::MAX));
