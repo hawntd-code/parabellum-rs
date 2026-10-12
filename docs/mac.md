@@ -15,6 +15,7 @@ src-tauri/src/plataforma/
     avisos.rs                notificaciones
     accesos.rs               accesos directos (en Mac no aplican)
 docs/mac.md                  esta guía (actualízala conforme avances)
+docs/mac-cambios.md          cambios de Windows que te tocan y pendientes (léelo al empezar)
 .github/workflows/mac.yml    compila en una Mac de GitHub (manual o al subir una rama mac/…)
 ```
 

@@ -513,9 +513,3 @@ pub fn crash_reason(instance: &Instance, since_ms: i64) -> Option<String> {
 fn java_alive(pid: u32) -> bool {
     plataforma::is_java_process(pid)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-}

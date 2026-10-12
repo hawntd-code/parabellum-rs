@@ -27,3 +27,7 @@ Windows 10 y 11.
 
 Si cambias algo en `plataforma/mod.rs` (el contrato), agrégalo también en `plataforma/macos/` (aunque
 sea con un `TODO(mac)`): así la versión de Mac sigue compilando. Ver `docs/mac.md`.
+
+Si cambias algo compartido (`ui/`, `mod/`, `src-tauri/src/` fuera de `plataforma/windows/`), anótalo
+en `docs/mac-cambios.md` en el mismo commit, con qué tiene que hacer Mac (o «nada»): Diego trabaja
+la versión de Mac en paralelo y así se entera.
