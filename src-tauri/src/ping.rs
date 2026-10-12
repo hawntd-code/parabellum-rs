@@ -2,7 +2,7 @@
 //! (MOTD), cuántos están jugando y la versión. Es el «Server List Ping» del juego: se pregunta al
 //! propio servidor, así que sirve para cualquier servidor (de un amigo por playit.gg o público).
 //! Las direcciones sin puerto se buscan como registro SRV (_minecraft._tcp.<dirección>), igual que
-//! el juego: así funcionan las de playit.gg. Lo último que se supo de cada uno queda en
+//! el juego: así funcionan las de playit.gg (plataforma::srv_lookup). Lo último que se supo de cada uno queda en
 //! datos/cache/servidores.json, para mostrar su icono aunque esté apagado.
 
 use serde::{Deserialize, Serialize};
@@ -56,36 +56,10 @@ fn split_address(address: &str) -> Option<(String, Option<u16>)> {
 
 /// Registro SRV de Minecraft: (destino, puerto).
 fn srv(host: &str) -> Option<(String, u16)> {
-    use windows_sys::Win32::NetworkManagement::Dns::{DnsFree, DnsFreeRecordList, DnsQuery_W, DNS_QUERY_STANDARD, DNS_RECORDW, DNS_TYPE_SRV};
     if host.parse::<std::net::IpAddr>().is_ok() {
         return None;
     }
-    let name: Vec<u16> = format!("_minecraft._tcp.{host}").encode_utf16().chain(std::iter::once(0)).collect();
-    let mut results: *mut DNS_RECORDW = std::ptr::null_mut();
-    // SAFETY: nombre UTF-16 terminado en cero; la lista que devuelve Windows se recorre mientras vive
-    // y se libera con DnsFree al final.
-    unsafe {
-        if DnsQuery_W(name.as_ptr(), DNS_TYPE_SRV, DNS_QUERY_STANDARD, std::ptr::null_mut(), (&mut results as *mut *mut DNS_RECORDW).cast(), std::ptr::null_mut()) != 0 {
-            return None;
-        }
-        let mut found = None;
-        let mut record = results;
-        while !record.is_null() {
-            if (*record).wType == DNS_TYPE_SRV {
-                let data = (*record).Data.SRV;
-                let target = data.pNameTarget;
-                if !target.is_null() {
-                    let length = (0..).take_while(|&i| *target.add(i) != 0).count();
-                    let text = String::from_utf16_lossy(std::slice::from_raw_parts(target, length));
-                    found = Some((text.trim_end_matches('.').to_string(), data.wPort));
-                    break;
-                }
-            }
-            record = (*record).pNext;
-        }
-        DnsFree(results.cast(), DnsFreeRecordList);
-        found
-    }
+    crate::plataforma::srv_lookup(host)
 }
 
 fn var_int(mut value: i32, out: &mut Vec<u8>) {

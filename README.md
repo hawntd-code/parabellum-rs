@@ -2,9 +2,25 @@
 
 Launcher de Minecraft no premium. Motor en Rust (`src-tauri/`) e interfaz en HTML/CSS/JS sin dependencias (`ui/`).
 
+## Plataformas
+
+Un solo proyecto para **Windows** (la versión que ya funciona) y **Mac con chip Apple** (en
+construcción). Casi todo es compartido; lo que cambia entre sistemas vive en `src-tauri/src/plataforma/`:
+
+```
+ui/                          interfaz (la misma en los dos)
+src-tauri/src/               motor compartido
+src-tauri/src/plataforma/
+  mod.rs                     el contrato: lo que cada sistema tiene que dar
+  windows/                   Windows          → guía: docs/windows.md
+  macos/                     Mac (chip Apple) → guía y lista de tareas: docs/mac.md
+.github/workflows/mac.yml    compila en una Mac de GitHub (ramas mac/… o a mano)
+```
+
 ## Compilar
 
-Requiere Rust (rustup, toolchain MSVC) y las Build Tools de Visual Studio con C++.
+Windows (para Mac, ver [docs/mac.md](docs/mac.md)). Requiere Rust (rustup, toolchain MSVC) y las Build
+Tools de Visual Studio con C++.
 
 ```
 cd src-tauri

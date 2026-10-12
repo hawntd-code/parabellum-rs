@@ -26,7 +26,7 @@ pub fn rules_allow(rules: Option<&Value>, features: &Features) -> bool {
 fn rule_matches(rule: &Map<String, Value>, features: &Features) -> bool {
     if let Some(os) = rule.get("os").and_then(Value::as_object) {
         if let Some(name) = os.get("name").and_then(Value::as_str) {
-            if name != "windows" {
+            if name != crate::plataforma::MOJANG_OS {
                 return false;
             }
         }

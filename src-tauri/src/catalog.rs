@@ -705,7 +705,8 @@ pub async fn apply_launcher_update(entry: &Entry, paths: &Paths, progress: impl 
     let fresh = staging.join("Parabellum.nuevo.exe");
     {
         let mut archive = zip::ZipArchive::new(std::fs::File::open(&zip).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-        let name = archive.file_names().find(|n| n.to_lowercase().ends_with(".exe")).map(String::from).ok_or(t!("La actualización no trae el ejecutable.", "The update does not contain the executable."))?;
+        let executable = crate::plataforma::EXECUTABLE.to_lowercase();
+        let name = archive.file_names().find(|n| n.to_lowercase().ends_with(&executable)).map(String::from).ok_or(t!("La actualización no trae el ejecutable.", "The update does not contain the executable."))?;
         let mut source = archive.by_name(&name).map_err(|e| e.to_string())?;
         let mut out = std::fs::File::create(&fresh).map_err(|e| e.to_string())?;
         std::io::copy(&mut source, &mut out).map_err(|e| t!("La actualización está dañada: {e}", "The update is damaged: {e}"))?;
@@ -744,7 +745,7 @@ pub fn publish_launcher(out_dir: &Path, notes: &str) -> Result<PathBuf, String> 
     let zip_name = format!("Parabellum-{version}.zip");
     let zip_path = folder.join(&zip_name);
     let mut zip = packs::ZipOut::create(&zip_path)?;
-    zip.add_file(&exe, "Parabellum.exe")?;
+    zip.add_file(&exe, crate::plataforma::EXECUTABLE)?;
     zip.finish()?;
     let manifest = Manifest {
         format: 1,

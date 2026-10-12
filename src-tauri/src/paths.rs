@@ -47,7 +47,7 @@ impl Paths {
             }
         }
         let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
-        Self::new(exe.parent().unwrap_or(Path::new(".")))
+        Self::new(crate::plataforma::data_root(&exe))
     }
 
     pub fn ensure_created(&self) -> std::io::Result<()> {

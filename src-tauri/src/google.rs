@@ -73,7 +73,7 @@ fn random_text(bytes: usize) -> String {
 
 /// Abre la página en el navegador predeterminado.
 pub fn open_browser(url: &str) -> Result<(), String> {
-    std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", url]).spawn().map(|_| ()).map_err(|e| e.to_string())
+    crate::plataforma::open_url(url)
 }
 
 impl GoogleAccount {
@@ -368,25 +368,12 @@ pub fn clear_session(paths: &Paths) {
     let _ = std::fs::remove_file(paths.data.join(SESSION_FILE));
 }
 
+/// Cifra (o descifra) con la cuenta del usuario del sistema: DPAPI en Windows, el Llavero en Mac.
 pub fn dpapi(data: &[u8], protect: bool) -> Option<Vec<u8>> {
-    use windows_sys::Win32::Foundation::LocalFree;
-    use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB};
-    let input = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
-    let mut output = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
-    // SAFETY: los punteros apuntan a buffers válidos durante la llamada; el resultado lo reserva
-    // Windows y se libera con LocalFree después de copiarlo.
-    unsafe {
-        let ok = if protect {
-            CryptProtectData(&input, std::ptr::null(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut output)
-        } else {
-            CryptUnprotectData(&input, std::ptr::null_mut(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut output)
-        };
-        if ok == 0 || output.pbData.is_null() {
-            return None;
-        }
-        let result = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
-        LocalFree(output.pbData as _);
-        Some(result)
+    if protect {
+        crate::plataforma::protect(data)
+    } else {
+        crate::plataforma::unprotect(data)
     }
 }
 

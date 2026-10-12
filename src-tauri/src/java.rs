@@ -13,10 +13,9 @@ pub struct JavaRuntime {
 }
 
 impl JavaRuntime {
-    /// javaw.exe: abre el juego sin ventana de consola.
+    /// El Java con el que se abre el juego (en Windows javaw.exe: sin ventana de consola).
     pub fn executable(&self) -> PathBuf {
-        let javaw = self.home.join("bin").join("javaw.exe");
-        if javaw.exists() { javaw } else { self.home.join("bin").join("java.exe") }
+        crate::plataforma::java_binary(&self.home, true)
     }
 }
 
@@ -24,7 +23,7 @@ pub fn discover(paths: &Paths) -> Vec<JavaRuntime> {
     let Ok(entries) = std::fs::read_dir(&paths.java) else { return Vec::new() };
     entries
         .flatten()
-        .filter(|e| e.path().join("bin").join("java.exe").exists())
+        .filter(|e| crate::plataforma::java_binary(&e.path(), false).exists())
         .filter_map(|e| {
             let release = std::fs::read_to_string(e.path().join("release")).ok()?;
             let version = release

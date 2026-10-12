@@ -4,19 +4,17 @@
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::Write;
-use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use crate::instances::Instance;
 use crate::java::{self, JavaRuntime};
 use crate::paths::Paths;
+use crate::plataforma::{self, CommandExt as _};
 use crate::settings::Settings;
 use crate::version::{rules_allow, Features, Maven, ResolvedVersion};
 
 pub const LAUNCHER_NAME: &str = "Parabellum";
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-const DETACHED_PROCESS: u32 = 0x0000_0008;
 
 pub struct LaunchPlan {
     pub arguments: Vec<String>,
@@ -65,7 +63,7 @@ fn supports_quick_play(version: &str) -> bool {
 fn library_paths(library: &Value, paths: &Paths) -> (Option<PathBuf>, Option<PathBuf>) {
     let Some(maven) = library["name"].as_str().and_then(Maven::parse) else { return (None, None) };
     let mut native = None;
-    if let Some(classifier) = library.pointer("/natives/windows").and_then(Value::as_str) {
+    if let Some(classifier) = library.pointer(&format!("/natives/{}", plataforma::MOJANG_OS)).and_then(Value::as_str) {
         let classifier = classifier.replace("${arch}", "64");
         let relative = library
             .pointer(&format!("/downloads/classifiers/{classifier}/path"))
@@ -212,7 +210,7 @@ pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<L
     }
 
     // Variables de los argumentos
-    let classpath_text = classpath.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(";");
+    let classpath_text = classpath.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(plataforma::CLASSPATH_SEPARATOR);
     let vars: HashMap<&str, String> = HashMap::from([
         ("auth_player_name", settings.username.clone()),
         ("version_name", version.id.clone()),
@@ -232,7 +230,7 @@ pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<L
         ("launcher_name", LAUNCHER_NAME.into()),
         ("launcher_version", env!("CARGO_PKG_VERSION").into()),
         ("classpath", classpath_text.clone()),
-        ("classpath_separator", ";".into()),
+        ("classpath_separator", plataforma::CLASSPATH_SEPARATOR.into()),
         ("library_directory", paths.libraries.display().to_string()),
         ("resolution_width", settings.window_width.to_string()),
         ("resolution_height", settings.window_height.to_string()),
@@ -313,20 +311,20 @@ pub fn start(plan: &LaunchPlan, instance: &Instance) -> Result<std::process::Chi
     std::fs::create_dir_all(&instance.game_dir).map_err(|e| e.to_string())?;
 
     // Java lee los argumentos de un archivo: evita el límite de longitud de la línea de comandos de Windows.
-    // Lo lee en la codificación de Windows (ANSI) y no en UTF-8: con UTF-8, «Prominence™» o «José»
-    // llegaban rotos y el juego abría otra carpeta, sin mods. Java 8 (Minecraft hasta 1.16) no entiende
-    // el archivo: ahí van en la línea de comandos, que en esas versiones es bastante más corta.
+    // Lo lee en la codificación del sistema (en Windows, ANSI y no UTF-8: con UTF-8, «Prominence™» o
+    // «José» llegaban rotos y el juego abría otra carpeta, sin mods). Java 8 (Minecraft hasta 1.16) no
+    // entiende el archivo: ahí van en la línea de comandos, que en esas versiones es bastante más corta.
     let arguments: Vec<String> = if java.major < 9 {
-        plan.arguments.iter().map(|a| ansi_text(a)).collect::<Result<_, _>>()?
+        plan.arguments.iter().map(|a| plataforma::java_argument(a)).collect::<Result<_, _>>()?
     } else {
         let argfile = state.join("java-argumentos.txt");
         let mut content = Vec::new();
         for argument in &plan.arguments {
-            let quoted = format!("\"{}\"\n", ansi_text(argument)?.replace('\\', "\\\\").replace('"', "\\\""));
-            content.extend(ansi(&quoted).unwrap_or_default());
+            let quoted = format!("\"{}\"\n", plataforma::java_argument(argument)?.replace('\\', "\\\\").replace('"', "\\\""));
+            content.extend(plataforma::argfile_bytes(&quoted));
         }
         std::fs::write(&argfile, content).map_err(|e| e.to_string())?;
-        vec![format!("@{}", ansi_text(&argfile.display().to_string())?)]
+        vec![format!("@{}", plataforma::java_argument(&argfile.display().to_string())?)]
     };
 
     let output = std::fs::File::create(state.join("salida-java.log")).map_err(|e| e.to_string())?;
@@ -336,65 +334,13 @@ pub fn start(plan: &LaunchPlan, instance: &Instance) -> Result<std::process::Chi
         .stdin(Stdio::null())
         .stdout(output.try_clone().map_err(|e| e.to_string())?)
         .stderr(output)
-        .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+        .detached()
         .spawn()
         .map_err(|e| t!("No se pudo abrir Java: {e}", "Could not start Java: {e}"))?;
     let now = chrono::Utc::now().timestamp_millis();
     let _ = std::fs::write(state.join("ultima-partida.txt"), now.to_string());
     let _ = std::fs::write(state.join("juego.pid"), child.id().to_string());
     Ok(child)
-}
-
-/// El texto en la codificación de Windows (ANSI), o None si tiene letras que no caben en ella.
-pub fn ansi(text: &str) -> Option<Vec<u8>> {
-    use windows_sys::Win32::Globalization::{WideCharToMultiByte, CP_ACP, WC_NO_BEST_FIT_CHARS};
-    let wide: Vec<u16> = text.encode_utf16().collect();
-    if wide.is_empty() {
-        return Some(Vec::new());
-    }
-    let mut used_default = 0;
-    // SAFETY: búferes válidos con su tamaño; la primera llamada solo mide.
-    unsafe {
-        let size = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide.as_ptr(), wide.len() as i32, std::ptr::null_mut(), 0, std::ptr::null(), &mut used_default);
-        if size <= 0 || used_default != 0 {
-            return None;
-        }
-        let mut out = vec![0u8; size as usize];
-        let written = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide.as_ptr(), wide.len() as i32, out.as_mut_ptr(), size, std::ptr::null(), &mut used_default);
-        (written == size && used_default == 0).then_some(out)
-    }
-}
-
-/// El nombre corto (8.3, solo letras inglesas) de una ruta que existe.
-fn short_path(path: &str) -> Option<String> {
-    use windows::core::HSTRING;
-    use windows::Win32::Storage::FileSystem::GetShortPathNameW;
-    let long = HSTRING::from(path);
-    let mut buffer = vec![0u16; 1024];
-    // SAFETY: el búfer tiene el tamaño que se indica.
-    let length = unsafe { GetShortPathNameW(&long, Some(&mut buffer)) } as usize;
-    (length > 0 && length < buffer.len()).then(|| String::from_utf16_lossy(&buffer[..length]))
-}
-
-/// Un argumento que Java pueda leer en ANSI. Si tiene letras que no caben (una carpeta con nombre en
-/// chino en un Windows en español), sus rutas se cambian por su nombre corto.
-fn ansi_text(argument: &str) -> Result<String, String> {
-    if ansi(argument).is_some() {
-        return Ok(argument.to_string());
-    }
-    let shorten = |piece: &str| if Path::new(piece).exists() { short_path(piece).unwrap_or_else(|| piece.to_string()) } else { piece.to_string() };
-    let rebuilt = match argument.split_once('=') {
-        Some((key, value)) if key.starts_with('-') => format!("{key}={}", value.split(';').map(shorten).collect::<Vec<_>>().join(";")),
-        _ => argument.split(';').map(shorten).collect::<Vec<_>>().join(";"),
-    };
-    if ansi(&rebuilt).is_some() {
-        return Ok(rebuilt);
-    }
-    Err(t!(
-        "Java no puede abrir el juego desde una carpeta con letras como las de «{}». Cambia el nombre de la instancia o mueve Parabellum a otra carpeta.",
-        "Java cannot open the game from a folder with characters like those in «{}». Rename the instance or move Parabellum to another folder.",
-        argument.chars().filter(|c| !c.is_ascii()).take(6).collect::<String>()
-    ))
 }
 
 fn extract_natives(archives: &[PathBuf], target: &Path) -> Result<(), String> {
@@ -447,7 +393,7 @@ pub fn forget_pid(instance: &Instance) {
 
 /// Cierra el juego y los procesos que haya abierto.
 pub fn kill(pid: u32) {
-    let _ = Command::new("taskkill").args(["/PID", &pid.to_string(), "/T", "/F"]).creation_flags(CREATE_NO_WINDOW).output();
+    plataforma::kill_tree(pid);
 }
 
 /// Crash Assistant (lo traen modpacks como Better MC) abre su propio Java para vigilar el juego y se
@@ -465,11 +411,12 @@ pub fn close_helpers(instance: &Instance) {
     if stems.is_empty() {
         return;
     }
-    let matches = stems.iter().map(|stem| format!("$_.CommandLine -like '*crash_assistant*{stem}_*'")).collect::<Vec<_>>().join(" -or ");
-    let script = format!(
-        "Get-CimInstance Win32_Process -Filter \"Name='javaw.exe' or Name='java.exe'\" | Where-Object {{ {matches} }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}"
-    );
-    let _ = Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &script]).creation_flags(CREATE_NO_WINDOW).output();
+    for (pid, command) in plataforma::java_command_lines() {
+        let tail = command.split_once("crash_assistant").map(|(_, rest)| rest).unwrap_or_default();
+        if stems.iter().any(|stem| tail.contains(&format!("{stem}_"))) {
+            plataforma::kill_tree(pid);
+        }
+    }
 }
 
 /// Últimas líneas del registro del juego (latest.log; si aún no existe, la salida de Java).
@@ -560,38 +507,11 @@ pub fn crash_reason(instance: &Instance, since_ms: i64) -> Option<String> {
 }
 
 fn java_alive(pid: u32) -> bool {
-    // tasklist evita depender de APIs de Windows; se llama como mucho cada pocos segundos.
-    // Su línea es "javaw.exe","19476","Console",…
-    Command::new("tasklist")
-        .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .any(|line| line.contains(&format!("\"{pid}\"")) && line.to_lowercase().starts_with("\"java"))
-        })
-        .unwrap_or(false)
+    plataforma::is_java_process(pid)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn argumentos_de_java_en_ansi() {
-        // «™» y las letras con acento caben en la codificación de Windows en español/inglés (1252).
-        assert_eq!(ansi("Prominence™ II").unwrap().len(), "Prominence™ II".chars().count());
-        assert_eq!(ansi("C:\\Users\\José\\Iñaki").unwrap().len(), "C:\\Users\\José\\Iñaki".chars().count());
-        assert!(ansi("plain").is_some());
-        // Una ruta que existe con letras que no caben se cambia por su nombre corto.
-        let folder = std::env::temp_dir().join(format!("parabellum-漢字-{}", std::process::id()));
-        std::fs::create_dir_all(&folder).unwrap();
-        let argument = format!("-Dcarpeta={}", folder.display());
-        if ansi(&argument).is_none() {
-            let text = ansi_text(&argument).unwrap();
-            assert!(text.is_ascii(), "{text}");
-        }
-        let _ = std::fs::remove_dir_all(&folder);
-    }
 }

@@ -15,11 +15,9 @@ pub fn english() -> bool {
     ENGLISH.load(Ordering::Relaxed)
 }
 
-/// El idioma de Windows: español si Windows está en español; si no, inglés.
+/// El idioma del sistema: español si está en español; si no, inglés.
 pub fn detect() -> &'static str {
-    // SAFETY: función sin argumentos que solo lee la configuración del usuario.
-    let id = unsafe { windows_sys::Win32::Globalization::GetUserDefaultUILanguage() };
-    if id & 0x3ff == 0x0a { "es" } else { "en" }
+    crate::plataforma::ui_language()
 }
 
 /// Valida lo que llega de la interfaz.

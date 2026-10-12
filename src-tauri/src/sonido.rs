@@ -1,5 +1,5 @@
 //! El sonido de mensaje nuevo (como el de Discord): dos notas cortas que suben, generadas aquí mismo
-//! (sin archivo de audio) y tocadas por Windows, así suena aunque Parabellum esté junto al reloj.
+//! (sin archivo de audio) y tocadas por el sistema, así suena aunque Parabellum esté junto al reloj.
 
 use std::f64::consts::TAU;
 use std::sync::{Mutex, OnceLock};
@@ -58,7 +58,6 @@ fn wav() -> &'static [u8] {
 
 /// Toca el sonido de mensaje nuevo sin esperar a que termine. `wait`: esperar (para probarlo).
 pub fn message(wait: bool) -> bool {
-    use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_MEMORY, SND_NODEFAULT};
     static LAST: Mutex<Option<Instant>> = Mutex::new(None);
     {
         let mut last = LAST.lock().unwrap();
@@ -67,10 +66,7 @@ pub fn message(wait: bool) -> bool {
         }
         *last = Some(Instant::now());
     }
-    let flags = SND_MEMORY | SND_NODEFAULT | if wait { 0 } else { SND_ASYNC };
-    // SAFETY: con SND_MEMORY el primer argumento es el WAV en memoria; es estático, así que sigue vivo
-    // mientras Windows lo toca en segundo plano (SND_ASYNC).
-    unsafe { PlaySoundW(wav().as_ptr().cast(), std::ptr::null_mut(), flags) != 0 }
+    crate::plataforma::play_wav(wav(), wait)
 }
 
 /// El sonido como archivo (para escucharlo fuera de Parabellum).

@@ -6,8 +6,8 @@
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
+use crate::plataforma::CommandExt as _;
 use std::process::{Command, Stdio};
 
 use crate::download::{self, FileDownload};
@@ -19,7 +19,6 @@ use crate::version::{rules_allow, Features, Maven, ResolvedVersion};
 const FORGE_MAVEN: &str = "https://maven.minecraftforge.net";
 const NEOFORGE_MAVEN: &str = "https://maven.neoforged.net/releases";
 const NEOFORGE_VERSIONS: &str = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge";
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 fn unavailable(loader: Loader) -> String {
     t!("No se puede conectar con los servidores de {} (en algunas redes, como la de la escuela, están bloqueados).", "Cannot connect to the {} servers (on some networks, like the school's, they are blocked).", loader.name())
@@ -304,7 +303,7 @@ fn run_processors(
     let runtimes = java::discover(paths);
     let runtime = java::select(&runtimes, vanilla.java_component.as_deref(), vanilla.java_major)
         .ok_or(t!("Falta Java {} para instalar {name}.", "Java {} is missing to install {name}.", vanilla.java_major))?;
-    let java_exe = runtime.home.join("bin").join("java.exe");
+    let java_exe = crate::plataforma::java_binary(&runtime.home, false);
 
     let temp = paths.data.join("temporal").join(format!("instalador-{}", name.to_lowercase()));
     let _ = std::fs::remove_dir_all(&temp);
@@ -373,14 +372,14 @@ fn run_processors(
         let _ = log.flush();
         let status = Command::new(&java_exe)
             .arg("-cp")
-            .arg(classpath.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(";"))
+            .arg(classpath.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(crate::plataforma::CLASSPATH_SEPARATOR))
             .arg(&main)
             .args(&arguments)
             .current_dir(&temp)
             .stdin(Stdio::null())
             .stdout(log.try_clone().map_err(|e| e.to_string())?)
             .stderr(log.try_clone().map_err(|e| e.to_string())?)
-            .creation_flags(CREATE_NO_WINDOW)
+            .no_console()
             .status()
             .map_err(|e| t!("No se pudo abrir Java: {e}", "Could not start Java: {e}"))?;
         let step = arguments.iter().position(|a| a == "--task").and_then(|i| arguments.get(i + 1)).cloned().unwrap_or(main);

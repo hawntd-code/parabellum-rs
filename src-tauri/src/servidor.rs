@@ -7,7 +7,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::BufRead;
-use std::os::windows::process::CommandExt;
+use crate::plataforma::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
@@ -605,7 +605,7 @@ fn java_major(instance: &Instance, version: &Value) -> u32 {
 pub fn java_executable(major: u32, paths: &Paths) -> Option<PathBuf> {
     let runtimes = java::discover(paths);
     let runtime = runtimes.iter().filter(|r| r.major == major).max_by(|a, b| a.version.cmp(&b.version)).or_else(|| java::select(&runtimes, None, major))?;
-    Some(runtime.home.join("bin").join("java.exe"))
+    Some(crate::plataforma::java_binary(&runtime.home, false))
 }
 
 pub async fn create(
@@ -820,7 +820,7 @@ async fn run_installer(java: &Path, args: &[String], folder: &Path, name: &str, 
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .creation_flags(proceso::CREATE_NO_WINDOW)
+        .no_console()
         .spawn()
         .map_err(|e| t!("No se pudo abrir el instalador de {name}: {e}", "Could not open the {name} installer: {e}"))?;
     let stdout = child.stdout.take();
@@ -1086,7 +1086,7 @@ pub fn command(config: &ServerConfig, paths: &Paths) -> Result<Command, String> 
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .creation_flags(proceso::CREATE_NO_WINDOW);
+        .no_console();
     Ok(command)
 }
 

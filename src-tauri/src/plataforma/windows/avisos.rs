@@ -11,7 +11,7 @@ use windows::Foundation::TypedEventHandler;
 use windows::UI::Notifications::{ToastNotification, ToastNotificationManager};
 
 pub const APP_ID: &str = "mx.parabellum.launcher";
-const ICON: &[u8] = include_bytes!("../icons/icon.ico");
+const ICON: &[u8] = include_bytes!("../../../icons/icon.ico");
 
 /// Registra la app para los avisos (nombre e icono). Se llama al arrancar; no hace falta instalar nada.
 pub fn register(cache: &Path) {
@@ -47,7 +47,11 @@ thread_local! {
 /// Muestra un aviso. `on_click` se llama si el jugador lo pulsa. `silent`: sin el sonido de Windows
 /// (los mensajes tienen el suyo). Debe llamarse desde un hilo con COM iniciado (el hilo principal de
 /// la ventana, o tras `init_thread`).
-pub fn show(title: &str, body: &str, silent: bool, on_click: impl Fn() + Send + Sync + 'static) -> windows::core::Result<()> {
+pub fn show(title: &str, body: &str, silent: bool, on_click: impl Fn() + Send + Sync + 'static) -> Result<(), String> {
+    toast(title, body, silent, on_click).map_err(|e| e.message())
+}
+
+fn toast(title: &str, body: &str, silent: bool, on_click: impl Fn() + Send + Sync + 'static) -> windows::core::Result<()> {
     let xml = XmlDocument::new()?;
     xml.LoadXml(&HSTRING::from(format!(
         "<toast><visual><binding template=\"ToastGeneric\"><text>{}</text><text>{}</text></binding></visual>{}</toast>",
@@ -79,9 +83,12 @@ pub fn init_thread() {
 }
 
 /// Cuántos avisos de Parabellum hay en el centro de notificaciones (para comprobar que llegaron).
-pub fn history_count() -> windows::core::Result<u32> {
-    let history = ToastNotificationManager::History()?;
-    history.GetHistoryWithId(&HSTRING::from(APP_ID))?.Size()
+pub fn history_count() -> Result<u32, String> {
+    let count = || -> windows::core::Result<u32> {
+        let history = ToastNotificationManager::History()?;
+        history.GetHistoryWithId(&HSTRING::from(APP_ID))?.Size()
+    };
+    count().map_err(|e| e.message())
 }
 
 #[cfg(test)]

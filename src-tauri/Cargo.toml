@@ -1,6 +1,6 @@
 [package]
 name = "parabellum"
-version = "0.20.0"
+version = "0.20.1"
 description = "Parabellum: launcher de Minecraft no premium"
 edition = "2021"
 publish = false
@@ -38,12 +38,17 @@ sha2 = "0.10"
 # Leer trozos de zips remotos (actualizar modpacks de Drive bajando solo lo que cambió)
 flate2 = "1"
 crc32fast = "1"
-# Sesión de Google cifrada para el usuario de Windows (DPAPI), como la versión C#
-# También: el servidor y el agente de playit atados a Parabellum (job) y su uso de memoria y procesador
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Registry", "Win32_Globalization", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_Media_Audio", "Win32_NetworkManagement_Dns"] }
-# Avisos de Windows (notificaciones) sin instalador
-windows = { version = "0.62", features = ["Data_Xml_Dom", "UI_Notifications", "Foundation", "Foundation_Collections", "Win32_System_WinRT", "Win32_UI_Shell", "Win32_System_Com", "Win32_Storage_FileSystem", "Win32_Graphics_Imaging"] }
 getrandom = "0.2"
+
+# Solo Windows (ver src/plataforma/windows): sesión cifrada con DPAPI, procesos atados a Parabellum
+# (job), uso de memoria y procesador, avisos sin instalador, sonido, imágenes (WIC) y registro SRV.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Registry", "Win32_Globalization", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_Media_Audio", "Win32_NetworkManagement_Dns"] }
+windows = { version = "0.62", features = ["Data_Xml_Dom", "UI_Notifications", "Foundation", "Foundation_Collections", "Win32_System_WinRT", "Win32_UI_Shell", "Win32_System_Com", "Win32_Storage_FileSystem", "Win32_Graphics_Imaging"] }
+
+# Solo macOS (ver src/plataforma/macos y docs/mac.md): por ahora nada; aquí van, por ejemplo, el
+# Llavero (security-framework) o los avisos (tauri-plugin-notification) cuando se hagan.
+[target.'cfg(target_os = "macos")'.dependencies]
 
 [profile.release]
 opt-level = "s"

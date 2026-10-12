@@ -1,0 +1,56 @@
+# Compila Parabellum en una Mac con chip Apple (ver docs/mac.md).
+# Corre al subir una rama mac/… o a mano (Actions › Mac › Run workflow). No corre en cada cambio de
+# main: en repos privados los minutos de Mac cuentan 10 veces.
+name: Mac
+
+on:
+  push:
+    branches: ["mac/**"]
+  workflow_dispatch:
+    inputs:
+      build:
+        description: "Además de revisar, compilar el programa y dejarlo para descargar"
+        type: boolean
+        default: false
+
+jobs:
+  mac:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust
+        run: |
+          rustup update stable
+          rustup default stable
+          rustc --version
+
+      - name: Caché de cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: mac-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: mac-cargo-
+
+      - name: Revisar que compile (cargo check)
+        run: cargo check --release
+
+      - name: Pruebas
+        run: cargo test --release
+
+      - name: Compilar
+        if: ${{ inputs.build }}
+        run: cargo build --release
+
+      - name: Guardar el programa
+        if: ${{ inputs.build }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Parabellum-mac-arm64
+          path: src-tauri/target/release/Parabellum

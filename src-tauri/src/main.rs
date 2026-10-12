@@ -3,10 +3,10 @@
 
 #[macro_use]
 mod idioma;
-mod accesos;
+// Notificaciones y accesos directos: cada sistema tiene los suyos (ver plataforma/).
+use plataforma::{accesos, avisos};
 mod actividad;
 mod amigos;
-mod avisos;
 mod catalog;
 mod chat;
 mod compartir;
@@ -36,6 +36,7 @@ mod nbt;
 mod opciones;
 mod packs;
 mod paths;
+mod plataforma;
 mod ping;
 mod playit;
 mod proceso;
@@ -89,6 +90,10 @@ struct Initial {
     drive_url: Option<String>,
     /// Este PC es el de quien publica (ve las herramientas de publicar en Drive).
     creator: bool,
+    /// "Windows" o "macOS" (la interfaz oculta lo que no hay en ese sistema).
+    platform: &'static str,
+    /// El sistema tiene accesos directos (Escritorio y menú Inicio).
+    shortcuts: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -122,6 +127,8 @@ fn estado_inicial(state: State<AppState>) -> Initial {
         system_ram_gb: system_ram_gb(),
         drive_url: state.config.drive_folder_url(),
         creator: is_creator(&state.paths),
+        platform: plataforma::NAME,
+        shortcuts: accesos::SUPPORTED,
         settings,
     }
 }
@@ -683,7 +690,7 @@ async fn acceso_directo(lugar: String, crear: bool) -> Result<accesos::Status, S
 fn abrir_carpeta_contenido(state: State<AppState>, id: String, tipo: String) -> Result<(), String> {
     let folder = content::folder(&instance_or_error(&state, &id)?, &tipo).ok_or(t!("Categoría desconocida.", "Unknown category."))?;
     std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
-    std::process::Command::new("explorer").arg(folder).spawn().map(|_| ()).map_err(|e| e.to_string())
+    plataforma::open_path(&folder)
 }
 
 #[derive(Serialize)]
@@ -704,7 +711,7 @@ fn abrir_registro(state: State<AppState>, id: String) -> Result<(), String> {
     let instance = instance_or_error(&state, &id)?;
     let folder = instance.game_dir.join("logs");
     std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
-    std::process::Command::new("explorer").arg(folder).spawn().map(|_| ()).map_err(|e| e.to_string())
+    plataforma::open_path(&folder)
 }
 
 // ================= Modrinth: explorar, instalar y actualizar contenido
@@ -846,7 +853,7 @@ fn mostrar_archivo(ruta: String) -> Result<(), String> {
     if !path.exists() {
         return Err(t!("Ese archivo ya no existe.", "That file no longer exists."));
     }
-    std::process::Command::new("explorer").arg(format!("/select,{}", path.display())).spawn().map(|_| ()).map_err(|e| e.to_string())
+    plataforma::reveal_path(&path)
 }
 
 /// Abre en el navegador un enlace de la página de un proyecto (solo http y https).
@@ -858,7 +865,7 @@ fn abrir_enlace(url: String) -> Result<(), String> {
     if !valid {
         return Err(t!("Enlace no válido.", "Invalid link."));
     }
-    std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", &url]).spawn().map(|_| ()).map_err(|e| e.to_string())
+    plataforma::open_url(&url)
 }
 
 // ================= Modpacks: exportar, importar e instalar
@@ -1783,7 +1790,7 @@ async fn elegir_carpeta_exportar(app: AppHandle, state: State<'_, AppState>) -> 
 fn abrir_carpeta_paquetes(state: State<AppState>) -> Result<(), String> {
     let folder = state.paths.root.join(catalog::LOCAL_FOLDER);
     std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
-    std::process::Command::new("explorer").arg(folder).spawn().map(|_| ()).map_err(|e| e.to_string())
+    plataforma::open_path(&folder)
 }
 
 // ================= Hostear partida
@@ -1952,7 +1959,7 @@ async fn sincronizar_servidor(app: AppHandle, id: String) -> Result<usize, Strin
 #[tauri::command]
 fn carpeta_servidor(state: State<AppState>, id: String) -> Result<(), String> {
     let config = servidor::find(&state.paths, &id).ok_or(t!("Ese servidor ya no existe.", "That server no longer exists."))?;
-    std::process::Command::new("explorer").arg(config.folder).spawn().map(|_| ()).map_err(|e| e.to_string())
+    plataforma::open_path(&config.folder)
 }
 
 /// Arreglo del doctor para un servidor. Instalar un mod va a la instancia (los jugadores también
@@ -2113,35 +2120,13 @@ fn abrir_carpeta(state: State<AppState>, id: Option<String>) -> Result<(), Strin
         Some(id) => instances::find(&state.paths, &id).ok_or(t!("No se encontró la instancia.", "The instance was not found."))?.game_dir,
         None => state.paths.root.clone(),
     };
-    std::process::Command::new("explorer").arg(folder).spawn().map(|_| ()).map_err(|e| e.to_string())
+    plataforma::open_path(&folder)
 }
 
 fn system_ram_gb() -> u32 {
-    #[repr(C)]
-    struct MemoryStatus {
-        length: u32,
-        load: u32,
-        total_phys: u64,
-        avail_phys: u64,
-        total_page: u64,
-        avail_page: u64,
-        total_virtual: u64,
-        avail_virtual: u64,
-        avail_extended: u64,
-    }
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn GlobalMemoryStatusEx(status: *mut MemoryStatus) -> i32;
-    }
-    let mut status = MemoryStatus {
-        length: std::mem::size_of::<MemoryStatus>() as u32,
-        load: 0, total_phys: 0, avail_phys: 0, total_page: 0, avail_page: 0, total_virtual: 0, avail_virtual: 0, avail_extended: 0,
-    };
-    // SAFETY: estructura con el tamaño indicado, como pide la API.
-    if unsafe { GlobalMemoryStatusEx(&mut status) } != 0 {
-        (status.total_phys as f64 / 1073741824.0).round() as u32
-    } else {
-        8
+    match plataforma::system_memory().0 {
+        0 => 8,
+        total => (total as f64 / 1073741824.0).round() as u32,
     }
 }
 

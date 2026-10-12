@@ -1223,6 +1223,9 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .srv-fact b { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
 #srv-actions { flex-wrap: wrap; }
 
+/* Lo que no hay en todos los sistemas (en Mac no hay accesos directos). */
+body.no-shortcuts .needs-shortcuts { display: none !important; }
+
 /* Favoritos */
 .starred svg, svg.starred { fill: #f5c542; stroke: #f5c542; }
 .circle-btn.starred { color: #f5c542; }

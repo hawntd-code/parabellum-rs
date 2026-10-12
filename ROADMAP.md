@@ -113,6 +113,12 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### 0.20.1: un proyecto, dos plataformas (pedido de Juan)
+- [x] Lo que depende del sistema se movió a `src-tauri/src/plataforma/` con un contrato común (`plataforma/mod.rs`): `windows/` (lo que ya funcionaba: DPAPI, job de Windows, ANSI/8.3 de Java, WIC, DnsQuery, PlaySound, avisos, accesos directos, Explorador…) y `macos/` (lo fácil hecho con herramientas de macOS y lo demás con `TODO(mac)`). Lo compartido ya pregunta por la plataforma donde Mojang distingue sistemas (reglas `os`, nativos, Java de Mojang, separador del classpath)
+- [x] Dependencias de Windows en `[target.'cfg(windows)'.dependencies]`; guía para el amigo que hará la versión de Mac: `docs/mac.md` (estructura, reglas, compilar, lista de tareas por prioridad); `docs/windows.md`; `.github/workflows/mac.yml` (cargo check/test en macos-14, ramas `mac/…` o a mano)
+- [x] Windows sigue igual: juego Fabric 1.21.1 al menú, servidor vanilla, ping, imagen TIFF, sonido y las 76 pruebas
+- [ ] Mac: ver la lista de tareas de docs/mac.md
+
 ### 0.20.0: servidores con su icono e imágenes de cualquier formato (pedido de Juan)
 - [x] **Servidores:** tarjetas compactas (icono del propio servidor, nombre grande, quién lo hostea, estado y jugadores); clic → detalle con el mensaje (MOTD) en colores, modpack, versión, jugadores, dirección, respuesta y «Unirse»/«Jugar». Igual en «Guardados». El estado sale del servidor con el Server List Ping del juego (ping.rs; direcciones de playit.gg por su registro SRV con DnsQuery_W), cada 20 s con la página abierta; el último icono se recuerda para cuando está apagado. `--ping <dirección>`
 - [x] **Imágenes del chat de cualquier formato:** lo que la ventana no abre (HEIC del celular, TIFF, ICO, JPEG XR…) lo convierte Windows (WIC, imagen.rs) a PNG; también al soltarla y en los iconos. `--convertir-imagen`

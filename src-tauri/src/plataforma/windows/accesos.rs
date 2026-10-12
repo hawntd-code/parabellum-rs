@@ -11,6 +11,9 @@ use windows::Win32::UI::Shell::{FOLDERID_Desktop, FOLDERID_Programs, IShellLinkW
 
 const NAME: &str = "Parabellum.lnk";
 
+/// En Windows hay accesos directos (Escritorio y menú Inicio).
+pub const SUPPORTED: bool = true;
+
 #[derive(Clone, Copy, Debug)]
 pub enum Place {
     Desktop,

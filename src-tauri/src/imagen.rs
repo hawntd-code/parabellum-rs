@@ -1,13 +1,7 @@
-//! Abrir cualquier imagen que Windows sepa abrir (fotos HEIC del celular, TIFF, JPEG XR, ICO…): la
+//! Abrir cualquier imagen que el sistema sepa abrir (fotos HEIC del celular, TIFF, JPEG XR, ICO…): la
 //! ventana solo entiende algunos formatos y con los demás decía «The source image cannot be decoded».
-//! Windows (WIC) la decodifica, se reduce si es muy grande y vuelve como PNG (que la ventana sí abre).
-
-use windows::core::GUID;
-use windows::Win32::Graphics::Imaging::{
-    CLSID_WICImagingFactory, GUID_WICPixelFormat32bppBGRA, IWICImagingFactory, WICBitmapDitherTypeNone, WICBitmapInterpolationModeFant, WICBitmapPaletteTypeCustom,
-    WICDecodeMetadataCacheOnDemand,
-};
-use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED};
+//! El sistema la decodifica (plataforma::decode_image), se reduce si es muy grande y vuelve como PNG
+//! (que la ventana sí abre).
 
 /// Más grande no hace falta: el chat la reduce a 1280 px y el icono a 64.
 const MAX_SIDE: u32 = 2048;
@@ -23,37 +17,9 @@ pub fn to_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(encode_png(width, height, &pixels))
 }
 
-/// Decodifica con WIC: (ancho, alto, píxeles RGBA).
-fn decode(bytes: &[u8]) -> windows::core::Result<(u32, u32, Vec<u8>)> {
-    // SAFETY: COM se inicia en este hilo (si ya estaba iniciado no pasa nada); todos los objetos son
-    // de WIC y viven dentro de esta función; el búfer de píxeles tiene el tamaño exacto pedido.
-    unsafe {
-        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-        let factory: IWICImagingFactory = CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER)?;
-        let stream = factory.CreateStream()?;
-        stream.InitializeFromMemory(bytes)?;
-        let decoder = factory.CreateDecoderFromStream(&stream, std::ptr::null::<GUID>(), WICDecodeMetadataCacheOnDemand)?;
-        let frame = decoder.GetFrame(0)?;
-        let (mut width, mut height) = (0u32, 0u32);
-        frame.GetSize(&mut width, &mut height)?;
-        if width == 0 || height == 0 {
-            return Err(windows::core::Error::from_hresult(windows::core::HRESULT(-1)));
-        }
-        let scale = (MAX_SIDE as f64 / width.max(height) as f64).min(1.0);
-        let (out_w, out_h) = (((width as f64 * scale).round() as u32).max(1), ((height as f64 * scale).round() as u32).max(1));
-        let scaler = factory.CreateBitmapScaler()?;
-        scaler.Initialize(&frame, out_w, out_h, WICBitmapInterpolationModeFant)?;
-        let converter = factory.CreateFormatConverter()?;
-        converter.Initialize(&scaler, &GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, None, 0.0, WICBitmapPaletteTypeCustom)?;
-        let stride = out_w * 4;
-        let mut pixels = vec![0u8; (stride * out_h) as usize];
-        converter.CopyPixels(std::ptr::null(), stride, &mut pixels)?;
-        // BGRA → RGBA
-        for pixel in pixels.chunks_exact_mut(4) {
-            pixel.swap(0, 2);
-        }
-        Ok((out_w, out_h, pixels))
-    }
+/// Decodifica con el sistema (WIC en Windows): (ancho, alto, píxeles RGBA).
+fn decode(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
+    crate::plataforma::decode_image(bytes, MAX_SIDE)
 }
 
 /// PNG sin pérdida (RGBA de 8 bits), con zlib de flate2.

@@ -84,7 +84,7 @@ pub async fn install(release: &Release, paths: &Paths, progress: impl Fn(String,
                 files.extend(FileDownload::from_json(artifact, paths.libraries.join(path)));
             }
         }
-        if let Some(classifier) = library.pointer("/natives/windows").and_then(Value::as_str) {
+        if let Some(classifier) = library.pointer(&format!("/natives/{}", crate::plataforma::MOJANG_OS)).and_then(Value::as_str) {
             let classifier = classifier.replace("${arch}", "64");
             if let Some(native) = library.pointer(&format!("/downloads/classifiers/{classifier}")) {
                 if let Some(path) = native["path"].as_str() {
@@ -154,7 +154,7 @@ pub async fn ensure_java(major: u32, paths: &Paths, progress: impl Fn(String, f6
     if java::discover(paths).iter().any(|r| r.major == major) {
         return Ok(());
     }
-    let platform = if cfg!(target_arch = "aarch64") { "windows-arm64" } else { "windows-x64" };
+    let platform = crate::plataforma::JAVA_RUNTIME_PLATFORM;
     let all: Value = serde_json::from_str(&download::get_text(JAVA_RUNTIMES_URL).await.map_err(|_| unavailable())?).map_err(|e| e.to_string())?;
     let component = all[platform]
         .as_object()
@@ -171,9 +171,9 @@ pub async fn ensure_java(major: u32, paths: &Paths, progress: impl Fn(String, f6
     .await
 }
 
-/// Archivos del Java de Mojang para Windows (el mismo que usa el launcher oficial).
+/// Archivos del Java de Mojang para este sistema (el mismo que usa el launcher oficial).
 async fn java_files(component: &str, paths: &Paths) -> Result<Vec<FileDownload>, String> {
-    let platform = if cfg!(target_arch = "aarch64") { "windows-arm64" } else { "windows-x64" };
+    let platform = crate::plataforma::JAVA_RUNTIME_PLATFORM;
     let all: Value = serde_json::from_str(&download::get_text(JAVA_RUNTIMES_URL).await.map_err(|_| unavailable())?)
         .map_err(|e| e.to_string())?;
     let manifest_url = all

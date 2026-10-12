@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
 use std::io::BufRead;
-use std::os::windows::process::CommandExt;
+use crate::plataforma::CommandExt as _;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -23,9 +23,6 @@ use crate::paths::Paths;
 use crate::proceso;
 
 pub const AGENT_VERSION: &str = "0.17.1";
-const AGENT_URL: &str = "https://github.com/playit-cloud/playit-agent/releases/download/v0.17.1/playit-windows-x86_64-signed.exe";
-pub const AGENT_SIZE: u64 = 5_094_152;
-const AGENT_SHA256: &str = "9b00d6ff7d37d1052e5ae097e1348e11deae8617cd7a8ba39d1777f2006316a3";
 const API: &str = "https://api.playit.gg";
 const SECRET_FILE: &str = "playit.dat";
 pub const TUNNEL_NAME: &str = "parabellum";
@@ -41,12 +38,20 @@ fn unavailable() -> String {
 
 // ================= Agente (playit.exe)
 
+/// El agente para este sistema (plataforma::PLAYIT_AGENT), o por qué no hay.
+fn agent() -> Result<&'static crate::plataforma::AgentDownload, String> {
+    crate::plataforma::PLAYIT_AGENT.as_ref().ok_or_else(|| {
+        t!("playit.gg todavía no tiene su agente para {}.", "playit.gg does not have its agent for {} yet.", crate::plataforma::NAME)
+    })
+}
+
 pub fn agent_path(paths: &Paths) -> PathBuf {
-    paths.base.join("playit").join(format!("playit-{AGENT_VERSION}.exe"))
+    let name = agent().map(|a| a.file_name).unwrap_or("playit");
+    paths.base.join("playit").join(name)
 }
 
 pub fn agent_installed(paths: &Paths) -> bool {
-    agent_path(paths).metadata().is_ok_and(|m| m.len() == AGENT_SIZE)
+    agent().is_ok_and(|a| agent_path(paths).metadata().is_ok_and(|m| m.len() == a.size))
 }
 
 /// Baja el agente oficial y comprueba que sea exactamente el esperado.
@@ -54,17 +59,18 @@ pub async fn download_agent(paths: &Paths, progress: impl Fn(String, f64) + Send
     if agent_installed(paths) {
         return Ok(());
     }
+    let agent = agent()?;
     let target = agent_path(paths);
     let partial = target.with_extension("descarga");
     let _ = std::fs::remove_file(&partial);
     progress(t!("Descargando el agente de playit.gg…", "Downloading the playit.gg agent…"), 0.0);
-    download::download_all(vec![FileDownload { url: AGENT_URL.into(), path: partial.clone(), sha1: None, size: Some(AGENT_SIZE) }], move |_, _, bytes, total| {
+    download::download_all(vec![FileDownload { url: agent.url.into(), path: partial.clone(), sha1: None, size: Some(agent.size) }], move |_, _, bytes, total| {
         progress(t!("Descargando el agente de playit.gg…", "Downloading the playit.gg agent…"), bytes as f64 / total.max(1) as f64)
     })
     .await
     .map_err(|_| t!("No se pudo descargar el agente de playit.gg (GitHub). Revisa tu conexión.", "Could not download the playit.gg agent (GitHub). Check your connection."))?;
     let bytes = std::fs::read(&partial).map_err(|e| e.to_string())?;
-    if hex::encode(Sha256::digest(&bytes)) != AGENT_SHA256 {
+    if hex::encode(Sha256::digest(&bytes)) != agent.sha256 {
         let _ = std::fs::remove_file(&partial);
         return Err(t!("El agente de playit.gg llegó dañado o no es el oficial. Vuelve a intentarlo.", "The playit.gg agent arrived damaged or is not the official one. Try again."));
     }
@@ -95,7 +101,7 @@ impl Agent {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .creation_flags(proceso::CREATE_NO_WINDOW)
+            .no_console()
             .spawn()
             .map_err(|e| t!("No se pudo abrir el agente de playit.gg: {e}", "Could not open the playit.gg agent: {e}"))?;
         proceso::tie_to_launcher(&child);
