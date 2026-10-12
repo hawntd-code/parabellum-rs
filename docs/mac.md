@@ -73,6 +73,12 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
 - Idioma del sistema (`defaults read -g AppleLanguages`).
 - Registro SRV de Minecraft para las direcciones de playit.gg (`dig`).
 - Sonido de mensaje nuevo (`afplay`).
+- Guardar la sesión de Google y las claves de playit.gg y Drive (`protect` / `unprotect`): una clave
+  aleatoria en el Llavero (servicio «Parabellum», cuenta «clave», con el comando `security`) y cifrado
+  ChaCha20-Poly1305 (crate `ring`). Como DPAPI en Windows: solo lo lee tu usuario, en esa Mac. Se usa
+  `security` y no la API del Llavero para que macOS no pida la contraseña tras cada actualización
+  (sin firma de Apple, cada versión sería otro programa). `cargo test` usa su propia entrada,
+  «Parabellum / pruebas».
 - Argumentos de Java en UTF-8 (en Windows hacía falta ANSI; en Mac no).
 - Ejecutable de Java de los runtimes de Mojang (`jre.bundle/Contents/Home/bin/java`).
 - Carpeta de datos en `~/Library/Application Support/Parabellum` cuando corre desde una `.app`.
@@ -92,10 +98,7 @@ Ordenadas por prioridad:
 
 1. **Que compile y abra la ventana.** Primero que todo: `cargo build` en tu Mac. Si algo de lo
    compartido no compila en Mac, muévelo a la plataforma (regla 1).
-2. **Guardar la sesión** — `protect` / `unprotect` en `macos/mod.rs`. Hoy devuelven `None`, así que no
-   se guarda la sesión de Google (hay que volver a entrar cada vez) ni las claves de playit.gg y Drive.
-   Idea: una clave aleatoria guardada en el Llavero (crate `security-framework` o `keyring`) y cifrar
-   con ella (por ejemplo ChaCha20-Poly1305).
+2. ~~**Guardar la sesión**~~ — hecho (ver «Qué ya está hecho»).
 3. **Jugar 1.19 en adelante** (vanilla y Fabric): Mojang trae nativos para chip Apple. Probar con
    `--probar-juego`. Revisar que se baje el Java de Mojang (`mojang.rs`, `ensure_java`) y que
    `java_binary` lo encuentre.
@@ -132,9 +135,8 @@ compila el programa y lo deja para descargar en la página de esa ejecución.
 Ojo: en repos privados, los minutos de Mac en GitHub cuentan 10 veces. Úsalo cuando haga falta, no en
 cada cambio pequeño.
 
-Dos pruebas están marcadas como «ignoradas en Mac» hasta que se hagan sus tareas (cifrar la sesión e
-imágenes): al terminarlas, quita su `#[cfg_attr(target_os = "macos", ignore = …)]` para que vuelvan a
-correr.
+Una prueba sigue marcada como «ignorada en Mac» hasta que se haga su tarea (imágenes): al terminarla,
+quita su `#[cfg_attr(target_os = "macos", ignore = …)]` para que vuelva a correr.
 
 ## Cómo probar sin romper nada
 

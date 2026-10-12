@@ -48,9 +48,11 @@ iroh = "1.3"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Registry", "Win32_Globalization", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_Media_Audio", "Win32_NetworkManagement_Dns"] }
 windows = { version = "0.62", features = ["Data_Xml_Dom", "UI_Notifications", "Foundation", "Foundation_Collections", "Win32_System_WinRT", "Win32_UI_Shell", "Win32_System_Com", "Win32_Storage_FileSystem", "Win32_Graphics_Imaging"] }
 
-# Solo macOS (ver src/plataforma/macos y docs/mac.md): por ahora nada; aquí van, por ejemplo, el
-# Llavero (security-framework) o los avisos (tauri-plugin-notification) cuando se hagan.
+# Solo macOS (ver src/plataforma/macos y docs/mac.md): la sesión cifrada con ChaCha20-Poly1305 y una
+# clave guardada en el Llavero (ring ya viene con reqwest/rustls: no se compila nada nuevo). Aquí van
+# también, por ejemplo, los avisos (tauri-plugin-notification) cuando se hagan.
 [target.'cfg(target_os = "macos")'.dependencies]
+ring = "0.17"
 
 [profile.release]
 opt-level = "s"
