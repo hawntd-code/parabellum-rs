@@ -147,6 +147,8 @@ pub struct ServerView {
     diagnosis: Option<Diagnosis>,
     /// Hay cambios que se aplican al reiniciar.
     restart_needed: bool,
+    /// server-icon.png como data URL.
+    icon: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -204,6 +206,10 @@ pub fn view(app: &AppHandle) -> HostView {
                 error: outcome.error,
                 diagnosis: outcome.diagnosis,
                 restart_needed: run.is_some_and(|r| r.restart_needed),
+                icon: std::fs::read(config.folder.join("server-icon.png"))
+                    .ok()
+                    .filter(|png| png.len() < 200_000)
+                    .map(|png| format!("data:image/png;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, png))),
                 config,
             }
         })

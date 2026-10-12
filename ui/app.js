@@ -287,6 +287,7 @@ function navigate(page, param = null, record = true) {
     if (!param) return navigate("host", null, false);
     enterHosted(param);
   }
+  if (page === "servers") enterServers();
   if (page === "chat") enterChat();
   else if (state.chatOpen) closeChat();
   for (const section of $$(".page")) {
@@ -1181,24 +1182,54 @@ function updateEditTexts() {
   $("#edit-ram-value").textContent = `${$("#edit-ram").value} GB`;
 }
 
-/** Recorta la imagen elegida a un cuadrado de 256 px y la convierte a PNG. */
-function imageToPng(file) {
+/** El archivo como data URL. */
+function fileDataUrl(file) {
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const image = new Image();
-    image.onload = () => {
-      const size = Math.min(image.width, image.height);
-      const canvas = document.createElement("canvas");
-      canvas.width = canvas.height = 256;
-      const ctx = canvas.getContext("2d");
-      ctx.imageSmoothingEnabled = size > 64; // los iconos pixelados se mantienen nítidos
-      ctx.drawImage(image, (image.width - size) / 2, (image.height - size) / 2, size, size, 0, 0, 256, 256);
-      URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL("image/png"));
-    };
-    image.onerror = () => reject(t("No se pudo leer esa imagen.", "That image could not be read."));
-    image.src = url;
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error(t("No se pudo leer ese archivo.", "That file could not be read.")));
+    reader.readAsDataURL(file);
   });
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => (image.naturalWidth && image.naturalHeight ? resolve(image) : reject(new Error("vacía")));
+    image.onerror = () => reject(new Error("no se pudo abrir"));
+    image.src = src;
+  });
+}
+
+/** Cualquier imagen elegida o pegada, lista para dibujar. La ventana abre PNG, JPG, GIF, WEBP, BMP y
+ *  AVIF; con lo demás (fotos HEIC del celular, TIFF, ICO…) decía «The source image cannot be decoded»:
+ *  esas las convierte Windows. */
+async function loadImageFile(file) {
+  const data = await fileDataUrl(file);
+  try {
+    return await loadImage(data);
+  } catch {
+    // Sigue abajo: la convierte Windows.
+  }
+  if (!tauri) throw new Error(t("Esa imagen no se pudo abrir.", "That image could not be opened."));
+  const converted = await invoke("convertir_imagen", { datos: data.slice(data.indexOf(",") + 1) }).catch((error) => {
+    throw new Error(String(error));
+  });
+  return loadImage(converted);
+}
+
+/** Recorta la imagen elegida a un cuadrado de 256 px y la convierte a PNG. */
+async function imageToPng(file) {
+  const image = await loadImageFile(file).catch((error) => {
+    throw error.message ?? t("No se pudo leer esa imagen.", "That image could not be read.");
+  });
+  const size = Math.min(image.naturalWidth, image.naturalHeight);
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = size > 64; // los iconos pixelados se mantienen nítidos
+  ctx.drawImage(image, (image.naturalWidth - size) / 2, (image.naturalHeight - size) / 2, size, size, 0, 0, 256, 256);
+  return canvas.toDataURL("image/png");
 }
 
 async function saveEdit() {
@@ -2083,9 +2114,8 @@ function autoGrow(textarea) {
 
 /** Reduce una imagen (máx. 1280 px y ~330 KB en JPEG) para enviarla por el chat. */
 async function reduceImage(source) {
-  const image = new Image();
-  image.src = source;
-  await image.decode();
+  // Un archivo (elegido o pegado) o un data URL (soltado en la ventana, ya leído por Parabellum).
+  const image = typeof source === "string" ? await loadImage(source) : await loadImageFile(source);
   let scale = Math.min(1, 1280 / Math.max(image.naturalWidth, image.naturalHeight));
   for (let attempt = 0; attempt < 8; attempt++) {
     const width = Math.max(1, Math.round(image.naturalWidth * scale));
@@ -2114,9 +2144,7 @@ async function sendChatImage(source) {
     const { data, width, height } = await reduceImage(source);
     await invoke("enviar_imagen", { chat, datos: data, ancho: width, alto: height });
   } catch (error) {
-    toast(error?.name === "EncodingError" ? t("Esa imagen no se pudo abrir (¿es un PNG, JPG, GIF o WEBP?).", "That image could not be opened (is it a PNG, JPG, GIF or WEBP?).") : String(error.message ?? error), "error");
-  } finally {
-    if (source.startsWith("blob:")) URL.revokeObjectURL(source);
+    toast(String(error?.message ?? error), "error");
   }
 }
 
@@ -2469,13 +2497,13 @@ function wireChatEvents() {
     const file = [...(event.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"))?.getAsFile();
     if (!file) return;
     event.preventDefault();
-    sendChatImage(URL.createObjectURL(file));
+    sendChatImage(file);
   });
   $("#chat-attach").onclick = () => $("#chat-file").click();
   $("#chat-file").onchange = () => {
     const file = $("#chat-file").files[0];
     $("#chat-file").value = "";
-    if (file) sendChatImage(URL.createObjectURL(file));
+    if (file) sendChatImage(file);
   };
   $("#chat-share").onclick = (event) => shareMenu(event.currentTarget);
   $("#chat-fav").onclick = () => state.chatOpen && toggleFavoriteChat(state.chatOpen).then(renderChatHeader);
@@ -2562,18 +2590,12 @@ function renderServers() {
     : `<option value="">${t("Primero crea una instancia", "Create an instance first")}</option>`;
   if (previous) select.value = previous;
   const servers = state.settings.servers ?? [];
+  // Tarjetas como las de tus amigos: icono y mensaje del propio servidor; clic para el detalle.
   $("#server-list").innerHTML = servers
     .map((s, index) => {
-      const instance = state.instances.find((i) => i.id === s.instance);
-      return `<div class="server" style="animation-delay:${index * 40}ms">
-        <div class="server-icon">${icon("server")}</div>
-        <div class="grow">
-          <div class="title">${escapeHtml(s.name || s.address)}</div>
-          <div class="sub">${escapeHtml(s.address)} · ${instance ? escapeHtml(instance.name) : t("instancia no encontrada", "instance not found")}</div>
-        </div>
-        <button class="btn primary play" data-server-play="${index}" ${instance ? "" : "disabled"}>${icon("play")}${t("Jugar", "Play")}</button>
-        <button class="circle-btn" data-server-delete="${index}" title="${t("Quitar", "Remove")}">${icon("trash")}</button>
-      </div>`;
+      const info = savedInfo(s);
+      const button = `<button class="btn primary play" data-server-play="${index}" ${info.canJoin ? "" : "disabled"}>${icon("play")}${t("Jugar", "Play")}</button>`;
+      return serverCardHtml({ key: `saved:${index}`, info, button });
     })
     .join("");
   $("#servers-empty").classList.toggle("hidden", servers.length > 0);
@@ -3502,6 +3524,7 @@ function wireEvents() {
       closeModal("#group-dialog");
       closeModal("#server-dialog");
       closeModal("#icon-dialog");
+      closeModal("#srv-dialog");
       if (!state.favDialog?.busy) closeModal("#fav-dialog");
       closeModal("#account-dialog");
       if (!state.exporting?.busy) closeModal("#export-dialog");

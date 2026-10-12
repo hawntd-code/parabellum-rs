@@ -113,6 +113,12 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### 0.20.0: servidores con su icono e imágenes de cualquier formato (pedido de Juan)
+- [x] **Servidores:** tarjetas compactas (icono del propio servidor, nombre grande, quién lo hostea, estado y jugadores); clic → detalle con el mensaje (MOTD) en colores, modpack, versión, jugadores, dirección, respuesta y «Unirse»/«Jugar». Igual en «Guardados». El estado sale del servidor con el Server List Ping del juego (ping.rs; direcciones de playit.gg por su registro SRV con DnsQuery_W), cada 20 s con la página abierta; el último icono se recuerda para cuando está apagado. `--ping <dirección>`
+- [x] **Imágenes del chat de cualquier formato:** lo que la ventana no abre (HEIC del celular, TIFF, ICO, JPEG XR…) lo convierte Windows (WIC, imagen.rs) a PNG; también al soltarla y en los iconos. `--convertir-imagen`
+- [x] Crear instancia: «Con mis favoritos» ya no se encima (el texto tomaba el estilo del interruptor)
+- [x] Tus compañeros seguían sin imágenes ni «compartir instancia» porque en Drive estaba la 0.17.1: hay que publicar esta versión en Drive (Ajustes › Acerca de › Publicar esta versión) y se actualizan solos
+
 ### 0.19.1: los favoritos siguen a la cuenta (pedido de Juan)
 - [x] favoritos.rs: con la sesión de Google, los favoritos (conversaciones y mods) viven en favorites/{uid} de la base de datos y manda lo que hay ahí (quitar uno en otro PC también lo quita aquí); la primera vez se sube lo de este PC, salvo que fueran de otra cuenta (PC compartido: favorites_owner). Los iconos locales no suben (solo los https de Modrinth)
 - [x] Juan publicó las reglas con «favorites» (2026-10-11). Probado con su cuenta (`--probar-favoritos` y en la ventana): sube los del PC la primera vez, marcar/quitar llega a la cuenta, los cambios de otro PC se ven al momento y las reglas rechazan tipos, iconos, campos y cuentas ajenas

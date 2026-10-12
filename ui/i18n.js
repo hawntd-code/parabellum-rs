@@ -192,6 +192,7 @@ const HTML_EN = {
   "Sonido de mensajes": "Message sound",
   "Actualiza Parabellum": "Update Parabellum",
   "Unirse": "Join",
+  "Ver detalles": "See details",
   "Agregar a favoritos": "Add to favorites",
   "Instalar tus favoritos en esta instancia": "Install your favorites in this instance",
   "Favoritos": "Favorites",

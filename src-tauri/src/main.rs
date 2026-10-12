@@ -23,6 +23,7 @@ mod firebase;
 mod forge;
 mod google;
 mod hosting;
+mod imagen;
 mod instances;
 mod integridad;
 mod java;
@@ -35,6 +36,7 @@ mod nbt;
 mod opciones;
 mod packs;
 mod paths;
+mod ping;
 mod playit;
 mod proceso;
 mod remote_zip;
@@ -224,6 +226,26 @@ fn favorito_mod(app: AppHandle, state: State<AppState>, proyecto: settings::Favo
     };
     favoritos::push_mod(&app, &favorite, activo);
     Ok(list)
+}
+
+/// Una imagen que la ventana no sabe abrir (HEIC, TIFF…), convertida por Windows a PNG. `datos`: el
+/// archivo en base64. Devuelve un data URL.
+#[tauri::command]
+async fn convertir_imagen(datos: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(datos.trim()).map_err(|_| t!("La imagen llegó dañada.", "The image arrived damaged."))?;
+    if bytes.len() > imagen::MAX_BYTES {
+        return Err(t!("La imagen pesa más de 25 MB.", "The image is larger than 25 MB."));
+    }
+    let png = tauri::async_runtime::spawn_blocking(move || imagen::to_png(&bytes)).await.map_err(|e| e.to_string())??;
+    Ok(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png)))
+}
+
+/// Estado de servidores (icono, mensaje, jugadores), como la lista de Multijugador del juego.
+#[tauri::command]
+async fn estado_servidores(state: State<'_, AppState>, direcciones: Vec<String>) -> Result<HashMap<String, ping::Status>, String> {
+    let cache = state.paths.data.join("cache");
+    Ok(ping::statuses(direcciones, &cache).await)
 }
 
 /// Toca el sonido de mensaje nuevo (al activarlo en Ajustes, para oírlo).
@@ -2613,6 +2635,29 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                 Ok(report)
             })
         }
+        "--ping" => {
+            // Estado de un servidor como lo ve la lista de Multijugador (icono, mensaje, jugadores).
+            let address = args.get(1).ok_or("Falta la dirección.")?.clone();
+            let status = tauri::async_runtime::block_on(ping::status(&address))?;
+            let favicon = status.favicon.as_ref().map(|f| format!("{} letras", f.len())).unwrap_or_else(|| "sin icono".into());
+            Ok(format!(
+                "{address}: {}/{} jugadores · {} · {} ms · icono: {favicon}\nmensaje: {:?}\n{}",
+                status.players,
+                status.max_players,
+                status.version,
+                status.latency_ms.unwrap_or(0),
+                status.motd,
+                status.sample.join(", ")
+            ))
+        }
+        "--convertir-imagen" => {
+            // Abre una imagen con Windows y la guarda como PNG (lo que hace el chat con HEIC, TIFF…).
+            let input = args.get(1).ok_or("Falta la imagen.")?;
+            let output = args.get(2).ok_or("Falta dónde guardar el PNG.")?;
+            let png = imagen::to_png(&std::fs::read(input).map_err(|e| e.to_string())?)?;
+            std::fs::write(output, &png).map_err(|e| e.to_string())?;
+            Ok(format!("PNG de {} bytes", png.len()))
+        }
         "--probar-favoritos" => {
             // Con la sesión guardada: lee los favoritos de la cuenta, escribe uno de prueba (y lo borra) y
             // comprueba que las reglas rechazan lo que no deben.
@@ -2879,6 +2924,8 @@ fn main() {
             guardar_ajustes,
             panel_lateral,
             sonido_mensaje,
+            convertir_imagen,
+            estado_servidores,
             favorito_chat,
             favorito_mod,
             uuid_offline,

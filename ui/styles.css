@@ -1190,6 +1190,39 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .friend[data-uid]:hover { background: var(--card); }
 #chat-join { height: 34px; }
 
+/* Servidores: tarjetas con el icono de cada servidor */
+.srv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 10px; }
+.srv-grid > p { grid-column: 1 / -1; }
+.srv-card {
+  display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--panel);
+  border: 1px solid var(--border); cursor: pointer; transition: border-color .15s, background .15s; animation: rise .3s var(--ease) both; min-width: 0;
+}
+.srv-card:hover, .srv-card:focus-visible { border-color: var(--border-strong); background: var(--raised); outline: none; }
+.srv-card.dim { opacity: .65; }
+.srv-icon { width: 56px; height: 56px; flex: none; border-radius: 10px; display: grid; place-items: center; overflow: hidden; background: var(--accent-soft); color: var(--accent-fg); }
+.srv-icon img { width: 100%; height: 100%; image-rendering: pixelated; display: block; }
+.srv-icon svg { width: 26px; height: 26px; }
+.srv-icon.big { width: 72px; height: 72px; border-radius: 12px; }
+.srv-icon.big svg { width: 34px; height: 34px; }
+.srv-text { min-width: 0; }
+.srv-name { font: 700 17px var(--font-display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srv-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 4px; color: var(--muted); font-size: 13px; min-width: 0; }
+.srv-meta .head { width: 18px; height: 18px; border-radius: 4px; }
+.srv-meta .state-pill { margin-left: 0; }
+.srv-host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.srv-players { display: inline-flex; align-items: center; gap: 4px; font-weight: 650; }
+.srv-players svg { width: 14px; height: 14px; }
+.srv-card .btn.play { flex: none; }
+.srv-head-text { min-width: 0; }
+.srv-head-text h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srv-motd { padding: 10px 14px; border-radius: var(--r); background: #141217; margin-bottom: 14px; }
+.srv-motd .motd-text { font-size: 14px; }
+.srv-facts { display: flex; flex-direction: column; gap: 2px; }
+.srv-fact { display: flex; align-items: center; gap: 12px; padding: 8px 2px; border-bottom: 1px solid var(--border); font-size: 13.5px; }
+.srv-fact span { width: 110px; flex: none; color: var(--muted); }
+.srv-fact b { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+#srv-actions { flex-wrap: wrap; }
+
 /* Favoritos */
 .starred svg, svg.starred { fill: #f5c542; stroke: #f5c542; }
 .circle-btn.starred { color: #f5c542; }
@@ -1206,6 +1239,7 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .fav-row span.muted { font-size: 12px; }
 .fav-row .tag { flex: none; }
 #new-favorites-box { margin-top: 14px; color: var(--text); }
+.toggle-text { font-weight: 600; }
 #fav-status.error { color: var(--danger); }
 
 /* Editor del icono del servidor */

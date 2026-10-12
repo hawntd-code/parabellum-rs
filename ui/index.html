@@ -221,13 +221,13 @@
             <h1 class="section-title">Servidores</h1>
             <div id="friend-servers-box">
               <h2 class="host-subtitle">De tus amigos</h2>
-              <div class="server-list" id="friend-servers"></div>
+              <div class="srv-grid" id="friend-servers"></div>
             </div>
             <div class="list-head">
               <h2 class="host-subtitle">Guardados</h2>
               <button class="btn small" id="server-new"><svg><use href="#i-plus"/></svg>Agregar servidor</button>
             </div>
-            <div class="server-list" id="server-list"></div>
+            <div class="srv-grid" id="server-list"></div>
             <p class="no-results hidden" id="servers-empty">Todavía no tienes servidores guardados.</p>
           </div>
         </section>
@@ -305,7 +305,7 @@
               </div>
               <div class="motd-card">
                 <button class="motd-icon" id="hs-icon" title="Icono del servidor"></button>
-                <input type="file" id="hs-icon-file" accept="image/*" class="hidden">
+                <input type="file" id="hs-icon-file" accept="image/*,.heic,.heif,.tif,.tiff,.ico,.avif,.jfif" class="hidden">
                 <div class="grow motd-lines">
                   <div class="motd-row">
                     <b id="hs-name-view"></b>
@@ -360,7 +360,7 @@
                 <div class="chat-composer">
                   <button class="circle-btn" id="chat-attach" title="Enviar una imagen"><svg><use href="#i-image"/></svg></button>
                   <button class="circle-btn" id="chat-share" title="Compartir una instancia"><svg><use href="#i-cubes"/></svg></button>
-                  <input type="file" id="chat-file" accept="image/*" class="hidden">
+                  <input type="file" id="chat-file" accept="image/*,.heic,.heif,.tif,.tiff,.ico,.avif,.jfif" class="hidden">
                   <textarea id="chat-input" rows="1" maxlength="2000" placeholder="Escribe un mensaje…" spellcheck="true"></textarea>
                   <button class="btn primary" id="chat-send" title="Enviar (Enter)"><svg><use href="#i-send"/></svg></button>
                 </div>
@@ -570,7 +570,7 @@
             <label class="label" for="loader-version" id="loader-version-label">Versión de Fabric</label>
             <select id="loader-version"></select>
           </div>
-          <label class="toggle hidden" id="new-favorites-box"><input type="checkbox" id="new-favorites" checked><span></span><span id="new-favorites-text">Con mis favoritos</span></label>
+          <label class="toggle hidden" id="new-favorites-box"><input type="checkbox" id="new-favorites" checked><span></span><b class="toggle-text" id="new-favorites-text">Con mis favoritos</b></label>
           <div class="progress hidden" id="new-progress"><div></div></div>
           <p class="muted small-text" id="new-status"></p>
           <div class="modal-actions">
@@ -986,6 +986,22 @@
           <button class="btn" id="account-cancel">Cancelar</button>
           <button class="btn primary" id="account-ok">Añadir y usar</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detalle de un servidor (Servidores) -->
+  <div class="overlay hidden" id="srv-dialog">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="srv-icon big" id="srv-icon"></div>
+        <div class="grow srv-head-text"><h2 id="srv-name"></h2><div class="srv-meta" id="srv-sub"></div></div>
+        <button class="circle-btn" id="srv-close" title="Cerrar"><svg><use href="#i-close"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="srv-motd hidden" id="srv-motd-box"><div class="motd-text" id="srv-motd"></div></div>
+        <div class="srv-facts" id="srv-facts"></div>
+        <div class="modal-actions" id="srv-actions"></div>
       </div>
     </div>
   </div>

@@ -1004,20 +1004,13 @@ function serverIconClicked(anchor) {
 // ---------- Editor del icono: cualquier imagen → 64×64 PNG (lo que pide Minecraft) ----------
 const iconEditor = { image: null, zoom: 1, cx: 0, cy: 0, pixel: false, drag: null };
 
-/** Lee la imagen como data URL (sirve con cualquier formato que abra el navegador: PNG, JPG, GIF, WEBP, BMP…). */
-function readImageFile(file) {
-  const failed = () => new Error(t("Esa imagen no se pudo abrir. Prueba con un PNG, JPG, GIF o WEBP.", "That image could not be opened. Try a PNG, JPG, GIF or WEBP."));
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(failed());
-    reader.onload = () => {
-      const image = new Image();
-      image.onload = () => (image.naturalWidth && image.naturalHeight ? resolve(image) : reject(failed()));
-      image.onerror = () => reject(failed());
-      image.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
+/** La imagen elegida (si la ventana no sabe abrirla, la convierte Windows: ver loadImageFile). */
+async function readImageFile(file) {
+  try {
+    return await loadImageFile(file);
+  } catch (error) {
+    throw new Error(error?.message && error.message !== "no se pudo abrir" ? error.message : t("Esa imagen no se pudo abrir. Prueba con un PNG, JPG, GIF o WEBP.", "That image could not be opened. Try a PNG, JPG, GIF or WEBP."));
+  }
 }
 
 async function serverIconFromFile(file) {
@@ -1267,6 +1260,124 @@ async function fixHostedProblem(findingIndex, optionIndex) {
 }
 
 // ---------- Servidores de amigos (página Servidores) ----------
+// ---------- Página Servidores: tarjetas con el icono de cada servidor y una vista de detalle ----------
+// El icono, el mensaje y los jugadores salen del propio servidor (estado_servidores: como la lista de
+// Multijugador del juego). El último icono conocido de cada uno se recuerda para cuando esté apagado.
+const SERVER_ICON_KEY = "parabellum-iconos-servidores";
+
+function rememberedIcons() {
+  try {
+    return JSON.parse(localStorage.getItem(SERVER_ICON_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+function rememberIcon(key, favicon) {
+  if (!key || !favicon) return;
+  const icons = rememberedIcons();
+  if (icons[key] === favicon) return;
+  icons[key] = favicon;
+  // Solo los últimos 40.
+  const keys = Object.keys(icons);
+  for (const old of keys.slice(0, Math.max(0, keys.length - 40))) delete icons[old];
+  try {
+    localStorage.setItem(SERVER_ICON_KEY, JSON.stringify(icons));
+  } catch {
+    // Sin almacenamiento: solo se ve mientras responde.
+  }
+}
+
+/** Dirección para preguntar el estado de cada partida de amigos. */
+function activityAddress(item) {
+  if (item.kind === "hosted") return item.server.address ?? null;
+  const p = item.friend?.presence ?? {};
+  if (item.kind === "world") return p.address ?? p.lan ?? null;
+  if (item.kind === "playing") return p.server ?? null;
+  return null;
+}
+
+function statusFor(address) {
+  return address ? state.serverStatus?.[address.trim().toLowerCase()] : null;
+}
+
+/** Pregunta el estado de todos los servidores de la página (cada 20 s mientras está abierta). */
+async function refreshServerStatus() {
+  if (!tauri) return;
+  const addresses = [...friendActivity().map(activityAddress), ...(state.settings.servers ?? []).map((s) => s.address)].filter(Boolean);
+  if (!addresses.length) return;
+  try {
+    const found = await invoke("estado_servidores", { direcciones: addresses });
+    state.serverStatus = { ...(state.serverStatus ?? {}), ...found };
+    renderFriendServers();
+    renderServers();
+    if (!$("#srv-dialog").classList.contains("hidden")) renderServerDetail();
+  } catch {
+    // Sin conexión: se queda lo que había.
+  }
+}
+
+function enterServers() {
+  refreshServerStatus();
+  clearInterval(state.serverStatusTimer);
+  state.serverStatusTimer = setInterval(() => {
+    if (state.page === "servers" && document.visibilityState === "visible") refreshServerStatus();
+    else if (state.page !== "servers") clearInterval(state.serverStatusTimer);
+  }, 20000);
+}
+
+function serverIconHtml(favicon, fallback) {
+  return `<div class="srv-icon">${favicon ? `<img src="${escapeHtml(favicon)}" alt="">` : icon(fallback)}</div>`;
+}
+
+/** Lo que muestra una tarjeta (y su detalle) de una partida de amigos. */
+function activityInfo(item) {
+  const address = activityAddress(item);
+  const status = statusFor(address);
+  if (status?.favicon) rememberIcon(item.key, status.favicon);
+  const favicon = status?.favicon ?? rememberedIcons()[item.key] ?? null;
+  const pill = (on, label) => `<span class="state-pill ${on ? "ready" : "off"}">${escapeHtml(label)}</span>`;
+  if (item.kind === "hosted") {
+    const sv = item.server;
+    const players = status?.online ? `${status.players}/${status.maxPlayers}` : sv.online ? `${sv.players}/${sv.maxPlayers}` : null;
+    return {
+      favicon,
+      fallback: "broadcast",
+      name: sv.name,
+      host: sv.hostName,
+      hostLine: t(`Servidor de ${sv.hostName}`, `${sv.hostName}'s server`),
+      pill: pill(sv.online, sv.online ? t("Encendido", "On") : t("Apagado", "Off")),
+      players,
+      canJoin: sv.online && !!sv.address,
+      address: sv.address,
+      pack: sv.pack,
+      version: [sv.loader, sv.minecraft].filter(Boolean).join(" "),
+      status,
+      note: sv.online ? (sv.address ? null : t("Sin dirección pública todavía", "No public address yet")) : t("Te invitó: se puede entrar cuando lo encienda", "Invited you: you can join when they start it"),
+    };
+  }
+  const f = item.friend;
+  const p = f.presence ?? {};
+  const base = { favicon, host: f.name, address, pack: p.pack, version: p.minecraft ? `Minecraft ${p.minecraft}` : "", status, players: status?.online ? `${status.players}/${status.maxPlayers}` : null };
+  if (item.kind === "world")
+    return { ...base, fallback: "globe", name: t(`Mundo de ${f.name}`, `${f.name}'s world`), hostLine: t(`Mundo abierto de ${f.name}`, `${f.name}'s open world`), pill: pill(true, t("Abierto", "Open")), canJoin: true, note: p.address ? null : t("Solo en tu red (LAN)", "Only on your network (LAN)") };
+  if (item.kind === "playing") return { ...base, fallback: "server", name: p.server, hostLine: t(`${f.name} está aquí`, `${f.name} is here`), pill: pill(true, t("Jugando", "Playing")), canJoin: true };
+  return { ...base, fallback: "broadcast", name: p.hosting, hostLine: t(`Servidor de ${f.name}`, `${f.name}'s server`), pill: pill(true, t("Encendido", "On")), canJoin: false, note: t("Pídele que te invite para ver la dirección", "Ask them to invite you to see the address") };
+}
+
+function serverCardHtml({ key, info, button, dim }) {
+  const head = info.host ? `<canvas width="8" height="8" class="head" data-head="${escapeHtml(info.host)}"></canvas>` : "";
+  const players = info.players ? `<span class="srv-players">${icon("user")}${escapeHtml(info.players)}</span>` : "";
+  return `<div class="srv-card ${dim ? "dim" : ""}" data-srv-open="${escapeHtml(key)}" tabindex="0" role="button" title="${t("Ver detalles", "See details")}">
+      ${serverIconHtml(info.favicon, info.fallback)}
+      <div class="grow srv-text">
+        <div class="srv-name">${escapeHtml(info.name)}</div>
+        <div class="srv-meta">${head}<span class="srv-host">${escapeHtml(info.hostLine)}</span>${info.pill ?? ""}${players}</div>
+      </div>
+      ${button}
+    </div>`;
+}
+
 function renderFriendServers() {
   const box = $("#friend-servers");
   const s = state.social;
@@ -1282,51 +1393,147 @@ function renderFriendServers() {
   }
   const html = items
     .map((item) => {
-      const pill = (on, label) => `<span class="state-pill ${on ? "ready" : "off"}">${escapeHtml(label)}</span>`;
-      let iconName, title, pillHtml, sub, button;
-      if (item.kind === "hosted") {
-        const sv = item.server;
-        iconName = "broadcast";
-        title = sv.name;
-        pillHtml = pill(sv.online, sv.online ? t("Encendido", "On") : t("Apagado", "Off"));
-        const status = sv.online ? (sv.address ? t(`${sv.players} de ${sv.maxPlayers} jugadores`, `${sv.players} of ${sv.maxPlayers} players`) : t("Sin dirección pública todavía", "No public address yet")) : t("Te invitó", "Invited you");
-        sub = [t(`Servidor de ${sv.hostName}`, `${sv.hostName}'s server`), sv.pack, sv.minecraft && `${sv.loader ?? ""} ${sv.minecraft}`.trim(), status];
-        button = `<button class="btn primary play" data-friend-join="${escapeHtml(item.key)}" ${sv.online && sv.address ? "" : "disabled"}>${icon("play")}${t("Unirse", "Join")}</button>`;
-      } else {
-        const f = item.friend;
-        const p = f.presence;
-        if (item.kind === "world") {
-          iconName = "globe";
-          title = t(`Mundo de ${f.name}`, `${f.name}'s world`);
-          pillHtml = pill(true, t("Abierto", "Open"));
-          sub = [p.pack, p.minecraft && `Minecraft ${p.minecraft}`, p.address ? t("Por Internet", "Over the Internet") : t("Solo en tu red (LAN)", "Only on your network (LAN)")];
-          button = `<button class="btn primary play" data-friend-join="${escapeHtml(item.key)}">${icon("play")}${t("Unirse", "Join")}</button>`;
-        } else if (item.kind === "playing") {
-          iconName = "server";
-          title = p.server;
-          pillHtml = pill(true, t(`${f.name} está aquí`, `${f.name} is here`));
-          sub = [p.pack, p.minecraft && `Minecraft ${p.minecraft}`];
-          button = `<button class="btn primary play" data-friend-join="${escapeHtml(item.key)}">${icon("play")}${t("Unirse", "Join")}</button>`;
-        } else {
-          iconName = "broadcast";
-          title = p.hosting;
-          pillHtml = pill(true, t("Encendido", "On"));
-          sub = [t(`Servidor de ${f.name}`, `${f.name}'s server`), t("Pídele que te invite para ver la dirección", "Ask them to invite you to see the address")];
-          button = `<button class="btn play" disabled>${icon("play")}${t("Unirse", "Join")}</button>`;
-        }
-      }
-      return `<div class="server ${item.online ? "" : "dim"}">
-        <div class="server-icon">${icon(iconName)}</div>
-        <div class="grow">
-          <div class="title">${escapeHtml(title)} ${pillHtml}</div>
-          <div class="sub">${escapeHtml(sub.filter(Boolean).join(" · "))}</div>
-        </div>
-        ${button}
-        <button class="circle-btn" data-friend-server-menu="${escapeHtml(item.key)}" title="${t("Más", "More")}">${icon("more")}</button>
-      </div>`;
+      const info = activityInfo(item);
+      const button = `<button class="btn primary play" data-friend-join="${escapeHtml(item.key)}" ${info.canJoin ? "" : "disabled"}>${icon("play")}${t("Unirse", "Join")}</button>`;
+      return serverCardHtml({ key: item.key, info, button, dim: !item.online });
     })
     .join("");
   setHtml(box, html);
+  for (const canvas of $$("#friend-servers canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
+}
+
+/** Lo que muestra una tarjeta de un servidor guardado. */
+function savedInfo(server) {
+  const status = statusFor(server.address);
+  const key = `saved:${server.address.toLowerCase()}`;
+  if (status?.favicon) rememberIcon(key, status.favicon);
+  const instance = state.instances.find((i) => i.id === server.instance);
+  const on = !!status?.online;
+  return {
+    favicon: status?.favicon ?? rememberedIcons()[key] ?? null,
+    fallback: "server",
+    name: server.name || server.address,
+    host: null,
+    hostLine: server.name ? server.address : instance ? instance.name : "",
+    pill: status ? `<span class="state-pill ${on ? "ready" : "off"}">${on ? t("En línea", "Online") : t("Sin respuesta", "No answer")}</span>` : "",
+    players: on ? `${status.players}/${status.maxPlayers}` : null,
+    canJoin: !!instance,
+    address: server.address,
+    pack: instance?.name ?? t("instancia no encontrada", "instance not found"),
+    version: status?.version ?? "",
+    status,
+  };
+}
+
+// ---------- Detalle de un servidor ----------
+function openServerDetail(key) {
+  state.serverDetail = key;
+  renderServerDetail();
+  openModal("#srv-dialog");
+}
+
+function currentServerDetail() {
+  const key = state.serverDetail;
+  if (!key) return null;
+  if (key.startsWith("saved:")) {
+    const index = Number(key.slice(6));
+    const server = (state.settings.servers ?? [])[index];
+    return server ? { kind: "saved", index, server, info: savedInfo(server) } : null;
+  }
+  const item = findActivity(key);
+  return item ? { kind: "activity", item, info: activityInfo(item) } : null;
+}
+
+function renderServerDetail() {
+  const detail = currentServerDetail();
+  if (!detail) return closeModal("#srv-dialog");
+  const { info } = detail;
+  const status = info.status;
+  $("#srv-icon").outerHTML = serverIconHtml(info.favicon, info.fallback).replace('class="srv-icon"', 'class="srv-icon big" id="srv-icon"');
+  $("#srv-name").textContent = info.name;
+  $("#srv-sub").innerHTML = `${info.host ? `<canvas width="8" height="8" class="head" data-head="${escapeHtml(info.host)}"></canvas>` : ""}<span>${escapeHtml(info.hostLine)}</span>${info.pill ?? ""}`;
+  for (const canvas of $$("#srv-sub canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
+  // El mensaje (MOTD) como en la lista de Multijugador.
+  const motd = status?.motd ?? "";
+  $("#srv-motd-box").classList.toggle("hidden", !motd);
+  $("#srv-motd").innerHTML = motdHtml(motd);
+  const rows = [
+    [t("Anfitrión", "Host"), info.host],
+    [t("Modpack", "Modpack"), info.pack],
+    [t("Versión", "Version"), info.version || status?.version],
+    [t("Jugadores", "Players"), info.players ? `${info.players}${status?.sample?.length ? ` · ${status.sample.join(", ")}` : ""}` : null],
+    [t("Dirección", "Address"), info.address],
+    [t("Respuesta", "Ping"), status?.online && status.latencyMs ? `${status.latencyMs} ms` : null],
+    [t("Nota", "Note"), info.note],
+  ].filter(([, value]) => value);
+  $("#srv-facts").innerHTML = rows
+    .map(([label, value]) => `<div class="srv-fact"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b>${label === t("Dirección", "Address") ? `<button class="circle-btn small" data-copy-address="${escapeHtml(value)}" title="${t("Copiar", "Copy")}">${icon("copy")}</button>` : ""}</div>`)
+    .join("");
+  const actions = [];
+  if (detail.kind === "activity") {
+    const friend = detail.item.friend ?? state.social?.friends?.friends?.find((f) => f.uid === detail.item.server?.host);
+    if (friend) actions.push(`<button class="btn" data-srv-action="message">${icon("chat")}${t(`Mensaje a ${friend.name}`, `Message ${friend.name}`)}</button>`);
+    if (detail.item.kind === "hosted") actions.push(`<button class="btn" data-srv-action="leave">${icon("trash")}${t("Quitar de mi lista", "Remove from my list")}</button>`);
+    actions.push(`<button class="btn primary" data-srv-action="join" ${info.canJoin ? "" : "disabled"}>${icon("play")}${t("Unirse", "Join")}</button>`);
+  } else {
+    actions.push(`<button class="btn" data-srv-action="remove">${icon("trash")}${t("Quitar", "Remove")}</button>`);
+    actions.push(`<button class="btn primary" data-srv-action="play" ${info.canJoin ? "" : "disabled"}>${icon("play")}${t("Jugar", "Play")}</button>`);
+  }
+  $("#srv-actions").innerHTML = actions.join("");
+}
+
+async function serverDetailAction(action) {
+  const detail = currentServerDetail();
+  if (!detail) return;
+  if (action === "join") {
+    closeModal("#srv-dialog");
+    return joinActivity(detail.item);
+  }
+  if (action === "play") {
+    closeModal("#srv-dialog");
+    return play(detail.server.instance, detail.server.address);
+  }
+  if (action === "message") {
+    const friend = detail.item.friend ?? state.social?.friends?.friends?.find((f) => f.uid === detail.item.server?.host);
+    closeModal("#srv-dialog");
+    if (friend) messageFriend(friend.uid);
+    return;
+  }
+  if (action === "remove") {
+    closeModal("#srv-dialog");
+    return saveServers(state.settings.servers.filter((_, i) => i !== detail.index));
+  }
+  if (action === "leave") {
+    closeModal("#srv-dialog");
+    try {
+      await invoke("salir_de_servidor", { anfitrion: detail.item.server.host, clave: detail.item.server.key });
+    } catch (error) {
+      toast(String(error), "error");
+    }
+  }
+}
+
+function wireServerDetail() {
+  $("#srv-close").onclick = () => closeModal("#srv-dialog");
+  $("#srv-dialog").onmousedown = (event) => {
+    if (event.target.id === "srv-dialog") closeModal("#srv-dialog");
+  };
+  $("#srv-actions").onclick = (event) => {
+    const button = event.target.closest("[data-srv-action]");
+    if (button) serverDetailAction(button.dataset.srvAction);
+  };
+  // Clic (o Enter) en una tarjeta que no sea en sus botones: el detalle.
+  const open = (event) => {
+    if (event.target.closest("button")) return;
+    const card = event.target.closest("[data-srv-open]");
+    if (card) openServerDetail(card.dataset.srvOpen);
+  };
+  for (const list of ["#friend-servers", "#server-list"]) {
+    $(list).addEventListener("click", open);
+    $(list).addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && event.target.matches("[data-srv-open]")) open(event);
+    });
+  }
 }
 
 function findActivity(key) {
@@ -1396,6 +1603,7 @@ function friendServerMenu(anchor, item) {
 
 // ---------- Eventos ----------
 function wireHostEvents() {
+  wireServerDetail();
   $("#host-new-server").onclick = () => openHostCreate();
   $("#host-share-world").onchange = (event) => invoke("compartir_mundo", { activo: event.target.checked });
   document.addEventListener("click", (event) => {

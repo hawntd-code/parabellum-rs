@@ -462,18 +462,24 @@ pub fn leer_imagen(ruta: String) -> Result<String, String> {
     let path = std::path::PathBuf::from(&ruta);
     let extension = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     let mime = match extension.as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        "bmp" => "image/bmp",
-        _ => return Err(t!("Eso no es una imagen (PNG, JPG, GIF, WEBP o BMP).", "That is not an image (PNG, JPG, GIF, WEBP or BMP).")),
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" | "jfif" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "bmp" => Some("image/bmp"),
+        "avif" => Some("image/avif"),
+        // Los que la ventana no abre los convierte Windows (abajo).
+        "heic" | "heif" | "tif" | "tiff" | "ico" | "jxr" | "wdp" | "dds" => None,
+        _ => return Err(t!("Eso no es una imagen.", "That is not an image.")),
     };
     if path.metadata().map(|m| m.len()).unwrap_or(0) > 25 * 1024 * 1024 {
         return Err(t!("La imagen pesa más de 25 MB.", "The image is larger than 25 MB."));
     }
     let bytes = std::fs::read(&path).map_err(|e| t!("No se pudo leer la imagen: {e}", "Could not read the image: {e}"))?;
-    Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+    match mime {
+        Some(mime) => Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes))),
+        None => Ok(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(crate::imagen::to_png(&bytes)?))),
+    }
 }
 
 #[tauri::command]
