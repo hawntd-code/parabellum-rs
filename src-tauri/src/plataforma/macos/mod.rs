@@ -98,13 +98,18 @@ impl CommandExt for Command {
 /// escribir: cuando Parabellum termina, aunque sea de golpe, macOS la cierra, el vigilante deja de
 /// esperar y le pide al proceso que se cierre (SIGTERM: el servidor guarda el mundo); si a los 40 s
 /// sigue abierto, lo cierra a la fuerza. Si el proceso termina antes, un hilo de Parabellum se entera
-/// con kqueue y cierra al vigilante, así nunca cierra otro programa que reciba el mismo número.
+/// con kqueue y cierra al vigilante. Por si macOS ya le dio el número a otro programa (en el instante
+/// en que Parabellum se cae, o mientras el vigilante espera los 40 s), el vigilante solo manda una
+/// señal si el proceso con ese número empezó a la misma hora.
 pub fn tie_to_launcher(child: &Child) {
     use std::os::unix::process::CommandExt as _;
+    let pid = child.id().to_string();
+    // Mientras exista `child` nadie lo ha recogido, así que el número todavía es suyo.
+    let Some(started) = start_time(&pid) else { return };
     let Some(exit) = ExitWatch::new(child.id()) else { return };
     let Some(lifeline) = lifeline() else { return };
     let watcher = Command::new("/bin/sh")
-        .args(["-c", WATCHER, "parabellum-vigilante", &child.id().to_string()])
+        .args(["-c", WATCHER, "parabellum-vigilante", &pid, &started])
         .stdin(lifeline)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -119,12 +124,23 @@ pub fn tie_to_launcher(child: &Child) {
     });
 }
 
-/// El vigilante: `read` vuelve cuando se cierra la tubería, es decir, cuando Parabellum terminó.
+/// El vigilante ($1: el número del proceso; $2: cuándo empezó). `read` vuelve cuando se cierra la
+/// tubería, es decir, cuando Parabellum terminó.
 const WATCHER: &str = r#"read -r _
-kill -TERM "$1" 2>/dev/null || exit 0
+same() { [ "$(ps -o lstart= -p "$1")" = "$2" ]; }
+same "$1" "$2" || exit 0
+kill -TERM "$1"
 i=0
-while [ $i -lt 40 ] && kill -0 "$1" 2>/dev/null; do sleep 1; i=$((i + 1)); done
-kill -KILL "$1" 2>/dev/null"#;
+while [ $i -lt 40 ] && same "$1" "$2"; do sleep 1; i=$((i + 1)); done
+same "$1" "$2" && kill -KILL "$1""#;
+
+/// Cuándo empezó un proceso, como lo escribe `ps` (lo que compara el vigilante).
+fn start_time(pid: &str) -> Option<String> {
+    let output = Command::new("ps").args(["-o", "lstart=", "-p", pid]).output().ok()?;
+    // Igual que `$(…)` en sh: sin los saltos de línea del final.
+    let text = String::from_utf8_lossy(&output.stdout).trim_end_matches('\n').to_string();
+    (!text.trim().is_empty()).then_some(text)
+}
 
 /// La tubería de los vigilantes. Parabellum guarda el extremo de escritura sin escribir nunca, y nadie
 /// más lo tiene: std abre las tuberías con close-on-exec, así que no pasa a los programas que se
@@ -572,12 +588,28 @@ mod tests {
     #[test]
     fn el_vigilante_se_va_con_el_proceso() {
         let mut child = Command::new("sleep").arg("1").spawn().unwrap();
-        let pattern = format!("parabellum-vigilante {}$", child.id());
+        let pattern = format!("parabellum-vigilante {} ", child.id());
         let watcher = || Command::new("pgrep").args(["-f", &pattern]).stdout(Stdio::null()).status().unwrap().success();
         tie_to_launcher(&child);
         assert!(watcher());
         child.wait().unwrap();
         assert!(closes_within(5, watcher), "el vigilante siguió abierto");
+    }
+
+    #[test]
+    fn el_vigilante_no_toca_otro_programa_con_el_mismo_numero() {
+        // Como si macOS ya le hubiera dado el número a otro programa: no empezó a esa hora.
+        let mut other = Command::new("sleep").arg("30").spawn().unwrap();
+        let (reader, writer) = std::io::pipe().unwrap();
+        let mut watcher =
+            Command::new("/bin/sh").args(["-c", WATCHER, "parabellum-vigilante", &other.id().to_string(), "Mon Jan  1 00:00:00 2001"]).stdin(reader).spawn().unwrap();
+        // Parabellum «se cae».
+        drop(writer);
+        watcher.wait().unwrap();
+        let untouched = other.try_wait().unwrap().is_none();
+        let _ = other.kill();
+        let _ = other.wait();
+        assert!(untouched, "el vigilante cerró otro programa");
     }
 
     #[test]

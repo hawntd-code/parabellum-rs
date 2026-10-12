@@ -105,9 +105,11 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
   vigilante (`sh`) espera leyendo una tubería que solo Parabellum tiene abierta: cuando Parabellum
   termina, aunque sea de golpe, macOS la cierra y el vigilante le manda SIGTERM al proceso (el servidor
   guarda el mundo; en Windows se cierra sin guardar) y, si a los 40 s sigue abierto, SIGKILL. Si el
-  proceso termina antes, un hilo de Parabellum se entera con kqueue y cierra al vigilante. Probado con
-  `kill -9` a Parabellum: un servidor 1.21.1 guarda el mundo y se cierra en 1 s. Ojo: Minecraft no
-  anota ese apagado en `latest.log` (su registro se apaga antes); se ve en la hora de `level.dat`.
+  proceso termina antes, un hilo de Parabellum se entera con kqueue y cierra al vigilante. Y solo manda
+  una señal si el proceso con ese número empezó a la hora que anotó Parabellum (`ps -o lstart=`): así
+  no toca otro programa si macOS ya le dio ese número. Probado con `kill -9` a Parabellum: un servidor
+  1.21.1 guarda el mundo y se cierra en 1 s. Ojo: Minecraft no anota ese apagado en `latest.log` (su
+  registro se apaga antes); se ve en la hora de `level.dat`.
 - Avisos (`macos/avisos.rs`) con la API de Apple, UserNotifications (crate `objc2-user-notifications`):
   título, texto, sonido y clic (abre Parabellum o el chat). macOS solo los deja salir desde una `.app`
   que no esté en una carpeta temporal: con el programa suelto de `cargo build` no salen, y
