@@ -1,0 +1,10 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "mx.parabellum.juego.fabric.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": ["GuiMixin", "MinecraftMixin", "OptionsMixin"],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

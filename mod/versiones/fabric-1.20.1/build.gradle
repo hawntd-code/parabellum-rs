@@ -7,7 +7,8 @@ group = "mx.parabellum"
 base { archivesName = "parabellum-fabric-1.20.1" }
 
 dependencies {
-    minecraft "com.mojang:minecraft:1.20.1"
+    // Con -Pmc=<versión> se comprueba que el mismo código sirva en las versiones vecinas.
+    minecraft "com.mojang:minecraft:${project.findProperty('mc') ?: '1.20.1'}"
     mappings loom.officialMojangMappings()
     // Sin Fabric API: el mod funciona en cualquier instancia de Fabric (la tecla y los avisos van con mixins).
     modImplementation "net.fabricmc:fabric-loader:0.16.14"

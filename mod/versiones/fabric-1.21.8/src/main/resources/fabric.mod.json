@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "parabellum",
+  "version": "${version}",
+  "name": "Parabellum",
+  "description": "Amigos, chat, capturas e invitaciones de Parabellum dentro del juego.",
+  "authors": ["Parabellum"],
+  "license": "Privado",
+  "icon": "assets/parabellum/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["mx.parabellum.juego.fabric.ParabellumFabric"]
+  },
+  "mixins": ["parabellum.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.14",
+    "minecraft": ">=1.21.6 <1.21.9"
+  }
+}
