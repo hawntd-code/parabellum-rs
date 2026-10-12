@@ -61,10 +61,11 @@ pub fn java_binary(home: &Path, _windowed: bool) -> PathBuf {
 pub fn make_executable(path: &Path) {
     use std::os::unix::fs::PermissionsExt;
     let Ok(metadata) = std::fs::symlink_metadata(path) else { return };
-    if !metadata.file_type().is_file() {
+    let mut permissions = metadata.permissions();
+    // Si ya lo tiene, no se toca (java::discover lo pide cada vez que busca los Java).
+    if !metadata.file_type().is_file() || permissions.mode() & 0o111 == 0o111 {
         return;
     }
-    let mut permissions = metadata.permissions();
     permissions.set_mode(permissions.mode() | 0o111);
     let _ = std::fs::set_permissions(path, permissions);
 }
@@ -403,6 +404,26 @@ mod tests {
         *altered.last_mut().unwrap() ^= 1;
         assert!(unprotect(&altered).is_none());
         assert!(unprotect(&[]).is_none());
+    }
+
+    #[test]
+    fn java_sin_permiso_se_arregla_al_encontrarlo() {
+        use std::os::unix::fs::PermissionsExt;
+        // Como quedaba un Java bajado antes de que se marcaran sus programas: sin +x.
+        let paths = crate::paths::Paths::new(std::env::temp_dir().join(format!("parabellum-java-mac-{}", std::process::id())));
+        let home = paths.java.join("java-runtime-delta").join("jre.bundle").join("Contents").join("Home");
+        std::fs::create_dir_all(home.join("bin")).unwrap();
+        std::fs::create_dir_all(home.join("lib")).unwrap();
+        for program in [home.join("bin").join("java"), home.join("lib").join("jspawnhelper")] {
+            std::fs::write(&program, b"").unwrap();
+            std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+        std::fs::write(home.join("release"), "JAVA_VERSION=\"21.0.7\"\n").unwrap();
+        assert_eq!(crate::java::discover(&paths).len(), 1);
+        for program in [home.join("bin").join("java"), home.join("lib").join("jspawnhelper")] {
+            assert_eq!(std::fs::metadata(&program).unwrap().permissions().mode() & 0o777, 0o755, "{}", program.display());
+        }
+        let _ = std::fs::remove_dir_all(&paths.root);
     }
 
     #[test]
