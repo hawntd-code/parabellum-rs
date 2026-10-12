@@ -2613,6 +2613,48 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                 Ok(report)
             })
         }
+        "--probar-favoritos" => {
+            // Con la sesión guardada: lee los favoritos de la cuenta, escribe uno de prueba (y lo borra) y
+            // comprueba que las reglas rechazan lo que no deben.
+            let config = config::Config::load(paths);
+            let refresh = google::load_session(paths).ok_or("No hay sesión de Google guardada.")?;
+            tauri::async_runtime::block_on(async move {
+                let account = google::GoogleAccount::resume(&config, refresh).await?;
+                let token = account.id_token().await?;
+                let session = firebase::Session::sign_in_with_google(&config.firebase_api_key, &token).await?;
+                let uid = session.uid.clone();
+                let db = Arc::new(firebase::Database::new(&config.firebase_database_url, session));
+                let base = format!("favorites/{uid}");
+                let before = db.get(&base).await.map_err(|e| e.to_string())?;
+                let mut report = format!("favoritos en la cuenta antes: {}\n", if before.is_null() { "(ninguno todavía)".to_string() } else { before.to_string() });
+                let seen: Arc<Mutex<Vec<serde_json::Value>>> = Arc::default();
+                let log = seen.clone();
+                let _listener = db.listen(base.clone(), move |data| log.lock().unwrap().push(data), |error| eprintln!("escucha: {error}"));
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                let test = format!("{base}/mods/parabellumPrueba");
+                let ok = |result: Result<serde_json::Value, firebase::DbError>| match result {
+                    Ok(_) => "aceptado".to_string(),
+                    Err(error) => format!("rechazado ({error})"),
+                };
+                let entry = serde_json::json!({ "title": "Prueba de Parabellum", "kind": "mod", "at": 1, "icon": "https://cdn.modrinth.com/prueba.png" });
+                report += &format!("1. escribir un mod favorito válido: {}\n", ok(db.put(&test, &entry).await));
+                report += &format!("2. conversación favorita válida: {}\n", ok(db.put(&format!("{base}/chats/d_prueba_parabellum"), &serde_json::json!(true)).await));
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                let heard = seen.lock().unwrap().last().map(|d| d.pointer("/mods/parabellumPrueba/title").is_some() && d.pointer("/chats/d_prueba_parabellum").is_some()).unwrap_or(false);
+                report += &format!("3. la escucha (como otro PC) lo vio llegar: {}\n", if heard { "sí" } else { "NO" });
+                report += &format!("4. tipo inventado (debe rechazarse): {}\n", ok(db.put(&test, &serde_json::json!({ "title": "x", "kind": "virus", "at": 1 })).await));
+                report += &format!("5. icono que no es https (debe rechazarse): {}\n", ok(db.put(&test, &serde_json::json!({ "title": "x", "kind": "mod", "at": 1, "icon": "http://malo" })).await));
+                report += &format!("6. campo que no existe (debe rechazarse): {}\n", ok(db.put(&format!("{base}/otra-cosa"), &serde_json::json!(1)).await));
+                report += &format!("7. favoritos de OTRA cuenta (debe rechazarse): {}\n", ok(db.put("favorites/otraCuentaCualquiera/chats/x", &serde_json::json!(true)).await));
+                report += &format!("8. leer los de OTRA cuenta (debe rechazarse): {}\n", ok(db.get("favorites/otraCuentaCualquiera").await));
+                let _ = db.delete(&test).await;
+                let _ = db.delete(&format!("{base}/chats/d_prueba_parabellum")).await;
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                let after = db.get(&base).await.map_err(|e| e.to_string())?;
+                report += &format!("9. borrada la prueba; la cuenta quedó como estaba: {}", if after == before { "sí" } else { "NO" });
+                Ok::<String, String>(report)
+            })
+        }
         "--probar-tiempo-real" => {
             // Cuánto tarda en llegar por la escucha algo que se acaba de escribir (con la sesión guardada).
             let config = config::Config::load(paths);
