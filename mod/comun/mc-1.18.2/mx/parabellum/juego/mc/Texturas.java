@@ -36,6 +36,11 @@ public final class Texturas {
     }
 
     public static void dibujar(PoseStack g, String nombre, Imagen img, int x, int y, int w, int h) {
+        dibujar(g, nombre, img, x, y, w, h, 1f);
+    }
+
+    /** `alfa`: de 0 (transparente) a 1; así el panel entra suave. */
+    public static void dibujar(PoseStack g, String nombre, Imagen img, int x, int y, int w, int h, float alfa) {
         Entrada e = CACHE.get(nombre);
         Rectangle cambio;
         if (e == null || e.imagen != img) {
@@ -60,10 +65,11 @@ public final class Texturas {
         }
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
         RenderSystem.setShaderTexture(0, e.id);
-        RenderSystem.setShaderColor(1, 1, 1, 1);
+        RenderSystem.setShaderColor(1, 1, 1, alfa);
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         GuiComponent.blit(g, x, y, 0, 0, w, h, w, h);
         RenderSystem.disableBlend();
+        RenderSystem.setShaderColor(1, 1, 1, 1);
     }
 }

@@ -17,6 +17,8 @@ import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.network.chat.TextComponent;
 import net.minecraft.network.chat.TranslatableComponent;
 import org.lwjgl.glfw.GLFW;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.Screen;
 
 import java.io.File;
 
@@ -50,6 +52,16 @@ public abstract class Base implements Plataforma {
         }
     }
 
+    /** El botón de Parabellum en el menú de pausa (arriba a la derecha): abre el panel. */
+    public static Button botonPausa(Screen pausa) {
+        return new Button(pausa.width - 104, 6, 98, 20, new TextComponent("Parabellum"), boton -> abrirDesdePausa());
+    }
+
+    private static void abrirDesdePausa() {
+        Juego juego = Juego.actual();
+        if (juego != null) juego.tecla();
+    }
+
     /** Los avisos, encima de la interfaz del juego. */
     public static void dibujarAvisos(PoseStack g) {
         Juego juego = Juego.actual();
@@ -58,9 +70,7 @@ public abstract class Base implements Plataforma {
         int s = Math.max(1, (int) w.getGuiScale());
         Imagen img = juego.avisos(w.getWidth(), w.getHeight(), s);
         if (img == null) return;
-        int margen = 8 * s;
-        int x = ((w.getWidth() - img.ancho - margen) / s) * s;
-        Texturas.dibujar(g, "avisos", img, x / s, margen / s, img.ancho / s, img.alto / s);
+        Texturas.dibujar(g, "avisos", img, juego.avisosX(w.getWidth(), s) / s, juego.avisosY(w.getWidth(), w.getHeight(), s) / s, img.ancho / s, img.alto / s);
     }
 
     @Override

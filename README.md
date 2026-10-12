@@ -77,9 +77,10 @@ se crean desde Ajustes › Comportamiento.
 
 ## Parabellum dentro del juego
 
-Con la tecla **O** dentro de Minecraft se abre el panel de Parabellum: tus amigos (unirte a su partida,
-invitarlos a la tuya, escribirles), tus mensajes y grupos, y tus capturas para mandarlas a un chat. Los
-avisos de mensajes e invitaciones salen en la esquina del juego. Funciona en Fabric, Forge y NeoForge de
+Con la tecla **O** dentro de Minecraft (o el botón «Parabellum» del menú de pausa) se abre el panel de
+Parabellum: tus amigos (unirte a su partida, invitarlos a la tuya, escribirles), tus mensajes y grupos, y
+tus capturas para mandarlas a un chat. Los avisos de mensajes e invitaciones salen abajo a la derecha; la
+primera vez que entras a un mundo, uno te dice cómo abrirlo. Funciona en Fabric, Forge y NeoForge de
 la 1.16.5 a la 26.3 (las versiones más usadas); Parabellum pone el mod solo al jugar. Se apaga en
 Ajustes › Comportamiento. El código y cómo compilarlo: [mod/README.md](mod/README.md).
 
@@ -170,7 +171,7 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--probar-receta <instancia>` | Comparte la instancia como por el chat y la vuelve a armar como otra instancia (compara los archivos) |
 | `--probar-sonido [archivo.wav]` | Toca el sonido de mensaje nuevo (y lo guarda si se da un archivo) |
 | `--ping <dirección>` | Estado de un servidor como en la lista de Multijugador: icono, mensaje, jugadores, versión (con SRV) |
-| `--abrir-juego <instancia> [segundos]` | Abre el juego con el mod de Parabellum y lo deja abierto ese tiempo (para probar el panel dentro del juego; ver `mod/README.md`) |
+| `--abrir-juego <instancia> [segundos] [con-mod\|sin-mod] [servidor]` | Abre el juego con el mod de Parabellum y lo deja abierto ese tiempo (para probar el panel dentro del juego; ver `mod/README.md`). Con un servidor, entra directo a él |
 | `--probar-p2p <puerto> [segundos]` | Abre un túnel P2P en este PC hacia un servidor encendido y le hace ping; con segundos lo deja abierto (puerto en `datos/logs/p2p-puerto.txt`) |
 | `--convertir-imagen <entrada> <salida.png>` | Abre una imagen con Windows (HEIC, TIFF…) y la guarda como PNG |
 | `--probar-favoritos` | Con la sesión guardada: lee los favoritos de la cuenta, escribe uno de prueba (y lo borra) y comprueba las reglas de Firebase |

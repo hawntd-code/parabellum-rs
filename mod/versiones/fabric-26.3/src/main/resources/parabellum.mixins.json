@@ -3,7 +3,7 @@
   "minVersion": "0.8",
   "package": "mx.parabellum.juego.fabric.mixin",
   "compatibilityLevel": "JAVA_25",
-  "client": ["HudMixin", "MinecraftMixin", "OptionsMixin"],
+  "client": ["HudMixin", "MinecraftMixin", "OptionsMixin", "PauseScreenMixin"],
   "injectors": {
     "defaultRequire": 1
   }

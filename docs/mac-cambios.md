@@ -20,7 +20,7 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 ## Estado
 
 - Última revisión de los PR de Mac en Windows: 2026-10-12, PR #1 a #5 (todos mezclados).
-- Windows: la 0.24.1 está publicada en Drive. Sigue la 0.25.0 (ver «Próximo en Windows»).
+- Windows: la 0.24.1 está publicada en Drive; la 0.25.0 (animaciones) ya está en `main`. Sigue la 0.26.0.
 
 ## Pendientes para Mac
 
@@ -34,6 +34,12 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   (en Mac, Java2D corre en modo headless).
 - [ ] **Probar el clic en un aviso** (PR #4): un mensaje real de un amigo con la ventana minimizada; al
   pulsarlo debe abrirse ese chat.
+- [ ] **Revisar las animaciones de la 0.25 en la ventana de Mac** (WKWebView): cambiar de página, abrir una
+  instancia desde la Biblioteca (la portada viaja), buscar en la Biblioteca, el chat (mensaje nuevo, borrar,
+  «Mensajes nuevos») y un aviso que se va. Usan Web Animations (`element.animate`), `DOMMatrixReadOnly`,
+  `inert` y `scrollTo({ behavior: "smooth" })`: Safari 15.4 o más nuevo.
+- [ ] **Dentro del juego en Mac**: el botón «Parabellum» del menú de pausa y el aviso «Pulsa O» al entrar a
+  un mundo (la marca es `panel-visto.txt` en la carpeta de datos; bórrala para que vuelva a salir).
 - [x] Textos que quedaron viejos al mezclar los PR #1 a #4 (el comentario de `Cargo.toml`, el
   encabezado de `macos/mod.rs` y la tarea 1 de `mac.md`): resuelto en el PR #5.
 
@@ -46,19 +52,26 @@ Nada por ahora.
 
 ## Próximo en Windows
 
-Para que lo tengas en cuenta antes de que llegue:
-
-- **0.25.0: animaciones.**
-  - En la interfaz (`ui/`): transiciones entre páginas (View Transitions), listas que se deslizan,
-    chat y barras de progreso.
-  - En el mod: el panel y los avisos se animan, y hay un botón de Parabellum en el menú de pausa.
-
-  Es código compartido y en Mac llega solo. Pero la ventana de Mac usa WKWebView (Safari), no Chromium
-  como en Windows, así que habrá que revisar en Mac que se vea bien. Si WKWebView no tiene View
-  Transitions, cambia de página sin animación, sin errores.
 - **0.26.0:** «Reportar problema» (manda un resumen por chat a Juan) y la prueba con compañeros.
 
 ## Cambios de Windows
+
+### 2026-10-12 · 0.25.0: animaciones y el panel se encuentra solo
+
+- Qué cambió:
+  - `ui/styles.css`: duraciones y curvas como variables (`--dur-*`, `--ease-*`); estilos nuevos al final
+    («0.25: movimiento»).
+  - `ui/app.js`:
+    - `setHtml(elemento, html, { scope, after })` anima las filas con `data-key`.
+    - `navigate` desvanece la página anterior; `morphArt` lleva la portada a la cabecera.
+    - Chat: `showNewBelow`. Progreso: `timeLeft`. Jugar: `showLaunching`. Con «reducir movimiento» o
+      la ventana minimizada no se anima nada (`motionOk`).
+  - Mod: transparencia en `Texturas.dibujar(..., alfa)` de todas las versiones, botón en el menú de
+    pausa (`PauseScreenMixin` en Fabric, evento de pantalla en Forge/NeoForge), avisos abajo a la derecha
+    (`Juego.avisosX/avisosY`) y pista «Pulsa O» (`datos/panel-visto.txt`). Los 18 .jar se recompilaron.
+  - `--abrir-juego` acepta un servidor al final para entrar directo.
+- Mac: nada de código. Revisar en Mac lo de «Pendientes para Mac» (animaciones en WKWebView y el botón
+  de pausa dentro del juego).
 
 ### 2026-10-12 · Canal Windows ↔ Mac (este archivo y CLAUDE.md)
 

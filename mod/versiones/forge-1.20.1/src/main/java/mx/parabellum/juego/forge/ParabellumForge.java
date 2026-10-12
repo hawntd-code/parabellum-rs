@@ -11,6 +11,8 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLEnvironment;
+import net.minecraftforge.client.event.ScreenEvent;
+import net.minecraft.client.gui.screens.PauseScreen;
 
 /** Forge 1.20 y 1.20.1 (también NeoForge 1.20.1): la tecla, el tick y los avisos van con eventos. */
 @Mod("parabellum")
@@ -24,6 +26,9 @@ public final class ParabellumForge extends Base {
             if (evento.phase == TickEvent.Phase.END) tick();
         });
         MinecraftForge.EVENT_BUS.addListener((RenderGuiEvent.Post evento) -> dibujarAvisos(evento.getGuiGraphics()));
+        MinecraftForge.EVENT_BUS.addListener((ScreenEvent.Init.Post evento) -> {
+            if (evento.getScreen() instanceof PauseScreen) evento.addListener(botonPausa(evento.getScreen()));
+        });
     }
 
     @Override

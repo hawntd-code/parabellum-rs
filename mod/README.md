@@ -1,8 +1,13 @@
 # Parabellum dentro del juego (el mod)
 
 El panel de Parabellum dentro de Minecraft: amigos (unirse, invitar, mensaje, solicitudes), mensajes
-(chats y grupos, enviar, editar y borrar), capturas (mandarlas a un chat) y avisos en la esquina. Se
-abre con la tecla **O** (se cambia en Controles › Multijugador).
+(chats y grupos, enviar, editar y borrar), capturas (mandarlas a un chat) y avisos abajo a la derecha. Se
+abre con la tecla **O** (se cambia en Controles › Multijugador) o con el botón «Parabellum» del menú de
+pausa. La primera vez que se entra a un mundo sale el aviso «Pulsa O para abrirlo», hasta que se abra
+una vez (la marca es `datos/panel-visto.txt` de Parabellum).
+
+El panel entra subiendo y aclarándose (0.18 s) y los avisos entran y salen deslizándose: solo se vuelven
+a dibujar mientras algo se mueve.
 
 No hay que instalarlo a mano: al jugar, Parabellum pone en la carpeta `mods` de la instancia el .jar que
 toca según el loader y la versión, y lo quita al cerrar el juego (ver `src-tauri/src/juego.rs`). Así no
@@ -74,6 +79,8 @@ Con el JSON de una instancia (`extraJvmArgs`) o en la línea de comandos de Java
 - `-Dparabellum.prueba=true`: el panel se dibuja como conectado, con un amigo y un chat de ejemplo.
 - `-Dparabellum.prueba.pestana=1`: abre la primera conversación.
 - `-Dparabellum.prueba.conectar=<dirección>`: entra a ese servidor como lo haría «Unirse».
+- `-Dparabellum.prueba.lento=<N>`: el panel tarda N veces más en entrar (para verlo en una captura).
 
-`Parabellum.exe --abrir-juego "<instancia>" [segundos]` abre el juego con el mod y lo deja abierto ese
-tiempo.
+`Parabellum.exe --abrir-juego "<instancia>" [segundos] [con-mod|sin-mod] [servidor]` abre el juego con el
+mod y lo deja abierto ese tiempo; con un servidor entra directo a él (para probar la pista, los avisos y
+el botón del menú de pausa dentro de un mundo).

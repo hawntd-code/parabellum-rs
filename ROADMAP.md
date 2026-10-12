@@ -92,15 +92,18 @@ El orden importa: cada fase usa lo que construyó la anterior.
 
 ## ⏭️ Pendiente, en orden
 
-### 0.25.0: que se sienta fluido (siguiente, pedido de Juan)
-- [ ] **Un sistema de movimiento**: 3 duraciones y 3 curvas (entrar, salir, énfasis) para toda la interfaz, en vez de valores sueltos
-- [ ] **Transición entre páginas**: la anterior se desvanece mientras entra la nueva, y la portada de una instancia o servidor pasa de su tarjeta a la cabecera del detalle (View Transitions; si la ventana no lo tiene, como WKWebView en algunos Mac, cambia sin animación)
-- [ ] **Listas vivas**: amigos, mods y servidores se deslizan a su nuevo lugar en vez de saltar; lo que se quita se encoge
-- [ ] **Chat**: la burbuja nueva entra desde abajo, desplazamiento suave, la borrada se encoge y un botón «↓ Nuevos» si estás leyendo más arriba
-- [ ] **Progreso**: barras que avanzan suaves con velocidad y tiempo restante; el botón Jugar se vuelve la barra de preparación y luego «Jugando»
-- [ ] **Dentro del juego**: el panel entra deslizándose y los avisos entran y se desvanecen (se mueve la imagen ya dibujada: sin costo)
-- [ ] **Que encuentren el panel**: botón de Parabellum en el menú de pausa y, la primera vez que se entra a un mundo, «Pulsa O para abrir Parabellum»
-- Reglas: 0.3 s como mucho, nunca hacer esperar, sin texto extra, solo movimiento y opacidad (fluido en gráficos Intel); se respeta «reducir movimiento»
+### 0.25.0: que se sienta fluido (pedido de Juan)
+- [x] **Un sistema de movimiento** en `styles.css`: cuatro duraciones (respuesta al pulsar, colores, aparecer, páginas) y tres curvas (entrar frena suave, salir acelera, énfasis con un pequeño rebote) en vez de 104 valores sueltos; los interruptores y el botón de las tarjetas rebotan un poco
+- [x] **Cambio de página**: la anterior se desvanece debajo mientras entra la nueva (sin View Transitions: funciona igual en la ventana de Mac). La **portada** de una instancia (desde la Biblioteca o la barra) o de un servidor (desde Hostear) viaja de su tarjeta a la cabecera
+- [x] **Listas vivas** (`setHtml` con `data-key`): amigos, solicitudes, grupos, conversaciones, mensajes, contenido de la instancia, Biblioteca y servidores se deslizan a su nuevo lugar; lo nuevo aparece y lo que se va se desvanece en su sitio. Solo se animan las filas que se ven; si cambia la instancia, el tipo o el chat, la lista entra de nuevo
+- [x] **Chat**: el mensaje nuevo entra y los demás suben; el borrado se desvanece; «Mensajes nuevos» si estás leyendo más arriba; al mandar algo, baja solo
+- [x] **Progreso**: las barras avanzan suave y con un brillo mientras trabajan; arriba, junto al porcentaje, cuánto falta («· 2 min»). **Jugar** se vuelve «Abriendo…» (y se llena si falta bajar algo) y «Detener» aparece con un rebote. Los avisos de la ventana se van sin que los demás salten
+- [x] **Dentro del juego**: el panel entra subiendo y aclarándose (0.18 s); los avisos entran y se van deslizándose desde la orilla y ahora salen **abajo a la derecha** (arriba los tapaban los del juego: logros, recetas, tutorial). Solo se redibujan mientras se mueven
+- [x] **Que encuentren el panel**: botón «Parabellum» en el menú de pausa (las 18 versiones; mixin en Fabric, evento en Forge/NeoForge) y, la primera vez que se entra a un mundo, el aviso «Pulsa O para abrirlo» hasta que se abra una vez (`datos/panel-visto.txt`). La tarjeta de Novedades de Inicio lo cuenta
+- [x] Reglas: 0.4 s como mucho, nunca hacer esperar, sin texto extra, solo movimiento y opacidad; con «reducir movimiento» de Windows o la ventana minimizada no se anima nada
+- [x] `--abrir-juego <instancia> [segundos] [con-mod|sin-mod] [servidor]` entra directo a un servidor; `-Dparabellum.prueba.lento=N` para capturar la entrada del panel
+- [x] Probado en la ventana real (WebView2): la página anterior se va, la portada vuela y se suelta, al buscar en la Biblioteca las tarjetas que sobran se desvanecen (solo las que se ven), los avisos se cierran sin saltos, «Abriendo…» se llena, sin errores de JavaScript. En el juego: el panel a medio entrar (semitransparente) en las cinco formas de dibujar (1.16.5, 1.18.2, 1.21.1/NeoForge, 1.21.4, 1.21.8–26.3) y abierto en 15 versiones; dentro de un mundo (Fabric y NeoForge 1.21.1) sale la pista, el botón «Parabellum» del menú de pausa abre el panel y nuestro mod no impide entrar a servidores sin mods
+- [ ] *Prueba:* Juan: que se sienta bien en la ventana real (páginas, listas, chat, descargas)
 
 ### 0.26.0: reportar problemas y prueba con compañeros
 - [ ] **«Reportar problema»**: un resumen (versión, instancia, ruta usada, P2P directo o por relevo y ping, últimas líneas del error) que se manda por chat a Juan

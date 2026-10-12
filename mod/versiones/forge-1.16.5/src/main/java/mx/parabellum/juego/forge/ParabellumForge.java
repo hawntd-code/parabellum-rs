@@ -15,6 +15,8 @@ import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.fml.network.FMLNetworkConstants;
 import org.apache.commons.lang3.tuple.Pair;
+import net.minecraftforge.client.event.GuiScreenEvent;
+import net.minecraft.client.gui.screen.IngameMenuScreen;
 
 /** Forge 1.16.5: la tecla, el tick y los avisos van con eventos (Java 8). */
 @Mod("parabellum")
@@ -33,6 +35,9 @@ public final class ParabellumForge extends Base {
         });
         MinecraftForge.EVENT_BUS.addListener((RenderGameOverlayEvent.Post evento) -> {
             if (evento.getType() == RenderGameOverlayEvent.ElementType.ALL) dibujarAvisos(evento.getMatrixStack());
+        });
+        MinecraftForge.EVENT_BUS.addListener((GuiScreenEvent.InitGuiEvent.Post evento) -> {
+            if (evento.getGui() instanceof IngameMenuScreen) evento.addWidget(botonPausa(evento.getGui()));
         });
     }
 

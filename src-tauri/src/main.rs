@@ -2258,6 +2258,10 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             // «sin-mod»: igual pero sin el mod (para comparar cuánto consume).
             let with_mod = args.get(3).map(String::as_str) != Some("sin-mod");
             let mut plan = launch::plan(&instance, settings, paths)?;
+            // Con una dirección, entra directo a ese servidor (para probar el mod dentro de un mundo).
+            if let Some(address) = args.get(4) {
+                plan.join_server(address, &instance.minecraft_version);
+            }
             juego::write_fonts(paths);
             plan.add_jvm_arguments([format!("-Dparabellum.fuentes={}", paths.data.join("fuentes").display())]);
             juego::install(&instance, with_mod);

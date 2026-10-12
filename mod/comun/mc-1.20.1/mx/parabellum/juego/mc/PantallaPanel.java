@@ -33,7 +33,7 @@ public final class PantallaPanel extends Screen {
         Window w = minecraft.getWindow();
         int s = s();
         Imagen img = juego.dibujarPanel(w.getWidth(), w.getHeight(), s);
-        Texturas.dibujar(g, "panel", img, juego.panelX() / s, juego.panelY() / s, img.ancho / s, img.alto / s);
+        Texturas.dibujar(g, "panel", img, juego.panelX() / s, (juego.panelY() + juego.panelDesliz(s)) / s, img.ancho / s, img.alto / s, juego.panelAlfa());
     }
 
     @Override

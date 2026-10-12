@@ -11,6 +11,8 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLEnvironment;
+import net.minecraftforge.client.event.ScreenEvent;
+import net.minecraft.client.gui.screens.PauseScreen;
 
 /** Forge 1.19 a 1.19.2: la tecla, el tick y los avisos van con eventos. */
 @Mod("parabellum")
@@ -26,6 +28,9 @@ public final class ParabellumForge extends Base {
         MinecraftForge.EVENT_BUS.addListener((RenderGuiOverlayEvent.Post evento) -> {
             // Una vez por cuadro: después de la última capa (la del chat).
             if (evento.getOverlay().id().getPath().equals("chat_panel")) dibujarAvisos(evento.getPoseStack());
+        });
+        MinecraftForge.EVENT_BUS.addListener((ScreenEvent.Init.Post evento) -> {
+            if (evento.getScreen() instanceof PauseScreen) evento.addListener(botonPausa(evento.getScreen()));
         });
     }
 

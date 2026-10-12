@@ -18,6 +18,11 @@ public final class Juego {
     private final Puente puente;
     /** Lo último que mandó Parabellum (amigos, solicitudes, conversaciones). */
     JsonObject estado = new JsonObject();
+    /** Cuándo se abrió el panel (entra en ENTRADA ms). */
+    private long abiertoEn;
+    /** La pista «Pulsa O» sale una vez, unos segundos después de entrar a un mundo. */
+    private long enMundoDesde;
+    private boolean pistaHecha;
 
     private Juego(Plataforma plataforma) {
         this.plataforma = plataforma;
@@ -60,7 +65,29 @@ public final class Juego {
     }
 
     public void panelAbierto() {
+        abiertoEn = System.currentTimeMillis();
+        pistaHecha = true;
+        marcarVisto();
         panel.abierto();
+    }
+
+    /** Lo que tarda el panel en aparecer (ms). -Dparabellum.prueba.lento=N: N veces más (para verlo en una captura). */
+    private static final double ENTRADA = 180 * Math.max(1, Double.parseDouble(System.getProperty("parabellum.prueba.lento", "1")));
+
+    /** De 0 a 1 mientras el panel aparece (se dibuja con esa transparencia). */
+    public float panelAlfa() {
+        return (float) entrada();
+    }
+
+    /** Cuánto más abajo va el panel mientras aparece, en píxeles reales (múltiplo de la escala). */
+    public int panelDesliz(int escala) {
+        return (int) Math.round((1 - entrada()) * 10) * Math.max(1, escala);
+    }
+
+    /** Avance de la entrada del panel, con salida suave (rápido al principio y frena al final). */
+    private double entrada() {
+        double t = Math.min(1, (System.currentTimeMillis() - abiertoEn) / ENTRADA);
+        return 1 - Math.pow(1 - t, 3);
     }
 
     public void panelCerrado() {
@@ -102,9 +129,19 @@ public final class Juego {
         return panel.caracter(c);
     }
 
-    /** Los avisos (null si no hay); van arriba a la derecha. */
+    /** Los avisos (null si no hay); van abajo a la derecha (ver avisosX/avisosY). Solo se piden con un mundo abierto. */
     public Imagen avisos(int anchoVentana, int altoVentana, int escala) {
+        pista();
         return avisos.imagen(anchoVentana, altoVentana, escala);
+    }
+
+    /** Dónde dibujar los avisos, en píxeles reales. */
+    public int avisosX(int anchoVentana, int escala) {
+        return avisos.x(anchoVentana, escala);
+    }
+
+    public int avisosY(int anchoVentana, int altoVentana, int escala) {
+        return avisos.y(anchoVentana, altoVentana, escala);
     }
 
     // ================= Para el núcleo
@@ -134,6 +171,40 @@ public final class Juego {
             return;
         }
         puente.pedir(op, datos, respuesta);
+    }
+
+    /** La primera vez que se entra a un mundo, si nunca se ha abierto el panel: cómo abrirlo. */
+    private void pista() {
+        if (pistaHecha) return;
+        long ahora = System.currentTimeMillis();
+        if (enMundoDesde == 0) enMundoDesde = ahora;
+        if (ahora - enMundoDesde < 4000) return;
+        pistaHecha = true;
+        if (yaVisto()) return;
+        avisos.agregar("Parabellum", T.t("Tus amigos, mensajes y capturas aquí mismo", "Your friends, messages and screenshots right here"),
+            T.t("Pulsa ", "Press ") + plataforma.tecla() + T.t(" para abrirlo", " to open it"), true, 10000);
+    }
+
+    /** Marca en los datos de Parabellum: con abrir el panel una vez, ya no sale la pista en ninguna instancia. */
+    private static java.io.File marca() {
+        String fuentes = System.getProperty("parabellum.fuentes");
+        return fuentes == null ? null : new java.io.File(new java.io.File(fuentes).getParentFile(), "panel-visto.txt");
+    }
+
+    /** Sin Parabellum (sin la carpeta) no hay a quién explicarle nada. */
+    private static boolean yaVisto() {
+        java.io.File f = marca();
+        return f == null || f.exists();
+    }
+
+    private static void marcarVisto() {
+        java.io.File f = marca();
+        if (f == null || f.exists()) return;
+        try {
+            f.createNewFile();
+        } catch (java.io.IOException e) {
+            // Sin marca, la pista vuelve a salir la próxima vez: no pasa nada.
+        }
     }
 
     void aviso(String titulo, String texto) {

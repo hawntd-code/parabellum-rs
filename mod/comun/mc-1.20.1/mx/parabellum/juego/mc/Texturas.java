@@ -34,6 +34,11 @@ public final class Texturas {
     }
 
     public static void dibujar(GuiGraphics g, String nombre, Imagen img, int x, int y, int w, int h) {
+        dibujar(g, nombre, img, x, y, w, h, 1f);
+    }
+
+    /** `alfa`: de 0 (transparente) a 1; así el panel entra suave. */
+    public static void dibujar(GuiGraphics g, String nombre, Imagen img, int x, int y, int w, int h, float alfa) {
         Entrada e = CACHE.get(nombre);
         Rectangle cambio;
         if (e == null || e.imagen != img) {
@@ -58,7 +63,9 @@ public final class Texturas {
         }
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
+        g.setColor(1, 1, 1, alfa);
         g.blit(e.id, x, y, 0, 0, w, h, w, h);
+        g.setColor(1, 1, 1, 1);
         RenderSystem.disableBlend();
     }
 }

@@ -15,6 +15,7 @@ const state = {
   settings: null,
   instances: [],
   running: new Set(),
+  launching: new Set(),
   page: "home",
   current: null,
   back: [],
@@ -100,14 +101,85 @@ function ago(ms) {
   return new Date(ms).toLocaleDateString(locale());
 }
 
+// ---------- Movimiento ----------
+// Las mismas curvas que styles.css (--ease-out, --ease-in), para lo que se anima desde aquí.
+const EASE_OUT = "cubic-bezier(0.16, 1, 0.3, 1)";
+const EASE_IN = "cubic-bezier(0.5, 0, 0.75, 0)";
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+/** Sin animaciones si Windows pide reducir el movimiento o la ventana no se ve. */
+const motionOk = () => !reducedMotion.matches && !document.hidden;
+
+/** Lo que va al final de una animación, una sola vez: cuando termine o, si la ventana deja de
+ * pintarse (minimizada), a los `ms` como mucho, para que nada se quede a medias. */
+function whenDone(animation, done, ms) {
+  let called = false;
+  const once = () => {
+    if (called) return;
+    called = true;
+    done();
+  };
+  animation.finished.then(once, once);
+  setTimeout(once, ms);
+}
+
 /** Pone el HTML solo si cambió. Las listas se animan al aparecer la primera vez, no en cada
- * actualización (si no, parpadean cada vez que llega un dato nuevo). */
-function setHtml(element, html) {
-  if (!element || element.dataset.html === html) return false;
-  element.classList.toggle("no-enter", element.dataset.html !== undefined);
+ * actualización (si no, parpadean cada vez que llega un dato nuevo). Si sus filas llevan data-key,
+ * al cambiar se deslizan a su nuevo lugar, las nuevas aparecen y las que se van se desvanecen.
+ * `scope`: si cambia (otra instancia, otro chat…) es otra lista y se anima como la primera vez.
+ * `after`: lo que hay que hacer con el HTML nuevo antes de animar (por ejemplo, bajar el scroll). */
+function setHtml(element, html, { scope = "", after = null } = {}) {
+  if (!element) return false;
+  const fresh = element.dataset.html === undefined || (element.dataset.scope ?? "") !== scope;
+  if (!fresh && element.dataset.html === html) return false;
+  const before = fresh ? null : keyedRects(element);
+  element.classList.toggle("no-enter", !fresh);
   element.innerHTML = html;
   element.dataset.html = html;
+  element.dataset.scope = scope;
+  after?.();
+  if (before) animateKeyed(element, before);
   return true;
+}
+
+/** Dónde estaba cada fila (data-key) antes de cambiar la lista. */
+function keyedRects(element) {
+  if (!motionOk() || !element.getClientRects().length) return null;
+  const rects = new Map();
+  for (const node of element.querySelectorAll("[data-key]")) rects.set(node.dataset.key, { node, rect: node.getBoundingClientRect() });
+  return rects.size ? rects : null;
+}
+
+/** Cada fila va de donde estaba a donde quedó; solo las que se ven (una lista larga no cuesta). */
+function animateKeyed(host, before) {
+  const seen = (r) => r.width > 0 && r.bottom > -60 && r.top < innerHeight + 60;
+  for (const node of host.querySelectorAll("[data-key]")) {
+    const rect = node.getBoundingClientRect();
+    const old = before.get(node.dataset.key);
+    before.delete(node.dataset.key);
+    if (old) {
+      const dx = old.rect.left - rect.left;
+      const dy = old.rect.top - rect.top;
+      if ((Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) && (seen(rect) || seen(old.rect))) {
+        node.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], { duration: 340, easing: EASE_OUT });
+      }
+    } else if (seen(rect)) {
+      node.animate([{ opacity: 0, transform: "translateY(6px) scale(.98)" }, { opacity: 1, transform: "none" }], { duration: 260, easing: EASE_OUT, fill: "backwards" });
+    }
+  }
+  // Lo que se fue se desvanece en su lugar mientras lo demás se acomoda (es la misma fila, ya fuera
+  // de la lista: no se puede pulsar ni la lee el lector de pantalla).
+  for (const { node, rect } of before.values()) {
+    if (!seen(rect)) continue;
+    node.removeAttribute("data-key");
+    node.inert = true;
+    node.setAttribute("aria-hidden", "true");
+    Object.assign(node.style, { position: "absolute", left: "0px", top: "0px", width: `${rect.width}px`, height: `${rect.height}px`, margin: "0", pointerEvents: "none", zIndex: "1" });
+    host.appendChild(node);
+    const at = node.getBoundingClientRect();
+    node.style.left = `${rect.left - at.left}px`;
+    node.style.top = `${rect.top - at.top}px`;
+    whenDone(node.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "scale(.96)" }], { duration: 200, easing: EASE_IN, fill: "forwards" }), () => node.remove(), 260);
+  }
 }
 
 const escapeHtml = (text) =>
@@ -181,8 +253,18 @@ function toast(message, kind = "info") {
   element.innerHTML = `${icon(kind === "error" ? "alert" : "check")}<div>${escapeHtml(message)}</div>`;
   $("#toasts").appendChild(element);
   setTimeout(() => {
-    element.classList.add("leaving");
-    setTimeout(() => element.remove(), 220);
+    if (!motionOk()) return element.remove();
+    // Se desvanece y después cierra su hueco: los otros avisos bajan suave en vez de saltar.
+    const height = element.offsetHeight;
+    const leave = element.animate(
+      [
+        { opacity: 1, transform: "none", height: `${height}px` },
+        { opacity: 0, transform: "translateY(8px) scale(.98)", height: `${height}px`, offset: 0.55 },
+        { opacity: 0, height: "0px", paddingTop: "0px", paddingBottom: "0px", marginTop: "-10px" },
+      ],
+      { duration: 300, easing: EASE_IN, fill: "forwards" },
+    );
+    whenDone(leave, () => element.remove(), 360);
   }, kind === "error" ? 7000 : 3500);
 }
 
@@ -290,9 +372,12 @@ function navigate(page, param = null, record = true) {
   if (page === "servers") enterServers();
   if (page === "chat") enterChat();
   else if (state.chatOpen) closeChat();
+  // La página anterior se queda un momento debajo, desvaneciéndose, mientras entra la nueva.
+  const leaving = motionOk() ? $$(".page").find((s) => !s.classList.contains("hidden") && !s.classList.contains("leaving") && s.id !== `page-${page}`) : null;
   for (const section of $$(".page")) {
     const active = section.id === `page-${page}`;
-    section.classList.toggle("hidden", !active);
+    section.classList.remove("leaving");
+    section.classList.toggle("hidden", !active && section !== leaving);
     if (active) {
       section.classList.remove("enter");
       void section.offsetWidth;
@@ -300,6 +385,20 @@ function navigate(page, param = null, record = true) {
       section.scrollTop = 0;
     }
   }
+  if (leaving) {
+    leaving.classList.add("leaving");
+    const done = (event) => {
+      if (event && event.target !== leaving) return;
+      leaving.removeEventListener("animationend", done);
+      if (!leaving.classList.contains("leaving")) return;
+      leaving.classList.remove("leaving");
+      leaving.classList.add("hidden");
+    };
+    leaving.addEventListener("animationend", done);
+    setTimeout(done, 400);
+  }
+  if (page === "instance") morphArt(param, "#detail-art", "#page-instance");
+  if (page === "hosted") morphArt(param, "#hosted-icon", "#page-hosted");
   const railPage = page === "project" ? "explore" : page === "hosted" ? "host" : page;
   for (const button of $$(".rail-btn[data-page]")) button.classList.toggle("active", button.dataset.page === railPage);
   updateSidebar();
@@ -309,6 +408,36 @@ function navigate(page, param = null, record = true) {
   $("#nav-back").disabled = state.back.length === 0;
   $("#nav-forward").disabled = state.forward.length === 0;
   renderRail();
+}
+
+/** Al abrir una instancia o un servidor desde su tarjeta, la portada viaja de la tarjeta a la cabecera. */
+function morphArt(id, targetSelector, pageSelector) {
+  const from = state.morphFrom;
+  state.morphFrom = null;
+  if (!from || from.id !== id || performance.now() - from.at > 800 || !motionOk()) return;
+  const target = $(targetSelector);
+  const page = $(pageSelector);
+  if (!target || !page) return;
+  const to = target.getBoundingClientRect();
+  if (!to.width || !from.rect.width) return;
+  // La página todavía está entrando (un poco más abajo): la portada va a donde va a quedar.
+  const top = to.top - (new DOMMatrixReadOnly(getComputedStyle(page).transform).m42 || 0);
+  const ghost = target.cloneNode(true);
+  ghost.removeAttribute("id");
+  ghost.setAttribute("aria-hidden", "true");
+  Object.assign(ghost.style, { position: "fixed", left: `${to.left}px`, top: `${top}px`, width: `${to.width}px`, height: `${to.height}px`, margin: "0", zIndex: "50", pointerEvents: "none", transformOrigin: "top left" });
+  document.body.appendChild(ghost);
+  target.style.visibility = "hidden";
+  const scale = from.rect.width / to.width;
+  const flight = ghost.animate([{ transform: `translate(${from.rect.left - to.left}px, ${from.rect.top - top}px) scale(${scale})` }, { transform: "none" }], { duration: 420, easing: EASE_OUT });
+  whenDone(
+    flight,
+    () => {
+      target.style.visibility = "";
+      ghost.remove();
+    },
+    500,
+  );
 }
 
 /** El panel de la derecha: lo usan algunas páginas y el jugador lo puede ocultar (se recuerda). */
@@ -498,23 +627,26 @@ function renderLibrary() {
     groups.get(key).push(instance);
   }
   let index = 0;
-  $("#library").innerHTML = [...groups]
+  const html = [...groups]
     .map(([title, list]) => {
       const tiles = list
         .map((i) => {
           const running = state.running.has(i.id);
-          return `<div class="tile" data-open="${escapeHtml(i.id)}" style="animation-delay:${Math.min(index++, 14) * 30}ms">
+          const launching = !running && state.launching.has(i.id);
+          return `<div class="tile" data-open="${escapeHtml(i.id)}" data-key="i:${escapeHtml(i.id)}" style="animation-delay:${Math.min(index++, 14) * 30}ms">
             <div style="position:relative">${art(i)}
-              <button class="tile-play ${running ? "running" : ""}" data-play="${escapeHtml(i.id)}" title="${running ? t("En juego", "In game") : t("Jugar", "Play")}">${icon("play")}</button>
+              <button class="tile-play ${running ? "running" : ""} ${launching ? "launching" : ""}" data-play="${escapeHtml(i.id)}" title="${running ? t("En juego", "In game") : t("Jugar", "Play")}">${icon("play")}</button>
             </div>
             <div class="name">${escapeHtml(i.name)}</div>
             <div class="sub">${escapeHtml(subtitle(i))}</div>
           </div>`;
         })
         .join("");
-      return `${title ? `<div class="group-title">${escapeHtml(title)}<span>${list.length}</span></div>` : ""}<div class="library-grid">${tiles}</div>`;
+      return `${title ? `<div class="group-title" data-key="g:${escapeHtml(title)}">${escapeHtml(title)}<span>${list.length}</span></div>` : ""}<div class="library-grid">${tiles}</div>`;
     })
     .join("");
+  // Al buscar o al cambiar algo, las tarjetas se acomodan; al cambiar el orden o la agrupación, entran de nuevo.
+  setHtml($("#library"), html, { scope: `${state.sort}|${state.group}` });
   $("#no-results").classList.toggle("hidden", visible.length > 0);
 }
 
@@ -554,8 +686,12 @@ function renderInstance() {
     <dt>${t("Argumentos de Java", "Java arguments")}</dt><dd>${i.jvmArgs.length ? escapeHtml(i.jvmArgs.join(" ")) : "—"}</dd>
     <dt>${t("Creada", "Created")}</dt><dd>${i.created ? new Date(i.created).toLocaleString(locale()) : "—"}</dd>`;
   const running = state.running.has(i.id);
+  const stop = $("#detail-stop");
+  // Al empezar a jugar, «Detener» aparece con un pequeño rebote en lugar de «Jugar».
+  if (running && stop.classList.contains("hidden") && motionOk()) stop.animate([{ transform: "scale(.9)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 300, easing: "cubic-bezier(0.34, 1.45, 0.64, 1)" });
   $("#detail-play").classList.toggle("hidden", running);
-  $("#detail-stop").classList.toggle("hidden", !running);
+  stop.classList.toggle("hidden", !running);
+  showLaunching();
   $("#detail-join").disabled = running;
   // Al abrir otra instancia se vuelve a la pestaña Contenido con su contenido.
   if (state.contentFor !== i.id) {
@@ -580,7 +716,7 @@ const kindIcons = { mods: "puzzle", resourcepacks: "image", shaderpacks: "sun-sp
 async function loadContent() {
   const id = state.current?.id;
   if (!id) return;
-  $("#content-list").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
+  setHtml($("#content-list"), `<div class="content-loading"><div class="spinner"></div></div>`, { scope: "cargando" });
   try {
     const content = await invoke("contenido", { id });
     if (state.current?.id !== id) return;
@@ -589,7 +725,7 @@ async function loadContent() {
     // Buscar actualizaciones en segundo plano (como mucho cada 10 minutos por instancia).
     if (state.updates.for !== id || Date.now() - state.updates.at > 600e3) checkUpdates(id);
   } catch (error) {
-    $("#content-list").innerHTML = `<div class="content-empty">${escapeHtml(error)}</div>`;
+    setHtml($("#content-list"), `<div class="content-empty">${escapeHtml(error)}</div>`, { scope: "error" });
   }
 }
 
@@ -609,21 +745,21 @@ function renderContent() {
   if (!items.length) {
     const none = content[state.kind].length === 0;
     const vanillaMods = state.kind === "mods" && state.current?.loader === "Vanilla";
-    $("#content-list").innerHTML = `<div class="content-empty">${
+    setHtml($("#content-list"), `<div class="content-empty">${
       !none
         ? t("Nada coincide con la búsqueda.", "Nothing matches the search.")
         : vanillaMods
           ? t("Las instancias vanilla no cargan mods. Crea una instancia con un loader (Fabric, Quilt, Forge o NeoForge) para usarlos.", "Vanilla instances do not load mods. Create an instance with a loader (Fabric, Quilt, Forge or NeoForge) to use them.")
           : t(`Esta instancia no tiene ${kindNames[state.kind]}. Arrástralos a la ventana o usa "Agregar contenido".`, `This instance has no ${kindNames[state.kind]}. Drag them onto the window or use "Add content".`)
-    }</div>`;
+    }</div>`, { scope: contentScope() });
     return;
   }
   const world = state.kind === "worlds";
-  $("#content-list").innerHTML = items
+  const html = items
     .slice(0, 600)
     .map((item, index) => {
       const sub = world ? `${t("Jugado", "Played")} ${ago(item.modified).toLowerCase()}${item.version ? ` · ${item.version}` : ""}` : item.authors ? t(`por ${item.authors}`, `by ${item.authors}`) : item.file;
-      return `<div class="content-item ${item.enabled ? "" : "disabled"}" style="animation-delay:${Math.min(index, 20) * 15}ms">
+      return `<div class="content-item ${item.enabled ? "" : "disabled"}" data-key="${escapeHtml(item.file)}" style="animation-delay:${Math.min(index, 20) * 15}ms">
         <div class="content-icon">${item.icon ? `<img src="${item.icon}" alt="" loading="lazy" decoding="async">` : icon(kindIcons[state.kind])}</div>
         <div class="grow">${
           item.projectId
@@ -642,7 +778,11 @@ function renderContent() {
       </div>`;
     })
     .join("");
+  // Al buscar, quitar o actualizar, las filas se acomodan; otra instancia u otro tipo entra de nuevo.
+  setHtml($("#content-list"), html, { scope: contentScope() });
 }
+
+const contentScope = () => `${state.current?.id}|${state.kind}`;
 
 /** Botón de actualizar (o aviso de que la nueva versión rompería algo) junto a un elemento. */
 function updateChip(file) {
@@ -1297,9 +1437,30 @@ function onGameClosed({ id, code, reason, diagnosis }) {
   });
 }
 
+/** «Jugar» mientras se prepara el juego: se ve trabajando (y llenándose si falta bajar algo). */
+function showLaunching() {
+  const button = $("#detail-play");
+  const launching = !!state.current && state.launching.has(state.current.id) && !state.running.has(state.current.id);
+  button.classList.toggle("launching", launching);
+  $("span", button).textContent = launching ? t("Abriendo…", "Opening…") : t("Jugar", "Play");
+  if (!launching) button.style.removeProperty("--p");
+  for (const tile of $$(".tile-play[data-play]")) tile.classList.toggle("launching", state.launching.has(tile.dataset.play) && !state.running.has(tile.dataset.play));
+}
+
 async function play(id, server = null, { skipCheck = false } = {}) {
   const instance = state.instances.find((i) => i.id === id);
-  if (!instance) return;
+  if (!instance || state.launching.has(id)) return;
+  state.launching.add(id);
+  showLaunching();
+  try {
+    await launch(instance, id, server, skipCheck);
+  } finally {
+    state.launching.delete(id);
+    showLaunching();
+  }
+}
+
+async function launch(instance, id, server, skipCheck) {
   if (!skipCheck && instance.loader !== "Vanilla") {
     try {
       const diagnosis = await invoke("revisar_instancia", { id });
@@ -1578,18 +1739,18 @@ function renderFriends() {
 
   // Solicitudes y amigos
   const view = s.friends ?? { friends: [], requests: [] };
-  $("#friend-requests").innerHTML = view.requests
+  setHtml($("#friend-requests"), view.requests
     .map(
-      (r) => `<div class="friend request">
+      (r) => `<div class="friend request" data-key="r:${escapeHtml(r.uid)}">
         <canvas width="8" height="8" class="head" data-head="${escapeHtml(r.name)}"></canvas>
         <div class="grow"><b>${escapeHtml(r.name)}</b><span>${t("Quiere ser tu amigo", "Wants to be your friend")}</span></div>
         <button class="btn primary small" data-accept="${escapeHtml(r.uid)}">${t("Aceptar", "Accept")}</button>
         <button class="circle-btn small" data-decline="${escapeHtml(r.uid)}" title="${t("Rechazar", "Decline")}">${icon("close")}</button>
       </div>`,
     )
-    .join("");
+    .join(""));
   const starred = favoriteFriendUids();
-  const row = (f) => `<div class="friend ${f.online ? "online" : ""}" data-uid="${escapeHtml(f.uid)}" title="${t(`Escribirle a ${escapeHtml(f.name)}`, `Message ${escapeHtml(f.name)}`)}">
+  const row = (f) => `<div class="friend ${f.online ? "online" : ""}" data-uid="${escapeHtml(f.uid)}" data-key="f:${escapeHtml(f.uid)}" title="${t(`Escribirle a ${escapeHtml(f.name)}`, `Message ${escapeHtml(f.name)}`)}">
       <div class="friend-head"><canvas width="8" height="8" class="head" data-head="${escapeHtml(f.name)}"></canvas><span class="presence-dot ${f.online ? (f.presence?.state === "playing" ? "playing" : "online") : ""}"></span></div>
       <div class="grow"><b>${escapeHtml(f.name)}${starred.has(f.uid) ? favMark() : ""}</b><span title="${escapeHtml(friendStatus(f))}">${escapeHtml(friendStatus(f))}</span></div>
       ${f.worldOpen ? `<button class="btn primary small" data-join="${escapeHtml(f.uid)}">${t("Unirse", "Join")}</button>` : ""}
@@ -1604,7 +1765,7 @@ function renderFriends() {
     [t("Desconectados", "Offline"), rest.filter((f) => !f.online)],
   ].filter(([, list]) => list.length);
   const friendsHtml = view.friends.length
-    ? sections.map(([title, list]) => `<div class="friend-section">${escapeHtml(title)} <span>${list.length}</span></div>${list.map(row).join("")}`).join("")
+    ? sections.map(([title, list]) => `<div class="friend-section" data-key="s:${escapeHtml(title)}">${escapeHtml(title)} <span>${list.length}</span></div>${list.map(row).join("")}`).join("")
     : `<p class="side-note">${t("Todavía no tienes amigos en Parabellum. Escribe el nombre de jugador de un amigo y pulsa +.", "You have no friends on Parabellum yet. Type a friend's player name and press +.")}</p>`;
   setHtml($("#friend-list"), friendsHtml);
   for (const canvas of $$("#friends-block canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
@@ -1624,7 +1785,7 @@ function renderGroups() {
     groups.length
       ? groups
           .map(
-            (g) => `<button class="group-row ${g.unread ? "unread" : ""}" data-open-group="${escapeHtml(g.id)}">
+            (g) => `<button class="group-row ${g.unread ? "unread" : ""}" data-open-group="${escapeHtml(g.id)}" data-key="g:${escapeHtml(g.id)}">
               <span class="group-avatar">${icon("chat")}</span>
               <span class="grow"><b>${escapeHtml(g.name)}${isFavoriteChat(g.id) ? favMark() : ""}</b><span>${escapeHtml(g.lastText ? `${g.lastName}: ${chatPreview(g.lastText)}` : t(`${g.members.length} miembros`, `${g.members.length} members`))}</span></span>
               ${g.unread ? `<i class="unread-dot"></i>` : ""}
@@ -1869,7 +2030,7 @@ function renderChatList() {
   const connected = !!state.social?.connected;
   $("#chat-new-group").classList.toggle("hidden", !connected);
   if (!connected) {
-    $("#chat-list").innerHTML = "";
+    setHtml($("#chat-list"), "", { scope: "fuera" });
     showChatEmpty(
       state.social?.signedIn
         ? t("Conectando con tus amigos…", "Connecting with your friends…")
@@ -1885,7 +2046,7 @@ function renderChatList() {
   const others = friends.filter((f) => !talking.has(f.uid));
   const favorites = chats.filter((c) => isFavoriteChat(c.id));
   const recent = chats.filter((c) => !isFavoriteChat(c.id));
-  const chatRow = (c) => `<button class="chat-item ${c.id === state.chatOpen ? "active" : ""} ${c.unread ? "unread" : ""}" data-chat="${escapeHtml(c.id)}">
+  const chatRow = (c) => `<button class="chat-item ${c.id === state.chatOpen ? "active" : ""} ${c.unread ? "unread" : ""}" data-chat="${escapeHtml(c.id)}" data-key="c:${escapeHtml(c.id)}">
           ${chatAvatar(c)}
           <span class="grow">
             <span class="chat-item-top"><b>${escapeHtml(c.name)}${isFavoriteChat(c.id) ? favMark() : ""}</b><small>${escapeHtml(chatTime(c.lastAt))}</small></span>
@@ -1893,16 +2054,16 @@ function renderChatList() {
           </span>
           ${c.unread ? `<span class="unread-dot"></span>` : ""}
         </button>`;
-  $("#chat-list").innerHTML =
+  const listHtml =
     (favorites.length
-      ? `<p class="chat-list-label">${t("Favoritos", "Favorites")}</p>${favorites.map(chatRow).join("")}${recent.length ? `<p class="chat-list-label">${t("Recientes", "Recent")}</p>` : ""}`
+      ? `<p class="chat-list-label" data-key="l:fav">${t("Favoritos", "Favorites")}</p>${favorites.map(chatRow).join("")}${recent.length ? `<p class="chat-list-label" data-key="l:recent">${t("Recientes", "Recent")}</p>` : ""}`
       : "") +
     recent.map(chatRow).join("") +
     (others.length
-      ? `<p class="chat-list-label">${t("Escribir a un amigo", "Write to a friend")}</p>` +
+      ? `<p class="chat-list-label" data-key="l:others">${t("Escribir a un amigo", "Write to a friend")}</p>` +
         others
           .map(
-            (f) => `<button class="chat-item" data-chat-friend="${escapeHtml(f.uid)}">
+            (f) => `<button class="chat-item" data-chat-friend="${escapeHtml(f.uid)}" data-key="f:${escapeHtml(f.uid)}">
               <canvas width="8" height="8" class="head" data-head="${escapeHtml(f.name)}"></canvas>
               <span class="grow"><span class="chat-item-top"><b>${escapeHtml(f.name)}</b></span><span class="chat-item-last">${escapeHtml(friendStatus(f))}</span></span>
             </button>`,
@@ -1910,7 +2071,8 @@ function renderChatList() {
           .join("")
       : "") ||
     `<p class="side-note">${t("Todavía no tienes conversaciones. Agrega amigos en el panel de Inicio para escribirles.", "You have no conversations yet. Add friends in the Home panel to write to them.")}</p>`;
-  for (const canvas of $$("#chat-list canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
+  // La conversación con un mensaje nuevo sube a su lugar en vez de saltar.
+  if (setHtml($("#chat-list"), listHtml)) for (const canvas of $$("#chat-list canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
   if (!state.chatOpen) showChatEmpty(chats.length ? t("Elige una conversación.", "Choose a conversation.") : t("Escríbele a un amigo para empezar.", "Write to a friend to start."), false);
   else renderChatHeader();
 }
@@ -2015,7 +2177,9 @@ async function openChat(id) {
   state.chatMessages = null;
   $("#chat-empty").classList.add("hidden");
   $("#chat-conversation").classList.remove("hidden");
-  $("#chat-messages").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
+  state.chatShown = null;
+  setHtml($("#chat-messages"), `<div class="content-loading"><div class="spinner"></div></div>`, { scope: "cargando" });
+  showNewBelow(false);
   renderChatList();
   renderChatHeader();
   try {
@@ -2037,8 +2201,14 @@ function renderMessages() {
   const box = $("#chat-messages");
   const messages = state.chatMessages ?? [];
   const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+  // Mismo chat que la última vez: lo nuevo entra y lo demás se acomoda. Otro chat: se pinta de golpe.
+  const same = state.chatShown === state.chatOpen;
+  const known = same ? state.chatKnown : null;
+  state.chatShown = state.chatOpen;
+  state.chatKnown = new Set(messages.map((m) => m.id));
   if (!messages.length) {
-    box.innerHTML = `<p class="chat-hint">${t("Todavía no hay mensajes. ¡Saluda!", "No messages yet. Say hi!")}</p>`;
+    setHtml(box, `<p class="chat-hint">${t("Todavía no hay mensajes. ¡Saluda!", "No messages yet. Say hi!")}</p>`, { scope: state.chatOpen ?? "" });
+    showNewBelow(false);
     return;
   }
   const group = currentChat()?.kind === "grupo";
@@ -2047,7 +2217,7 @@ function renderMessages() {
   for (const m of messages) {
     const day = new Date(m.at).toDateString();
     if (!previous || new Date(previous.at).toDateString() !== day) {
-      html += `<div class="chat-day">${escapeHtml(new Date(m.at).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" }))}</div>`;
+      html += `<div class="chat-day" data-key="d:${escapeHtml(day)}">${escapeHtml(new Date(m.at).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" }))}</div>`;
     }
     const continued = previous && previous.from === m.from && m.at - previous.at < 5 * 60000 && new Date(previous.at).toDateString() === day;
     const author = group && !m.mine && !continued ? `<span class="bubble-author">${escapeHtml(m.name)}</span>` : "";
@@ -2068,14 +2238,20 @@ function renderMessages() {
         ? `<div class="bubble-tools">${canEditMessage(m) ? `<button class="bubble-tool" data-msg-edit="${escapeHtml(m.id)}" title="${t("Editar", "Edit")}">${icon("pencil")}</button>` : ""}<button class="bubble-tool" data-msg-delete="${escapeHtml(m.id)}" title="${t("Borrar", "Delete")}">${icon("trash")}</button></div>`
         : "";
     const time = new Date(m.at).toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
-    html += `<div class="bubble-row ${m.mine ? "mine" : ""} ${continued ? "continued" : ""}" data-msg="${escapeHtml(m.id)}">
+    html += `<div class="bubble-row ${m.mine ? "mine" : ""} ${continued ? "continued" : ""}" data-msg="${escapeHtml(m.id)}" data-key="m:${escapeHtml(m.id)}">
       ${tools}<div class="bubble ${editing ? "editing" : ""}">${author}${body}<span class="bubble-time">${m.edited ? `<span class="bubble-edited">${t("editado", "edited")}</span> · ` : ""}${escapeHtml(time)}</span></div>
     </div>`;
     previous = m;
   }
-  box.innerHTML = html;
-  if (nearBottom || !state.chatScrolled) box.scrollTop = box.scrollHeight;
-  state.chatScrolled = true;
+  // Abajo si ya estabas abajo, si acabas de mandar algo o si es la primera vez que se ve este chat.
+  const stick = nearBottom || !same || state.chatStick;
+  state.chatStick = false;
+  const changed = setHtml(box, html, { scope: state.chatOpen ?? "", after: () => stick && (box.scrollTop = box.scrollHeight) });
+  // Si estás leyendo más arriba y llega algo de otro, un botón te lleva abajo.
+  const arrived = known && messages.some((m) => !m.mine && !known.has(m.id));
+  if (stick) showNewBelow(false);
+  else if (arrived) showNewBelow(true);
+  if (!changed) return void loadChatImages();
   // Si llega algo mientras editas, sigues escribiendo donde ibas.
   const area = box.querySelector(".bubble-edit");
   if (area) {
@@ -2172,10 +2348,20 @@ async function loadChatImages() {
   }
 }
 
+/** El botón «Mensajes nuevos» sobre la caja de escribir. */
+function showNewBelow(show) {
+  const button = $("#chat-new-below");
+  if (!button || button.classList.contains("hidden") === !show) return;
+  button.innerHTML = `${icon("down")}<span>${t("Mensajes nuevos", "New messages")}</span>`;
+  button.style.bottom = `${($(".chat-composer")?.offsetHeight ?? 72) + 12}px`;
+  button.classList.toggle("hidden", !show);
+}
+
 async function sendChatText() {
   const input = $("#chat-input");
   const text = input.value.trim();
   if (!text || !state.chatOpen) return;
+  state.chatStick = true;
   input.value = "";
   autoGrow(input);
   try {
@@ -2557,6 +2743,15 @@ async function leaveChat(chat, title, text) {
 }
 
 function wireChatEvents() {
+  $("#chat-new-below").onclick = () => {
+    const box = $("#chat-messages");
+    box.scrollTo({ top: box.scrollHeight, behavior: motionOk() ? "smooth" : "auto" });
+    showNewBelow(false);
+  };
+  $("#chat-messages").addEventListener("scroll", (event) => {
+    const box = event.currentTarget;
+    if (box.scrollHeight - box.scrollTop - box.clientHeight < 60) showNewBelow(false);
+  });
   $("#chat-list").onclick = (event) => {
     const chat = event.target.closest("[data-chat]");
     if (chat) return openChat(chat.dataset.chat);
@@ -2741,6 +2936,7 @@ function topModal() {
 function openModal(id) {
   const overlay = $(id);
   const wasHidden = overlay.classList.contains("hidden") || overlay.classList.contains("closing");
+  clearTimeout(overlay.closeTimer);
   overlay.classList.remove("hidden", "closing");
   if (!wasHidden) return;
   if (!overlay.contains(document.activeElement)) overlay.returnFocus = document.activeElement;
@@ -2757,7 +2953,7 @@ function closeModal(id) {
   const overlay = $(id);
   if (overlay.classList.contains("hidden")) return;
   overlay.classList.add("closing");
-  setTimeout(() => overlay.classList.add("hidden"), 150);
+  overlay.closeTimer = setTimeout(() => overlay.classList.add("hidden"), 150);
   // El foco vuelve a donde estaba (el botón que abrió el diálogo).
   const back = overlay.returnFocus;
   overlay.returnFocus = null;
@@ -3660,6 +3856,16 @@ function wireEvents() {
     if (event.button === 4) goForward();
   });
 
+  // Para que la portada viaje de la tarjeta (o del icono de la barra) a la página de la instancia o del servidor.
+  document.addEventListener(
+    "click",
+    (event) => {
+      const opener = event.target.closest?.("[data-open], [data-hosted]");
+      const cover = opener && (opener.matches(".art, .server-icon") ? opener : $(".art, .server-icon", opener));
+      state.morphFrom = cover ? { id: opener.dataset.open ?? opener.dataset.hosted, rect: cover.getBoundingClientRect(), at: performance.now() } : null;
+    },
+    true,
+  );
   wireExploreEvents();
   wireModpackEvents();
   wireDriveEvents();
@@ -3692,15 +3898,18 @@ function wireEvents() {
   });
 
   listen("progreso", ({ payload }) => {
+    // El porcentaje de arriba también dice cuánto falta, cuando ya se puede calcular.
+    const left = timeLeft(payload.task, payload.fraction);
+    const percentText = (fraction) => `${Math.round(fraction * 100)}%${left ? ` · ${left}` : ""}`;
     if (payload.task === "catalogo") {
       const line = state.drive.installing && $(`[data-progress-for="${CSS.escape(state.drive.installing)}"]`);
       if (line) line.textContent = payload.stage;
-      $("#download-percent").textContent = `${Math.round(payload.fraction * 100)}%`;
+      $("#download-percent").textContent = percentText(payload.fraction);
       return;
     }
     if (payload.task === "actualizacion") {
       const percent = Math.round(payload.fraction * 100);
-      $("#update-text").textContent = t(`Descargando… ${percent}%`, `Downloading… ${percent}%`);
+      $("#update-text").textContent = t(`Descargando… ${percent}%`, `Downloading… ${percent}%`) + (left ? ` · ${left}` : "");
       $("#update-progress div").style.width = `${Math.max(2, percent)}%`;
       $("#update-status").textContent = payload.stage || t(`Descargando… ${percent}%`, `Downloading… ${percent}%`);
       return;
@@ -3718,7 +3927,7 @@ function wireEvents() {
     if (payload.task === "importar") {
       $("#import-progress div").style.width = `${Math.max(2, payload.fraction * 100)}%`;
       $("#import-status").textContent = payload.stage;
-      $("#download-percent").textContent = `${Math.round(payload.fraction * 100)}%`;
+      $("#download-percent").textContent = percentText(payload.fraction);
       return;
     }
     if (payload.task === "compartida" || (state.shareInstalling && (payload.task === "importar" || payload.task === "catalogo"))) {
@@ -3731,7 +3940,7 @@ function wireEvents() {
       return;
     }
     if (payload.task === "instalar") {
-      $("#download-percent").textContent = `${Math.round(payload.fraction * 100)}%`;
+      $("#download-percent").textContent = percentText(payload.fraction);
       return;
     }
     if (payload.task === "loader") {
@@ -3743,8 +3952,10 @@ function wireEvents() {
       if (payload.fraction >= 1) return;
       state.completingShown = true;
       $("#download-indicator").classList.remove("hidden");
-      $("#download-percent").textContent = `${Math.round(payload.fraction * 100)}%`;
+      $("#download-percent").textContent = percentText(payload.fraction);
       $("#status-text").textContent = payload.stage;
+      // «Abriendo…» se va llenando con lo que se baja.
+      if (state.current && state.launching.has(state.current.id)) $("#detail-play").style.setProperty("--p", payload.fraction);
       return;
     }
     if (payload.task === "doctor") {
@@ -3762,15 +3973,32 @@ function wireEvents() {
       return;
     }
     if (payload.task === "verificar") {
-      $("#download-percent").textContent = `${Math.round(payload.fraction * 100)}%`;
+      $("#download-percent").textContent = percentText(payload.fraction);
       $("#download-indicator").title = payload.stage;
       return;
     }
     $("#new-status").textContent = payload.stage;
     const percent = Math.max(2, payload.fraction * 100);
     $("#new-progress div").style.width = `${percent}%`;
-    $("#download-percent").textContent = `${Math.round(percent)}%`;
+    $("#download-percent").textContent = percentText(percent / 100);
   });
+}
+
+/** Cuánto falta para terminar, con lo que se ha avanzado en los últimos segundos (null mientras no se
+ * sepa bien o si falta muy poco). Si la tarea vuelve a empezar, se vuelve a medir. */
+const progressClock = {};
+function timeLeft(task, fraction) {
+  const now = performance.now();
+  let clock = progressClock[task];
+  if (!clock || fraction < clock.last - 0.001 || now - clock.seen > 15000) clock = progressClock[task] = { start: now, from: fraction, last: fraction, seen: now };
+  clock.last = fraction;
+  clock.seen = now;
+  const done = fraction - clock.from;
+  const elapsed = (now - clock.start) / 1000;
+  if (elapsed < 3 || done < 0.02 || fraction >= 1) return null;
+  const left = (elapsed * (1 - fraction)) / done;
+  if (left < 5) return null;
+  return left < 60 ? `${Math.ceil(left / 5) * 5} s` : `${Math.round(left / 60)} min`;
 }
 
 async function init() {

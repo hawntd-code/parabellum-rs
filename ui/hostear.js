@@ -338,7 +338,7 @@ function renderHost() {
         s.state === "off"
           ? `<button class="btn primary" data-host-start="${escapeHtml(s.id)}">${icon("play")}${t("Encender", "Start")}</button>`
           : `<button class="btn danger" data-host-stop="${escapeHtml(s.id)}" ${s.state === "stopping" ? "disabled" : ""}>${icon("stop")}${t("Apagar", "Stop")}</button>`;
-      return `<div class="server host-card" data-hosted="${escapeHtml(s.id)}" style="animation-delay:${index * 40}ms" tabindex="0">
+      return `<div class="server host-card" data-hosted="${escapeHtml(s.id)}" data-key="h:${escapeHtml(s.id)}" style="animation-delay:${index * 40}ms" tabindex="0">
         <div class="server-icon">${icon("server")}</div>
         <div class="grow">
           <div class="title">${escapeHtml(s.name)} <span class="state-pill ${s.state}">${escapeHtml(names[s.state])}</span></div>
@@ -1378,7 +1378,7 @@ function activityInfo(item) {
 function serverCardHtml({ key, info, button, dim }) {
   const head = info.host ? `<canvas width="8" height="8" class="head" data-head="${escapeHtml(info.host)}"></canvas>` : "";
   const players = info.players ? `<span class="srv-players">${icon("user")}${escapeHtml(info.players)}</span>` : "";
-  return `<div class="srv-card ${dim ? "dim" : ""}" data-srv-open="${escapeHtml(key)}" tabindex="0" role="button" title="${t("Ver detalles", "See details")}">
+  return `<div class="srv-card ${dim ? "dim" : ""}" data-srv-open="${escapeHtml(key)}" data-key="s:${escapeHtml(key)}" tabindex="0" role="button" title="${t("Ver detalles", "See details")}">
       ${serverIconHtml(info.favicon, info.fallback)}
       <div class="grow srv-text">
         <div class="srv-name">${escapeHtml(info.name)}</div>
