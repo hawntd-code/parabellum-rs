@@ -196,6 +196,7 @@
                   <select id="project-target"></select>
                 </div>
                 <p class="grow muted hidden" id="project-install-note"></p>
+                <button class="circle-btn big hidden" id="project-fav" title="Agregar a favoritos"><svg><use href="#i-star"/></svg></button>
                 <button class="btn primary big" id="project-install"><svg><use href="#i-download"/></svg><span>Instalar</span></button>
               </div>
               <div class="tabs" id="project-tabs">
@@ -351,6 +352,7 @@
                 <header class="chat-header">
                   <div class="chat-avatar" id="chat-avatar"></div>
                   <div class="grow"><b id="chat-title"></b><span id="chat-subtitle"></span></div>
+                  <button class="circle-btn" id="chat-fav" title="Agregar a favoritos"><svg><use href="#i-star"/></svg></button>
                   <button class="btn primary small hidden" id="chat-join"><svg><use href="#i-play"/></svg><span>Unirse</span></button>
                   <button class="circle-btn" id="chat-more" title="Más"><svg><use href="#i-more"/></svg></button>
                 </header>
@@ -402,6 +404,7 @@
                   <input id="content-search" placeholder="Buscar" autocomplete="off" spellcheck="false">
                 </div>
                 <button class="btn hidden" id="content-update-all"><svg><use href="#i-update"/></svg><span>Actualizar todo</span></button>
+                <button class="btn" id="content-favorites" title="Instalar tus favoritos en esta instancia"><svg><use href="#i-star"/></svg>Favoritos</button>
                 <button class="circle-btn" id="content-folder" title="Abrir carpeta"><svg><use href="#i-folder"/></svg></button>
                 <button class="btn primary" id="content-add"><svg><use href="#i-plus"/></svg>Agregar contenido<svg class="chev"><use href="#i-down"/></svg></button>
               </div>
@@ -567,6 +570,7 @@
             <label class="label" for="loader-version" id="loader-version-label">Versión de Fabric</label>
             <select id="loader-version"></select>
           </div>
+          <label class="toggle hidden" id="new-favorites-box"><input type="checkbox" id="new-favorites" checked><span></span><span id="new-favorites-text">Con mis favoritos</span></label>
           <div class="progress hidden" id="new-progress"><div></div></div>
           <p class="muted small-text" id="new-status"></p>
           <div class="modal-actions">
@@ -986,6 +990,24 @@
     </div>
   </div>
 
+  <!-- Favoritos de Modrinth: instalarlos en una instancia -->
+  <div class="overlay hidden" id="fav-dialog">
+    <div class="modal small">
+      <div class="modal-head">
+        <h2 id="fav-title">Tus favoritos</h2>
+        <button class="circle-btn" id="fav-close" title="Cerrar"><svg><use href="#i-close"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="fav-list" id="fav-list"></div>
+        <p class="muted small-text" id="fav-status"></p>
+        <div class="modal-actions">
+          <button class="btn" id="fav-explore"><svg><use href="#i-compass"/></svg>Buscar más</button>
+          <button class="btn primary" id="fav-install"><svg><use href="#i-download"/></svg><span>Instalar</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Icono del servidor: recortar y ajustar cualquier imagen a 64×64 -->
   <div class="overlay hidden" id="icon-dialog">
     <div class="modal small">
@@ -1140,6 +1162,7 @@
       <symbol id="i-broadcast" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M8.2 15.8a5.4 5.4 0 0 1 0-7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5.3 18.7a9.5 9.5 0 0 1 0-13.4M18.7 5.3a9.5 9.5 0 0 1 0 13.4"/></symbol>
       <symbol id="i-octagon" viewBox="0 0 24 24"><path d="M8.3 3.5h7.4l4.8 4.8v7.4l-4.8 4.8H8.3l-4.8-4.8V8.3z"/><path d="M9.5 9.5l5 5M14.5 9.5l-5 5"/></symbol>
       <symbol id="i-triangle" viewBox="0 0 24 24"><path d="M10.3 4.6 3.2 17a2 2 0 0 0 1.7 3h14.2a2 2 0 0 0 1.7-3L13.7 4.6a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 16.8h.01"/></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></symbol>
       <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4zM13.5 6.5l4 4"/></symbol>
       <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
       <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></symbol>

@@ -600,6 +600,7 @@ function renderContent() {
     $("span", button).textContent = content[button.dataset.kind].length;
   }
   const updates = availableUpdates();
+  $("#content-favorites").classList.toggle("hidden", !favoriteKinds[state.kind]);
   $("#content-update-all").classList.toggle("hidden", !updates.length);
   $("#content-update-all span").textContent = t(`Actualizar todo (${updates.length})`, `Update all (${updates.length})`);
   const query = $("#content-search").value.trim().toLowerCase();
@@ -631,6 +632,11 @@ function renderContent() {
         ${updateChip(item.file)}
         ${world ? "" : `<div class="c-version">${escapeHtml(item.version ?? "")}</div>
           <label class="toggle" title="${item.enabled ? t("Desactivar", "Disable") : t("Activar", "Enable")}"><input type="checkbox" data-toggle="${escapeHtml(item.file)}" ${item.enabled ? "checked" : ""}><span></span></label>`}
+        ${
+          item.projectId && favoriteKinds[state.kind]
+            ? `<button class="circle-btn fav-toggle ${isFavoriteMod(item.projectId) ? "starred" : ""}" data-fav="${escapeHtml(item.file)}" title="${isFavoriteMod(item.projectId) ? t("Quitar de favoritos", "Remove from favorites") : t("Agregar a favoritos", "Add to favorites")}">${icon("star")}</button>`
+            : ""
+        }
         <button class="circle-btn" data-remove="${escapeHtml(item.file)}" title="${t("Mandar a la papelera", "Move to the Recycle Bin")}">${icon("trash")}</button>
       </div>`;
     })
@@ -1553,17 +1559,20 @@ function renderFriends() {
       </div>`,
     )
     .join("");
+  const starred = favoriteFriendUids();
   const row = (f) => `<div class="friend ${f.online ? "online" : ""}" data-uid="${escapeHtml(f.uid)}" title="${t(`Escribirle a ${escapeHtml(f.name)}`, `Message ${escapeHtml(f.name)}`)}">
       <div class="friend-head"><canvas width="8" height="8" class="head" data-head="${escapeHtml(f.name)}"></canvas><span class="presence-dot ${f.online ? (f.presence?.state === "playing" ? "playing" : "online") : ""}"></span></div>
-      <div class="grow"><b>${escapeHtml(f.name)}</b><span title="${escapeHtml(friendStatus(f))}">${escapeHtml(friendStatus(f))}</span></div>
+      <div class="grow"><b>${escapeHtml(f.name)}${starred.has(f.uid) ? favMark() : ""}</b><span title="${escapeHtml(friendStatus(f))}">${escapeHtml(friendStatus(f))}</span></div>
       ${f.worldOpen ? `<button class="btn primary small" data-join="${escapeHtml(f.uid)}">${t("Unirse", "Join")}</button>` : ""}
       <button class="circle-btn small friend-chat" data-friend-chat="${escapeHtml(f.uid)}" title="${t("Enviar mensaje", "Send message")}">${icon("chat")}</button>
       <button class="circle-btn small" data-friend-menu="${escapeHtml(f.uid)}" title="${t("Más", "More")}">${icon("more")}</button>
     </div>`;
+  const rest = view.friends.filter((f) => !starred.has(f.uid));
   const sections = [
-    [t("Jugando", "Playing"), view.friends.filter((f) => f.online && f.presence?.state === "playing")],
-    [t("En línea", "Online"), view.friends.filter((f) => f.online && f.presence?.state !== "playing")],
-    [t("Desconectados", "Offline"), view.friends.filter((f) => !f.online)],
+    [t("Favoritos", "Favorites"), view.friends.filter((f) => starred.has(f.uid))],
+    [t("Jugando", "Playing"), rest.filter((f) => f.online && f.presence?.state === "playing")],
+    [t("En línea", "Online"), rest.filter((f) => f.online && f.presence?.state !== "playing")],
+    [t("Desconectados", "Offline"), rest.filter((f) => !f.online)],
   ].filter(([, list]) => list.length);
   const friendsHtml = view.friends.length
     ? sections.map(([title, list]) => `<div class="friend-section">${escapeHtml(title)} <span>${list.length}</span></div>${list.map(row).join("")}`).join("")
@@ -1580,7 +1589,7 @@ function renderFriends() {
 function renderGroups() {
   const box = $("#group-list");
   if (!box) return;
-  const groups = (state.chats ?? []).filter((c) => c.kind === "grupo");
+  const groups = (state.chats ?? []).filter((c) => c.kind === "grupo").sort((a, b) => isFavoriteChat(b.id) - isFavoriteChat(a.id));
   setHtml(
     box,
     groups.length
@@ -1588,7 +1597,7 @@ function renderGroups() {
           .map(
             (g) => `<button class="group-row ${g.unread ? "unread" : ""}" data-open-group="${escapeHtml(g.id)}">
               <span class="group-avatar">${icon("chat")}</span>
-              <span class="grow"><b>${escapeHtml(g.name)}</b><span>${escapeHtml(g.lastText ? `${g.lastName}: ${chatPreview(g.lastText)}` : t(`${g.members.length} miembros`, `${g.members.length} members`))}</span></span>
+              <span class="grow"><b>${escapeHtml(g.name)}${isFavoriteChat(g.id) ? favMark() : ""}</b><span>${escapeHtml(g.lastText ? `${g.lastName}: ${chatPreview(g.lastText)}` : t(`${g.members.length} miembros`, `${g.members.length} members`))}</span></span>
               ${g.unread ? `<i class="unread-dot"></i>` : ""}
             </button>`,
           )
@@ -1702,7 +1711,11 @@ async function joinFriend(friend, address) {
 
 function friendMenu(anchor, friend) {
   const p = friend.presence ?? {};
-  const items = [{ icon: "chat", label: t("Enviar mensaje", "Send message"), action: () => messageFriend(friend.uid) }];
+  const starred = favoriteFriendUids().has(friend.uid);
+  const items = [
+    { icon: "chat", label: t("Enviar mensaje", "Send message"), action: () => messageFriend(friend.uid) },
+    { icon: "star", label: starred ? t("Quitar de favoritos", "Remove from favorites") : t("Agregar a favoritos", "Add to favorites"), action: () => toggleFavoriteFriend(friend) },
+  ];
   if (friend.worldOpen) {
     if (p.address) items.push({ icon: "globe", label: t("Unirse por Internet", "Join over the Internet"), action: () => joinFriend(friend, p.address) });
     if (p.lan) items.push({ icon: "server", label: t("Unirse por red local", "Join over the local network"), action: () => joinFriend(friend, p.lan) });
@@ -1841,19 +1854,21 @@ function renderChatList() {
   // Amigos con los que todavía no hay conversación: para empezar una.
   const talking = new Set(chats.filter((c) => c.kind === "directo").flatMap((c) => c.members.map((m) => m.uid)));
   const others = friends.filter((f) => !talking.has(f.uid));
-  $("#chat-list").innerHTML =
-    chats
-      .map(
-        (c) => `<button class="chat-item ${c.id === state.chatOpen ? "active" : ""} ${c.unread ? "unread" : ""}" data-chat="${escapeHtml(c.id)}">
+  const favorites = chats.filter((c) => isFavoriteChat(c.id));
+  const recent = chats.filter((c) => !isFavoriteChat(c.id));
+  const chatRow = (c) => `<button class="chat-item ${c.id === state.chatOpen ? "active" : ""} ${c.unread ? "unread" : ""}" data-chat="${escapeHtml(c.id)}">
           ${chatAvatar(c)}
           <span class="grow">
-            <span class="chat-item-top"><b>${escapeHtml(c.name)}</b><small>${escapeHtml(chatTime(c.lastAt))}</small></span>
+            <span class="chat-item-top"><b>${escapeHtml(c.name)}${isFavoriteChat(c.id) ? favMark() : ""}</b><small>${escapeHtml(chatTime(c.lastAt))}</small></span>
             <span class="chat-item-last">${escapeHtml(c.lastText ? (c.kind === "grupo" && c.lastName ? `${c.lastName}: ${chatPreview(c.lastText)}` : chatPreview(c.lastText)) : c.kind === "grupo" ? t("Grupo nuevo", "New group") : t("Sin mensajes todavía", "No messages yet"))}</span>
           </span>
           ${c.unread ? `<span class="unread-dot"></span>` : ""}
-        </button>`,
-      )
-      .join("") +
+        </button>`;
+  $("#chat-list").innerHTML =
+    (favorites.length
+      ? `<p class="chat-list-label">${t("Favoritos", "Favorites")}</p>${favorites.map(chatRow).join("")}${recent.length ? `<p class="chat-list-label">${t("Recientes", "Recent")}</p>` : ""}`
+      : "") +
+    recent.map(chatRow).join("") +
     (others.length
       ? `<p class="chat-list-label">${t("Escribir a un amigo", "Write to a friend")}</p>` +
         others
@@ -1885,6 +1900,47 @@ function currentChat() {
   return (state.chats ?? []).find((c) => c.id === state.chatOpen) ?? (state.pendingChat?.id === state.chatOpen ? state.pendingChat : undefined);
 }
 
+// ---------- Favoritos: conversaciones y grupos (salen primero) ----------
+function isFavoriteChat(id) {
+  return (state.settings.favoriteChats ?? []).includes(id);
+}
+
+const favMark = () => `<span class="fav-mark" title="${t("Favorito", "Favorite")}">${icon("star")}</span>`;
+
+async function toggleFavoriteChat(id) {
+  try {
+    state.settings.favoriteChats = await invoke("favorito_chat", { chat: id, activo: !isFavoriteChat(id) });
+    renderGroups();
+    renderFriends();
+    if (state.page === "chat") renderChatList();
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+/** La conversación directa con un amigo (se crea si no existe) para marcarla como favorita. */
+async function toggleFavoriteFriend(friend) {
+  let chat = allChats().find((c) => c.kind === "directo" && c.members.some((m) => m.uid === friend.uid));
+  try {
+    const id = chat?.id ?? (await invoke("chat_con_amigo", { uid: friend.uid }));
+    if (!chat && !(state.chats ?? []).some((c) => c.id === id)) {
+      state.pendingChat = { id, kind: "directo", name: friend.name, members: [{ uid: friend.uid, name: friend.name }], lastText: "", lastName: "", lastAt: 0, unread: false };
+    }
+    await toggleFavoriteChat(id);
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+/** Amigos con su conversación en favoritos. */
+function favoriteFriendUids() {
+  return new Set(
+    allChats()
+      .filter((c) => c.kind === "directo" && isFavoriteChat(c.id))
+      .flatMap((c) => c.members.map((m) => m.uid)),
+  );
+}
+
 /** Las conversaciones, con la que se acaba de crear aunque Firebase todavía no la mande. */
 function allChats() {
   const chats = state.chats ?? [];
@@ -1908,6 +1964,9 @@ function renderChatHeader() {
     join = friend && joinTarget(friend);
   }
   state.chatJoin = join;
+  const favorite = isFavoriteChat(chat.id);
+  $("#chat-fav").classList.toggle("starred", favorite);
+  $("#chat-fav").title = favorite ? t("Quitar de favoritos", "Remove from favorites") : t("Agregar a favoritos", "Add to favorites");
   $("#chat-join").classList.toggle("hidden", !join);
   if (join) $("#chat-join").title = join.title;
 }
@@ -2067,6 +2126,123 @@ function pointerAnchor() {
   return { getBoundingClientRect: () => new DOMRect(x, y, 0, 0), isConnected: false, focus() {} };
 }
 document.addEventListener("pointerdown", (event) => (state.pointer = { x: event.clientX, y: event.clientY }), true);
+
+// ---------- Favoritos: mods, resource packs y shaders de Modrinth ----------
+const favoriteKinds = { mods: "mod", resourcepacks: "resourcepack", shaderpacks: "shader" };
+
+function isFavoriteMod(projectId) {
+  return (state.settings.favoriteMods ?? []).some((m) => m.projectId === projectId);
+}
+
+async function toggleFavoriteMod(favorite) {
+  const on = !isFavoriteMod(favorite.projectId);
+  try {
+    state.settings.favoriteMods = await invoke("favorito_mod", { proyecto: favorite, activo: on });
+    toast(on ? t(`${favorite.title} está en tus favoritos: instálalo en cualquier instancia con «Favoritos».`, `${favorite.title} is in your favorites: install it in any instance with «Favorites».`) : t(`${favorite.title} ya no está en tus favoritos.`, `${favorite.title} is no longer in your favorites.`));
+  } catch (error) {
+    toast(String(error), "error");
+  }
+  if (state.page === "instance") renderContent();
+  if (state.page === "project" && state.projectData) renderProjectInstall();
+  if (!$("#fav-dialog").classList.contains("hidden")) renderFavoritesDialog();
+}
+
+/** Instala favoritos en una instancia (los que sean compatibles). Devuelve un resumen. */
+async function installFavorites(instanceId, favorites, onStep = () => {}) {
+  const files = new Map();
+  const installed = [];
+  const skipped = [];
+  for (const [index, favorite] of favorites.entries()) {
+    onStep(t(`Revisando ${favorite.title} (${index + 1}/${favorites.length})…`, `Checking ${favorite.title} (${index + 1}/${favorites.length})…`));
+    try {
+      const plan = await invoke("preparar_instalacion", { id: instanceId, proyecto: favorite.projectId, version: null });
+      if (plan.installed) continue;
+      if (plan.problem) {
+        skipped.push(`${favorite.title}: ${plan.problem}`);
+        continue;
+      }
+      for (const file of plan.files) if (!files.has(file.projectId)) files.set(file.projectId, file);
+      installed.push(favorite.title);
+    } catch (error) {
+      skipped.push(`${favorite.title}: ${error}`);
+    }
+  }
+  if (files.size) {
+    onStep(t(`Descargando ${plural(files.size, "archivo", "archivos")}…`, `Downloading ${plural(files.size, "file", "files")}…`));
+    await invoke("instalar_contenido", { id: instanceId, archivos: [...files.values()] });
+  }
+  if (state.contentFor === instanceId) {
+    state.content = null;
+    state.updates = { for: null, list: [] };
+  }
+  return { installed, skipped };
+}
+
+function favoritesSummary(name, { installed, skipped }) {
+  const done = installed.length ? t(`En ${name}: ${installed.join(", ")}.`, `In ${name}: ${installed.join(", ")}.`) : "";
+  const not = skipped.length ? t(` No compatibles: ${skipped.join(" · ")}`, ` Not compatible: ${skipped.join(" · ")}`) : "";
+  return (done + not).trim() || t("Ya tenía todos tus favoritos.", "It already had all your favorites.");
+}
+
+/** Diálogo de la pestaña Contenido: tus favoritos de esta categoría, para instalarlos aquí. */
+function openFavoritesDialog() {
+  if (!state.current) return;
+  state.favDialog = { kind: state.kind, selected: null, busy: false };
+  $("#fav-status").textContent = "";
+  $("#fav-status").classList.remove("error");
+  renderFavoritesDialog();
+  openModal("#fav-dialog");
+}
+
+function renderFavoritesDialog() {
+  const dialog = state.favDialog;
+  if (!dialog) return;
+  const kind = favoriteKinds[dialog.kind] ?? "mod";
+  const list = (state.settings.favoriteMods ?? []).filter((m) => m.kind === kind);
+  const have = new Set((state.content?.[dialog.kind] ?? []).map((i) => i.projectId).filter(Boolean));
+  dialog.selected ??= new Set(list.filter((m) => !have.has(m.projectId)).map((m) => m.projectId));
+  $("#fav-title").textContent = t(`Tus ${kindNames[dialog.kind]} favoritos`, `Your favorite ${kindNames[dialog.kind]}`);
+  $("#fav-list").innerHTML = list.length
+    ? list
+        .map((m) => {
+          const owned = have.has(m.projectId);
+          return `<div class="fav-row">
+            <div class="content-icon">${m.iconUrl ? `<img src="${escapeHtml(m.iconUrl)}" alt="">` : icon(kindIcons[dialog.kind])}</div>
+            <div class="grow"><b>${escapeHtml(m.title)}</b></div>
+            ${owned ? `<span class="tag">${t("Ya está", "Already here")}</span>` : `<label class="toggle"><input type="checkbox" data-fav-pick="${escapeHtml(m.projectId)}" ${dialog.selected.has(m.projectId) ? "checked" : ""} ${dialog.busy ? "disabled" : ""}><span></span></label>`}
+            <button class="circle-btn small starred" data-fav-remove="${escapeHtml(m.projectId)}" title="${t("Quitar de favoritos", "Remove from favorites")}">${icon("star")}</button>
+          </div>`;
+        })
+        .join("")
+    : `<p class="side-note">${t("Todavía no tienes favoritos aquí. Márcalos con la estrella en su página de Explorar o en la lista de Contenido de una instancia.", "You have no favorites here yet. Mark them with the star on their Explore page or in an instance's Content list.")}</p>`;
+  const count = list.filter((m) => !have.has(m.projectId) && dialog.selected.has(m.projectId)).length;
+  $("#fav-install").disabled = dialog.busy || !count;
+  $("#fav-install span").textContent = dialog.busy ? t("Instalando…", "Installing…") : t(`Instalar (${count})`, `Install (${count})`);
+}
+
+async function installFavoritesHere() {
+  const dialog = state.favDialog;
+  const instance = state.current;
+  if (!dialog || !instance || dialog.busy) return;
+  const kind = favoriteKinds[dialog.kind];
+  const picked = (state.settings.favoriteMods ?? []).filter((m) => m.kind === kind && dialog.selected.has(m.projectId));
+  dialog.busy = true;
+  renderFavoritesDialog();
+  $("#download-indicator").classList.remove("hidden");
+  try {
+    const result = await installFavorites(instance.id, picked, (step) => ($("#fav-status").textContent = step));
+    closeModal("#fav-dialog");
+    toast(favoritesSummary(instance.name, result), result.skipped.length ? "error" : undefined);
+    if (state.page === "instance" && state.current?.id === instance.id) renderInstance();
+  } catch (error) {
+    $("#fav-status").textContent = String(error);
+    $("#fav-status").classList.add("error");
+  } finally {
+    dialog.busy = false;
+    $("#download-indicator").classList.add("hidden");
+    renderFavoritesDialog();
+  }
+}
 
 // ---------- Instancias compartidas (ver compartir.rs: viaja una receta, no los archivos) ----------
 const SHARE_PREFIX = "parabellum:instancia:";
@@ -2302,6 +2478,18 @@ function wireChatEvents() {
     if (file) sendChatImage(URL.createObjectURL(file));
   };
   $("#chat-share").onclick = (event) => shareMenu(event.currentTarget);
+  $("#chat-fav").onclick = () => state.chatOpen && toggleFavoriteChat(state.chatOpen).then(renderChatHeader);
+  // Clic derecho en una conversación: favorito.
+  $("#chat-list").addEventListener("contextmenu", (event) => {
+    const item = event.target.closest("[data-chat]");
+    if (!item) return;
+    event.preventDefault();
+    const id = item.dataset.chat;
+    contextMenu(item, [
+      { icon: "star", label: isFavoriteChat(id) ? t("Quitar de favoritos", "Remove from favorites") : t("Agregar a favoritos", "Add to favorites"), action: () => toggleFavoriteChat(id) },
+      { icon: "chat", label: t("Abrir", "Open"), action: () => openChat(id) },
+    ]);
+  });
   $("#chat-join").onclick = () => {
     const join = state.chatJoin;
     if (join) joinFriend(join.friend, join.address);
@@ -2549,6 +2737,7 @@ async function showCustomStep() {
   state.nameEdited = false;
   state.loader = "vanilla";
   state.loaderVersions = {};
+  renderCreateFavorites();
   for (const button of $$("#loader-choice [data-loader]")) button.classList.toggle("active", button.dataset.loader === "vanilla");
   $("#loader-version-box").classList.add("hidden");
   $("#create-step-custom").classList.remove("with-loader");
@@ -2571,6 +2760,7 @@ const loaderNames = { vanilla: "Vanilla", fabric: "Fabric", quilt: "Quilt", forg
 
 async function selectLoader(loader) {
   state.loader = loader;
+  renderCreateFavorites();
   for (const button of $$("#loader-choice [data-loader]")) button.classList.toggle("active", button.dataset.loader === loader);
   $("#loader-version-box").classList.toggle("hidden", loader === "vanilla");
   $("#create-step-custom").classList.toggle("with-loader", loader !== "vanilla");
@@ -2711,6 +2901,18 @@ function fillLoaderSelect(select, info, current) {
     : `<option value="">${t("No disponible", "Not available")}</option>`;
 }
 
+/** Los favoritos que tienen sentido en una instancia nueva (vanilla: solo resource packs). */
+function createFavorites(loader) {
+  const vanilla = !loader || loader === "vanilla";
+  return (state.settings.favoriteMods ?? []).filter((m) => !vanilla || m.kind === "resourcepack");
+}
+
+function renderCreateFavorites() {
+  const list = createFavorites(state.loader);
+  $("#new-favorites-box").classList.toggle("hidden", !list.length);
+  $("#new-favorites-text").textContent = t(`Con mis favoritos (${list.length})`, `With my favorites (${list.length})`);
+}
+
 async function createInstance() {
   const name = $("#new-name").value.trim();
   const loader = state.loader;
@@ -2724,10 +2926,16 @@ async function createInstance() {
   $("#download-indicator").classList.remove("hidden");
   try {
     const instance = await invoke("crear_instancia", { nombre: name, version: state.selectedVersion, loader, versionLoader });
+    // Con tus favoritos (los que sean compatibles con esta versión y loader).
+    const favorites = createFavorites(loader);
+    let summary = null;
+    if (favorites.length && $("#new-favorites").checked) {
+      summary = await installFavorites(instance.id, favorites, (step) => ($("#new-status").textContent = step));
+    }
     state.creating = false;
     closeModal("#create-dialog");
     await reloadInstances();
-    toast(t(`${instance.name} está lista para jugar.`, `${instance.name} is ready to play.`));
+    toast(summary ? `${t(`${instance.name} está lista para jugar.`, `${instance.name} is ready to play.`)} ${favoritesSummary(instance.name, summary)}` : t(`${instance.name} está lista para jugar.`, `${instance.name} is ready to play.`));
     navigate("instance", instance.id);
   } catch (error) {
     $("#new-status").textContent = String(error);
@@ -2986,7 +3194,15 @@ function wireEvents() {
     const toggle = event.target.closest("[data-toggle]");
     if (toggle) toggleContent(toggle.dataset.toggle, toggle.checked);
   };
+  $("#content-favorites").onclick = () => openFavoritesDialog();
   $("#content-list").onclick = (event) => {
+    const favorite = event.target.closest("[data-fav]");
+    if (favorite) {
+      const item = state.content?.[state.kind]?.find((i) => i.file === favorite.dataset.fav);
+      const iconUrl = item?.icon && /^(https:|http:\/\/icono\.localhost\/)/.test(item.icon) ? item.icon : null;
+      if (item?.projectId) toggleFavoriteMod({ projectId: item.projectId, title: item.name, iconUrl, kind: favoriteKinds[state.kind] });
+      return;
+    }
     const remove = event.target.closest("[data-remove]");
     if (remove) return removeContent(remove.dataset.remove);
     const update = event.target.closest("[data-update]");
@@ -3275,6 +3491,7 @@ function wireEvents() {
       closeModal("#group-dialog");
       closeModal("#server-dialog");
       closeModal("#icon-dialog");
+      if (!state.favDialog?.busy) closeModal("#fav-dialog");
       closeModal("#account-dialog");
       if (!state.exporting?.busy) closeModal("#export-dialog");
       $("#lightbox").classList.add("hidden");
@@ -3935,6 +4152,10 @@ function renderProjectInstall() {
           ? t(`Instalar en ${instance.name}`, `Install to ${instance.name}`)
           : t("Instalar", "Install");
   $("use", button).setAttribute("href", done ? "#i-check" : "#i-download");
+  const favorable = ["mod", "resourcepack", "shader"].includes(kind);
+  $("#project-fav").classList.toggle("hidden", !favorable);
+  $("#project-fav").classList.toggle("starred", isFavoriteMod(p.id));
+  $("#project-fav").title = isFavoriteMod(p.id) ? t("Quitar de favoritos", "Remove from favorites") : t("Agregar a favoritos", "Add to favorites");
   $("#project-target-box").classList.toggle("hidden", modpack);
   $("#project-install-note").classList.toggle("hidden", !modpack);
   $("#project-install-note").textContent = t("Se instala como una instancia nueva, con su versión de Minecraft y su loader.", "It is installed as a new instance, with its Minecraft version and its loader.");
@@ -4118,6 +4339,32 @@ function wireExploreEvents() {
   // Página del proyecto
   for (const tab of $$("#project-tabs .tab")) tab.onclick = () => selectProjectTab(tab.dataset.tab);
   $("#project-install").onclick = () => state.projectData && installAny(projectKind(), state.projectData.id);
+  $("#project-fav").onclick = () => {
+    const p = state.projectData;
+    if (p) toggleFavoriteMod({ projectId: p.id, title: p.title, iconUrl: p.iconUrl ?? null, kind: projectKind() });
+  };
+  // Diálogo de favoritos (pestaña Contenido).
+  $("#fav-close").onclick = () => closeModal("#fav-dialog");
+  $("#fav-dialog").onmousedown = (event) => {
+    if (event.target.id === "fav-dialog" && !state.favDialog?.busy) closeModal("#fav-dialog");
+  };
+  $("#fav-install").onclick = () => installFavoritesHere();
+  $("#fav-explore").onclick = () => {
+    closeModal("#fav-dialog");
+    if (state.current) openExploreFor(state.current.id, state.favDialog?.kind ?? state.kind);
+  };
+  $("#fav-list").onchange = (event) => {
+    const pick = event.target.closest("[data-fav-pick]");
+    if (!pick || !state.favDialog) return;
+    if (pick.checked) state.favDialog.selected.add(pick.dataset.favPick);
+    else state.favDialog.selected.delete(pick.dataset.favPick);
+    renderFavoritesDialog();
+  };
+  $("#fav-list").onclick = (event) => {
+    const remove = event.target.closest("[data-fav-remove]");
+    const favorite = remove && (state.settings.favoriteMods ?? []).find((m) => m.projectId === remove.dataset.favRemove);
+    if (favorite) toggleFavoriteMod(favorite);
+  };
   $("#project-versions").onclick = (event) => {
     const button = event.target.closest("[data-install-version]");
     if (button) installAny(projectKind(), state.projectId, button.dataset.installVersion);

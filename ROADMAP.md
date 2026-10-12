@@ -113,6 +113,10 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### 0.19.0: favoritos (pedido de Juan)
+- [x] **Conversaciones y grupos favoritos:** estrella en el encabezado del chat, clic derecho en la lista o «Agregar a favoritos» en el menú de un amigo. Salen primero: «Favoritos» y «Recientes» en Mensajes, y una sección «Favoritos» arriba en el panel de amigos y en grupos. Se guardan en ajustes.json de este PC (favorite_chats), sin tocar las reglas de Firebase
+- [x] **Mods favoritos** (también resource packs y shaders de Modrinth): estrella en su página de Explorar y en la lista de Contenido. Botón «Favoritos» en Contenido para instalar los que falten en esa instancia (cada uno con su versión compatible y dependencias; los que no son compatibles se dicen). Al crear una instancia, «Con mis favoritos» los instala de una vez (en vanilla, solo los resource packs)
+
 ### 0.18.0: más usos del chat e icono del servidor (pedido de Juan)
 - [x] **Imágenes en el chat:** el botón de imagen y pegar una captura no funcionaban: la ventana bloqueaba las imágenes abiertas como blob: (faltaba en la CSP de tauri.conf.json). Lo mismo rompía el icono del servidor («Esta imagen no se pudo abrir») y el de las instancias
 - [x] **Primer mensaje con alguien:** la conversación nueva todavía no llegaba de Firebase y la lista la cerraba; ahora se abre al momento con el nombre del amigo (state.pendingChat) hasta que llega

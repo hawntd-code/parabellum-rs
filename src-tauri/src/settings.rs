@@ -36,6 +36,20 @@ pub struct Settings {
     pub language: String,
     /// El panel de la derecha (jugador, amigos, novedades) está oculto.
     pub sidebar_hidden: bool,
+    /// Conversaciones y grupos favoritos (ids de chat): salen primero en Mensajes y en el panel.
+    pub favorite_chats: Vec<String>,
+    /// Mods, resource packs y shaders favoritos de Modrinth (para meterlos en cualquier instancia).
+    pub favorite_mods: Vec<FavoriteMod>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FavoriteMod {
+    pub project_id: String,
+    pub title: String,
+    pub icon_url: Option<String>,
+    /// "mod", "resourcepack" o "shader".
+    pub kind: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
@@ -73,6 +87,8 @@ impl Default for Settings {
             ui_scale: 1.0,
             language: String::new(),
             sidebar_hidden: false,
+            favorite_chats: Vec::new(),
+            favorite_mods: Vec::new(),
         }
     }
 }

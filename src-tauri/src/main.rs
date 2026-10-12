@@ -144,6 +144,11 @@ fn herramientas_creador(state: State<AppState>, activar: bool) -> Result<bool, S
 #[tauri::command]
 fn guardar_ajustes(app: AppHandle, state: State<AppState>, mut ajustes: Settings) -> Result<Settings, String> {
     ajustes.normalize()?;
+    {
+        let current = state.settings.lock().unwrap();
+        ajustes.favorite_chats = current.favorite_chats.clone();
+        ajustes.favorite_mods = current.favorite_mods.clone();
+    }
     ajustes.ram_gb = ajustes.ram_gb.clamp(1, 64);
     ajustes.ui_scale = if ajustes.ui_scale.is_finite() { ajustes.ui_scale.clamp(0.8, 1.5) } else { 1.0 };
     ajustes.language = idioma::normalize(&ajustes.language);
@@ -170,6 +175,44 @@ fn panel_lateral(state: State<AppState>, oculto: bool) -> Result<(), String> {
     let mut settings = state.settings.lock().unwrap();
     settings.sidebar_hidden = oculto;
     settings.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))
+}
+
+/// Marca o quita una conversación (o grupo) de favoritos. Devuelve la lista nueva.
+#[tauri::command]
+fn favorito_chat(state: State<AppState>, chat: String, activo: bool) -> Result<Vec<String>, String> {
+    if chat.is_empty() || chat.len() > 200 || !chat.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+        return Err(t!("Conversación no válida.", "Invalid conversation."));
+    }
+    let mut settings = state.settings.lock().unwrap();
+    settings.favorite_chats.retain(|c| *c != chat);
+    if activo {
+        settings.favorite_chats.insert(0, chat);
+    }
+    settings.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
+    Ok(settings.favorite_chats.clone())
+}
+
+/// Marca o quita un mod (o resource pack, o shader) de Modrinth de favoritos. Devuelve la lista nueva.
+#[tauri::command]
+fn favorito_mod(state: State<AppState>, proyecto: settings::FavoriteMod, activo: bool) -> Result<Vec<settings::FavoriteMod>, String> {
+    let id = proyecto.project_id.trim().to_string();
+    if id.is_empty() || id.len() > 64 || !id.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) || !["mod", "resourcepack", "shader"].contains(&proyecto.kind.as_str()) {
+        return Err(t!("Ese contenido no se puede marcar como favorito.", "That content cannot be marked as a favorite."));
+    }
+    let favorite = settings::FavoriteMod {
+        project_id: id.clone(),
+        title: proyecto.title.trim().chars().take(100).collect(),
+        // Solo enlaces cortos (de Modrinth o del caché de iconos), no imágenes enteras.
+        icon_url: proyecto.icon_url.filter(|u| u.len() <= 500 && (u.starts_with("https://") || u.starts_with("http://icono.localhost/"))),
+        kind: proyecto.kind,
+    };
+    let mut settings = state.settings.lock().unwrap();
+    settings.favorite_mods.retain(|m| m.project_id != id);
+    if activo {
+        settings.favorite_mods.insert(0, favorite);
+    }
+    settings.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
+    Ok(settings.favorite_mods.clone())
 }
 
 /// Toca el sonido de mensaje nuevo (al activarlo en Ajustes, para oírlo).
@@ -2783,6 +2826,8 @@ fn main() {
             guardar_ajustes,
             panel_lateral,
             sonido_mensaje,
+            favorito_chat,
+            favorito_mod,
             uuid_offline,
             listar_instancias,
             listar_versiones,

@@ -1190,6 +1190,24 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .friend[data-uid]:hover { background: var(--card); }
 #chat-join { height: 34px; }
 
+/* Favoritos */
+.starred svg, svg.starred { fill: #f5c542; stroke: #f5c542; }
+.circle-btn.starred { color: #f5c542; }
+.fav-mark { display: inline-flex; color: #f5c542; }
+.fav-mark svg { width: 13px; height: 13px; fill: currentColor; }
+.chat-item-top b, .group-row b { display: inline-flex; align-items: center; gap: 5px; }
+.content-item .fav-toggle { opacity: 0; transition: opacity .15s; }
+.content-item:hover .fav-toggle, .content-item .fav-toggle.starred, .content-item .fav-toggle:focus-visible { opacity: 1; }
+.fav-list { display: flex; flex-direction: column; gap: 6px; max-height: 360px; overflow-y: auto; margin-bottom: 10px; }
+.fav-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--r); background: var(--field); }
+.fav-row .content-icon { width: 34px; height: 34px; }
+.fav-row .grow { min-width: 0; }
+.fav-row b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+.fav-row span.muted { font-size: 12px; }
+.fav-row .tag { flex: none; }
+#new-favorites-box { margin-top: 14px; color: var(--text); }
+#fav-status.error { color: var(--danger); }
+
 /* Editor del icono del servidor */
 .icon-editor { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
 #icon-canvas { width: 256px; height: 256px; border-radius: 10px; cursor: grab; touch-action: none; flex: none;
