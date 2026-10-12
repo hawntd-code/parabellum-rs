@@ -348,12 +348,9 @@ impl Chat {
         inner.messages = Value::Null;
     }
 
-    fn emit_messages(&self) {
-        let (id, list) = {
-            let inner = self.inner.lock().unwrap();
-            let Some((id, _)) = &inner.open else { return };
-            let mut list: Vec<Message> = inner
-                .messages
+    /// Los mensajes de una conversación tal como llegan de Firebase, en orden.
+    fn parse_messages(&self, data: &Value) -> Vec<Message> {
+        let mut list: Vec<Message> = data
                 .as_object()
                 .map(|o| {
                     o.iter()
@@ -373,12 +370,34 @@ impl Chat {
                         .collect()
                 })
                 .unwrap_or_default();
-            // En el orden en que llegaron al servidor (su hora, la misma para todos); los ids llevan la
-            // hora del PC que los escribió y antes de la 0.15 no se corregía.
-            list.sort_by(|a, b| a.at.cmp(&b.at).then_with(|| a.id.cmp(&b.id)));
-            (id.clone(), list)
+        // En el orden en que llegaron al servidor (su hora, la misma para todos); los ids llevan la
+        // hora del PC que los escribió y antes de la 0.15 no se corregía.
+        list.sort_by(|a, b| a.at.cmp(&b.at).then_with(|| a.id.cmp(&b.id)));
+        list
+    }
+
+    fn emit_messages(&self) {
+        let (id, list) = {
+            let inner = self.inner.lock().unwrap();
+            let Some((id, _)) = &inner.open else { return };
+            (id.clone(), self.parse_messages(&inner.messages))
         };
         (self.messages)(id, list);
+    }
+
+    /// Escucha una conversación aparte de la que se ve en la ventana (la del juego: ver puente.rs).
+    pub fn watch(self: &Arc<Self>, id: &str, on_messages: impl Fn(Vec<Message>) + Send + Sync + 'static) -> Result<Listener, String> {
+        let id = safe(id)?.to_string();
+        let weak = Arc::downgrade(self);
+        Ok(self.db.listen(
+            format!("messages/{id}?orderBy=\"$key\"&limitToLast={HISTORY}"),
+            move |data| {
+                if let Some(chat) = weak.upgrade() {
+                    on_messages(chat.parse_messages(&data));
+                }
+            },
+            |_| {},
+        ))
     }
 
     /// Marca la conversación como leída (hasta ahora).
@@ -436,6 +455,13 @@ impl Chat {
         self.send(id, &message_id(self.db.server_now()), message, &preview(&format!("📦 {title}")), Map::new()).await
     }
 
+    /// Una invitación a tu mundo o servidor (ver puente.rs). En la lista se ve «🎮 …».
+    pub async fn send_invite(&self, id: &str, text: &str, preview_text: &str) -> Result<(), String> {
+        let name = self.my_name.lock().unwrap().clone();
+        let message = json!({ "from": self.uid, "name": name, "text": text, "at": firebase::server_timestamp() });
+        self.send(id, &message_id(self.db.server_now()), message, &preview(preview_text), Map::new()).await
+    }
+
     /// `data`: imagen ya reducida, como "data:image/jpeg;base64,…". Va aparte, con el id de su mensaje.
     pub async fn send_image(&self, id: &str, data: &str, width: u32, height: u32) -> Result<(), String> {
         let id = safe(id)?;
@@ -469,11 +495,20 @@ impl Chat {
 
     // ================= Editar y borrar (solo los mensajes propios)
 
-    /// Un mensaje propio de la conversación abierta (los que se ven en la ventana).
-    fn own_message(&self, id: &str, message: &str) -> Result<Value, String> {
-        let inner = self.inner.lock().unwrap();
-        let open = inner.open.as_ref().is_some_and(|(open, _)| open == id);
-        let data = inner.messages.get(message).filter(|_| open).filter(|m| m.is_object()).cloned().ok_or(t!("Ese mensaje ya no está.", "That message is no longer there."))?;
+    /// Los últimos mensajes de una conversación: los de la ventana si es la abierta; si no, de Firebase.
+    async fn recent(&self, id: &str) -> Value {
+        {
+            let inner = self.inner.lock().unwrap();
+            if inner.open.as_ref().is_some_and(|(open, _)| open == id) {
+                return inner.messages.clone();
+            }
+        }
+        self.db.get(&format!("messages/{id}?orderBy=\"$key\"&limitToLast={HISTORY}")).await.unwrap_or(Value::Null)
+    }
+
+    /// Un mensaje propio de una conversación.
+    async fn own_message(&self, id: &str, message: &str) -> Result<Value, String> {
+        let data = self.recent(id).await.get(message).filter(|m| m.is_object()).cloned().ok_or(t!("Ese mensaje ya no está.", "That message is no longer there."))?;
         if data["from"].as_str() != Some(self.uid.as_str()) {
             return Err(t!("Solo puedes cambiar tus propios mensajes.", "You can only change your own messages."));
         }
@@ -482,9 +517,9 @@ impl Chat {
 
     /// Si es el último de la conversación, la vista previa de la lista cambia también (sin mover la
     /// hora: no cuenta como mensaje nuevo para nadie).
-    fn is_last(&self, message: &str) -> Option<Value> {
-        let inner = self.inner.lock().unwrap();
-        let messages = inner.messages.as_object()?;
+    async fn is_last(&self, id: &str, message: &str) -> Option<Value> {
+        let recent = self.recent(id).await;
+        let messages = recent.as_object()?;
         let mut sorted: Vec<(&String, &Value)> = messages.iter().filter(|(_, m)| m.is_object()).collect();
         sorted.sort_by(|a, b| a.1["at"].as_i64().unwrap_or(0).cmp(&b.1["at"].as_i64().unwrap_or(0)).then_with(|| a.0.cmp(b.0)));
         let last = sorted.last()?;
@@ -513,7 +548,7 @@ impl Chat {
         if text.chars().count() > MAX_TEXT {
             return Err(t!("El mensaje es muy largo (máximo {MAX_TEXT} letras).", "The message is too long (maximum {MAX_TEXT} characters)."));
         }
-        let mut data = self.own_message(id, message)?;
+        let mut data = self.own_message(id, message).await?;
         let old = data["text"].as_str().ok_or(t!("Las imágenes no se editan.", "Images cannot be edited."))?;
         if crate::compartir::decode(old).is_some() {
             return Err(t!("Las instancias compartidas no se editan.", "Shared instances cannot be edited."));
@@ -525,7 +560,7 @@ impl Chat {
         data["edited"] = firebase::server_timestamp();
         let mut update = Map::new();
         update.insert(format!("messages/{id}/{message}"), data);
-        if self.is_last(message).is_some() {
+        if self.is_last(id, message).await.is_some() {
             update.insert(format!("chats/{id}/meta/lastText"), json!(preview(text)));
         }
         self.db.patch("", &Value::Object(update)).await.map(|_| ()).map_err(|e| e.to_string())
@@ -534,13 +569,13 @@ impl Chat {
     /// Borra un mensaje propio para todos (con su imagen, si tenía).
     pub async fn delete(&self, id: &str, message: &str) -> Result<(), String> {
         let (id, message) = (safe(id)?, safe(message)?);
-        let data = self.own_message(id, message)?;
+        let data = self.own_message(id, message).await?;
         let mut update = Map::new();
         update.insert(format!("messages/{id}/{message}"), Value::Null);
         if data["image"].as_bool() == Some(true) {
             update.insert(format!("images/{id}/{message}"), Value::Null);
         }
-        if let Some(previous) = self.is_last(message) {
+        if let Some(previous) = self.is_last(id, message).await {
             let (text, name, uid) = if previous.is_object() {
                 (Self::preview_of(&previous), previous["name"].as_str().unwrap_or_default().to_string(), previous["from"].as_str().unwrap_or_default().to_string())
             } else {

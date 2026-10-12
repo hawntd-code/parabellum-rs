@@ -121,6 +121,7 @@ pub fn view(app: &AppHandle) -> SocialView {
 
 fn emit(app: &AppHandle) {
     let _ = app.emit("social", view(app));
+    crate::puente::changed(app);
 }
 
 #[tauri::command]
@@ -381,6 +382,11 @@ fn chat_service(app: &AppHandle) -> Option<Arc<Chat>> {
     app.state::<AppState>().social.chat.lock().unwrap().clone()
 }
 
+/// El chat, para el puente con el juego.
+pub fn chat_handle(app: &AppHandle) -> Option<Arc<Chat>> {
+    chat_service(app)
+}
+
 fn chat_ready(app: &AppHandle) -> Result<Arc<Chat>, String> {
     chat_service(app).ok_or(t!("Primero inicia sesión con Google.", "Sign in with Google first."))
 }
@@ -404,6 +410,7 @@ fn start_chat(app: &AppHandle, social: &Arc<Social>) {
             if let Some(chat) = chat_service(&list) {
                 let _ = list.emit("chats", chat.list());
             }
+            crate::puente::changed(&list);
         },
         move |summary| notify_message(&arrived, summary),
         move |chat, list| {
@@ -429,11 +436,14 @@ fn notify_message(app: &AppHandle, summary: chat::Summary) {
     if sound {
         crate::sonido::message(false);
     }
-    if !toast {
-        return;
-    }
     let title = if summary.kind == "grupo" { summary.name.clone() } else { t!("Mensaje de {}", "Message from {}", summary.name) };
     let body = if summary.kind == "grupo" { format!("{}: {}", summary.last_name, summary.last_text) } else { summary.last_text.clone() };
+    // Dentro del juego (si tiene el mod): ahí se avisa en vez de con Windows.
+    let kind = if summary.last_text.starts_with("🎮") { "invitacion" } else { "mensaje" };
+    crate::puente::notice(app, kind, &title, &body, serde_json::json!({ "chat": summary.id }));
+    if !toast || crate::puente::game_connected(app) {
+        return;
+    }
     let (handle, id) = (app.clone(), summary.id.clone());
     let _ = app.run_on_main_thread(move || {
         let click = handle.clone();
@@ -572,10 +582,12 @@ fn notify_changes(app: &AppHandle) {
         if !quiet {
             for request in view.requests.iter().filter(|r| !seen.requests.contains(&r.uid)) {
                 toasts.push((t!("Solicitud de amistad", "Friend request"), t!("{} quiere ser tu amigo en Parabellum.", "{} wants to be your friend on Parabellum.", request.name)));
+                crate::puente::notice(app, "solicitud", &t!("Solicitud de amistad", "Friend request"), &t!("{} quiere ser tu amigo.", "{} wants to be your friend.", request.name), serde_json::json!({ "uid": request.uid }));
             }
             for friend in view.friends.iter().filter(|f| f.world_open && !seen.open_worlds.contains(&f.uid)) {
                 let pack = friend.presence.as_ref().and_then(|p| p.pack.clone()).unwrap_or_default();
                 toasts.push((t!("{} abrió su mundo", "{} opened their world", friend.name), t!("Está jugando {pack}. Abre Parabellum y pulsa Unirse.", "They are playing {pack}. Open Parabellum and press Join.")));
+                crate::puente::notice(app, "mundo", &t!("{} abrió su mundo", "{} opened their world", friend.name), &pack, serde_json::json!({ "uid": friend.uid }));
             }
         }
         seen.requests = requests;
@@ -583,7 +595,7 @@ fn notify_changes(app: &AppHandle) {
     }
     let enabled = state.settings.lock().unwrap().notifications;
     let in_front = app.get_webview_window("main").is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false));
-    if !enabled || in_front {
+    if !enabled || in_front || crate::puente::game_connected(app) {
         return;
     }
     for (title, body) in toasts {
@@ -653,6 +665,10 @@ pub fn startup(app: &AppHandle) {
         match crate::p2p::P2p::start(Arc::new(move |remote: &str, target: &str| crate::hosting::p2p_port(&gate_app, remote, target))).await {
             Ok(p2p) => *app.state::<AppState>().p2p.lock().unwrap() = Some(p2p),
             Err(error) => eprintln!("p2p: no arrancó ({error})"),
+        }
+        // El puente con el mod dentro del juego (amigos y chat en Minecraft).
+        if let Err(error) = crate::puente::start(&app).await {
+            eprintln!("puente: no arrancó ({error})");
         }
         let log = app.state::<AppState>().paths.logs.join("sesion-local.log");
         if let Ok(port) = sesion_local::start(log).await {
@@ -761,5 +777,8 @@ pub fn shutdown(app: &AppHandle) {
 
 /// Argumentos de Java para usar el servidor de sesión local.
 pub fn session_arguments(app: &AppHandle) -> Vec<String> {
-    app.state::<AppState>().social.session_port.lock().unwrap().map(sesion_local::jvm_arguments).unwrap_or_default()
+    let mut arguments = app.state::<AppState>().social.session_port.lock().unwrap().map(sesion_local::jvm_arguments).unwrap_or_default();
+    // Y dónde está Parabellum para el mod del juego.
+    arguments.extend(crate::puente::jvm_arguments(app));
+    arguments
 }

@@ -1,0 +1,2 @@
+// Solo para crear el envoltorio de Gradle (gradlew); cada versión del mod se compila aparte (ver compilar.py).
+rootProject.name = "parabellum-mod"

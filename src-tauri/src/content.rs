@@ -138,6 +138,10 @@ fn files(
         .flatten()
         .filter_map(|entry| {
             let file = entry.file_name().to_string_lossy().to_string();
+            // El mod de Parabellum (solo está mientras se juega) no es contenido de la instancia.
+            if read_mod && crate::juego::is_ours(&file) {
+                return None;
+            }
             let enabled = !file.ends_with(DISABLED);
             let base = file.trim_end_matches(DISABLED);
             let is_folder = entry.file_type().ok()?.is_dir();

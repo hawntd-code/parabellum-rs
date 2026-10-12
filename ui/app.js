@@ -3124,6 +3124,7 @@ function renderSettings() {
   $("#close-to-tray").checked = s.closeToTray ?? true;
   $("#notifications").checked = s.notifications ?? true;
   $("#message-sound").checked = s.messageSound ?? true;
+  $("#game-panel").checked = s.gamePanel ?? true;
   $("#ram").max = Math.max(4, Math.min(32, state.systemRam - 2));
   $("#ram").value = s.ramGb;
   $("#ram-max").textContent = `${$("#ram").max} GB`;
@@ -3187,6 +3188,7 @@ async function saveSettings(extra = {}) {
         closeToTray: $("#close-to-tray").checked,
         notifications: $("#notifications").checked,
         messageSound: $("#message-sound").checked,
+        gamePanel: $("#game-panel").checked,
         ...extra,
       },
     });
@@ -3552,6 +3554,7 @@ function wireEvents() {
   $("#minimize-on-launch").onchange = () => saveSettings();
   $("#close-to-tray").onchange = () => saveSettings();
   $("#notifications").onchange = () => saveSettings();
+  $("#game-panel").onchange = () => saveSettings();
   $("#message-sound").onchange = () => {
     saveSettings();
     // Al activarlo se oye cómo suena.

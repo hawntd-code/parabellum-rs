@@ -30,6 +30,8 @@ pub struct Settings {
     pub notifications: bool,
     /// Sonido cuando llega un mensaje (salvo que esa conversación esté a la vista).
     pub message_sound: bool,
+    /// El panel de Parabellum dentro del juego (amigos, chat, capturas): el mod se pone al jugar.
+    pub game_panel: bool,
     /// Tamaño de la interfaz (1.0 = 100 %).
     pub ui_scale: f64,
     /// "es" o "en"; vacío hasta el primer arranque, que toma el de Windows.
@@ -86,6 +88,7 @@ impl Default for Settings {
             close_to_tray: true,
             notifications: true,
             message_sound: true,
+            game_panel: true,
             ui_scale: 1.0,
             language: String::new(),
             sidebar_hidden: false,

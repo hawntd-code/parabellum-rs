@@ -331,6 +331,15 @@ pub fn hosted_name(app: &AppHandle) -> Option<String> {
     ids.into_iter().find_map(|id| servidor::find(&paths, &id)).map(|config| config.name)
 }
 
+/// El servidor encendido (listo) más antiguo: al que se invita desde el juego.
+pub fn ready_server(app: &AppHandle) -> Option<ServerConfig> {
+    let id = {
+        let running = hosting(app).running.lock().unwrap();
+        running.iter().filter(|(_, r)| r.phase == Phase::Ready).min_by_key(|(_, r)| r.started).map(|(id, _)| id.clone())
+    }?;
+    servidor::find(&app.state::<AppState>().paths, &id)
+}
+
 /// ¿Hay algo que se cortaría al cerrar Parabellum? (servidores encendidos o el mundo compartido)
 pub fn busy(app: &AppHandle) -> bool {
     !hosting(app).running.lock().unwrap().is_empty()

@@ -968,7 +968,7 @@ pub fn copy_content(instance: &Instance, folder: &Path, left_out: &[LeftOut]) ->
     let mut wanted = std::collections::HashSet::new();
     for entry in std::fs::read_dir(&source).into_iter().flatten().flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if !is_mod_file(&name) || skip(&name) || !entry.file_type().is_ok_and(|t| t.is_file()) {
+        if !is_mod_file(&name) || skip(&name) || crate::juego::is_ours(&name) || !entry.file_type().is_ok_and(|t| t.is_file()) {
             continue;
         }
         wanted.insert(name.to_lowercase());

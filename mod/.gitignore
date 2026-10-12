@@ -1,0 +1,7 @@
+# Lo que genera Gradle al compilar (los .jar terminados van a src-tauri/juego/mods)
+build/
+.gradle/
+run/
+runs/
+*.iml
+.idea/

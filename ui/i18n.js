@@ -191,6 +191,8 @@ const HTML_EN = {
   "Un aviso de Windows cuando te escriben, te mandan solicitud de amistad o un amigo abre su mundo.": "A Windows notification when someone messages you, sends you a friend request or a friend opens their world.",
   "Sonido de mensajes": "Message sound",
   "Mi mundo abierto por playit.gg": "My open world via playit.gg",
+  "Parabellum dentro del juego": "Parabellum inside the game",
+  "Amigos, mensajes, capturas e invitaciones sin salir de Minecraft (tecla O). En Fabric, Forge y NeoForge compatibles.": "Friends, messages, screenshots and invites without leaving Minecraft (O key). On supported Fabric, Forge and NeoForge.",
   "Una dirección pública para tu mundo abierto en LAN, para quien no usa Parabellum. Tus amigos de Parabellum entran sin esto.": "A public address for your world opened to LAN, for people who do not use Parabellum. Your Parabellum friends join without this.",
   "Solo ellos (y tú) pueden entrar. Tus amigos de Parabellum lo ven en Servidores y pulsan «Unirse».": "Only they (and you) can join. Your Parabellum friends see it in Servers and press «Join».",
   "Entrar desde este PC": "Join from this PC",

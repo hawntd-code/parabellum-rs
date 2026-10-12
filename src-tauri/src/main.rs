@@ -34,7 +34,9 @@ mod mojang;
 mod mrpack;
 mod nbt;
 mod opciones;
+mod juego;
 mod p2p;
+mod puente;
 mod packs;
 mod paths;
 mod plataforma;
@@ -78,6 +80,8 @@ struct AppState {
     drive_publisher: tokio::sync::Mutex<Option<Arc<drive::Publisher>>>,
     /// Conexión directa con los amigos (P2P); None hasta que arranca.
     p2p: Mutex<Option<Arc<p2p::P2p>>>,
+    /// Puente con el mod dentro del juego (interfaz de amigos y chat en Minecraft).
+    puente: Mutex<Option<Arc<puente::Puente>>>,
 }
 
 #[derive(Serialize)]
@@ -534,6 +538,8 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
     let launched = instance.clone();
     let session = cuenta::session_arguments(&app);
     let ram_gb = instance.ram_gb.unwrap_or(settings.ram_gb);
+    // El panel de Parabellum dentro del juego (amigos y chat), si hay mod para esta versión.
+    juego::install(&instance, settings.game_panel);
     let mut child = tauri::async_runtime::spawn_blocking(move || {
         let mut plan = launch::plan(&launched, &settings, &paths)?;
         // Mundos LAN y e4mc de amigos sin "Invalid session".
@@ -553,6 +559,7 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
     std::thread::spawn(move || {
         let code = child.wait().ok().and_then(|s| s.code());
         launch::forget_pid(&instance);
+        juego::remove(&instance);
         let state = app.state::<AppState>();
         let stopped = state.stopped.lock().unwrap().remove(&id);
         state.games.lock().unwrap().remove(&id);
@@ -2246,6 +2253,9 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             let mut plan = launch::plan(&instance, settings, paths)?;
             let port = tauri::async_runtime::block_on(sesion_local::start(paths.logs.join("sesion-local.log"))).map_err(|e| e.to_string())?;
             plan.add_jvm_arguments(sesion_local::jvm_arguments(port));
+            juego::write_fonts(paths);
+            plan.add_jvm_arguments([format!("-Dparabellum.fuentes={}", paths.data.join("fuentes").display())]);
+            juego::install(&instance, settings.game_panel);
             let started_ms = chrono::Utc::now().timestamp_millis();
             let started = std::time::Instant::now();
             let mut child = launch::start(&plan, &instance)?;
@@ -2255,6 +2265,7 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             let ram_gb = instance.ram_gb.unwrap_or(settings.ram_gb);
             let outcome = diagnostico::wait_for_menu(&mut child, &instance, started_ms, limit);
             launch::close_helpers(&instance);
+            juego::remove(&instance);
             match outcome {
                 Ok(_) => {
                     out += &format!("MENÚ PRINCIPAL en {:.0} s\n", started.elapsed().as_secs_f64());
@@ -2949,6 +2960,7 @@ fn main() {
             hosting: hosting::Hosting::default(),
             drive_publisher: Default::default(),
             p2p: Default::default(),
+            puente: Default::default(),
         })
         .setup(|app| {
             // El tamaño de la interfaz que eligió el jugador (Ajustes › Apariencia).
@@ -2959,6 +2971,14 @@ fn main() {
                 }
             }
             adopt_running_games(app.handle());
+            {
+                let state = app.state::<AppState>();
+                juego::write_fonts(&state.paths);
+                let running: Vec<String> = state.games.lock().unwrap().keys().cloned().collect();
+                for instance in instances::list(&state.paths).iter().filter(|i| !running.contains(&i.id)) {
+                    juego::remove(instance);
+                }
+            }
             avisos::register(&app.state::<AppState>().paths.data.join("cache"));
             cuenta::create_tray(app.handle())?;
             cuenta::startup(app.handle());
