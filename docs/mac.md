@@ -82,6 +82,13 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
   pone así en Mac), así que debería funcionar igual; falta probarlo. Los .jar se compilan en Windows o
   Mac con `mod/compilar.py` (JDK en `~/.jdks`).
 - El juego se abre en su propio grupo de procesos (sigue abierto si se cierra Parabellum).
+- Avisos (`macos/avisos.rs`) con la API de Apple, UserNotifications (crate `objc2-user-notifications`):
+  título, texto, sonido y clic (abre Parabellum o el chat). macOS solo los deja salir desde una `.app`
+  que no esté en una carpeta temporal: con el programa suelto de `cargo build` no salen, y
+  `--probar-aviso` dice por qué. Para probarlos antes de la tarea 10, arma una `Parabellum.app` en
+  `src-tauri/target/`: dentro van `Contents/Info.plist` (con `CFBundleIdentifier` igual a
+  `mx.parabellum.launcher`) y `Contents/MacOS/Parabellum`. Fírmala con `codesign --force --sign -` y ábrela con
+  `open -n -W --env PARABELLUM_ROOT=… Parabellum.app --args --probar-aviso`.
 - Lo compartido ya pregunta por Mac donde Mojang distingue sistemas: reglas `"os": "osx"` (así se
   agrega `-XstartOnFirstThread`), nativos `natives-macos`, Java de Mojang `mac-os-arm64` y separador
   del classpath `:`.
@@ -100,6 +107,7 @@ Ordenadas por prioridad:
    `--probar-juego`. Revisar que se baje el Java de Mojang (`mojang.rs`, `ensure_java`) y que
    `java_binary` lo encuentre.
 4. **Avisos** — `macos/avisos.rs`. Lo más directo: el plugin oficial `tauri-plugin-notification`.
+   **Hecho**, con UserNotifications en vez del plugin (ver «Qué ya está hecho»).
 5. **Imágenes raras en el chat** (HEIC del iPhone, TIFF…) — `decode_image` en `macos/mod.rs`. `sips`
    (viene con macOS) las pasa a PNG; falta leer ese PNG a RGBA (crate `png`), o cambiar el contrato
    para que en Mac devuelva el PNG directo.

@@ -52,6 +52,12 @@ windows = { version = "0.62", features = ["Data_Xml_Dom", "UI_Notifications", "F
 # Llavero (security-framework) o los avisos (tauri-plugin-notification) cuando se hagan.
 [target.'cfg(target_os = "macos")'.dependencies]
 
+# Avisos con el Centro de Notificaciones (UserNotifications); objc2, su Foundation y block2 ya vienen con Tauri
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSError", "NSString"] }
+objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "bitflags", "block2", "UNNotification", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationSound", "UNNotificationTrigger", "UNUserNotificationCenter"] }
+block2 = "0.6"
+
 [profile.release]
 opt-level = "s"
 lto = true
