@@ -26,6 +26,8 @@ pub const EXECUTABLE: &str = "Parabellum";
 // actualización obligatoria dejaría a Parabellum bloqueado. En Mac se actualiza recompilando.
 pub const SELF_UPDATE: bool = false;
 pub const CLASSPATH_SEPARATOR: &str = ":";
+// El de Windows separa las rutas con «;» y aquí Java no encontraría la clase principal de Forge.
+pub const FORGE_SERVER_ARGS: &str = "unix_args.txt";
 // TODO(mac): playit.gg no publica su agente para Mac (v0.17.1 solo trae Windows y Linux). Es de
 // código abierto (github.com/playit-cloud/playit-agent): compilarlo para aarch64-apple-darwin,
 // subirlo a un release propio y poner aquí su enlace, SHA-256 y tamaño. Sin agente, «Hostear

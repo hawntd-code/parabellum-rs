@@ -86,6 +86,14 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
   `java::discover` lee el `release` junto a `bin/` (en Mac, dentro de `jre.bundle/Contents/Home`).
 - Jugar 1.19 en adelante: probado con `--probar-juego` hasta el menú principal en 1.19.2 vanilla y Fabric (Java 17),
   1.21.1 vanilla y Fabric (Java 21, con el mod de Parabellum) y 26.3 (Java 25).
+- Forge y NeoForge: sus instaladores son Java y corren igual que en Windows. Probado con
+  `--probar-juego` hasta el menú principal: Forge 1.20.1 (47.4.26) y NeoForge 1.21.1 (21.1.259)
+  desde cero, los dos con el mod de Parabellum, y los modpacks de Modrinth Cave Horror Project
+  (Forge 47.4.23, 165 mods, menú en 26 s) y Better MC BMC4 (Forge 47.4.20, 439 mods, menú en 63 s).
+- Servidores de Forge y NeoForge (1.17 en adelante): arrancan con `unix_args.txt`
+  (`FORGE_SERVER_ARGS`). El de Windows, `win_args.txt`, separa las rutas con «;» y en Mac Java no
+  encontraba la clase principal. Probado: un servidor de Forge 1.20.1 llega a «Done» y uno de NeoForge
+  1.21.1 arranca hasta que pide el EULA.
 - Carpeta de datos en `~/Library/Application Support/Parabellum` cuando corre desde una `.app`.
 - Conexión directa entre PCs (P2P, `p2p.rs` con iroh): es código compartido y iroh funciona en Mac,
   así que no hay nada que hacer en `macos/` (falta probarla).
@@ -117,7 +125,8 @@ Ordenadas por prioridad:
 3. ~~**Jugar 1.19 en adelante**~~ — hecho (ver «Qué ya está hecho»).
 4. ~~**Avisos**~~ — hecho, con UserNotifications en vez del plugin (ver «Qué ya está hecho»).
 5. ~~**Imágenes raras en el chat**~~ — hecho, con `sips` y el crate `png` (ver «Qué ya está hecho»).
-6. **Forge y NeoForge**: sus instaladores son Java (funcionan igual); probar un modpack 1.20.1.
+6. ~~**Forge y NeoForge**~~ — hecho: el juego y los modpacks funcionan igual; los servidores
+   necesitaban `unix_args.txt` (ver «Qué ya está hecho»).
 7. **Procesos atados a Parabellum** — `tie_to_launcher`: en Windows, el servidor y el agente de
    playit.gg se cierran solos si Parabellum se cae. En Mac: guardar los PID y cerrarlos al arrancar si
    quedaron vivos, o un vigilante con kqueue.

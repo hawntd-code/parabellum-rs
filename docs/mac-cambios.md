@@ -46,7 +46,9 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Pendientes para Windows
 
-Nada por ahora.
+- [ ] **PR #7 (Forge y NeoForge): compilar y correr las pruebas en Windows.** El contrato tiene una
+  constante nueva, `plataforma::FORGE_SERVER_ARGS`, que en Windows vale `"win_args.txt"` (lo mismo que
+  antes), y `servidor::forge_launch` (compartido) la usa. Crear un servidor de Forge y ver que enciende.
 
 - [x] **PR #6: compilar y correr las pruebas en Windows** (2026-10-12): pasan las 83 pruebas (incluida
   `encuentra_el_java_de_mojang`), compila, y Vanilla 1.21.1 llega al menú en 66 s con el Java que encuentra
