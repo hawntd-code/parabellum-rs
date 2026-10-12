@@ -50,6 +50,19 @@ pub fn java_binary(home: &Path, _windowed: bool) -> PathBuf {
     }
 }
 
+/// Lo descargado llega sin permiso de ejecución: se le pone (como chmod +x). Solo a archivos normales:
+/// si en su lugar hubiera un enlace, no se toca a lo que apunta.
+pub fn make_executable(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let Ok(metadata) = std::fs::symlink_metadata(path) else { return };
+    if !metadata.file_type().is_file() {
+        return;
+    }
+    let mut permissions = metadata.permissions();
+    permissions.set_mode(permissions.mode() | 0o111);
+    let _ = std::fs::set_permissions(path, permissions);
+}
+
 // ================= Procesos
 
 pub trait CommandExt {
