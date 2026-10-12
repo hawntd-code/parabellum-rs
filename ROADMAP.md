@@ -74,7 +74,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] **Modpacks de Forge y NeoForge**: .mrpack, de Modrinth y de Drive; los paquetes para Drive incluyen lo que Forge genera y no nombra en su JSON (juego parcheado, fmlcore, mapeos)
 - [x] **Importar de otro launcher**: CurseForge, Prism y MultiMC se encuentran solos (o se elige la carpeta); se copian mods, mundos y opciones y el loader lo instala Parabellum
 - [x] *Prueba:* Better MC BMC4 (Forge 47.4.20, 444 mods) llega al menú; desde cero, Forge 1.20.1, NeoForge 1.21.1, Forge 26.1.2 y NeoForge 26.1.2 se instalan y llegan al menú; Better MC [BMC6] (NeoForge, 228 mods) importado de CurseForge llega al menú; paquetes de Forge y NeoForge exportados e instalados en una carpeta vacía sin internet llegan al menú
-- [ ] (Opcional) CurseForge: requiere solicitar una clave de API y respetar qué autores permiten descargas externas
+- [ ] (Opcional, en pausa) CurseForge: requiere solicitar una clave de API y respetar qué autores permiten descargas externas. Juan lo dejó de lado el 2026-10-12: los archivos de CurseForge que piden los modpacks se siguen bajando como hasta ahora
 - [x] Probar Forge 1.12.2: abre (0.16.0, con Java 8 los argumentos van en la línea de comandos)
 
 ### Modpacks completos e íntegros (0.10.1)
@@ -276,7 +276,7 @@ Instalando Better MC [FORGE] - BMC4 desde Modpacks en el PC de Juan (Iris Xe) sa
 - [x] **Doctor rediseñado**: arriba la imagen de la instancia, su estado («1 problema impide abrirlo», «Todo en orden», «Ya abre») y loader, versión y mods revisados; los hallazgos en una lista con su marca (impide abrir, posible causa, para saber), los archivos como fichas y la línea del registro aparte; el arreglo recomendado resaltado sin competir con el botón principal; «Probar y arreglar solo» muestra los pasos mientras trabaja. Los cierres con error también se explican aquí (ya no hay una ventana aparte)
 - [x] *Prueba:* servidor vanilla de prueba con un cliente falso de Minecraft 1.21.1: al renombrar al anfitrión con el servidor encendido se recarga la lista blanca, el nombre viejo queda fuera (`not_whitelisted`), el nuevo entra y es administrador, su inventario pasó al nombre nuevo, y con la comprobación activa quien usa el nombre sin jugar desde Parabellum sale a los 10 s. NeoForge 1.21.1: JEI, Sophisticated Backpacks y Create se instalan con sus versiones de NeoForge; un JEI de Forge metido a mano lo detecta el doctor y «Probar y arreglar solo» lo quita y llega al menú
 - [ ] Inicio de sesión con **Microsoft** (premium): falta que Microsoft apruebe a Parabellum para usar la API de Minecraft (registro de la app en Azure + solicitud; hoy casi no aprueban launchers independientes)
-- [ ] **CurseForge** junto a Modrinth (buscar e instalar de los dos): falta la clave de API, que se solicita a CurseForge con un formulario
+- [ ] **CurseForge** junto a Modrinth (buscar e instalar de los dos): en pausa por decisión de Juan (2026-10-12); haría falta la clave de API, que se solicita a CurseForge con un formulario
 
 ### 0.14.0: amigos, Inicio y Servidores (pedido de Juan)
 - [x] **Servidores › De tus amigos**: los servidores a los que te invitaron, los mundos abiertos de tus amigos, los servidores públicos donde están jugando (Unirse abre el mismo modpack y entra) y los que hostean sin haberte invitado (la presencia dice qué hostea; la dirección solo la ven los invitados). Se actualiza solo
