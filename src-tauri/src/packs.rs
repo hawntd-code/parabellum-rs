@@ -159,6 +159,8 @@ pub fn selected_files(instance: &Instance, include: &[String]) -> Vec<PathBuf> {
             _ => {}
         }
     }
+    // El mod de Parabellum (está en mods mientras se juega) no se exporta.
+    files.retain(|f| !f.file_name().is_some_and(|n| crate::juego::is_ours(&n.to_string_lossy())));
     files
 }
 
