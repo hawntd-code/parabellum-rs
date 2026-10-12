@@ -97,19 +97,14 @@ pub struct PlayitView {
     pub message: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase", default)]
 struct Saved {
     address: Option<String>,
     account: Option<String>,
-    /// Compartir por playit.gg el mundo que se abra en LAN.
-    share_world: bool,
-}
-
-impl Default for Saved {
-    fn default() -> Self {
-        Saved { address: None, account: None, share_world: true }
-    }
+    /// Compartir también por playit.gg el mundo que se abra en LAN (a los amigos les llega por P2P y
+    /// red local sin esto). Desactivado salvo que se elija en Ajustes.
+    world_playit: bool,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -175,7 +170,9 @@ pub struct WorldView {
 #[serde(rename_all = "camelCase")]
 pub struct HostView {
     playit: PlayitView,
-    share_world: bool,
+    world_playit: bool,
+    /// La conexión directa (P2P) está lista (tiene dirección para publicar).
+    p2p: bool,
     world: Option<WorldView>,
     servers: Vec<ServerView>,
     total_mb: u64,
@@ -231,12 +228,13 @@ pub fn view(app: &AppHandle) -> HostView {
     drop(outcomes);
     drop(running);
     let (total, free) = proceso::system_memory();
-    let share_world = hosting.saved.lock().unwrap().share_world;
+    let world_playit = hosting.saved.lock().unwrap().world_playit;
     let world = hosting.world.lock().unwrap().clone();
     let view = HostView {
         world: world.map(|w| WorldView { port: w.port, instance: w.instance, address: public("world") }),
         playit,
-        share_world,
+        world_playit,
+        p2p: cuenta::p2p_address(app).is_some(),
         servers,
         total_mb: total / 1_048_576,
         free_mb: free / 1_048_576,
@@ -545,12 +543,18 @@ pub async fn recheck_playit(app: &AppHandle) -> Result<(), String> {
     result
 }
 
-/// Lo que se debe compartir ahora: el primer servidor listo o, si se eligió, el mundo abierto en LAN.
+/// Lo que se debe compartir por playit.gg ahora: el primer servidor listo que lo tenga activado o, si se
+/// eligió en Ajustes, el mundo abierto en LAN.
 fn desired_target(app: &AppHandle) -> Option<(Target, u16)> {
     let hosting = hosting(app);
-    let running = hosting.running.lock().unwrap();
-    let server = running.iter().filter(|(_, r)| r.phase == Phase::Ready).min_by_key(|(_, r)| r.started).map(|(id, r)| (Target::Server(id.clone()), r.port));
-    let share = hosting.saved.lock().unwrap().share_world;
+    let mut ready: Vec<(String, u16, i64)> = {
+        let running = hosting.running.lock().unwrap();
+        running.iter().filter(|(_, r)| r.phase == Phase::Ready).map(|(id, r)| (id.clone(), r.port, r.started)).collect()
+    };
+    ready.sort_by_key(|(_, _, started)| *started);
+    let paths = app.state::<AppState>().paths.clone();
+    let server = ready.into_iter().find(|(id, _, _)| servidor::find(&paths, id).is_some_and(|c| c.connections.playit)).map(|(id, port, _)| (Target::Server(id), port));
+    let share = hosting.saved.lock().unwrap().world_playit;
     server.or_else(|| hosting.world.lock().unwrap().as_ref().filter(|_| share).map(|w| (Target::World, w.port)))
 }
 
@@ -573,15 +577,16 @@ pub async fn disconnect_playit(app: &AppHandle) {
         tunnel.target = None;
     }
     playit::clear_secret(&paths);
-    *hosting(app).saved.lock().unwrap() = Saved { share_world: hosting(app).saved.lock().unwrap().share_world, ..Default::default() };
+    let world_playit = hosting(app).saved.lock().unwrap().world_playit;
+    *hosting(app).saved.lock().unwrap() = Saved { world_playit, ..Default::default() };
     save_saved(app);
     update_playit(app, |p| {
         *p = PlayitView { agent_installed: p.agent_installed, state: "off".into(), ..Default::default() };
     });
 }
 
-pub fn set_share_world(app: &AppHandle, share: bool) {
-    hosting(app).saved.lock().unwrap().share_world = share;
+pub fn set_world_playit(app: &AppHandle, share: bool) {
+    hosting(app).saved.lock().unwrap().world_playit = share;
     save_saved(app);
     emit(app);
     let app = app.clone();
@@ -729,23 +734,22 @@ pub async fn retarget(app: &AppHandle) {
 
 // ================= Firebase: lo que ven los invitados
 
-/// Direcciones para entrar sin el túnel: (misma red, IPv6 por internet). Que funcionen depende de la
-/// red de cada quien (y del firewall: ver plataforma::open_firewall); al unirse se prueban todas.
-fn direct_routes(port: u16) -> (Option<String>, Option<String>) {
-    let lan = crate::actividad::local_address().filter(|ip| ip.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| ip.is_private())).map(|ip| format!("{ip}:{port}"));
-    let ipv6 = public_ipv6().map(|ip| format!("[{ip}]:{port}"));
-    (lan, ipv6)
+/// Dirección en la misma red (para quien esté en tu casa o en la escuela). Que funcione depende del
+/// firewall (ver plataforma::open_firewall); al unirse se prueba junto con las demás rutas.
+fn lan_route(port: u16) -> Option<String> {
+    crate::actividad::local_address().filter(|ip| ip.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| ip.is_private())).map(|ip| format!("{ip}:{port}"))
 }
 
-/// La dirección IPv6 pública de este PC (la que usa para salir a internet), si tiene.
-fn public_ipv6() -> Option<std::net::Ipv6Addr> {
-    let socket = std::net::UdpSocket::bind("[::]:0").ok()?;
-    socket.connect("[2001:4860:4860::8888]:53").ok()?;
-    match socket.local_addr().ok()?.ip() {
-        // Global: empieza con 2 o 3 (no fe80:: de enlace local ni fc/fd de red privada).
-        std::net::IpAddr::V6(ip) if (ip.segments()[0] & 0xe000) == 0x2000 => Some(ip),
-        _ => None,
-    }
+/// Cambia por dónde pueden entrar los amigos a un servidor (P2P, red local, playit.gg).
+pub async fn set_connections(app: &AppHandle, id: &str, connections: servidor::Connections) -> Result<(), String> {
+    let paths = app.state::<AppState>().paths.clone();
+    let mut config = servidor::find(&paths, id).ok_or(missing())?;
+    config.connections = connections;
+    servidor::save(&config)?;
+    emit(app);
+    retarget(app).await;
+    publish(app, id).await;
+    Ok(())
 }
 
 /// Conexión directa (P2P): a qué puerto de este PC entra un amigo. Solo amigos de Parabellum (su
@@ -757,7 +761,7 @@ pub fn p2p_port(app: &AppHandle, remote: &str, target: &str) -> Option<u16> {
         return hosting(app).world.lock().unwrap().as_ref().map(|w| w.port);
     }
     let paths = app.state::<AppState>().paths.clone();
-    let config = servidor::list(&paths).into_iter().find(|c| c.key == target)?;
+    let config = servidor::list(&paths).into_iter().find(|c| c.key == target && c.connections.p2p)?;
     hosting(app).running.lock().unwrap().get(&config.id).map(|r| r.port)
 }
 
@@ -790,8 +794,8 @@ async fn publish(app: &AppHandle, id: &str) {
         "max": max,
         "guests": guests.iter().map(|g| (g.clone(), json!(true))).collect::<serde_json::Map<_, _>>(),
     });
-    // Rutas directas (más rápidas que el túnel): misma red y, si el PC tiene, IPv6 por internet.
-    let (lan, ipv6) = if online { direct_routes(config.port) } else { (None, None) };
+    // Las rutas que el anfitrión dejó activas (Conexiones): misma red y P2P, además de playit.gg.
+    let lan = if online && config.connections.lan { lan_route(config.port) } else { None };
     let tps = {
         let running = hosting(app).running.lock().unwrap();
         running.get(id).and_then(|r| r.tps)
@@ -800,8 +804,9 @@ async fn publish(app: &AppHandle, id: &str) {
         data["tps"] = json!((tps * 10.0).round() / 10.0);
     }
     // Conexión directa entre las dos PCs (P2P): la más rápida desde otra casa.
-    let p2p = if online { cuenta::p2p_address(app) } else { None };
-    for (field, value) in [("address", address), ("lan", lan), ("ipv6", ipv6), ("p2p", p2p), ("modpack", config.modpack.clone()), ("project", config.modpack_project.clone())] {
+    let p2p = if online && config.connections.p2p { cuenta::p2p_address(app) } else { None };
+    let address = address.filter(|_| config.connections.playit);
+    for (field, value) in [("address", address), ("lan", lan), ("p2p", p2p), ("modpack", config.modpack.clone()), ("project", config.modpack_project.clone())] {
         if let Some(value) = value.filter(|v| !v.is_empty()) {
             data[field] = json!(value.chars().take(200).collect::<String>());
         }
@@ -866,7 +871,8 @@ pub fn console(app: &AppHandle, id: &str) -> Vec<String> {
         let paths = app.state::<AppState>().paths.clone();
         servidor::find(&paths, id)
             .and_then(|c| std::fs::read(c.as_instance().state_dir().join("salida-java.log")).ok())
-            .map(|bytes| String::from_utf8_lossy(&bytes).lines().rev().take(CONSOLE_LINES).collect::<Vec<_>>().into_iter().rev().map(String::from).collect())
+            // Las respuestas del TPS que guardaron las versiones anteriores, fuera.
+            .map(|bytes| String::from_utf8_lossy(&bytes).lines().rev().filter(|l| servidor::gametime(l).is_none()).take(CONSOLE_LINES).collect::<Vec<_>>().into_iter().rev().map(String::from).collect())
             .unwrap_or_default()
     })
 }
@@ -1008,10 +1014,7 @@ fn on_line(app: &AppHandle, id: &str, line: String) {
     {
         let mut running = hosting(app).running.lock().unwrap();
         let Some(run) = running.get_mut(id) else { return };
-        if let Some(output) = run.output.as_mut() {
-            let _ = writeln!(output, "{line}");
-        }
-        // La respuesta a la pregunta del TPS no se muestra (se pregunta cada pocos segundos).
+        // La respuesta a la pregunta del TPS no se muestra ni se guarda (se pregunta cada pocos segundos).
         if let Some(ticks) = servidor::gametime(&line).filter(|_| run.tps_query.is_some_and(|at| at.elapsed() < Duration::from_secs(4))) {
             run.tps_query = None;
             let now = std::time::Instant::now();
@@ -1024,6 +1027,9 @@ fn on_line(app: &AppHandle, id: &str, line: String) {
             }
             run.gametime = Some((now, ticks));
             return;
+        }
+        if let Some(output) = run.output.as_mut() {
+            let _ = writeln!(output, "{line}");
         }
         if line.contains("Can't keep up!") {
             run.behind_at = Some(std::time::Instant::now());

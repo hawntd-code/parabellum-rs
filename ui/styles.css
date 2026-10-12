@@ -1378,3 +1378,39 @@ body.no-shortcuts .needs-shortcuts { display: none !important; }
 .opt.ram .opt-main { flex-wrap: wrap; }
 .opt.ram .opt-ram { flex: 1 1 100%; }
 .opt.ram .ram-plan { margin: 0; }
+
+/* ---------- Página del servidor: telemetría y conexiones (0.22) ---------- */
+.host-bar .host-subtitle { margin: 0; flex: 1; }
+#page-host .host-bar { margin-bottom: 12px; }
+#page-host .host-world-status, #page-host .host-e4mc { margin: 0 0 12px; }
+.host-world-status .btn svg { width: 14px; height: 14px; }
+.hosted-stats { grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.3fr); margin-bottom: 12px; }
+.hosted-stats .stat .meter { margin: 6px 0 4px; }
+.conn-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.conn-card { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--panel); border: 1px solid var(--border); min-width: 0; transition: border-color .2s; }
+.conn-card.on { border-color: color-mix(in srgb, var(--accent) 38%, var(--border)); }
+.conn-head { display: flex; align-items: center; gap: 10px; }
+.conn-head b { font-size: 14.5px; }
+.conn-icon { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex: none; background: var(--card); color: var(--muted); transition: background .2s, color .2s; }
+.conn-icon svg { width: 16px; height: 16px; }
+.conn-card.on .conn-icon { background: var(--accent-soft); color: var(--accent-fg); }
+.conn-head .circle-btn { margin-right: -2px; }
+.conn-body { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 30px; font-size: 13px; }
+.conn-body .muted, .conn-body .tunnel-error { flex: 1 1 160px; min-width: 0; font-size: 13px; }
+.conn-address { flex: 1 1 auto; min-width: 0; font: 600 13px "Cascadia Mono", Consolas, monospace; color: var(--accent-fg); overflow-wrap: anywhere; user-select: text; }
+@media (max-width: 1100px) {
+  .hosted-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .conn-grid { grid-template-columns: 1fr; }
+}
+#page-host .host-playit { margin: 0 0 12px; }
+
+/* ---------- Editar y borrar mensajes (0.22) ---------- */
+.bubble-tools { display: flex; align-items: center; gap: 2px; margin: 0 6px; opacity: 0; transition: opacity .12s; }
+.bubble-row.mine:hover .bubble-tools, .bubble-row.mine:focus-within .bubble-tools { opacity: 1; }
+.bubble-tool { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; color: var(--muted); background: transparent; border: 0; cursor: pointer; }
+.bubble-tool:hover { background: var(--card-hover); color: var(--text); }
+.bubble-tool svg { width: 14px; height: 14px; }
+.bubble.editing { min-width: min(420px, 75%); }
+.bubble-edit { width: 100%; resize: none; overflow: hidden; background: rgba(0, 0, 0, .18); border: 1px solid rgba(255, 255, 255, .35); border-radius: 8px; color: inherit; font: inherit; line-height: 1.4; padding: 6px 8px; outline: none; }
+.bubble-edit-hint { font-size: 11px; opacity: .75; }
+.bubble-edited { font-style: italic; }

@@ -135,12 +135,31 @@ pub struct ServerConfig {
     /// Reglas del juego elegidas que todavía no están en el mundo (id de la opción → valor): se
     /// aplican con /gamerule en cuanto el servidor está listo (ver opciones.rs).
     pub pending_rules: std::collections::BTreeMap<String, String>,
+    /// Por dónde pueden entrar los amigos (ver hosting.rs).
+    pub connections: Connections,
     #[serde(skip)]
     pub folder: PathBuf,
 }
 
 fn verify_by_default() -> bool {
     true
+}
+
+/// Métodos de conexión de un servidor. P2P y red local, activados: no muestran ninguna dirección y
+/// Parabellum elige solo al unirse. playit.gg, desactivado: da una dirección pública para quien no
+/// usa Parabellum.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Connections {
+    pub p2p: bool,
+    pub lan: bool,
+    pub playit: bool,
+}
+
+impl Default for Connections {
+    fn default() -> Self {
+        Connections { p2p: true, lan: true, playit: false }
+    }
 }
 
 impl ServerConfig {

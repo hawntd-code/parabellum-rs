@@ -1,7 +1,8 @@
 //! Chat con amigos y grupos sobre la misma Realtime Database (reglas en firebase-reglas.json):
 //!   chats/{chat}/members/{uid} = true       (directo: "d_{uid}_{uid}" ordenados; grupo: "g_…")
 //!   chats/{chat}/meta = { kind, name, created, lastText, lastName, lastUid, lastAt }
-//!   messages/{chat}/{mensaje} = { from, name, text | image, w, h, at }
+//!   messages/{chat}/{mensaje} = { from, name, text | image, w, h, at, edited }
+//!                                            (quien lo mandó puede editar el texto o borrarlo)
 //!   images/{chat}/{mensaje} = "data:image/jpeg;base64,…"   (aparte: la lista de mensajes es ligera)
 //!   userChats/{uid}/{chat} = true            (las conversaciones de cada jugador)
 //!   reads/{uid}/{chat} = hora de la última lectura
@@ -53,6 +54,8 @@ pub struct Message {
     pub height: Option<u32>,
     pub at: i64,
     pub mine: bool,
+    /// Se cambió el texto después de mandarlo.
+    pub edited: bool,
 }
 
 #[derive(Default)]
@@ -365,6 +368,7 @@ impl Chat {
                             height: m["h"].as_u64().map(|v| v as u32),
                             at: m["at"].as_i64().unwrap_or(0),
                             mine: m["from"].as_str() == Some(self.uid.as_str()),
+                            edited: m["edited"].is_number(),
                         })
                         .collect()
                 })
@@ -461,6 +465,94 @@ impl Chat {
         let _ = std::fs::create_dir_all(&self.images);
         let _ = std::fs::write(&cached, &data);
         Ok(data)
+    }
+
+    // ================= Editar y borrar (solo los mensajes propios)
+
+    /// Un mensaje propio de la conversación abierta (los que se ven en la ventana).
+    fn own_message(&self, id: &str, message: &str) -> Result<Value, String> {
+        let inner = self.inner.lock().unwrap();
+        let open = inner.open.as_ref().is_some_and(|(open, _)| open == id);
+        let data = inner.messages.get(message).filter(|_| open).filter(|m| m.is_object()).cloned().ok_or(t!("Ese mensaje ya no está.", "That message is no longer there."))?;
+        if data["from"].as_str() != Some(self.uid.as_str()) {
+            return Err(t!("Solo puedes cambiar tus propios mensajes.", "You can only change your own messages."));
+        }
+        Ok(data)
+    }
+
+    /// Si es el último de la conversación, la vista previa de la lista cambia también (sin mover la
+    /// hora: no cuenta como mensaje nuevo para nadie).
+    fn is_last(&self, message: &str) -> Option<Value> {
+        let inner = self.inner.lock().unwrap();
+        let messages = inner.messages.as_object()?;
+        let mut sorted: Vec<(&String, &Value)> = messages.iter().filter(|(_, m)| m.is_object()).collect();
+        sorted.sort_by(|a, b| a.1["at"].as_i64().unwrap_or(0).cmp(&b.1["at"].as_i64().unwrap_or(0)).then_with(|| a.0.cmp(b.0)));
+        let last = sorted.last()?;
+        (last.0 == message).then(|| sorted.iter().rev().nth(1).map(|(_, m)| (*m).clone()).unwrap_or(Value::Null))
+    }
+
+    fn preview_of(message: &Value) -> String {
+        if message["image"].as_bool() == Some(true) {
+            "📷 Imagen".into()
+        } else {
+            let text = message["text"].as_str().unwrap_or_default();
+            match crate::compartir::decode(text) {
+                Some(recipe) => preview(&format!("📦 {}", recipe.name)),
+                None => preview(text),
+            }
+        }
+    }
+
+    /// Cambia el texto de un mensaje propio (las imágenes y las instancias compartidas no se editan).
+    pub async fn edit(&self, id: &str, message: &str, text: &str) -> Result<(), String> {
+        let (id, message) = (safe(id)?, safe(message)?);
+        let text = text.trim();
+        if text.is_empty() {
+            return Err(t!("El mensaje no puede quedar vacío (para quitarlo, bórralo).", "The message cannot be empty (to remove it, delete it)."));
+        }
+        if text.chars().count() > MAX_TEXT {
+            return Err(t!("El mensaje es muy largo (máximo {MAX_TEXT} letras).", "The message is too long (maximum {MAX_TEXT} characters)."));
+        }
+        let mut data = self.own_message(id, message)?;
+        let old = data["text"].as_str().ok_or(t!("Las imágenes no se editan.", "Images cannot be edited."))?;
+        if crate::compartir::decode(old).is_some() {
+            return Err(t!("Las instancias compartidas no se editan.", "Shared instances cannot be edited."));
+        }
+        if old == text {
+            return Ok(());
+        }
+        data["text"] = json!(text);
+        data["edited"] = firebase::server_timestamp();
+        let mut update = Map::new();
+        update.insert(format!("messages/{id}/{message}"), data);
+        if self.is_last(message).is_some() {
+            update.insert(format!("chats/{id}/meta/lastText"), json!(preview(text)));
+        }
+        self.db.patch("", &Value::Object(update)).await.map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    /// Borra un mensaje propio para todos (con su imagen, si tenía).
+    pub async fn delete(&self, id: &str, message: &str) -> Result<(), String> {
+        let (id, message) = (safe(id)?, safe(message)?);
+        let data = self.own_message(id, message)?;
+        let mut update = Map::new();
+        update.insert(format!("messages/{id}/{message}"), Value::Null);
+        if data["image"].as_bool() == Some(true) {
+            update.insert(format!("images/{id}/{message}"), Value::Null);
+        }
+        if let Some(previous) = self.is_last(message) {
+            let (text, name, uid) = if previous.is_object() {
+                (Self::preview_of(&previous), previous["name"].as_str().unwrap_or_default().to_string(), previous["from"].as_str().unwrap_or_default().to_string())
+            } else {
+                (String::new(), String::new(), String::new())
+            };
+            update.insert(format!("chats/{id}/meta/lastText"), json!(text));
+            update.insert(format!("chats/{id}/meta/lastName"), json!(name));
+            update.insert(format!("chats/{id}/meta/lastUid"), json!(uid));
+        }
+        self.db.patch("", &Value::Object(update)).await.map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_file(self.images.join(format!("{id}-{message}.txt")));
+        Ok(())
     }
 
     // ================= Conversaciones y grupos

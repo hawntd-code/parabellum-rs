@@ -246,8 +246,8 @@ fn color_code(color: &str) -> Option<char> {
 // ================= Elegir la ruta más rápida
 
 /// Una forma de llegar al mismo servidor: "local" (este PC), "lan" (misma red), "p2p" (conexión
-/// directa entre las dos PCs; la dirección es "p2p:id|relevo#destino"), "ipv6" (directo por internet)
-/// o "playit" (el túnel de playit.gg).
+/// directa entre las dos PCs; la dirección es "p2p:id|relevo#destino") o "playit" (el túnel de
+/// playit.gg).
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Route {

@@ -125,8 +125,8 @@
       "$chat": {
         ".read": "auth != null && root.child('chats').child($chat).child('members').child(auth.uid).val() === true",
         "$msg": {
-          ".write": "auth != null && !data.exists() && root.child('chats').child($chat).child('members').child(auth.uid).val() === true",
-          ".validate": "newData.child('from').val() === auth.uid && newData.child('at').isNumber() && (newData.child('text').isString() || newData.child('image').val() === true)",
+          ".write": "auth != null && root.child('chats').child($chat).child('members').child(auth.uid).val() === true && (!data.exists() || data.child('from').val() === auth.uid)",
+          ".validate": "newData.child('from').val() === auth.uid && newData.child('at').isNumber() && (newData.child('text').isString() || newData.child('image').val() === true) && (!data.exists() || (data.child('text').isString() && newData.child('text').isString() && newData.child('at').val() === data.child('at').val() && newData.child('edited').isNumber()))",
           "from": {
             ".validate": "newData.isString()"
           },
@@ -148,6 +148,9 @@
           "at": {
             ".validate": "newData.isNumber()"
           },
+          "edited": {
+            ".validate": "newData.isNumber()"
+          },
           "$other": {
             ".validate": false
           }
@@ -158,7 +161,7 @@
       "$chat": {
         ".read": "auth != null && root.child('chats').child($chat).child('members').child(auth.uid).val() === true",
         "$msg": {
-          ".write": "auth != null && !data.exists() && root.child('chats').child($chat).child('members').child(auth.uid).val() === true",
+          ".write": "auth != null && root.child('chats').child($chat).child('members').child(auth.uid).val() === true && (!data.exists() || (!newData.exists() && root.child('messages').child($chat).child($msg).child('from').val() === auth.uid))",
           ".validate": "newData.isString() && newData.val().length <= 450000 && newData.val().beginsWith('data:image/')"
         }
       }

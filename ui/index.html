@@ -235,15 +235,13 @@
         <!-- HOSTEAR PARTIDA -->
         <section class="page hidden" id="page-host">
           <div class="page-inner">
-            <div class="card-panel host-tunnel" id="host-tunnel"></div>
             <div class="host-bar">
-              <label class="toggle host-share" title="En el juego: Pausa › Abrir en LAN. Parabellum lo comparte solo y tus amigos pulsan «Unirse». No usa memoria extra."><input type="checkbox" id="host-share-world"><span></span>Abrir mi mundo a amigos</label>
-              <span class="faint host-share-hint">Pausa › Abrir en LAN</span>
+              <h2 class="host-subtitle">Tus servidores</h2>
               <button class="btn primary" id="host-new-server"><svg><use href="#i-plus"/></svg>Crear servidor</button>
             </div>
+            <div class="host-playit hidden" id="host-playit"></div>
             <div class="host-world-status hidden" id="host-world-status"></div>
             <div class="host-e4mc hidden" id="host-e4mc"></div>
-            <h2 class="host-subtitle">Tus servidores</h2>
             <div class="server-list" id="host-servers"></div>
             <p class="no-results hidden" id="host-empty">Todavía no tienes servidores. Crea uno con «Crear un servidor».</p>
           </div>
@@ -259,14 +257,12 @@
                 <div class="meta" id="hosted-meta"></div>
               </div>
               <button class="btn primary big" id="hosted-start"><svg><use href="#i-play"/></svg><span>Encender</span></button>
-              <button class="btn primary big hidden" id="hosted-play" title="Entrar directo desde este PC (sin pasar por playit.gg)"><svg><use href="#i-play"/></svg><span>Jugar</span></button>
+              <button class="btn primary big hidden" id="hosted-play" title="Entrar desde este PC"><svg><use href="#i-play"/></svg><span>Jugar</span></button>
               <button class="btn danger big hidden" id="hosted-stop"><svg><use href="#i-stop"/></svg><span>Apagar</span></button>
               <button class="circle-btn big" id="hosted-more" title="Más opciones"><svg><use href="#i-more"/></svg></button>
             </div>
-            <div class="hosted-top">
-              <div class="hosted-address" id="hosted-address"></div>
-              <div class="hosted-stats" id="hosted-stats"></div>
-            </div>
+            <div class="hosted-stats" id="hosted-stats"></div>
+            <div class="conn-grid" id="hosted-connections"></div>
             <div id="hosted-problem"></div>
             <div class="tabs" id="hosted-tabs">
               <button class="tab active" data-hosted-tab="console"><svg><use href="#i-terminal"/></svg>Consola</button>
@@ -285,7 +281,7 @@
               <div class="host-columns">
                 <div class="card-panel">
                   <h3>Invitados</h3>
-                  <p class="muted small-text">Solo ellos (y tú) pueden entrar: el servidor tiene lista blanca. Tus amigos de Parabellum ven la dirección actual en su página Servidores.</p>
+                  <p class="muted small-text">Solo ellos (y tú) pueden entrar. Tus amigos de Parabellum lo ven en Servidores y pulsan «Unirse».</p>
                   <div class="guest-list" id="hosted-guests"></div>
                   <div class="row guest-add">
                     <input id="hosted-guest-name" placeholder="Nombre de Minecraft de alguien sin Parabellum" maxlength="16" autocomplete="off" spellcheck="false">
@@ -651,6 +647,10 @@
             <div class="setting">
               <div class="grow"><b>Sonido de mensajes</b><span>Suena cuando te escriben, aunque estés jugando o Parabellum esté junto al reloj.</span></div>
               <label class="toggle big"><input type="checkbox" id="message-sound"><span></span></label>
+            </div>
+            <div class="setting">
+              <div class="grow"><b>Mi mundo abierto por playit.gg</b><span>Una dirección pública para tu mundo abierto en LAN, para quien no usa Parabellum. Tus amigos de Parabellum entran sin esto.</span></div>
+              <label class="toggle big"><input type="checkbox" id="world-playit"><span></span></label>
             </div>
             <div class="setting needs-shortcuts">
               <div class="grow"><b>Acceso directo en el Escritorio</b><span id="shortcut-desktop-hint">Para abrir Parabellum sin buscar su carpeta. Sigue siendo portable: no se instala nada.</span></div>

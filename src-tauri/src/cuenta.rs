@@ -515,6 +515,16 @@ pub async fn enviar_imagen(app: AppHandle, chat: String, datos: String, ancho: u
 }
 
 #[tauri::command]
+pub async fn editar_mensaje(app: AppHandle, chat: String, mensaje: String, texto: String) -> Result<(), String> {
+    chat_ready(&app)?.edit(&chat, &mensaje, &texto).await
+}
+
+#[tauri::command]
+pub async fn borrar_mensaje(app: AppHandle, chat: String, mensaje: String) -> Result<(), String> {
+    chat_ready(&app)?.delete(&chat, &mensaje).await
+}
+
+#[tauri::command]
 pub async fn imagen_chat(app: AppHandle, chat: String, mensaje: String) -> Result<String, String> {
     chat_ready(&app)?.image(&chat, &mensaje).await
 }

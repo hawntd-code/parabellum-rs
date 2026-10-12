@@ -79,18 +79,21 @@ se crean desde Ajustes › Comportamiento.
 
 Juega con amigos desde tu PC sin abrir puertos ni pagar: un **servidor** hecho a partir de una
 instancia (vanilla, Fabric, Quilt, Forge o NeoForge, sin los mods que solo son de cliente) o **tu
-mundo abierto en LAN**. La dirección pública la da [playit.gg](https://playit.gg) (gratis): se vincula
-una vez desde la página «Hostear partida» y su agente oficial se baja solo. La dirección no cambia;
-los amigos invitados la ven en su página Servidores aunque Parabellum se reinicie. El EULA de
-Minecraft se acepta marcándolo al crear o encender el servidor.
+mundo abierto en LAN**. Lo creas, lo enciendes e invitas a tus amigos: a ellos les aparece en
+Servidores y pulsan **Unirse**. Nadie ve ni copia una IP. El EULA de Minecraft se acepta marcándolo al
+crear o encender el servidor.
 
-Al conectar playit.gg, Parabellum abre su página para aceptar y, en cuanto se acepta, conecta el
-agente y crea la dirección (si la cuenta es nueva, playit.gg pide verificar el correo antes de darla).
+Cada servidor tiene sus **Conexiones**:
 
-Entre amigos de Parabellum, **Unirse** prueba además la **conexión directa entre las dos PCs (P2P)**,
-sin pasar por el túnel: QUIC con perforación de NAT (biblioteca [iroh](https://iroh.computer)) y, si las
-redes no lo permiten, un relevo. Solo pasan los amigos y solo a lo que está encendido; playit.gg queda
-para quien no tiene Parabellum y de respaldo.
+- **P2P** (activada): conexión directa entre las dos PCs, sin túnel. QUIC con perforación de NAT
+  (biblioteca [iroh](https://iroh.computer)) y, si las redes no lo permiten, un relevo. Solo pasan tus
+  amigos y solo a lo que está encendido.
+- **Red local** (activada): para quien está en tu casa o en tu escuela.
+- **[playit.gg](https://playit.gg)** (desactivada): una dirección pública fija para quien no usa
+  Parabellum. Se vincula una vez (Parabellum abre su página para aceptar y baja su agente oficial).
+
+Al unirse, Parabellum prueba las rutas activas a la vez y usa la más rápida. El mundo abierto en LAN se
+comparte solo con tus amigos; por playit.gg, si se elige en Ajustes.
 
 Los invitados se siguen por su cuenta de Google: si alguien se cambia el nombre, la lista blanca, el
 permiso de administrador y sus cosas en el mundo pasan al nombre nuevo. Y quien entra con el nombre de

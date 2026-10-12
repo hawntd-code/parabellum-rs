@@ -1,8 +1,8 @@
 "use strict";
 
 // ======================================================================
-// Hostear partida: servidores propios (consola, invitados, ajustes) y el túnel de playit.gg, que da
-// una dirección pública fija al servidor encendido o al mundo abierto en LAN.
+// Hostear partida: servidores propios (consola, invitados, ajustes, conexiones). Tus amigos entran
+// con «Unirse» por P2P o red local; playit.gg (opcional, por servidor) da una dirección pública fija.
 // Usa lo que define app.js: state, invoke, listen, t, $, $$, icon, toast, navigate, openModal…
 // ======================================================================
 
@@ -58,13 +58,13 @@ function ramPlan(totalMb, serverGb, gameGb) {
   const advice =
     level === "bad"
       ? t(
-          `No alcanza: con ${Math.round(total)} GB, jugar y tener el servidor a la vez va a ir lento o cerrarse. Baja la memoria del servidor o, si juegas tú también, usa «Abrir mi mundo a amigos» (un solo Java en vez de dos).`,
-          `Not enough: with ${Math.round(total)} GB, playing and running the server at the same time will be slow or crash. Lower the server memory or, if you play too, use «Open my world to friends» (one Java instead of two).`,
+          `No alcanza: con ${Math.round(total)} GB, jugar y tener el servidor a la vez va a ir lento o cerrarse. Baja la memoria del servidor o, si juegas tú también, abre tu mundo en LAN (Pausa › Abrir en LAN: un solo Java en vez de dos).`,
+          `Not enough: with ${Math.round(total)} GB, playing and running the server at the same time will be slow or crash. Lower the server memory or, if you play too, open your world to LAN (Pause › Open to LAN: one Java instead of two).`,
         )
       : level === "tight"
         ? t(
-            `Justo: alcanza si cierras el navegador y otros programas mientras juegas. En un PC de ${Math.round(total)} GB, para modpacks grandes conviene «Abrir mi mundo a amigos».`,
-            `Tight: it works if you close the browser and other programs while playing. On a ${Math.round(total)} GB PC, «Open my world to friends» is better for big modpacks.`,
+            `Justo: alcanza si cierras el navegador y otros programas mientras juegas. En un PC de ${Math.round(total)} GB, para modpacks grandes conviene abrir tu mundo en LAN.`,
+            `Tight: it works if you close the browser and other programs while playing. On a ${Math.round(total)} GB PC, opening your world to LAN is better for big modpacks.`,
           )
         : t("Bien: alcanza para jugar en este PC mientras el servidor está encendido.", "Good: there is enough to play on this PC while the server is on.");
   return `<div class="ram-bar" role="img" aria-label="${escapeHtml(advice)}">
@@ -86,6 +86,7 @@ function applyHostView(view) {
   host.view = view;
   const running = view.servers.some((s) => s.state !== "off");
   $("#host-dot").classList.toggle("hidden", !running && !(view.playit.state === "on"));
+  $("#world-playit").checked = !!view.worldPlayit;
   if (state.page === "host") renderHost();
   if (state.page === "hosted") renderHosted();
   if (state.page === "home") renderHomeServerTile();
@@ -119,14 +120,14 @@ async function loadTunnelMods() {
 function renderTunnelMods() {
   const box = $("#host-e4mc");
   const list = host.tunnelMods ?? [];
-  const show = list.length && host.view?.shareWorld;
+  const show = list.length > 0;
   box.classList.toggle("hidden", !show);
   if (!show) return;
   box.innerHTML = `${icon("alert")}<div class="grow">
       <b>${t("Tus instancias todavía tienen e4mc", "Your instances still have e4mc")}</b>
       <p>${t(
-        "Con playit.gg ya no hace falta: e4mc abre otra dirección distinta y, en Minecraft 26.2, cierra tu mundo en cuanto entra un amigo. Desactívalo (puedes volver a activarlo en Contenido).",
-        "With playit.gg it is no longer needed: e4mc opens a different address and, on Minecraft 26.2, closes your world as soon as a friend joins. Disable it (you can turn it back on in Content).",
+        "Parabellum ya comparte tu mundo con tus amigos: e4mc sobra y, en Minecraft 26.2, cierra tu mundo en cuanto entra un amigo. Desactívalo (puedes volver a activarlo en Contenido).",
+        "Parabellum already shares your world with your friends: e4mc is not needed and, on Minecraft 26.2, closes your world as soon as a friend joins. Disable it (you can turn it back on in Content).",
       )}</p>
       <div class="e4mc-list">${list
         .map((m, i) => `<div class="e4mc-row"><span><b>${escapeHtml(m.name)}</b> · ${escapeHtml(m.file)}</span><button class="btn small" data-disable-tunnel="${i}">${t("Desactivar", "Disable")}</button></div>`)
@@ -150,94 +151,95 @@ async function disableTunnelMod(index) {
   loadTunnelMods();
 }
 
-// ---------- Tarjeta de playit.gg (compacta) ----------
-function tunnelRow({ iconHtml, kind = "", title, address = null, detail = "", error = false, actions = "" }) {
-  const pill = address
-    ? `<span class="host-address-line"><span class="address-text">${escapeHtml(address)}</span><button class="circle-btn small" data-copy-address="${escapeHtml(address)}" title="${t("Copiar dirección", "Copy address")}">${icon("copy")}</button></span>`
-    : "";
-  return `<div class="tunnel-row">
-      <div class="tunnel-icon ${kind}">${iconHtml}</div>
-      <div class="grow">
-        <div class="tunnel-title"><h3>${escapeHtml(title)}</h3>${pill}</div>
-        ${detail ? `<p class="${error ? "tunnel-error" : "muted"}">${escapeHtml(detail)}</p>` : ""}
+// ---------- Conexiones de un servidor: P2P, red local y playit.gg ----------
+function connectionsOf(s) {
+  return { p2p: true, lan: true, playit: false, ...(s.connections ?? {}) };
+}
+
+function connCard(key, iconName, title, on, body, extra = "") {
+  return `<div class="conn-card ${on ? "on" : ""}">
+      <div class="conn-head">
+        <span class="conn-icon">${icon(iconName)}</span>
+        <b class="grow">${escapeHtml(title)}</b>
+        ${extra}
+        <label class="toggle" title="${on ? t("Desactivar", "Turn off") : t("Activar", "Turn on")}"><input type="checkbox" data-connection="${key}" ${on ? "checked" : ""}><span></span></label>
       </div>
-      ${actions}
+      <div class="conn-body">${body}</div>
     </div>`;
 }
 
-function renderTunnel() {
+const connNote = (text, css = "muted") => `<span class="${css}">${escapeHtml(text)}</span>`;
+
+function connectionsHtml(s) {
+  const c = connectionsOf(s);
+  const off = connNote(t("Desactivada", "Off"));
+  const p2p = !c.p2p
+    ? off
+    : !state.social?.signedIn
+      ? connNote(t("Inicia sesión con Google para que tus amigos entren directo.", "Sign in with Google so your friends can join directly."))
+      : !host.view.p2p
+        ? connNote(t("Esperando internet…", "Waiting for the internet…"))
+        : connNote(t("Tus amigos de Parabellum entran directo con «Unirse».", "Your Parabellum friends join directly with «Join»."));
+  const lan = !c.lan
+    ? off
+    : host.firewall === false
+      ? `${connNote(t("Windows no deja entrar a quien está en tu red.", "Windows does not let people on your network in."))}<button class="btn small primary" id="hosted-firewall">${t("Permitir", "Allow")}</button>`
+      : s.lan
+        ? `<span class="conn-address">${escapeHtml(s.lan)}</span>`
+        : connNote(t("Para quien está en tu casa o en tu escuela.", "For whoever is at your home or school."));
+  const menu = host.view.playit.connected ? `<button class="circle-btn small" id="tunnel-menu" title="${t("Más", "More")}">${icon("more")}</button>` : "";
+  return (
+    connCard("p2p", "broadcast", "P2P", c.p2p, p2p) +
+    connCard("lan", "server", t("Red local", "Local network"), c.lan, lan) +
+    connCard("playit", "globe", "playit.gg", c.playit, c.playit ? playitBody(s) : connNote(t("Dirección pública para quien no usa Parabellum.", "Public address for people without Parabellum.")), menu)
+  );
+}
+
+/** playit.gg activado en este servidor: vincular, abrir la dirección o lo que falte. */
+function playitBody(s) {
   const p = host.view.playit;
-  const box = $("#host-tunnel");
   const spinner = `<div class="spinner small"></div>`;
-  const account =
-    p.account === "guest"
-      ? t(" Cuenta de invitado: crea tu cuenta gratis en playit.gg para no perder la dirección.", " Guest account: create your free account on playit.gg so you do not lose the address.")
-      : p.account === "email-not-verified"
-        ? t(" playit.gg pide verificar tu correo.", " playit.gg asks you to verify your email.")
-        : "";
   if (p.claimUrl) {
     // Los pasos los dice playit.gg: si alguien inicia sesión y su página lo deja en otra parte, aquí se
     // ve que falta volver a la página de vincular.
     const steps = {
-      visit: [
-        t("Abre la página de playit.gg", "Open the playit.gg page"),
-        t("Si te pidió iniciar sesión o crear tu cuenta, al terminar pulsa «Abrir de nuevo» para volver a la página de vincular.", "If it asked you to sign in or create your account, when you finish press «Open again» to go back to the link page."),
-      ],
-      accept: [t("Acepta en playit.gg", "Accept on playit.gg"), t("Pulsa «Add agent» (o «Accept») en la página que se abrió. Parabellum termina solo.", "Press «Add agent» (or «Accept») on the page that opened. Parabellum finishes on its own.")],
-      finishing: [t("Terminando de conectar…", "Finishing the connection…"), p.message ?? t("Creando tu dirección.", "Creating your address.")],
+      visit: t("Abre la página de playit.gg. Si te pidió iniciar sesión, al terminar pulsa «Abrir de nuevo».", "Open the playit.gg page. If it asked you to sign in, when you finish press «Open again»."),
+      accept: t("Pulsa «Add agent» (o «Accept») en la página de playit.gg.", "Press «Add agent» (or «Accept») on the playit.gg page."),
+      finishing: p.message ?? t("Terminando de conectar…", "Finishing the connection…"),
     };
-    const [title, detail] = steps[p.claimStep] ?? steps.visit;
-    box.innerHTML = tunnelRow({
-      iconHtml: spinner,
-      kind: "busy",
-      title,
-      detail,
-      actions:
-        p.claimStep === "finishing"
-          ? ""
-          : `<button class="btn small" id="tunnel-reopen">${icon("external")}${t("Abrir de nuevo", "Open again")}</button><button class="btn small" id="tunnel-cancel">${t("Cancelar", "Cancel")}</button>`,
-    });
-    return;
+    const buttons =
+      p.claimStep === "finishing"
+        ? ""
+        : `<button class="btn small" id="tunnel-reopen">${icon("external")}${t("Abrir de nuevo", "Open again")}</button><button class="btn small" id="tunnel-cancel">${t("Cancelar", "Cancel")}</button>`;
+    return `${spinner}${connNote(steps[p.claimStep] ?? steps.visit)}${buttons}`;
   }
   if (!p.connected) {
+    if (host.connecting) return `${spinner}${connNote(p.message ?? t("Preparando playit.gg…", "Preparing playit.gg…"))}`;
     const failed = p.state === "error" && p.message;
-    box.innerHTML = tunnelRow({
-      iconHtml: icon("globe"),
-      title: t("playit.gg sin conectar", "playit.gg not connected"),
-      detail: failed ? p.message : host.connecting ? (p.message ?? t("Preparando playit.gg…", "Preparing playit.gg…")) : t("Conéctalo una vez para que tus amigos entren desde cualquier red.", "Connect it once so your friends can join from any network."),
-      error: !!failed,
-      actions: `<button class="btn primary small" id="tunnel-connect" ${host.connecting ? "disabled" : ""}>${icon("globe")}${t("Conectar playit.gg", "Connect playit.gg")}</button>`,
-    });
+    return `${failed ? connNote(p.message, "tunnel-error") : connNote(t("Vincúlalo una vez con tu cuenta de playit.gg.", "Link it once with your playit.gg account."))}<button class="btn small primary" id="tunnel-connect">${t("Vincular", "Link")}</button>`;
+  }
+  if (s.address) return `<span class="conn-address">${escapeHtml(s.address)}</span><button class="circle-btn small" data-copy-address="${escapeHtml(s.address)}" title="${t("Copiar dirección", "Copy address")}">${icon("copy")}</button>`;
+  const on = s.state !== "off";
+  if (s.state === "ready" && p.target && p.target !== s.id && p.state === "on") return connNote(t("La está usando otro servidor encendido.", "Another running server is using it."));
+  if (on && p.state === "verify") return `${connNote(t("Verifica tu correo en playit.gg.", "Verify your email on playit.gg."), "tunnel-error")}<button class="btn small primary" data-playit-retry>${t("Ya lo verifiqué", "I verified it")}</button>`;
+  if (on && p.state === "error") return `${connNote(p.message ?? "", "tunnel-error")}<button class="btn small" data-playit-retry>${t("Reintentar", "Retry")}</button>`;
+  if (on) return `${spinner}${connNote(t("Se abre cuando el servidor termine de encender…", "It opens when the server finishes starting…"))}`;
+  return connNote(p.address ? t(`Se abre al encender: ${p.address}`, `Opens when started: ${p.address}`) : t("Se crea al encender.", "Created when you start it."));
+}
+
+async function setConnection(key, on) {
+  const s = hostServer(host.id);
+  if (!s) return;
+  const conexiones = { ...connectionsOf(s), [key]: on };
+  try {
+    applyHostView(await invoke("conexiones_servidor", { id: s.id, conexiones }));
+  } catch (error) {
+    toast(String(error), "error");
+    renderHosted();
     return;
   }
-  const target = p.target === "world" ? t("tu mundo", "your world") : hostServer(p.target)?.name ?? "";
-  const menu = `<button class="circle-btn" id="tunnel-menu" title="${t("Más", "More")}">${icon("more")}</button>`;
-  const states = {
-    on: { kind: "on", iconHtml: icon("globe"), title: t(`playit.gg activo · ${target}`, `playit.gg active · ${target}`), detail: account.trim() },
-    starting: { kind: "starting", iconHtml: spinner, title: t("Abriendo tu dirección…", "Opening your address…"), detail: p.message ?? "" },
-    error: { kind: "error", iconHtml: icon("alert"), title: t("La dirección no se pudo abrir", "The address could not be opened"), detail: p.message ?? "", error: true },
-    verify: {
-      kind: "error",
-      iconHtml: icon("alert"),
-      title: t("Verifica tu correo en playit.gg", "Verify your email on playit.gg"),
-      detail: t("playit.gg te mandó un correo al crear tu cuenta. Ábrelo, confirma tu cuenta y pulsa «Ya lo verifiqué»: no hace falta volver a conectar.", "playit.gg sent you an email when you created your account. Open it, confirm your account and press «I verified it»: no need to connect again."),
-    },
-    off: {
-      kind: "",
-      iconHtml: icon("globe"),
-      title: t("playit.gg conectado", "playit.gg connected"),
-      detail: (p.address ? t("Se activa al encender un servidor o abrir tu mundo.", "It turns on when you start a server or open your world.") : t("Tendrás una dirección fija al encender un servidor o abrir tu mundo.", "You will get a fixed address when you start a server or open your world.")) + account,
-    },
-  };
-  const current = states[p.state] ?? states.off;
-  box.innerHTML = tunnelRow({
-    ...current,
-    address: p.address,
-    actions:
-      (p.state === "error" ? `<button class="btn small" id="tunnel-retry">${icon("refresh")}${t("Reintentar", "Retry")}</button>` : "") +
-      (p.state === "verify" ? `<button class="btn small primary" id="tunnel-retry">${icon("check")}${t("Ya lo verifiqué", "I verified it")}</button>` : "") +
-      menu,
-  });
+  // playit.gg sin vincular: se vincula al activarlo.
+  if (key === "playit" && on && !host.view.playit.connected && !host.view.playit.claimUrl) connectPlayit();
 }
 
 /** «Reintentar» o «Ya lo verifiqué»: vuelve a dejar lista la dirección con la cuenta ya vinculada. */
@@ -266,7 +268,8 @@ async function connectPlayit() {
     if (!ok) return;
   }
   host.connecting = true;
-  renderTunnel();
+  if (state.page === "hosted") renderHosted();
+  if (state.page === "host") renderHost();
   try {
     applyHostView(await invoke("conectar_playit"));
     const address = host.view.playit.address;
@@ -305,20 +308,22 @@ function tunnelMenu(anchor) {
 function renderHost() {
   const view = host.view;
   if (!view) return;
-  renderTunnel();
-  $("#host-share-world").checked = view.shareWorld;
   renderTunnelMods();
+  // playit.gg solo aparece aquí mientras se vincula o si el mundo se comparte por él y algo falta.
+  const p = view.playit;
+  const showPlayit = !!p.claimUrl || host.connecting || (view.worldPlayit && (!p.connected || p.state === "error" || p.state === "verify"));
+  $("#host-playit").classList.toggle("hidden", !showPlayit);
+  if (showPlayit) {
+    const world = { id: "world", state: view.world ? "ready" : "off", address: view.world?.address };
+    $("#host-playit").innerHTML = `<div class="conn-card on"><div class="conn-head"><span class="conn-icon">${icon("globe")}</span><b class="grow">playit.gg</b></div><div class="conn-body">${playitBody(world)}</div></div>`;
+  }
+  // Tu mundo abierto en LAN: tus amigos entran con «Unirse» (P2P o red local), sin nada que activar.
   const world = view.world;
   const status = $("#host-world-status");
-  if (world && view.shareWorld) {
-    const instance = state.instances.find((i) => i.id === world.instance);
-    status.innerHTML = world.address
-      ? `${icon("check-circle")}<span class="grow">${t(`Tu mundo de ${escapeHtml(instance?.name ?? world.instance)} está abierto en <b>${escapeHtml(world.address)}</b>. Tus amigos pulsan «Unirse» en tu nombre.`, `Your ${escapeHtml(instance?.name ?? world.instance)} world is open at <b>${escapeHtml(world.address)}</b>. Your friends press «Join» on your name.`)}</span><button class="btn small" data-copy-address="${escapeHtml(world.address)}">${icon("copy")}${t("Copiar", "Copy")}</button>`
-      : `${icon("info")}<span class="grow">${
-          view.playit.connected
-            ? t(`Tu mundo está abierto en LAN (puerto ${world.port}). Abriendo la dirección pública…`, `Your world is open to LAN (port ${world.port}). Opening the public address…`)
-            : t(`Tu mundo está abierto en LAN (puerto ${world.port}). Conecta playit.gg para que entren tus amigos de otras redes.`, `Your world is open to LAN (port ${world.port}). Connect playit.gg so friends from other networks can join.`)
-        }</span>`;
+  if (world) {
+    const name = escapeHtml(state.instances.find((i) => i.id === world.instance)?.name ?? world.instance);
+    const address = world.address ? `<button class="btn small" data-copy-address="${escapeHtml(world.address)}" title="playit.gg">${icon("copy")}${escapeHtml(world.address)}</button>` : "";
+    status.innerHTML = `${icon("check-circle")}<span class="grow">${t(`Tu mundo de ${name} está abierto: tus amigos pulsan «Unirse» en tu nombre.`, `Your ${name} world is open: your friends press «Join» on your name.`)}</span>${address}`;
     status.classList.remove("hidden");
   } else {
     status.classList.add("hidden");
@@ -328,7 +333,7 @@ function renderHost() {
     .map((s, index) => {
       const sub = [s.instanceName, `${s.loader} ${s.minecraft}`];
       if (s.state === "ready") sub.push(t(`${s.players.length} de ${s.maxPlayers} jugadores`, `${s.players.length} of ${s.maxPlayers} players`));
-      if (s.address) sub.push(s.address);
+
       const action =
         s.state === "off"
           ? `<button class="btn primary" data-host-start="${escapeHtml(s.id)}">${icon("play")}${t("Encender", "Start")}</button>`
@@ -487,14 +492,6 @@ async function createHosted() {
 }
 
 // ---------- Página de un servidor ----------
-/** Conexión directa: con el firewall abierto, quien está en tu red (o tiene IPv6) entra sin playit.gg. */
-function directCardHtml() {
-  if (host.firewall == null) return "";
-  return host.firewall
-    ? `<div class="direct-card ok">${icon("check-circle")}<div class="grow"><b>${t("Conexión directa lista", "Direct connection ready")}</b><span>${t("Quien esté en tu red o tenga IPv6 entra sin pasar por playit.gg (menos lag). Parabellum elige la ruta más rápida al unirse.", "Whoever is on your network or has IPv6 joins without going through playit.gg (less lag). Parabellum picks the fastest route when joining.")}</span></div></div>`
-    : `<div class="direct-card">${icon("broadcast")}<div class="grow"><b>${t("Conexión directa", "Direct connection")}</b><span>${t("Deja que quien esté en tu red (o tenga IPv6) entre sin playit.gg: menos lag. Windows pide permiso de administrador una vez.", "Let whoever is on your network (or has IPv6) join without playit.gg: less lag. Windows asks for administrator permission once.")}</span></div><button class="btn small primary" id="hosted-firewall">${t("Permitir", "Allow")}</button></div>`;
-}
-
 async function refreshFirewall() {
   if (!tauri) return;
   host.firewall = await invoke("firewall_servidores").catch(() => null);
@@ -505,7 +502,7 @@ async function openFirewall() {
   try {
     await invoke("abrir_firewall_servidores");
     host.firewall = true;
-    toast(t("Listo: tus amigos en tu red o con IPv6 ya pueden entrar directo.", "Done: your friends on your network or with IPv6 can now join directly."));
+    toast(t("Listo: quien esté en tu red ya puede entrar.", "Done: people on your network can now join."));
   } catch (error) {
     toast(String(error), "error");
   }
@@ -556,28 +553,8 @@ function renderHosted() {
   $("#hosted-command").disabled = !on;
   $("#hosted-send").disabled = !on;
 
-  // Dirección
-  const p = host.view.playit;
-  let address;
-  if (s.address) {
-    address = `<div class="address-card on">${icon("globe")}<div class="grow"><span class="faint">${t("Dirección para tus amigos", "Address for your friends")}</span><b>${escapeHtml(s.address)}</b></div><button class="btn small" data-copy-address="${escapeHtml(s.address)}">${icon("copy")}${t("Copiar", "Copy")}</button></div>`;
-  } else if (s.state === "ready" && p.target && p.target !== s.id && p.state === "on") {
-    address = `<div class="address-card">${icon("info")}<div class="grow"><span class="faint">${t("Dirección pública", "Public address")}</span><b>${t("La está usando otro servidor encendido", "Another running server is using it")}</b></div></div>`;
-  } else if (!p.connected) {
-    address = `<div class="address-card">${icon("globe")}<div class="grow"><span class="faint">${t("Dirección pública", "Public address")}</span><b>${t("Conecta playit.gg en «Hostear partida»", "Connect playit.gg in «Host a game»")}</b></div><button class="btn small" id="hosted-go-connect">${t("Ir", "Go")}</button></div>`;
-  } else if (on && (p.state === "error" || p.state === "verify")) {
-    // Se arregla desde aquí: sin apagar el servidor ni volver a conectar playit.gg.
-    const verify = p.state === "verify";
-    address = `<div class="address-card">${icon("alert")}<div class="grow"><span class="faint">${t("Dirección pública", "Public address")}</span><b>${escapeHtml(
-      verify ? t("Verifica tu correo en playit.gg para tener dirección", "Verify your email on playit.gg to get an address") : (p.message ?? ""),
-    )}</b></div><button class="btn small ${verify ? "primary" : ""}" data-playit-retry>${verify ? t("Ya lo verifiqué", "I verified it") : t("Reintentar", "Retry")}</button></div>`;
-  } else if (on) {
-    address = `<div class="address-card"><div class="spinner small"></div><div class="grow"><span class="faint">${t("Dirección pública", "Public address")}</span><b>${escapeHtml(t("Se abre cuando el servidor termine de encender…", "It opens when the server finishes starting…"))}</b></div></div>`;
-  } else {
-    address = `<div class="address-card">${icon("globe")}<div class="grow"><span class="faint">${t("Dirección pública", "Public address")}</span><b>${escapeHtml(p.address ?? t("Se crea al encender", "Created when you start it"))}</b></div></div>`;
-  }
-  if (s.lan) address += `<div class="address-card small">${icon("server")}<div class="grow"><span class="faint">${t("Misma red (LAN)", "Same network (LAN)")}</span><b>${escapeHtml(s.lan)}</b></div><button class="circle-btn small" data-copy-address="${escapeHtml(s.lan)}" title="${t("Copiar", "Copy")}">${icon("copy")}</button></div>`;
-  $("#hosted-address").innerHTML = address + directCardHtml();
+  // Conexiones: por dónde entran tus amigos.
+  setHtml($("#hosted-connections"), connectionsHtml(s));
 
   // Cifras
   const memoryLimit = s.ramGb * 1024;
@@ -592,9 +569,9 @@ function renderHosted() {
     <div class="stat" title="${escapeHtml(tpsTitle)}"><span class="faint">TPS${s.behind ? ` · ${t("se atrasó", "fell behind")}` : ""}</span><b class="${paused ? "" : tpsClass}">${escapeHtml(tpsText)}</b></div>
     <div class="stat"><span class="faint">${t("Encendido hace", "On for")}</span><b>${s.started && on ? uptime(s.started) : "—"}</b></div>
     <div class="stat"><span class="faint">${t("Procesador", "CPU")}</span><b>${on ? `${Math.round(s.cpu)}%` : "—"}</b></div>
-    <div class="stat wide"><span class="faint">${t("Memoria del servidor", "Server memory")}</span><b>${on ? `${gb(s.memoryMb)} / ${s.ramGb} GB` : `${s.ramGb} GB`}</b>
+    <div class="stat"><span class="faint">${t("Memoria", "Memory")}</span><b>${on ? `${gb(s.memoryMb)} / ${s.ramGb} GB` : `${s.ramGb} GB`}</b>
       <div class="meter"><div style="width:${memoryShare.toFixed(0)}%"></div></div>
-      <span class="faint">${t(`Libre en el PC: ${gb(host.view.freeMb)} de ${gb(host.view.totalMb)} GB`, `Free on the PC: ${gb(host.view.freeMb)} of ${gb(host.view.totalMb)} GB`)}</span></div>`;
+      <span class="faint">${t(`Libre en el PC: ${gb(host.view.freeMb)} GB`, `Free on the PC: ${gb(host.view.freeMb)} GB`)}</span></div>`;
 
   // Problemas de la última vez (con sus arreglos)
   const problem = $("#hosted-problem");
@@ -689,7 +666,7 @@ function renderGuests() {
       .map((g, i) =>
         guestRow(
           g.name,
-          g.uid ? t("Amigo de Parabellum: ve la dirección solo", "Parabellum friend: sees the address on their own") : t("Pásale la dirección tú", "Send them the address yourself"),
+          g.uid ? t("Amigo de Parabellum: entra con «Unirse»", "Parabellum friend: joins with «Join»") : t("Sin Parabellum: necesita playit.gg (Conexiones)", "Without Parabellum: needs playit.gg (Connections)"),
           `<button class="circle-btn small" data-guest-remove="${i}" title="${t("Quitar invitación", "Remove invitation")}">${icon("close")}</button>`,
         ),
       )
@@ -1381,12 +1358,12 @@ function activityInfo(item) {
       hostLine: t(`Servidor de ${sv.hostName}`, `${sv.hostName}'s server`),
       pill: pill(sv.online, sv.online ? t("Encendido", "On") : t("Apagado", "Off")),
       players,
-      canJoin: sv.online && !!(sv.address || sv.p2p || sv.lan || sv.ipv6),
+      canJoin: sv.online && !!(sv.address || sv.p2p || sv.lan),
       address: sv.address,
       pack: sv.pack,
       version: [sv.loader, sv.minecraft].filter(Boolean).join(" "),
       status,
-      note: sv.online ? (sv.address || sv.p2p ? null : t("Sin dirección pública todavía", "No public address yet")) : t("Te invitó: se puede entrar cuando lo encienda", "Invited you: you can join when they start it"),
+      note: sv.online ? (sv.address || sv.p2p || sv.lan ? null : t("Sin conexión todavía", "No connection yet")) : t("Te invitó: se puede entrar cuando lo encienda", "Invited you: you can join when they start it"),
     };
   }
   const f = item.friend;
@@ -1637,7 +1614,6 @@ function routesFor(item) {
     return [
       sv.lan && { address: sv.lan, kind: "lan" },
       sv.p2p && { address: `p2p:${sv.p2p}#${sv.key}`, kind: "p2p" },
-      sv.ipv6 && { address: sv.ipv6, kind: "ipv6" },
       sv.address && { address: sv.address, kind: "playit" },
     ].filter(Boolean);
   }
@@ -1726,7 +1702,18 @@ function friendServerMenu(anchor, item) {
 function wireHostEvents() {
   wireServerDetail();
   $("#host-new-server").onclick = () => openHostCreate();
-  $("#host-share-world").onchange = (event) => invoke("compartir_mundo", { activo: event.target.checked });
+  $("#world-playit").onchange = async (event) => {
+    const on = event.target.checked;
+    await invoke("compartir_mundo", { activo: on }).catch((e) => toast(String(e), "error"));
+    if (on && host.view && !host.view.playit.connected) {
+      navigate("host");
+      connectPlayit();
+    }
+  };
+  $("#hosted-connections").addEventListener("change", (event) => {
+    const toggle = event.target.closest("[data-connection]");
+    if (toggle) setConnection(toggle.dataset.connection, toggle.checked);
+  });
   document.addEventListener("click", (event) => {
     const disable = event.target.closest("[data-disable-tunnel]");
     if (disable) return void disableTunnelMod(Number(disable.dataset.disableTunnel));
@@ -1745,7 +1732,6 @@ function wireHostEvents() {
     if (event.target.closest("#tunnel-retry, [data-playit-retry]")) return void retryPlayit();
     const menu = event.target.closest("#tunnel-menu");
     if (menu) return void tunnelMenu(menu);
-    if (event.target.closest("#hosted-go-connect")) return void navigate("host");
     if (event.target.closest("#hosted-firewall")) return void openFirewall();
     const start = event.target.closest("[data-host-start]");
     if (start) return void startHosted(start.dataset.hostStart);

@@ -125,9 +125,8 @@ pub struct FriendServer {
     pub minecraft: Option<String>,
     pub loader: Option<String>,
     pub address: Option<String>,
-    /// Rutas directas: misma red e IPv6 (al unirse se prueban junto con la de playit.gg).
+    /// Misma red (al unirse se prueba junto con P2P y playit.gg).
     pub lan: Option<String>,
-    pub ipv6: Option<String>,
     /// Dirección P2P del anfitrión (conexión directa entre las dos PCs).
     pub p2p: Option<String>,
     pub online: bool,
@@ -354,7 +353,6 @@ impl Social {
                     loader: text("loader"),
                     address: text("address"),
                     lan: text("lan"),
-                    ipv6: text("ipv6"),
                     p2p: text("p2p"),
                     online: fresh && data["online"].as_bool() == Some(true),
                     players: data["players"].as_u64().unwrap_or(0),

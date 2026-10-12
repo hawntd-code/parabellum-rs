@@ -113,6 +113,15 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### 0.23.0: conexiones por servidor y editar/borrar mensajes (pedido de Juan)
+- [x] **Conexiones** en cada servidor (tarjetas con interruptor): **P2P** y **red local** activadas (no muestran ninguna IP; «Unirse» elige), **playit.gg** desactivado (dirección pública para quien no usa Parabellum; al activarlo se vincula si hace falta). `servidor::Connections` en parabellum-servidor.json; solo se publica y se deja pasar lo activado
+- [x] Hostear sin la tarjeta de playit.gg ni el interruptor «Abrir mi mundo»: el mundo abierto en LAN se comparte solo con los amigos (P2P y red local); por playit.gg, en Ajustes › Comportamiento (desactivado). playit.gg solo aparece arriba mientras se vincula o si algo falta
+- [x] Página del servidor: telemetría en una fila (jugadores, TPS, encendido, procesador, memoria) y las tres conexiones debajo; el permiso del firewall vive en «Red local». Sin la ruta IPv6 aparte (el P2P ya usa IPv6)
+- [x] La consola del servidor apagado ya no se llena de «The time is…» (las preguntas del TPS no se guardan)
+- [x] **Mensajes:** editar los propios de texto (lápiz, clic derecho o flecha arriba con la caja vacía; «editado») y borrarlos para todos (también fotos e instancias compartidas, que no se editan). Reglas de Firebase: solo el autor cambia o borra; al editar no cambia la hora
+- [ ] Juan: publicar `firebase-reglas.json` (mensajes e imágenes) en la consola de Firebase
+- [ ] Siguiente: interfaz dentro del juego (mod ligero tipo Essential: chats, capturas, invitaciones y amigos)
+
 ### 0.22.0: conexión directa entre PCs, P2P (pedido de Juan: «como Essential, pero no premium»)
 - [x] **P2P dentro de Parabellum** (`p2p.rs`, biblioteca iroh): QUIC sobre UDP con perforación de NAT, también por IPv6; si las redes no lo permiten, pasa por un relevo de n0 (gratis, para uso personal, con límite de velocidad). Funciona en todas las versiones y loaders sin mods: quien se une abre un puerto en 127.0.0.1 y Minecraft entra ahí; cada conexión del juego es un flujo QUIC hacia el anfitrión
 - [x] Cada Parabellum publica su dirección P2P en la presencia (identidad nueva en cada arranque; sin cambiar las reglas de Firebase). El anfitrión solo deja pasar a sus amigos y solo a lo que está encendido (un servidor o el mundo abierto); la lista blanca sigue decidiendo quién juega

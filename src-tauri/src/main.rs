@@ -1847,9 +1847,17 @@ async fn desconectar_playit(app: AppHandle) -> Result<hosting::HostView, String>
     Ok(hosting::view(&app))
 }
 
+/// Compartir también por playit.gg el mundo abierto en LAN (Ajustes).
 #[tauri::command]
 fn compartir_mundo(app: AppHandle, activo: bool) {
-    hosting::set_share_world(&app, activo);
+    hosting::set_world_playit(&app, activo);
+}
+
+/// Por dónde pueden entrar los amigos a un servidor: P2P, red local y playit.gg.
+#[tauri::command]
+async fn conexiones_servidor(app: AppHandle, id: String, conexiones: servidor::Connections) -> Result<hosting::HostView, String> {
+    hosting::set_connections(&app, &id, conexiones).await?;
+    Ok(hosting::view(&app))
 }
 
 /// Instancias con e4mc (u otro mod de túnel) activado: con playit.gg sobran.
@@ -2975,6 +2983,7 @@ fn main() {
             convertir_imagen,
             estado_servidores,
             mejor_ruta,
+            conexiones_servidor,
             firewall_servidores,
             abrir_firewall_servidores,
             favorito_chat,
@@ -3030,6 +3039,8 @@ fn main() {
             cuenta::enviar_mensaje,
             cuenta::enviar_imagen,
             cuenta::imagen_chat,
+            cuenta::editar_mensaje,
+            cuenta::borrar_mensaje,
             cuenta::chat_con_amigo,
             cuenta::crear_grupo,
             cuenta::agregar_al_grupo,

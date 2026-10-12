@@ -1568,8 +1568,6 @@ function renderFriends() {
   } else if (s.warning) {
     notice = s.warning;
     kind = "warn";
-  } else if (open && !me.address) {
-    notice = t("Tu mundo está abierto en la red local. Para que entren amigos de otras redes, conecta playit.gg en «Hostear partida».", "Your world is open on the local network. For friends on other networks to join, connect playit.gg in «Host a game».");
   } else if (open && me.world === "single") {
     notice = t("Tus amigos ya pueden pulsar Unirse. Deben abrir el juego desde Parabellum.", "Your friends can now press Join. They must open the game from Parabellum.");
   } else if (s.notice) {
@@ -2054,22 +2052,103 @@ function renderMessages() {
     const continued = previous && previous.from === m.from && m.at - previous.at < 5 * 60000 && new Date(previous.at).toDateString() === day;
     const author = group && !m.mine && !continued ? `<span class="bubble-author">${escapeHtml(m.name)}</span>` : "";
     const share = !m.image && parseShare(m.text);
-    const body = m.image
+    const editing = state.chatEditing?.id === m.id;
+    const body = editing
+      ? `<textarea class="bubble-edit" rows="1" maxlength="2000" aria-label="${t("Editar mensaje", "Edit message")}">${escapeHtml(state.chatEditing.draft)}</textarea><span class="bubble-edit-hint">${t("Enter: guardar · Esc: cancelar", "Enter: save · Esc: cancel")}</span>`
+      : m.image
       ? `<button class="bubble-image" data-image="${escapeHtml(m.id)}" style="aspect-ratio:${m.width || 4}/${m.height || 3}">${
           state.chatImages?.[m.id] ? `<img src="${state.chatImages[m.id]}" alt="">` : `<span class="spinner tiny"></span>`
         }</button>`
       : share
         ? shareCardHtml(share, m)
         : `<span class="bubble-text">${escapeHtml(m.text ?? "")}</span>`;
-    html += `<div class="bubble-row ${m.mine ? "mine" : ""} ${continued ? "continued" : ""}">
-      <div class="bubble">${author}${body}<span class="bubble-time">${escapeHtml(new Date(m.at).toLocaleTimeString("es-MX", { hour: "numeric", minute: "2-digit" }))}</span></div>
+    // Tus mensajes: editar (solo texto) y borrar al pasar el ratón; clic derecho para el menú.
+    const tools =
+      m.mine && !editing
+        ? `<div class="bubble-tools">${canEditMessage(m) ? `<button class="bubble-tool" data-msg-edit="${escapeHtml(m.id)}" title="${t("Editar", "Edit")}">${icon("pencil")}</button>` : ""}<button class="bubble-tool" data-msg-delete="${escapeHtml(m.id)}" title="${t("Borrar", "Delete")}">${icon("trash")}</button></div>`
+        : "";
+    const time = new Date(m.at).toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
+    html += `<div class="bubble-row ${m.mine ? "mine" : ""} ${continued ? "continued" : ""}" data-msg="${escapeHtml(m.id)}">
+      ${tools}<div class="bubble ${editing ? "editing" : ""}">${author}${body}<span class="bubble-time">${m.edited ? `<span class="bubble-edited">${t("editado", "edited")}</span> · ` : ""}${escapeHtml(time)}</span></div>
     </div>`;
     previous = m;
   }
   box.innerHTML = html;
   if (nearBottom || !state.chatScrolled) box.scrollTop = box.scrollHeight;
   state.chatScrolled = true;
+  // Si llega algo mientras editas, sigues escribiendo donde ibas.
+  const area = box.querySelector(".bubble-edit");
+  if (area) {
+    autoGrow(area);
+    area.focus();
+    const at = state.chatEditing.caret ?? area.value.length;
+    area.setSelectionRange(at, at);
+  }
   loadChatImages();
+}
+
+// ---------- Editar y borrar tus mensajes ----------
+/** El texto se edita; las imágenes y las instancias compartidas solo se borran. */
+function canEditMessage(m) {
+  return m.mine && !m.image && !parseShare(m.text);
+}
+
+function startEditMessage(id) {
+  const m = state.chatMessages?.find((x) => x.id === id);
+  if (!m || !canEditMessage(m)) return;
+  state.chatEditing = { id, draft: m.text ?? "" };
+  renderMessages();
+}
+
+function cancelEditMessage() {
+  state.chatEditing = null;
+  renderMessages();
+  $("#chat-input").focus();
+}
+
+async function saveEditMessage() {
+  const editing = state.chatEditing;
+  if (!editing) return;
+  const text = editing.draft.trim();
+  // Vacío: es borrarlo (y eso se confirma).
+  if (!text) return void deleteMessage(editing.id);
+  const m = state.chatMessages?.find((x) => x.id === editing.id);
+  state.chatEditing = null;
+  renderMessages();
+  $("#chat-input").focus();
+  if (!m || m.text === text) return;
+  try {
+    await invoke("editar_mensaje", { chat: state.chatOpen, mensaje: editing.id, texto: text });
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+async function deleteMessage(id) {
+  const m = state.chatMessages?.find((x) => x.id === id);
+  if (!m?.mine) return;
+  const ok = await confirmAction({
+    title: t("Borrar mensaje", "Delete message"),
+    text: t("Se borra para todos en esta conversación.", "It is deleted for everyone in this conversation."),
+    ok: t("Borrar", "Delete"),
+  });
+  if (!ok) return;
+  if (state.chatEditing?.id === id) state.chatEditing = null;
+  try {
+    await invoke("borrar_mensaje", { chat: state.chatOpen, mensaje: id });
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+function messageMenu(anchor, id) {
+  const m = state.chatMessages?.find((x) => x.id === id);
+  if (!m) return;
+  const items = [];
+  if (m.text && !parseShare(m.text)) items.push({ icon: "copy", label: t("Copiar texto", "Copy text"), action: () => copyText(m.text, t("Texto copiado.", "Text copied.")) });
+  if (canEditMessage(m)) items.push({ icon: "pencil", label: t("Editar", "Edit"), action: () => startEditMessage(id) });
+  if (m.mine) items.push({ icon: "trash", label: t("Borrar", "Delete"), danger: true, separator: items.length > 0, action: () => deleteMessage(id) });
+  if (items.length) contextMenu(anchor, items);
 }
 
 async function loadChatImages() {
@@ -2489,6 +2568,13 @@ function wireChatEvents() {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       sendChatText();
+    } else if (event.key === "ArrowUp" && !event.target.value) {
+      // Como en Discord: flecha arriba con la caja vacía edita tu último mensaje.
+      const last = [...(state.chatMessages ?? [])].reverse().find((m) => m.mine);
+      if (last && canEditMessage(last)) {
+        event.preventDefault();
+        startEditMessage(last.id);
+      }
     }
   });
   $("#chat-input").addEventListener("input", (event) => autoGrow(event.target));
@@ -2522,7 +2608,34 @@ function wireChatEvents() {
     const join = state.chatJoin;
     if (join) join.world ? joinFriendWorld(join.friend) : joinFriend(join.friend, join.address);
   };
+  $("#chat-messages").addEventListener("keydown", (event) => {
+    if (!event.target.matches(".bubble-edit")) return;
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      saveEditMessage();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelEditMessage();
+    }
+  });
+  $("#chat-messages").addEventListener("input", (event) => {
+    if (!event.target.matches(".bubble-edit") || !state.chatEditing) return;
+    state.chatEditing.draft = event.target.value;
+    state.chatEditing.caret = event.target.selectionStart;
+    autoGrow(event.target);
+  });
+  $("#chat-messages").addEventListener("contextmenu", (event) => {
+    const row = event.target.closest("[data-msg]");
+    if (!row || event.target.closest(".bubble-edit")) return;
+    event.preventDefault();
+    messageMenu(row.querySelector(".bubble"), row.dataset.msg);
+  });
   $("#chat-messages").onclick = (event) => {
+    const edit = event.target.closest("[data-msg-edit]");
+    if (edit) return void startEditMessage(edit.dataset.msgEdit);
+    const remove = event.target.closest("[data-msg-delete]");
+    if (remove) return void deleteMessage(remove.dataset.msgDelete);
     const install = event.target.closest("[data-share-install]");
     if (install) return void installShared(install.dataset.shareInstall);
     const open = event.target.closest("[data-share-open]");
@@ -3641,7 +3754,8 @@ function wireEvents() {
     }
     if (payload.task === "playit") {
       if (host.view) host.view.playit.message = payload.stage;
-      if (state.page === "host") renderTunnel();
+      if (state.page === "hosted") renderHosted();
+      if (state.page === "host") renderHost();
       return;
     }
     if (payload.task === "verificar") {
@@ -5205,7 +5319,7 @@ function demoInvoke(command, args = {}) {
   const demo = {
     hosting_estado: {
       playit: { connected: true, agentInstalled: true, claimUrl: null, state: "on", address: "brave-creeper.gl.joinmc.link", target: "Survival con amigos", account: "verified", message: null },
-      shareWorld: true,
+      worldPlayit: false,
       world: null,
       totalMb: 8100,
       freeMb: 2300,
