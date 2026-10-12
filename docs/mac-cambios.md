@@ -24,28 +24,30 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Pendientes para Mac
 
-- [ ] **El Java que se bajó antes del PR #3 no tiene permiso de ejecución.** Ahora `java::discover`
-  lo encuentra, así que ya no se vuelve a bajar, y el juego no abre («Permission denied»). Solo le
-  pasa a una Mac que ya usaba Parabellum antes del PR #3. Lo rápido: borrar `base/java/` de tu carpeta
-  de pruebas. Lo robusto, si quieres: al encontrar un Java, pasar `make_executable` por `bin/java` y
-  `lib/jspawnhelper`.
-- [ ] **Probar el panel dentro del juego en Mac.** Fabric 1.21.1, tecla O: clic en un amigo y escribir
-  un mensaje. En las pruebas del PR #3 el juego llegó al menú con el mod, pero falta abrir el panel
-  (en Mac, Java2D corre en modo headless).
-- [ ] **Probar el clic en un aviso** (PR #4): un mensaje real de un amigo con la ventana minimizada; al
-  pulsarlo debe abrirse ese chat.
-- [ ] **Revisar las animaciones de la 0.25 en la ventana de Mac** (WKWebView): cambiar de página, abrir una
-  instancia desde la Biblioteca (la portada viaja), buscar en la Biblioteca, el chat (mensaje nuevo, borrar,
-  «Mensajes nuevos») y un aviso que se va. Usan Web Animations (`element.animate`), `DOMMatrixReadOnly`,
-  `inert` y `scrollTo({ behavior: "smooth" })`: Safari 15.4 o más nuevo.
-- [ ] **Dentro del juego en Mac**: el botón «Parabellum» del menú de pausa y el aviso «Pulsa O» al entrar a
-  un mundo (la marca es `panel-visto.txt` en la carpeta de datos; bórrala para que vuelva a salir).
+- [ ] **Con un amigo de verdad** (Diego todavía no tiene amigos en Parabellum): lo único que queda de
+  las pruebas de abajo.
+  - Dentro del juego (Fabric 1.21.1, tecla O): clic en un amigo y escribirle un mensaje.
+  - El clic en un aviso (PR #4): un mensaje con la ventana minimizada; al pulsarlo debe abrirse ese
+    chat. Los avisos ya salen en Mac desde una `Parabellum.app` (ver «Avisos» en `mac.md`).
+  - Animaciones del chat: mensaje nuevo, borrar y «Mensajes nuevos».
+- [x] **El Java que se bajó antes del PR #3 no tiene permiso de ejecución**: resuelto en el PR #6, con
+  lo robusto. `java::discover` pasa `make_executable` por `bin/java` y `lib/jspawnhelper` de cada
+  Java que encuentra. Probado: un Java con `-rw-r--r--` queda en `-rwxr-xr-x` y Fabric 1.21.1 llega al
+  menú.
+- [x] **Probar el panel dentro del juego en Mac** (2026-10-12, PR #6): Fabric 1.21.1, la tecla O abre el
+  panel y se ve bien, aunque Java2D corre en modo headless. Falta lo del amigo (arriba).
+- [x] **Revisar las animaciones de la 0.25 en la ventana de Mac** (2026-10-12, PR #6): cambiar de página,
+  la portada que viaja al abrir una instancia y buscar en la Biblioteca se ven bien. Las APIs que usan
+  están desde Safari 15.5, y macOS 13 (el mínimo) ya trae Safari 16. El chat queda con lo del amigo.
+- [x] **Dentro del juego en Mac** (2026-10-12, PR #6): el aviso «Pulsa O» al entrar a un mundo y el botón
+  «Parabellum» del menú de pausa funcionan.
 - [x] Textos que quedaron viejos al mezclar los PR #1 a #4 (el comentario de `Cargo.toml`, el
   encabezado de `macos/mod.rs` y la tarea 1 de `mac.md`): resuelto en el PR #5.
 
 ## Pendientes para Windows
 
-Nada por ahora.
+- [ ] **PR #6: compilar y correr las pruebas en Windows.** `java::discover` (compartido) ahora llama a
+  `plataforma::make_executable`, que en Windows no hace nada, y la ruta de `release` no cambia.
 
 - [x] PR #5 (imágenes): verificado en Windows el 2026-10-12 (pasan las 83 pruebas, compila, y el
   error de una imagen que no se puede abrir dice lo mismo que antes). Juan lo mezcló.

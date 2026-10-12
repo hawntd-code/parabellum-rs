@@ -27,12 +27,17 @@ pub fn discover(paths: &Paths) -> Vec<JavaRuntime> {
         .filter_map(|e| {
             // «release» está junto a bin/ (en los Java de Mojang para Mac, dentro de jre.bundle/Contents/Home).
             let binary = crate::plataforma::java_binary(&e.path(), false);
-            let release = std::fs::read_to_string(binary.parent()?.parent()?.join("release")).ok()?;
+            let home = binary.parent()?.parent()?;
+            let release = std::fs::read_to_string(home.join("release")).ok()?;
             let version = release
                 .lines()
                 .find_map(|l| l.strip_prefix("JAVA_VERSION="))?
                 .trim_matches('"')
                 .to_string();
+            // Un Java bajado antes de que se marcaran sus programas (en Mac, antes del PR #3) no abría
+            // («Permission denied»): se arregla al encontrarlo. En Windows no hace nada.
+            crate::plataforma::make_executable(&binary);
+            crate::plataforma::make_executable(&home.join("lib").join("jspawnhelper"));
             Some(JavaRuntime { home: e.path(), name: e.file_name().to_string_lossy().into(), major: major_of(&version), version })
         })
         .collect()
