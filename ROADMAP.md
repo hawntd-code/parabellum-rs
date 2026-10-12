@@ -163,7 +163,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
   - «Publicar esta versión» de Parabellum sube la carpeta _parabellum y manda a la papelera de Drive las versiones anteriores: quien abra Parabellum se actualiza
   - Lo que ya está igual en Drive (mismo tamaño y huella MD5) no se vuelve a subir; lo que cambió se reemplaza en el mismo archivo (el enlace no cambia). Subida en trozos de 8 MB que sigue donde iba si se corta la conexión; los .json van al final para que el catálogo no anuncie un paquete a medio subir
   - Si la cuenta no puede escribir en la carpeta del catálogo, lo dice (compartirla como Editor con esa cuenta)
-- [ ] *Prueba de Juan:* conectar Drive con la cuenta que edita la carpeta del catálogo y subir un modpack y una versión de Parabellum
+- [x] *Prueba de Juan:* publicar versiones de Parabellum en Drive desde Parabellum (0.17.1 y 0.20.1, 2026-10-12; los compañeros se actualizan solos)
 - [x] **Batería de modpacks** (los 11 más descargados de Modrinth que cubren cada loader y versión: instalar como el botón Instalar, revisar como antes de jugar y abrir hasta el menú con capturas). Antes de los arreglos: 1 no abría, 1 «abría» sin sus mods y 4 tenían avisos falsos que habrían detenido el juego. Ahora los 11 llegan al menú y ninguno muestra avisos falsos:
 
   | Modpack | Loader | Resultado |
