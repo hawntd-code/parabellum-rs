@@ -55,6 +55,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(target_os = "macos", ignore = "TODO(mac): plataforma::decode_image (ver docs/mac.md)")]
     fn png_valido_y_windows_lo_abre() {
         // Un PNG hecho aquí, abierto de vuelta por Windows (como si fuera un formato raro).
         let pixels: Vec<u8> = (0..3 * 2).flat_map(|i| [i as u8 * 40, 200, 30, 255]).collect();

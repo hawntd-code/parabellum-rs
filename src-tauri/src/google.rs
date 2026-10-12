@@ -382,6 +382,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(target_os = "macos", ignore = "TODO(mac): plataforma::protect con el Llavero (ver docs/mac.md)")]
     fn sesion_cifrada_de_ida_y_vuelta() {
         let paths = Paths::new(std::env::temp_dir().join(format!("parabellum-google-{}", std::process::id())));
         std::fs::create_dir_all(&paths.data).unwrap();

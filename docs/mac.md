@@ -127,6 +127,10 @@ compila el programa y lo deja para descargar en la página de esa ejecución.
 Ojo: en repos privados, los minutos de Mac en GitHub cuentan 10 veces. Úsalo cuando haga falta, no en
 cada cambio pequeño.
 
+Dos pruebas están marcadas como «ignoradas en Mac» hasta que se hagan sus tareas (cifrar la sesión e
+imágenes): al terminarlas, quita su `#[cfg_attr(target_os = "macos", ignore = …)]` para que vuelvan a
+correr.
+
 ## Cómo probar sin romper nada
 
 - Prueba siempre con `PARABELLUM_ROOT` apuntando a una carpeta de pruebas.

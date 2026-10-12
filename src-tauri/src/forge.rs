@@ -505,10 +505,9 @@ mod tests {
         let paths = Paths::new(r"C:\P");
         let data = HashMap::from([("SIDE".to_string(), "client".to_string())]);
         assert_eq!(expand("--side={SIDE}", &data, &paths).unwrap(), "--side=client");
-        assert_eq!(
-            expand("[de.oceanlabs.mcp:mcp_config:1.20.1-20230612.114412:mappings@txt]", &data, &paths).unwrap(),
-            r"C:\P\base\libraries\de/oceanlabs/mcp/mcp_config/1.20.1-20230612.114412/mcp_config-1.20.1-20230612.114412-mappings.txt"
-        );
+        // La carpeta con el separador del sistema; la ruta de Maven, con «/».
+        let expected = paths.libraries.join("de/oceanlabs/mcp/mcp_config/1.20.1-20230612.114412/mcp_config-1.20.1-20230612.114412-mappings.txt");
+        assert_eq!(expand("[de.oceanlabs.mcp:mcp_config:1.20.1-20230612.114412:mappings@txt]", &data, &paths).unwrap(), expected.display().to_string());
         assert!(expand("{NADA}", &data, &paths).is_err());
     }
 }
