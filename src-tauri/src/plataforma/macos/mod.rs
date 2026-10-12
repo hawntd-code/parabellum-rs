@@ -2,15 +2,15 @@
 //! que plataforma/windows (ver plataforma/mod.rs). Guía y lista de tareas: docs/mac.md.
 //!
 //! Lo que ya está hecho usa herramientas que trae macOS (open, sysctl, ps, kill, afplay, sips, dig,
-//! security). Lo marcado con TODO(mac) falta: cada uno dice qué hacer. Mientras tanto devuelve algo
-//! seguro (por ejemplo, `tie_to_launcher` no hace nada: si Parabellum se cierra de golpe, el
-//! servidor sigue abierto).
+//! security, sh). Lo marcado con TODO(mac) falta: cada uno dice qué hacer. Mientras tanto devuelve
+//! algo seguro (por ejemplo, `PLAYIT_AGENT` es `None`: «Hostear partida» dice que playit.gg no está
+//! disponible en este sistema).
 
 pub mod accesos;
 pub mod avisos;
 
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 
 use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, CHACHA20_POLY1305, NONCE_LEN};
 
@@ -93,10 +93,105 @@ impl CommandExt for Command {
     }
 }
 
-/// TODO(mac): en Windows, el servidor y el agente de playit se cierran solos si Parabellum se cierra de
-/// golpe (un «job»). En Mac no hay equivalente directo: guardar los PID y cerrarlos al arrancar si
-/// quedaron vivos, o usar kqueue (NOTE_EXIT) en un proceso vigilante.
-pub fn tie_to_launcher(_child: &Child) {}
+/// El proceso se cierra solo si Parabellum termina sin cerrarlo antes (en Windows lo hace un «job»).
+/// Lo cuida un vigilante (`sh`) que espera leyendo una tubería que solo Parabellum tiene abierta para
+/// escribir: cuando Parabellum termina, aunque sea de golpe, macOS la cierra, el vigilante deja de
+/// esperar y le pide al proceso que se cierre (SIGTERM: el servidor guarda el mundo); si a los 40 s
+/// sigue abierto, lo cierra a la fuerza. Si el proceso termina antes, un hilo de Parabellum se entera
+/// con kqueue y cierra al vigilante, así nunca cierra otro programa que reciba el mismo número.
+pub fn tie_to_launcher(child: &Child) {
+    use std::os::unix::process::CommandExt as _;
+    let Some(exit) = ExitWatch::new(child.id()) else { return };
+    let Some(lifeline) = lifeline() else { return };
+    let watcher = Command::new("/bin/sh")
+        .args(["-c", WATCHER, "parabellum-vigilante", &child.id().to_string()])
+        .stdin(lifeline)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        // Su propio grupo de procesos: no le llegan las señales que reciba Parabellum (Ctrl+C).
+        .process_group(0)
+        .spawn();
+    let Ok(mut watcher) = watcher else { return };
+    std::thread::spawn(move || {
+        exit.wait();
+        let _ = watcher.kill();
+        let _ = watcher.wait();
+    });
+}
+
+/// El vigilante: `read` vuelve cuando se cierra la tubería, es decir, cuando Parabellum terminó.
+const WATCHER: &str = r#"read -r _
+kill -TERM "$1" 2>/dev/null || exit 0
+i=0
+while [ $i -lt 40 ] && kill -0 "$1" 2>/dev/null; do sleep 1; i=$((i + 1)); done
+kill -KILL "$1" 2>/dev/null"#;
+
+/// La tubería de los vigilantes. Parabellum guarda el extremo de escritura sin escribir nunca, y nadie
+/// más lo tiene: std abre las tuberías con close-on-exec, así que no pasa a los programas que se
+/// abren después (el juego, el servidor). Cada vigilante recibe su copia del extremo de lectura.
+fn lifeline() -> Option<std::io::PipeReader> {
+    static PIPE: std::sync::OnceLock<Option<(std::io::PipeReader, std::io::PipeWriter)>> = std::sync::OnceLock::new();
+    PIPE.get_or_init(|| std::io::pipe().ok()).as_ref()?.0.try_clone().ok()
+}
+
+// kqueue (sys/event.h), declarado aquí para no agregar el crate libc solo por esto.
+#[repr(C)]
+struct KEvent {
+    ident: usize,
+    filter: i16,
+    flags: u16,
+    fflags: u32,
+    data: isize,
+    udata: *mut std::ffi::c_void,
+}
+const NO_EVENT: KEvent = KEvent { ident: 0, filter: 0, flags: 0, fflags: 0, data: 0, udata: std::ptr::null_mut() };
+const EVFILT_PROC: i16 = -5;
+const EV_ADD: u16 = 0x0001;
+const EV_ONESHOT: u16 = 0x0010;
+const EV_RECEIPT: u16 = 0x0040;
+const EV_ERROR: u16 = 0x4000;
+const NOTE_EXIT: u32 = 0x8000_0000;
+
+unsafe extern "C" {
+    fn kqueue() -> i32;
+    fn kevent(kq: i32, changes: *const KEvent, change_count: i32, events: *mut KEvent, event_count: i32, timeout: *const std::ffi::c_void) -> i32;
+}
+
+/// Avisa cuando termina un proceso, sin recogerlo (eso lo hace quien lo abrió).
+struct ExitWatch(std::os::fd::OwnedFd);
+
+impl ExitWatch {
+    /// None si el proceso ya terminó (o kqueue falla).
+    fn new(pid: u32) -> Option<Self> {
+        use std::os::fd::{AsRawFd, FromRawFd};
+        // SAFETY: kqueue no recibe nada, y el descriptor nuevo (si lo hay) solo es de OwnedFd.
+        let queue = unsafe { kqueue() };
+        if queue < 0 {
+            return None;
+        }
+        let queue = unsafe { std::os::fd::OwnedFd::from_raw_fd(queue) };
+        let change = KEvent { ident: pid as usize, filter: EVFILT_PROC, flags: EV_ADD | EV_ONESHOT | EV_RECEIPT, fflags: NOTE_EXIT, ..NO_EVENT };
+        let mut receipt = NO_EVENT;
+        // SAFETY: un cambio y espacio para una respuesta, los dos válidos durante la llamada. Con
+        // EV_RECEIPT responde al momento: EV_ERROR con data 0 si quedó anotado, o el error (ESRCH si
+        // el proceso ya terminó).
+        let count = unsafe { kevent(queue.as_raw_fd(), &change, 1, &mut receipt, 1, std::ptr::null()) };
+        (count == 1 && receipt.flags & EV_ERROR != 0 && receipt.data == 0).then_some(Self(queue))
+    }
+
+    /// Espera hasta que el proceso termine.
+    fn wait(&self) {
+        use std::os::fd::AsRawFd;
+        let mut event = NO_EVENT;
+        loop {
+            // SAFETY: espacio para un evento, válido durante la llamada; sin límite de tiempo.
+            let count = unsafe { kevent(self.0.as_raw_fd(), std::ptr::null(), 0, &mut event, 1, std::ptr::null()) };
+            if count != -1 || std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted {
+                return;
+            }
+        }
+    }
+}
 
 /// Memoria en uso (bytes) y tiempo de CPU (en unidades de 100 ns) con `ps`.
 pub fn process_usage(pid: u32) -> Option<(u64, u64)> {
@@ -426,6 +521,63 @@ mod tests {
             assert_eq!(std::fs::metadata(&program).unwrap().permissions().mode() & 0o777, 0o755, "{}", program.display());
         }
         let _ = std::fs::remove_dir_all(&paths.root);
+    }
+
+    fn alive(pid: u32) -> bool {
+        Command::new("kill").args(["-0", &pid.to_string()]).stderr(Stdio::null()).status().unwrap().success()
+    }
+
+    fn closes_within(seconds: u64, open: impl Fn() -> bool) -> bool {
+        let started = std::time::Instant::now();
+        while started.elapsed().as_secs() < seconds {
+            if !open() {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        false
+    }
+
+    #[test]
+    fn atado_se_cierra_si_parabellum_se_cae() {
+        use std::os::unix::process::CommandExt as _;
+        // Otra copia de esta prueba hace de Parabellum: ata un proceso, abre otro aparte (como el juego,
+        // que no debe quedarse con la tubería del vigilante) y espera a que esta prueba la cierre de golpe.
+        if std::env::var_os("PARABELLUM_PRUEBA_ATADO").is_some() {
+            let tied = Command::new("sleep").arg("60").spawn().unwrap();
+            tie_to_launcher(&tied);
+            let other = Command::new("sleep").arg("60").process_group(0).spawn().unwrap();
+            println!("PID {} {}", tied.id(), other.id());
+            std::thread::sleep(std::time::Duration::from_secs(60));
+            return;
+        }
+        use std::io::BufRead;
+        let mut parabellum = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "plataforma::macos::tests::atado_se_cierra_si_parabellum_se_cae", "--nocapture"])
+            .env("PARABELLUM_PRUEBA_ATADO", "1")
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let line = std::io::BufReader::new(parabellum.stdout.take().unwrap()).lines().map_while(Result::ok).find(|l| l.starts_with("PID ")).unwrap();
+        let pids: Vec<u32> = line.split_whitespace().skip(1).map(|p| p.parse().unwrap()).collect();
+        let (tied, other) = (pids[0], pids[1]);
+        assert!(alive(tied));
+        parabellum.kill().unwrap();
+        parabellum.wait().unwrap();
+        let closed = closes_within(10, || alive(tied));
+        let _ = Command::new("kill").arg(other.to_string()).status();
+        assert!(closed, "el proceso atado siguió abierto");
+    }
+
+    #[test]
+    fn el_vigilante_se_va_con_el_proceso() {
+        let mut child = Command::new("sleep").arg("1").spawn().unwrap();
+        let pattern = format!("parabellum-vigilante {}$", child.id());
+        let watcher = || Command::new("pgrep").args(["-f", &pattern]).stdout(Stdio::null()).status().unwrap().success();
+        tie_to_launcher(&child);
+        assert!(watcher());
+        child.wait().unwrap();
+        assert!(closes_within(5, watcher), "el vigilante siguió abierto");
     }
 
     #[test]
