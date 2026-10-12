@@ -18,13 +18,16 @@ import sys
 AQUI = os.path.dirname(os.path.abspath(__file__))
 DESTINO = os.path.join(AQUI, "..", "src-tauri", "juego", "mods")
 
-# (carpeta, loader, desde (incluida), hasta (sin incluir), JDK con el que corre Gradle)
+# (carpeta, loaders, desde (incluida), hasta (sin incluir), JDK con el que corre Gradle). Con «+» el mismo
+# .jar sirve en varios loaders (NeoForge 1.20.1 todavía carga mods de Forge).
 VERSIONES = [
     ("fabric-1.21.1", "Fabric", "1.21", "1.21.2", 25),
     ("fabric-26.1.2", "Fabric", "26.1", "26.2", 25),
     ("fabric-26.2", "Fabric", "26.2", "26.3", 25),
     ("fabric-26.3", "Fabric", "26.3", "26.4", 25),
     ("neoforge-1.21.1", "NeoForge", "1.21", "1.21.2", 25),
+    ("forge-1.20.1", "Forge+NeoForge", "1.20", "1.20.2", 25),
+    ("fabric-1.20.1", "Fabric", "1.20", "1.20.2", 25),
 ]
 
 
@@ -39,8 +42,10 @@ def compilar(carpeta, version_jdk):
     proyecto = os.path.join(AQUI, "versiones", carpeta)
     envoltorio = os.path.join(proyecto, "gradlew.bat") if os.path.exists(os.path.join(proyecto, "gradlew.bat")) else os.path.join(AQUI, "gradlew.bat")
     entorno = dict(os.environ, JAVA_HOME=jdk(version_jdk))
+    # Los JDK de ~/.jdks para las herramientas que piden otra versión (Forge 1.20.1 usa Java 17).
+    instalados = ",".join(sorted(glob.glob(os.path.join(os.path.expanduser("~"), ".jdks", "jdk-*"))))
     print(f"== {carpeta}", flush=True)
-    resultado = subprocess.run([envoltorio, "-p", proyecto, "build", "--console=plain", "-q"], env=entorno, cwd=AQUI)
+    resultado = subprocess.run([envoltorio, "-p", proyecto, "build", "--console=plain", "-q", f"-Porg.gradle.java.installations.paths={instalados}"], env=entorno, cwd=AQUI)
     if resultado.returncode != 0:
         sys.exit(f"No compiló {carpeta}")
     jars = [j for j in glob.glob(os.path.join(proyecto, "build", "libs", "*.jar")) if not j.endswith("-sources.jar")]
@@ -51,9 +56,10 @@ def compilar(carpeta, version_jdk):
 
 def lista():
     lineas = ["// Generado por mod/compilar.py: no editar a mano.", "&["]
-    for carpeta, loader, desde, hasta, _ in VERSIONES:
+    for carpeta, loaders, desde, hasta, _ in VERSIONES:
         if os.path.exists(os.path.join(DESTINO, f"parabellum-{carpeta}.jar")):
-            lineas.append(f'    Build {{ loader: "{loader}", from: "{desde}", until: "{hasta}", jar: include_bytes!("parabellum-{carpeta}.jar") }},')
+            for loader in loaders.split("+"):
+                lineas.append(f'    Build {{ loader: "{loader}", from: "{desde}", until: "{hasta}", jar: include_bytes!("parabellum-{carpeta}.jar") }},')
     lineas.append("]")
     open(os.path.join(DESTINO, "lista.rs"), "w", encoding="utf-8", newline="\n").write("\n".join(lineas) + "\n")
 

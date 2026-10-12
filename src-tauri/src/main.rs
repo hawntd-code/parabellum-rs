@@ -2246,6 +2246,33 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             let sources: Vec<PathBuf> = args[2..].iter().map(PathBuf::from).collect();
             Ok(format!("{:#?}", content::add(&instance, &sources, None)))
         }
+        "--abrir-juego" => {
+            // Abre el juego (con el mod de Parabellum) y lo deja abierto unos segundos; para probar el
+            // panel dentro del juego sin que se cierre al llegar al menú.
+            let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
+            let seconds = args.get(2).and_then(|s| s.parse::<u64>().ok()).unwrap_or(120);
+            let mut plan = launch::plan(&instance, settings, paths)?;
+            juego::write_fonts(paths);
+            plan.add_jvm_arguments([format!("-Dparabellum.fuentes={}", paths.data.join("fuentes").display())]);
+            juego::install(&instance, true);
+            let mut child = launch::start(&plan, &instance)?;
+            let started = std::time::Instant::now();
+            while started.elapsed().as_secs() < seconds {
+                if child.try_wait().ok().flatten().is_some() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            let closed = child.try_wait().ok().flatten();
+            launch::kill(child.id());
+            let _ = child.wait();
+            launch::close_helpers(&instance);
+            juego::remove(&instance);
+            Ok(match closed {
+                Some(status) => format!("se cerró solo a los {} s ({status})", started.elapsed().as_secs()),
+                None => format!("abierto {} s", started.elapsed().as_secs()),
+            })
+        }
         "--probar-juego" => {
             // Abre el juego y espera a que llegue al menú principal (o falle); luego lo cierra.
             let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;

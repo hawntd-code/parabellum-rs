@@ -236,6 +236,13 @@ final class Panel {
 
     void abierto() {
         sucio = true;
+        // En las pruebas (-Dparabellum.prueba.abrir) se avisa que el panel ya está a la vista.
+        if (System.getProperty("parabellum.prueba.abrir") != null) {
+            try {
+                java.nio.file.Files.write(new File(juego.plataforma.carpeta(), "parabellum-prueba.txt").toPath(), String.valueOf(System.currentTimeMillis()).getBytes("UTF-8"));
+            } catch (Exception ignored) {
+            }
+        }
         if (!pruebaHecha && "1".equals(System.getProperty("parabellum.prueba.pestana"))) {
             JsonArray chats = lista(juego.estado, "chats");
             if (chats.size() > 0) {

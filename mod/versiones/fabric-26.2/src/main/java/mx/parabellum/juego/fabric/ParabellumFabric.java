@@ -42,7 +42,7 @@ public final class ParabellumFabric implements ClientModInitializer, Plataforma 
         juego.tick();
         while (ABRIR.consumeClick()) juego.tecla();
         // -Dparabellum.prueba.abrir: abre el panel solo en el menú principal (para probar sin tocar nada).
-        if (!probado && System.getProperty("parabellum.prueba.abrir") != null && mc().gui.screen() instanceof TitleScreen) {
+        if (!probado && System.getProperty("parabellum.prueba.abrir") != null && mc().gui.screen() instanceof TitleScreen && mc().gui.overlay() == null) {
             probado = true;
             juego.tecla();
         }
