@@ -92,6 +92,26 @@ El orden importa: cada fase usa lo que construyó la anterior.
 
 ## ⏭️ Pendiente, en orden
 
+### 0.25.0: que se sienta fluido (siguiente, pedido de Juan)
+- [ ] **Un sistema de movimiento**: 3 duraciones y 3 curvas (entrar, salir, énfasis) para toda la interfaz, en vez de valores sueltos
+- [ ] **Transición entre páginas**: la anterior se desvanece mientras entra la nueva, y la portada de una instancia o servidor pasa de su tarjeta a la cabecera del detalle (View Transitions; si la ventana no lo tiene, como WKWebView en algunos Mac, cambia sin animación)
+- [ ] **Listas vivas**: amigos, mods y servidores se deslizan a su nuevo lugar en vez de saltar; lo que se quita se encoge
+- [ ] **Chat**: la burbuja nueva entra desde abajo, desplazamiento suave, la borrada se encoge y un botón «↓ Nuevos» si estás leyendo más arriba
+- [ ] **Progreso**: barras que avanzan suaves con velocidad y tiempo restante; el botón Jugar se vuelve la barra de preparación y luego «Jugando»
+- [ ] **Dentro del juego**: el panel entra deslizándose y los avisos entran y se desvanecen (se mueve la imagen ya dibujada: sin costo)
+- [ ] **Que encuentren el panel**: botón de Parabellum en el menú de pausa y, la primera vez que se entra a un mundo, «Pulsa O para abrir Parabellum»
+- Reglas: 0.3 s como mucho, nunca hacer esperar, sin texto extra, solo movimiento y opacidad (fluido en gráficos Intel); se respeta «reducir movimiento»
+
+### 0.26.0: reportar problemas y prueba con compañeros
+- [ ] **«Reportar problema»**: un resumen (versión, instancia, ruta usada, P2P directo o por relevo y ping, últimas líneas del error) que se manda por chat a Juan
+- [ ] *Prueba:* con compañeros en sus casas: P2P, mensajes, invitar y «Unirse» desde el juego, y el teclado del panel en 26.3
+
+### Después
+- [ ] Doctor: buscar el mod culpable por mitades cuando el error no lo dice
+- [ ] Resto del pulido: esqueletos de carga en Explorar, telemetría del servidor viva (números suaves y minigráficas), botones que se hunden, cambio de tema con un círculo
+- [ ] Mod: pulsar O justo después de F2 abre esa captura lista para mandar
+- [ ] Mac (Diego): `docs/mac.md` y `docs/mac-cambios.md`
+
 ### Fase 9: social
 - [x] **Servidor de sesión local**: mundos LAN/e4mc de amigos sin "Invalid session" (el juego arranca usándolo; e4mc siempre por su relé)
 - [x] **Inicio de sesión con Google** (la sesión guardada por la versión C# sigue valiendo) y **nombres únicos**: una cuenta de Google reserva los nombres de sus cuentas de Parabellum
