@@ -49,8 +49,8 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Securit
 windows = { version = "0.62", features = ["Data_Xml_Dom", "UI_Notifications", "Foundation", "Foundation_Collections", "Win32_System_WinRT", "Win32_UI_Shell", "Win32_System_Com", "Win32_Storage_FileSystem", "Win32_Graphics_Imaging"] }
 
 # Solo macOS (ver src/plataforma/macos y docs/mac.md): la sesión cifrada con ChaCha20-Poly1305 y una
-# clave guardada en el Llavero (ring ya viene con reqwest/rustls: no se compila nada nuevo). Aquí van
-# también, por ejemplo, los avisos (tauri-plugin-notification) cuando se hagan.
+# clave guardada en el Llavero (ring ya viene con reqwest/rustls: no se compila nada nuevo), los
+# avisos y las imágenes del chat.
 [target.'cfg(target_os = "macos")'.dependencies]
 ring = "0.17"
 
@@ -59,6 +59,9 @@ objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSError", "NSString"] }
 objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "bitflags", "block2", "UNNotification", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationSound", "UNNotificationTrigger", "UNUserNotificationCenter"] }
 block2 = "0.6"
+
+# Leer a RGBA el PNG que da sips (imágenes del chat); la misma versión que ya usa Tauri
+png = "0.18"
 
 [profile.release]
 opt-level = "s"

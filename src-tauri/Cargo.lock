@@ -3404,6 +3404,7 @@ dependencies = [
  "objc2",
  "objc2-foundation",
  "objc2-user-notifications",
+ "png 0.18.1",
  "regex",
  "reqwest 0.12.28",
  "ring",

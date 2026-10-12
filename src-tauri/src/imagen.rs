@@ -9,7 +9,7 @@ pub const MAX_BYTES: usize = 25 * 1024 * 1024;
 
 /// La imagen como PNG (RGBA), reducida a MAX_SIDE de lado como mucho.
 pub fn to_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
-    let failed = || t!("Windows tampoco pudo abrir esa imagen. Prueba con una captura o un PNG/JPG.", "Windows could not open that image either. Try a screenshot or a PNG/JPG.");
+    let failed = || t!("{} tampoco pudo abrir esa imagen. Prueba con una captura o un PNG/JPG.", "{} could not open that image either. Try a screenshot or a PNG/JPG.", crate::plataforma::NAME);
     if bytes.is_empty() || bytes.len() > MAX_BYTES {
         return Err(t!("La imagen pesa más de 25 MB.", "The image is larger than 25 MB."));
     }
@@ -17,7 +17,7 @@ pub fn to_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(encode_png(width, height, &pixels))
 }
 
-/// Decodifica con el sistema (WIC en Windows): (ancho, alto, píxeles RGBA).
+/// Decodifica con el sistema (WIC en Windows, sips en Mac): (ancho, alto, píxeles RGBA).
 fn decode(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
     crate::plataforma::decode_image(bytes, MAX_SIDE)
 }
@@ -55,7 +55,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[cfg_attr(target_os = "macos", ignore = "TODO(mac): plataforma::decode_image (ver docs/mac.md)")]
     fn png_valido_y_windows_lo_abre() {
         // Un PNG hecho aquí, abierto de vuelta por Windows (como si fuera un formato raro).
         let pixels: Vec<u8> = (0..3 * 2).flat_map(|i| [i as u8 * 40, 200, 30, 255]).collect();

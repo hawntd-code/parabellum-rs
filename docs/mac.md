@@ -102,23 +102,20 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
 - Lo compartido ya pregunta por Mac donde Mojang distingue sistemas: reglas `"os": "osx"` (así se
   agrega `-XstartOnFirstThread`), nativos `natives-macos`, Java de Mojang `mac-os-arm64` y separador
   del classpath `:`.
+- Imágenes del chat en cualquier formato que abra el Mac (HEIC, TIFF, GIF, BMP…; `decode_image`):
+  `sips -g` las mide, `sips` las pasa a PNG en un proceso aparte (`-Z` solo si son más grandes que
+  el límite, porque también agranda) y el crate `png` las lee a RGBA. Como en Windows, no se giran
+  según su EXIF. Probar con `--convertir-imagen foto.heic salida.png`.
 
 ## Lista de tareas (busca `TODO(mac)` en el código)
 
 Ordenadas por prioridad:
 
-1. **Que compile y abra la ventana.** Primero que todo: `cargo build` en tu Mac. Si algo de lo
-   compartido no compila en Mac, muévelo a la plataforma (regla 1).
+1. ~~**Que compile y abra la ventana.**~~ — hecho: compila en Mac con chip Apple y la ventana abre.
 2. ~~**Guardar la sesión**~~ — hecho (ver «Qué ya está hecho»).
-3. **Jugar 1.19 en adelante** (vanilla y Fabric): Mojang trae nativos para chip Apple. Probar con
-   `--probar-juego`. Revisar que se baje el Java de Mojang (`mojang.rs`, `ensure_java`) y que
-   `java_binary` lo encuentre.
-   **Hecho** (ver «Qué ya está hecho»).
-4. **Avisos** — `macos/avisos.rs`. Lo más directo: el plugin oficial `tauri-plugin-notification`.
-   **Hecho**, con UserNotifications en vez del plugin (ver «Qué ya está hecho»).
-5. **Imágenes raras en el chat** (HEIC del iPhone, TIFF…) — `decode_image` en `macos/mod.rs`. `sips`
-   (viene con macOS) las pasa a PNG; falta leer ese PNG a RGBA (crate `png`), o cambiar el contrato
-   para que en Mac devuelva el PNG directo.
+3. ~~**Jugar 1.19 en adelante**~~ — hecho (ver «Qué ya está hecho»).
+4. ~~**Avisos**~~ — hecho, con UserNotifications en vez del plugin (ver «Qué ya está hecho»).
+5. ~~**Imágenes raras en el chat**~~ — hecho, con `sips` y el crate `png` (ver «Qué ya está hecho»).
 6. **Forge y NeoForge**: sus instaladores son Java (funcionan igual); probar un modpack 1.20.1.
 7. **Procesos atados a Parabellum** — `tie_to_launcher`: en Windows, el servidor y el agente de
    playit.gg se cierran solos si Parabellum se cae. En Mac: guardar los PID y cerrarlos al arrancar si
@@ -151,8 +148,9 @@ compila el programa y lo deja para descargar en la página de esa ejecución.
 Ojo: en repos privados, los minutos de Mac en GitHub cuentan 10 veces. Úsalo cuando haga falta, no en
 cada cambio pequeño.
 
-Una prueba sigue marcada como «ignorada en Mac» hasta que se haga su tarea (imágenes): al terminarla,
-quita su `#[cfg_attr(target_os = "macos", ignore = …)]` para que vuelva a correr.
+Ya no quedan pruebas ignoradas en Mac por tareas pendientes. Si agregas una que todavía no puede pasar
+en Mac, márcala con `#[cfg_attr(target_os = "macos", ignore = "TODO(mac): …")]` y quítalo al terminar
+su tarea.
 
 ## Cómo probar sin romper nada
 

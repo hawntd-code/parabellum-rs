@@ -3,7 +3,8 @@
 //!
 //! Lo que ya está hecho usa herramientas que trae macOS (open, sysctl, ps, kill, afplay, sips, dig,
 //! security). Lo marcado con TODO(mac) falta: cada uno dice qué hacer. Mientras tanto devuelve algo
-//! seguro (por ejemplo, `decode_image` dice que esa imagen todavía no se puede abrir en Mac).
+//! seguro (por ejemplo, `tie_to_launcher` no hace nada: si Parabellum se cierra de golpe, el
+//! servidor sigue abierto).
 
 pub mod accesos;
 pub mod avisos;
@@ -323,13 +324,56 @@ pub fn play_wav(wav: &'static [u8], wait: bool) -> bool {
     }
 }
 
-/// Cualquier imagen que abra el Mac (HEIC, TIFF…) → (ancho, alto, RGBA), con `sips` (viene con
-/// macOS) para pasarla a PNG.
-/// TODO(mac): `sips` da un PNG; falta leerlo a RGBA. Lo más simple es agregar el crate `png` (solo
-/// para Mac) o hacer que decode_image devuelva el PNG directamente (imagen.rs lo pide en RGBA para
-/// volver a escribirlo como PNG: en Mac se puede saltar ese paso).
-pub fn decode_image(_bytes: &[u8], _max_side: u32) -> Result<(u32, u32, Vec<u8>), String> {
-    Err(t!("Esa imagen no se puede abrir todavía en Mac. Prueba con un PNG o JPG.", "That image cannot be opened on Mac yet. Try a PNG or JPG."))
+/// Cualquier imagen que abra el Mac (HEIC, TIFF, WebP…) → (ancho, alto, RGBA), reducida a `max_side`
+/// de lado como mucho. La convierte `sips` (viene con macOS) a PNG en un proceso aparte: si una imagen
+/// mala del chat lo hace caer, Parabellum sigue igual. Como en Windows, no se gira según su EXIF.
+pub fn decode_image(bytes: &[u8], max_side: u32) -> Result<(u32, u32, Vec<u8>), String> {
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let folder = std::env::temp_dir().join(format!("parabellum-imagen-{}-{id}", std::process::id()));
+    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    let result = sips_to_png(bytes, max_side, &folder).and_then(|png| read_png(&png));
+    let _ = std::fs::remove_dir_all(&folder);
+    result
+}
+
+/// La imagen como PNG, reducida si hace falta (`sips -Z` también agranda: antes se mide).
+fn sips_to_png(bytes: &[u8], max_side: u32, folder: &Path) -> Result<Vec<u8>, String> {
+    let (source, target) = (folder.join("imagen"), folder.join("imagen.png"));
+    std::fs::write(&source, bytes).map_err(|e| e.to_string())?;
+    let size = Command::new("sips").args(["-g", "pixelWidth", "-g", "pixelHeight"]).arg(&source).output().map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(&size.stdout);
+    let side = |name: &str| text.lines().find_map(|l| l.trim().strip_prefix(name)?.trim().parse::<u32>().ok());
+    let (width, height) = size.status.success().then(|| side("pixelWidth:").zip(side("pixelHeight:"))).flatten().ok_or("sips no la reconoce como imagen")?;
+    let mut convert = Command::new("sips");
+    convert.args(["-s", "format", "png"]);
+    if width.max(height) > max_side {
+        convert.args(["-Z", &max_side.to_string()]);
+    }
+    let converted = convert.arg(&source).arg("--out").arg(&target).output().map_err(|e| e.to_string())?;
+    if !converted.status.success() {
+        return Err("sips no pudo convertirla".into());
+    }
+    std::fs::read(&target).map_err(|e| e.to_string())
+}
+
+/// Un PNG de cualquier tipo de color → RGBA de 8 bits.
+fn read_png(png: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(png));
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
+    let mut buffer = vec![0; reader.output_buffer_size().ok_or("PNG demasiado grande")?];
+    let info = reader.next_frame(&mut buffer).map_err(|e| e.to_string())?;
+    let pixels = &buffer[..info.buffer_size()];
+    let rgba = match info.color_type {
+        png::ColorType::Rgba => pixels.to_vec(),
+        png::ColorType::Rgb => pixels.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect(),
+        png::ColorType::GrayscaleAlpha => pixels.chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect(),
+        png::ColorType::Grayscale => pixels.iter().flat_map(|&g| [g, g, g, 255]).collect(),
+        // EXPAND ya convierte la paleta a RGB(A).
+        png::ColorType::Indexed => return Err("PNG con paleta".into()),
+    };
+    Ok((info.width, info.height, rgba))
 }
 
 #[cfg(test)]
