@@ -328,11 +328,14 @@ pub fn play_wav(wav: &'static [u8], wait: bool) -> bool {
 /// de lado como mucho. La convierte `sips` (viene con macOS) a PNG en un proceso aparte: si una imagen
 /// mala del chat lo hace caer, Parabellum sigue igual. Como en Windows, no se gira según su EXIF.
 pub fn decode_image(bytes: &[u8], max_side: u32) -> Result<(u32, u32, Vec<u8>), String> {
-    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-    let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let folder = std::env::temp_dir().join(format!("parabellum-imagen-{}-{id}", std::process::id()));
-    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
-    let result = sips_to_png(bytes, max_side, &folder).and_then(|png| read_png(&png));
+    use std::os::unix::fs::DirBuilderExt;
+    // Carpeta nueva, con nombre al azar y solo para este usuario. `create` (no `create_dir_all`)
+    // falla si ya hay algo con ese nombre (una carpeta o un enlace) en vez de usarlo.
+    let mut random = [0u8; 8];
+    getrandom::getrandom(&mut random).map_err(|e| e.to_string())?;
+    let folder = std::env::temp_dir().join(format!("parabellum-imagen-{}", hex::encode(random)));
+    std::fs::DirBuilder::new().mode(0o700).create(&folder).map_err(|e| e.to_string())?;
+    let result = sips_to_png(bytes, max_side, &folder).and_then(|png| read_png(&png, max_side));
     let _ = std::fs::remove_dir_all(&folder);
     result
 }
@@ -345,6 +348,9 @@ fn sips_to_png(bytes: &[u8], max_side: u32, folder: &Path) -> Result<Vec<u8>, St
     let text = String::from_utf8_lossy(&size.stdout);
     let side = |name: &str| text.lines().find_map(|l| l.trim().strip_prefix(name)?.trim().parse::<u32>().ok());
     let (width, height) = size.status.success().then(|| side("pixelWidth:").zip(side("pixelHeight:"))).flatten().ok_or("sips no la reconoce como imagen")?;
+    if width == 0 || height == 0 {
+        return Err("imagen vacía".into());
+    }
     let mut convert = Command::new("sips");
     convert.args(["-s", "format", "png"]);
     if width.max(height) > max_side {
@@ -358,10 +364,15 @@ fn sips_to_png(bytes: &[u8], max_side: u32, folder: &Path) -> Result<Vec<u8>, St
 }
 
 /// Un PNG de cualquier tipo de color → RGBA de 8 bits.
-fn read_png(png: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
+fn read_png(png: &[u8], max_side: u32) -> Result<(u32, u32, Vec<u8>), String> {
     let mut decoder = png::Decoder::new(std::io::Cursor::new(png));
     decoder.set_transformations(png::Transformations::normalize_to_color8());
     let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
+    // Antes de reservar memoria, que sea del tamaño pedido (no basta con lo que dijo `sips -g`).
+    let (width, height) = (reader.info().width, reader.info().height);
+    if width == 0 || height == 0 || width.max(height) > max_side {
+        return Err(format!("sips la dejó de {width}×{height}"));
+    }
     let mut buffer = vec![0; reader.output_buffer_size().ok_or("PNG demasiado grande")?];
     let info = reader.next_frame(&mut buffer).map_err(|e| e.to_string())?;
     let pixels = &buffer[..info.buffer_size()];
@@ -392,5 +403,18 @@ mod tests {
         *altered.last_mut().unwrap() ^= 1;
         assert!(unprotect(&altered).is_none());
         assert!(unprotect(&[]).is_none());
+    }
+
+    #[test]
+    fn png_del_tamano_pedido_a_rgba() {
+        let mut png = Vec::new();
+        let mut encoder = png::Encoder::new(&mut png, 3, 2);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder.write_header().unwrap().write_image_data(&[7; 3 * 2 * 3]).unwrap();
+        // Más grande que lo pedido: se rechaza antes de reservar memoria.
+        assert!(read_png(&png, 2).is_err());
+        let (width, height, rgba) = read_png(&png, 3).unwrap();
+        assert_eq!((width, height), (3, 2));
+        assert_eq!(rgba, [7, 7, 7, 255].repeat(6));
     }
 }
