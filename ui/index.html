@@ -351,11 +351,13 @@
                 <header class="chat-header">
                   <div class="chat-avatar" id="chat-avatar"></div>
                   <div class="grow"><b id="chat-title"></b><span id="chat-subtitle"></span></div>
+                  <button class="btn primary small hidden" id="chat-join"><svg><use href="#i-play"/></svg><span>Unirse</span></button>
                   <button class="circle-btn" id="chat-more" title="Más"><svg><use href="#i-more"/></svg></button>
                 </header>
                 <div class="chat-messages" id="chat-messages"></div>
                 <div class="chat-composer">
                   <button class="circle-btn" id="chat-attach" title="Enviar una imagen"><svg><use href="#i-image"/></svg></button>
+                  <button class="circle-btn" id="chat-share" title="Compartir una instancia"><svg><use href="#i-cubes"/></svg></button>
                   <input type="file" id="chat-file" accept="image/*" class="hidden">
                   <textarea id="chat-input" rows="1" maxlength="2000" placeholder="Escribe un mensaje…" spellcheck="true"></textarea>
                   <button class="btn primary" id="chat-send" title="Enviar (Enter)"><svg><use href="#i-send"/></svg></button>
@@ -979,6 +981,33 @@
         <div class="modal-actions">
           <button class="btn" id="account-cancel">Cancelar</button>
           <button class="btn primary" id="account-ok">Añadir y usar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Icono del servidor: recortar y ajustar cualquier imagen a 64×64 -->
+  <div class="overlay hidden" id="icon-dialog">
+    <div class="modal small">
+      <div class="modal-head">
+        <h2>Icono del servidor</h2>
+        <button class="circle-btn" id="icon-close" title="Cerrar"><svg><use href="#i-close"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="icon-editor">
+          <canvas id="icon-canvas" width="256" height="256" title="Arrastra para mover; rueda del ratón para acercar"></canvas>
+          <div class="icon-side">
+            <span class="faint">Así se verá</span>
+            <div class="icon-sample"><canvas id="icon-preview" width="64" height="64"></canvas><div class="grow"><b id="icon-sample-name"></b><div class="motd-text" id="icon-sample-motd"></div></div></div>
+            <span class="faint">Minecraft lo pide de 64×64 píxeles: se recorta y se ajusta solo.</span>
+          </div>
+        </div>
+        <div class="label-row"><span class="label">Acercar</span></div>
+        <input type="range" id="icon-zoom" min="1" max="5" step="0.01" value="1">
+        <label class="toggle"><input type="checkbox" id="icon-pixel"><span></span>Pixelado (para pixel art)</label>
+        <div class="modal-actions">
+          <button class="btn" id="icon-other"><svg><use href="#i-image"/></svg>Otra imagen</button>
+          <button class="btn primary" id="icon-save"><svg><use href="#i-check"/></svg>Guardar icono</button>
         </div>
       </div>
     </div>

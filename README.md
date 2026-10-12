@@ -135,6 +135,7 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--crear-servidor <instancia> [nombre] [mundo]` | Servidor dedicado a partir de la instancia (sin aceptar el EULA) |
 | `--probar-servidor <servidor> [segundos]` | Lo enciende, espera a que esté listo y lo apaga; si no arranca, explica por qué |
 | `--playit` | Estado de la cuenta y del túnel de playit.gg |
+| `--probar-receta <instancia>` | Comparte la instancia como por el chat y la vuelve a armar como otra instancia (compara los archivos) |
 | `--probar-sonido [archivo.wav]` | Toca el sonido de mensaje nuevo (y lo guarda si se da un archivo) |
 | `--probar-tiempo-real [veces]` | Con la sesión de Google guardada: cuánto tarda en llegar por la escucha de Firebase algo recién escrito |
 | `--catalogo` | Modpacks y versiones de Drive y de la carpeta paquetes, con su estado |

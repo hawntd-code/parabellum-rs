@@ -667,6 +667,22 @@ pub async fn identify(instance: &Instance) -> Vec<InstalledFile> {
         .collect()
 }
 
+/// Lo que hay que bajar para tener exactamente estas versiones (las de una instancia compartida: ya
+/// incluyen sus dependencias, porque son las que tenía instaladas quien la compartió).
+pub async fn files_for_versions(groups: &[(ContentType, Vec<String>)]) -> Result<Vec<PlannedFile>, String> {
+    let mut files = Vec::new();
+    for (kind, ids) in groups {
+        for chunk in ids.chunks(100) {
+            let ids: Vec<&str> = chunk.iter().map(|id| checked_id(id)).collect::<Result<_, _>>()?;
+            let found = get("/versions", &[("ids", serde_json::to_string(&ids).unwrap())]).await?;
+            for version in found.as_array().into_iter().flatten().filter_map(parse_version) {
+                files.push(PlannedFile::new(&version, *kind, false, None));
+            }
+        }
+    }
+    Ok(files)
+}
+
 /// Si cada proyecto funciona en un servidor dedicado: id -> "required", "optional" o "unsupported".
 pub async fn server_sides(ids: &[String]) -> HashMap<String, String> {
     let mut sides = HashMap::new();

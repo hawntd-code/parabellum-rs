@@ -1001,30 +1001,122 @@ function serverIconClicked(anchor) {
   ]);
 }
 
-/** La imagen elegida, recortada al centro y reducida a 64×64 (lo que pide Minecraft). */
+// ---------- Editor del icono: cualquier imagen → 64×64 PNG (lo que pide Minecraft) ----------
+const iconEditor = { image: null, zoom: 1, cx: 0, cy: 0, pixel: false, drag: null };
+
+/** Lee la imagen como data URL (sirve con cualquier formato que abra el navegador: PNG, JPG, GIF, WEBP, BMP…). */
+function readImageFile(file) {
+  const failed = () => new Error(t("Esa imagen no se pudo abrir. Prueba con un PNG, JPG, GIF o WEBP.", "That image could not be opened. Try a PNG, JPG, GIF or WEBP."));
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(failed());
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => (image.naturalWidth && image.naturalHeight ? resolve(image) : reject(failed()));
+      image.onerror = () => reject(failed());
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 async function serverIconFromFile(file) {
-  const url = URL.createObjectURL(file);
   try {
-    const image = await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error(t("Esa imagen no se pudo abrir.", "That image could not be opened.")));
-      img.src = url;
-    });
-    const side = Math.min(image.naturalWidth, image.naturalHeight);
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = 64;
-    const context = canvas.getContext("2d");
-    // Las imágenes pequeñas (pixel art) se agrandan sin difuminar.
-    context.imageSmoothingEnabled = side > 64;
-    context.imageSmoothingQuality = "high";
-    context.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, 64, 64);
-    await saveServerIcon(canvas.toDataURL("image/png"));
+    iconEditor.image = await readImageFile(file);
   } catch (error) {
-    toast(String(error.message ?? error), "error");
-  } finally {
-    URL.revokeObjectURL(url);
+    return toast(error.message, "error");
   }
+  const { naturalWidth: width, naturalHeight: height } = iconEditor.image;
+  iconEditor.zoom = 1;
+  iconEditor.cx = width / 2;
+  iconEditor.cy = height / 2;
+  // Las imágenes pequeñas suelen ser pixel art: se agrandan sin difuminar.
+  iconEditor.pixel = Math.min(width, height) <= 128;
+  $("#icon-zoom").value = "1";
+  $("#icon-pixel").checked = iconEditor.pixel;
+  $("#icon-sample-name").textContent = host.options?.name ?? "";
+  $("#icon-sample-motd").innerHTML = motdHtml(host.options?.motd ?? "");
+  drawIconEditor();
+  openModal("#icon-dialog");
+}
+
+/** Cuántos píxeles de la imagen caben de lado en el recorte. */
+function iconSpan() {
+  const { naturalWidth: width, naturalHeight: height } = iconEditor.image;
+  return Math.min(width, height) / iconEditor.zoom;
+}
+
+function drawIconEditor() {
+  const image = iconEditor.image;
+  if (!image) return;
+  const span = iconSpan();
+  const half = span / 2;
+  iconEditor.cx = Math.min(Math.max(iconEditor.cx, half), image.naturalWidth - half);
+  iconEditor.cy = Math.min(Math.max(iconEditor.cy, half), image.naturalHeight - half);
+  const view = $("#icon-canvas");
+  const context = view.getContext("2d");
+  context.clearRect(0, 0, view.width, view.height);
+  context.imageSmoothingEnabled = !iconEditor.pixel;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(image, iconEditor.cx - half, iconEditor.cy - half, span, span, 0, 0, view.width, view.height);
+  // El de 64×64 sale del de 256 (en dos pasos se ve mejor que de golpe) o, pixelado, directo.
+  const preview = $("#icon-preview");
+  const small = preview.getContext("2d");
+  small.clearRect(0, 0, 64, 64);
+  small.imageSmoothingEnabled = !iconEditor.pixel;
+  small.imageSmoothingQuality = "high";
+  if (iconEditor.pixel) small.drawImage(image, iconEditor.cx - half, iconEditor.cy - half, span, span, 0, 0, 64, 64);
+  else small.drawImage(view, 0, 0, view.width, view.height, 0, 0, 64, 64);
+}
+
+function zoomIcon(factor) {
+  iconEditor.zoom = Math.min(5, Math.max(1, iconEditor.zoom * factor));
+  $("#icon-zoom").value = String(iconEditor.zoom);
+  drawIconEditor();
+}
+
+async function saveEditedIcon() {
+  const button = $("#icon-save");
+  button.disabled = true;
+  await saveServerIcon($("#icon-preview").toDataURL("image/png"));
+  button.disabled = false;
+  closeModal("#icon-dialog");
+}
+
+function bindIconEditor() {
+  const view = $("#icon-canvas");
+  view.addEventListener("pointerdown", (event) => {
+    view.setPointerCapture(event.pointerId);
+    iconEditor.drag = { x: event.clientX, y: event.clientY };
+  });
+  view.addEventListener("pointermove", (event) => {
+    if (!iconEditor.drag || !iconEditor.image) return;
+    // Lo que se arrastra en pantalla, en píxeles de la imagen.
+    const ratio = iconSpan() / view.getBoundingClientRect().width;
+    iconEditor.cx -= (event.clientX - iconEditor.drag.x) * ratio;
+    iconEditor.cy -= (event.clientY - iconEditor.drag.y) * ratio;
+    iconEditor.drag = { x: event.clientX, y: event.clientY };
+    drawIconEditor();
+  });
+  view.addEventListener("pointerup", () => (iconEditor.drag = null));
+  view.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    zoomIcon(event.deltaY < 0 ? 1.1 : 1 / 1.1);
+  });
+  $("#icon-zoom").addEventListener("input", (event) => {
+    iconEditor.zoom = Number(event.target.value);
+    drawIconEditor();
+  });
+  $("#icon-pixel").addEventListener("change", (event) => {
+    iconEditor.pixel = event.target.checked;
+    drawIconEditor();
+  });
+  $("#icon-other").onclick = () => $("#hs-icon-file").click();
+  $("#icon-save").onclick = () => saveEditedIcon();
+  $("#icon-close").onclick = () => closeModal("#icon-dialog");
+  $("#icon-dialog").onmousedown = (event) => {
+    if (event.target.id === "icon-dialog") closeModal("#icon-dialog");
+  };
 }
 
 async function saveServerIcon(data) {
@@ -1085,6 +1177,7 @@ function bindHostedOptions() {
     event.target.value = "";
     if (file) serverIconFromFile(file);
   };
+  bindIconEditor();
   $("#hs-restart-btn").onclick = async () => {
     try {
       await invoke("reiniciar_servidor", { id: host.id });

@@ -763,6 +763,7 @@ function instanceMenuItems(id) {
     { icon: "wrench", label: t("Diagnosticar y arreglar", "Diagnose and fix"), action: () => openDoctor(id, "manual") },
     { icon: "check-circle", label: t("Verificar y reparar archivos", "Check and repair files"), action: () => verifyInstance(id) },
     { icon: "duplicate", label: t("Duplicar", "Duplicate"), action: () => duplicateInstance(id) },
+    { icon: "chat", label: t("Compartir con un amigo", "Share with a friend"), action: () => shareWithMenu(pointerAnchor(), id) },
     { icon: "upload", label: t("Exportar modpack", "Export modpack"), action: () => openExport(id) },
     { icon: "trash", label: t("Eliminar", "Delete"), danger: true, action: () => deleteInstance(id) },
   ];
@@ -1552,7 +1553,7 @@ function renderFriends() {
       </div>`,
     )
     .join("");
-  const row = (f) => `<div class="friend ${f.online ? "online" : ""}">
+  const row = (f) => `<div class="friend ${f.online ? "online" : ""}" data-uid="${escapeHtml(f.uid)}" title="${t(`Escribirle a ${escapeHtml(f.name)}`, `Message ${escapeHtml(f.name)}`)}">
       <div class="friend-head"><canvas width="8" height="8" class="head" data-head="${escapeHtml(f.name)}"></canvas><span class="presence-dot ${f.online ? (f.presence?.state === "playing" ? "playing" : "online") : ""}"></span></div>
       <div class="grow"><b>${escapeHtml(f.name)}</b><span title="${escapeHtml(friendStatus(f))}">${escapeHtml(friendStatus(f))}</span></div>
       ${f.worldOpen ? `<button class="btn primary small" data-join="${escapeHtml(f.uid)}">${t("Unirse", "Join")}</button>` : ""}
@@ -1762,7 +1763,11 @@ function wireFriendsEvents() {
     if (more) {
       const friend = findFriend(more.dataset.friendMenu);
       if (friend) friendMenu(more, friend);
+      return;
     }
+    // Clic en el amigo: su conversación, con lo que está jugando y «Unirse» arriba.
+    const row = event.target.closest(".friend[data-uid]");
+    if (row) messageFriend(row.dataset.uid);
   };
   listen("social", ({ payload }) => {
     state.social = payload;
@@ -1831,7 +1836,7 @@ function renderChatList() {
     );
     return;
   }
-  const chats = state.chats ?? [];
+  const chats = allChats();
   const friends = state.social?.friends?.friends ?? [];
   // Amigos con los que todavía no hay conversación: para empezar una.
   const talking = new Set(chats.filter((c) => c.kind === "directo").flatMap((c) => c.members.map((m) => m.uid)));
@@ -1877,7 +1882,14 @@ function showChatEmpty(text, withSignIn) {
 }
 
 function currentChat() {
-  return (state.chats ?? []).find((c) => c.id === state.chatOpen);
+  return (state.chats ?? []).find((c) => c.id === state.chatOpen) ?? (state.pendingChat?.id === state.chatOpen ? state.pendingChat : undefined);
+}
+
+/** Las conversaciones, con la que se acaba de crear aunque Firebase todavía no la mande. */
+function allChats() {
+  const chats = state.chats ?? [];
+  const pending = state.pendingChat && !chats.some((c) => c.id === state.pendingChat.id) ? [state.pendingChat] : [];
+  return [...pending, ...chats];
 }
 
 function renderChatHeader() {
@@ -1887,12 +1899,26 @@ function renderChatHeader() {
   const canvas = $("#chat-avatar canvas");
   if (canvas) drawHead(canvas, canvas.dataset.head);
   $("#chat-title").textContent = chat.name;
+  let join = null;
   if (chat.kind === "grupo") {
     $("#chat-subtitle").textContent = chat.members.map((m) => m.name).join(", ");
   } else {
     const friend = (state.social?.friends?.friends ?? []).find((f) => chat.members.some((m) => m.uid === f.uid));
     $("#chat-subtitle").textContent = friend ? friendStatus(friend) : "";
+    join = friend && joinTarget(friend);
   }
+  state.chatJoin = join;
+  $("#chat-join").classList.toggle("hidden", !join);
+  if (join) $("#chat-join").title = join.title;
+}
+
+/** A dónde se puede entrar con un amigo: su mundo abierto o el servidor donde está jugando. */
+function joinTarget(friend) {
+  const p = friend.presence ?? {};
+  if (!friend.online || p.state !== "playing") return null;
+  if (friend.worldOpen && (p.address || p.lan)) return { friend, address: p.address ?? p.lan, title: t(`Entrar al mundo de ${friend.name}`, `Join ${friend.name}'s world`) };
+  if (p.world === "server" && p.server) return { friend, address: p.server, title: t(`Entrar a ${p.server} con ${friend.name}`, `Join ${p.server} with ${friend.name}`) };
+  return null;
 }
 
 async function openChat(id) {
@@ -1937,11 +1963,14 @@ function renderMessages() {
     }
     const continued = previous && previous.from === m.from && m.at - previous.at < 5 * 60000 && new Date(previous.at).toDateString() === day;
     const author = group && !m.mine && !continued ? `<span class="bubble-author">${escapeHtml(m.name)}</span>` : "";
+    const share = !m.image && parseShare(m.text);
     const body = m.image
       ? `<button class="bubble-image" data-image="${escapeHtml(m.id)}" style="aspect-ratio:${m.width || 4}/${m.height || 3}">${
           state.chatImages?.[m.id] ? `<img src="${state.chatImages[m.id]}" alt="">` : `<span class="spinner tiny"></span>`
         }</button>`
-      : `<span class="bubble-text">${escapeHtml(m.text ?? "")}</span>`;
+      : share
+        ? shareCardHtml(share, m)
+        : `<span class="bubble-text">${escapeHtml(m.text ?? "")}</span>`;
     html += `<div class="bubble-row ${m.mine ? "mine" : ""} ${continued ? "continued" : ""}">
       <div class="bubble">${author}${body}<span class="bubble-time">${escapeHtml(new Date(m.at).toLocaleTimeString("es-MX", { hour: "numeric", minute: "2-digit" }))}</span></div>
     </div>`;
@@ -2026,13 +2055,139 @@ async function sendChatImage(source) {
     const { data, width, height } = await reduceImage(source);
     await invoke("enviar_imagen", { chat, datos: data, ancho: width, alto: height });
   } catch (error) {
-    toast(String(error.message ?? error), "error");
+    toast(error?.name === "EncodingError" ? t("Esa imagen no se pudo abrir (¿es un PNG, JPG, GIF o WEBP?).", "That image could not be opened (is it a PNG, JPG, GIF or WEBP?).") : String(error.message ?? error), "error");
+  } finally {
+    if (source.startsWith("blob:")) URL.revokeObjectURL(source);
+  }
+}
+
+/** Ancla en el último clic: para abrir un menú que sale de otro menú (que ya se cerró). */
+function pointerAnchor() {
+  const { x = innerWidth / 2, y = innerHeight / 2 } = state.pointer ?? {};
+  return { getBoundingClientRect: () => new DOMRect(x, y, 0, 0), isConnected: false, focus() {} };
+}
+document.addEventListener("pointerdown", (event) => (state.pointer = { x: event.clientX, y: event.clientY }), true);
+
+// ---------- Instancias compartidas (ver compartir.rs: viaja una receta, no los archivos) ----------
+const SHARE_PREFIX = "parabellum:instancia:";
+
+function parseShare(text) {
+  if (!text?.startsWith(SHARE_PREFIX)) return null;
+  try {
+    const recipe = JSON.parse(text.slice(SHARE_PREFIX.length));
+    return recipe?.n && recipe?.mc ? recipe : null;
+  } catch {
+    return null;
+  }
+}
+
+/** La instancia que ya tiene este PC (el mismo modpack de Modrinth, o el mismo nombre). */
+function sharedOwned(recipe) {
+  if (recipe.s === "modrinth" && recipe.p) return state.instances.find((i) => i.modpackProject === recipe.p);
+  return state.instances.find((i) => i.name.toLowerCase() === recipe.n.toLowerCase());
+}
+
+function shareCardHtml(recipe, message) {
+  const loader = recipe.l && !["vanilla", "none"].includes(recipe.l.toLowerCase()) ? ` · ${recipe.l}` : "";
+  const mods = recipe.k ? ` · ${plural(recipe.k, "mod", "mods")}` : "";
+  const source =
+    recipe.s === "modrinth"
+      ? t("Modpack de Modrinth", "Modrinth modpack")
+      : recipe.s === "catalogo"
+        ? t("Del catálogo de Drive", "From the Drive catalog")
+        : t("Mods de Modrinth", "Mods from Modrinth") + (recipe.x ? t(` · ${recipe.x} no viajan (no son de Modrinth)`, ` · ${recipe.x} do not travel (not from Modrinth)`) : "");
+  const owned = sharedOwned(recipe);
+  const installing = state.shareInstalling === message.id;
+  let action = "";
+  if (owned) action = `<button class="btn small" data-share-open="${escapeHtml(owned.id)}">${icon("play")}${t("Abrir", "Open")}</button>`;
+  else if (!message.mine)
+    action = `<button class="btn primary small" data-share-install="${escapeHtml(message.id)}" ${state.shareInstalling ? "disabled" : ""}>${
+      installing ? `<span class="spinner tiny"></span>${escapeHtml(state.shareProgress ?? t("Instalando…", "Installing…"))}` : `${icon("download")}${t("Instalar", "Install")}`
+    }</button>`;
+  return `<span class="share-kicker">${t("Instancia compartida", "Shared instance")}</span>
+    <div class="share-card">${art(owned ?? { name: recipe.n })}<div class="grow"><b>${escapeHtml(recipe.n)}</b><span>${escapeHtml(`Minecraft ${recipe.mc}${loader}${mods}`)}</span><small>${escapeHtml(source)}</small></div>${action}</div>`;
+}
+
+async function shareInstance(chat, id) {
+  const instance = state.instances.find((i) => i.id === id);
+  if (!chat || !instance) return;
+  toast(t(`Compartiendo ${instance.name}…`, `Sharing ${instance.name}…`));
+  try {
+    await invoke("compartir_instancia", { chat, id });
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+/** Elegir qué instancia compartir en la conversación abierta. */
+function shareMenu(anchor) {
+  if (!state.chatOpen) return;
+  if (!state.instances.length) return toast(t("Todavía no tienes instancias para compartir.", "You have no instances to share yet."), "error");
+  const items = [...state.instances]
+    .sort((a, b) => (b.lastPlayed ?? 0) - (a.lastPlayed ?? 0))
+    .map((i) => ({ icon: "cubes", label: i.name, sub: `Minecraft ${i.minecraftVersion}${i.loader && i.loader !== "Vanilla" ? ` · ${i.loader}` : ""}`, action: () => shareInstance(state.chatOpen, i.id) }));
+  contextMenu(anchor, items);
+}
+
+/** Desde el menú de una instancia: elegir con quién compartirla. */
+function shareWithMenu(anchor, id) {
+  if (!state.social?.connected) return toast(t("Inicia sesión con Google para compartir con tus amigos.", "Sign in with Google to share with your friends."), "error");
+  const chats = allChats();
+  const talking = new Set(chats.filter((c) => c.kind === "directo").flatMap((c) => c.members.map((m) => m.uid)));
+  const items = [
+    ...chats.map((c) => ({ ...(c.kind === "grupo" ? { icon: "chat" } : { head: c.name }), label: c.name, action: () => shareInstance(c.id, id) })),
+    ...(state.social?.friends?.friends ?? [])
+      .filter((f) => !talking.has(f.uid))
+      .map((f) => ({
+        head: f.name,
+        label: f.name,
+        action: async () => {
+          try {
+            shareInstance(await invoke("chat_con_amigo", { uid: f.uid }), id);
+          } catch (error) {
+            toast(String(error), "error");
+          }
+        },
+      })),
+  ];
+  if (!items.length) return toast(t("Agrega amigos para compartirles instancias.", "Add friends to share instances with them."), "error");
+  contextMenu(anchor, items);
+}
+
+/** Arma en este PC la instancia que compartió un amigo. */
+async function installShared(messageId) {
+  const message = (state.chatMessages ?? []).find((m) => m.id === messageId);
+  const recipe = message && parseShare(message.text);
+  if (!recipe || state.shareInstalling) return;
+  state.shareInstalling = messageId;
+  state.shareProgress = null;
+  renderMessages();
+  $("#download-indicator").classList.remove("hidden");
+  $("#download-percent").textContent = "…";
+  try {
+    const id = await invoke("instalar_compartida", { texto: message.text });
+    await reloadInstances();
+    toast(t(`Lista: ${recipe.n}. Ya puedes jugarla.`, `Ready: ${recipe.n}. You can play it now.`));
+    navigate("instance", id);
+  } catch (error) {
+    toast(String(error), "error");
+  } finally {
+    state.shareInstalling = null;
+    $("#download-indicator").classList.add("hidden");
+    if (state.page === "chat") renderMessages();
   }
 }
 
 async function messageFriend(uid) {
+  const friend = findFriend(uid);
   try {
     const id = await invoke("chat_con_amigo", { uid });
+    // La primera vez, Firebase tarda un momento en mandar la conversación: mientras, se abre con lo que ya
+    // se sabe del amigo (antes se abría vacía y había que volver a pulsar).
+    if (!(state.chats ?? []).some((c) => c.id === id)) {
+      const name = friend?.name ?? "…";
+      state.pendingChat = { id, kind: "directo", name, members: [{ uid, name }], lastText: "", lastName: "", lastAt: 0, unread: false };
+    }
     openChat(id);
   } catch (error) {
     toast(String(error), "error");
@@ -2146,7 +2301,16 @@ function wireChatEvents() {
     $("#chat-file").value = "";
     if (file) sendChatImage(URL.createObjectURL(file));
   };
+  $("#chat-share").onclick = (event) => shareMenu(event.currentTarget);
+  $("#chat-join").onclick = () => {
+    const join = state.chatJoin;
+    if (join) joinFriend(join.friend, join.address);
+  };
   $("#chat-messages").onclick = (event) => {
+    const install = event.target.closest("[data-share-install]");
+    if (install) return void installShared(install.dataset.shareInstall);
+    const open = event.target.closest("[data-share-open]");
+    if (open) return void navigate("instance", open.dataset.shareOpen);
     const image = event.target.closest("[data-image] img");
     if (!image) return;
     $("#lightbox-image").src = image.src;
@@ -2162,8 +2326,9 @@ function wireChatEvents() {
   });
   listen("chats", ({ payload }) => {
     state.chats = payload;
+    if (state.pendingChat && payload.some((c) => c.id === state.pendingChat.id)) state.pendingChat = null;
     renderGroups();
-    if (state.chatOpen && !payload.some((c) => c.id === state.chatOpen)) closeChat();
+    if (state.chatOpen && !payload.some((c) => c.id === state.chatOpen) && state.pendingChat?.id !== state.chatOpen) closeChat();
     if (state.page === "chat") renderChatList();
     else updateChatBadge();
   });
@@ -3109,6 +3274,7 @@ function wireEvents() {
       closeModal("#install-dialog");
       closeModal("#group-dialog");
       closeModal("#server-dialog");
+      closeModal("#icon-dialog");
       closeModal("#account-dialog");
       if (!state.exporting?.busy) closeModal("#export-dialog");
       $("#lightbox").classList.add("hidden");
@@ -3186,6 +3352,15 @@ function wireEvents() {
       $("#import-progress div").style.width = `${Math.max(2, payload.fraction * 100)}%`;
       $("#import-status").textContent = payload.stage;
       $("#download-percent").textContent = `${Math.round(payload.fraction * 100)}%`;
+      return;
+    }
+    if (payload.task === "compartida" || (state.shareInstalling && (payload.task === "importar" || payload.task === "catalogo"))) {
+      const percent = Math.round(payload.fraction * 100);
+      state.shareProgress = `${percent}%`;
+      $("#download-percent").textContent = `${percent}%`;
+      const button = $(`[data-share-install="${CSS.escape(state.shareInstalling ?? "")}"]`);
+      if (button) button.innerHTML = `<span class="spinner tiny"></span>${percent}%`;
+      if (payload.task !== "compartida") return void (payload.task === "importar" && ($("#import-status").textContent = payload.stage));
       return;
     }
     if (payload.task === "instalar") {

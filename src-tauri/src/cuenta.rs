@@ -440,6 +440,17 @@ fn notify_message(app: &AppHandle, summary: chat::Summary) {
     });
 }
 
+/// Comparte una instancia en una conversación (su receta: ver compartir.rs).
+#[tauri::command]
+pub async fn compartir_instancia(app: AppHandle, chat: String, id: String) -> Result<(), String> {
+    let service = chat_ready(&app)?;
+    let paths = app.state::<AppState>().paths.clone();
+    let instance = crate::instances::find(&paths, &id).ok_or(t!("No se encontró la instancia.", "The instance was not found."))?;
+    let recipe = crate::compartir::recipe(&instance).await?;
+    let text = crate::compartir::encode(&recipe)?;
+    service.send_share(&chat, &text, &recipe.name).await
+}
+
 /// Una imagen del PC (soltada en la ventana) como data URL, para reducirla y enviarla.
 #[tauri::command]
 pub fn leer_imagen(ruta: String) -> Result<String, String> {

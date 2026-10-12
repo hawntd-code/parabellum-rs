@@ -9,6 +9,7 @@ mod amigos;
 mod avisos;
 mod catalog;
 mod chat;
+mod compartir;
 mod compat;
 mod config;
 mod content;
@@ -1170,6 +1171,66 @@ async fn instalar_modpack(app: AppHandle, state: State<'_, AppState>, proyecto: 
     let result = import_modpack(&download.file, &paths, Some(download.title.clone()), icon, source, &running, ram, progress).await;
     let _ = std::fs::remove_file(&download.file);
     result
+}
+
+/// Arma en este PC una instancia que compartió un amigo por el chat. Devuelve su id.
+#[tauri::command]
+async fn instalar_compartida(app: AppHandle, state: State<'_, AppState>, texto: String) -> Result<String, String> {
+    let recipe = compartir::decode(&texto).ok_or(t!("Esa instancia compartida no se puede leer.", "That shared instance cannot be read."))?;
+    match recipe.source.as_str() {
+        "modrinth" => {
+            let project = recipe.project.clone().unwrap_or_default();
+            let imported = instalar_modpack(app, state, project, recipe.version.clone()).await?;
+            imported.id.ok_or(t!("No se creó la instancia.", "The instance was not created."))
+        }
+        "catalogo" => {
+            let id = recipe.catalog.clone().unwrap_or_default();
+            let installed = instalar_de_catalogo(app, state, id, None).await.map_err(|error| {
+                t!("{error} Pídele a quien la compartió que la suba al catálogo de Drive, o que te pase el paquete por USB.", "{error} Ask whoever shared it to upload it to the Drive catalog, or to give you the package on a USB drive.")
+            })?;
+            installed.id.ok_or(t!("No se creó la instancia.", "The instance was not created."))
+        }
+        _ => {
+            let emitter = app.clone();
+            let progress = move |stage: String, fraction: f64| {
+                let _ = emitter.emit("progreso", Progress { task: "compartida".into(), stage, fraction });
+            };
+            install_recipe_mods(&recipe, &state.paths, progress).await.map(|instance| instance.id)
+        }
+    }
+}
+
+/// Instancia hecha a mano que compartió un amigo: misma versión y loader, y sus archivos de Modrinth.
+async fn install_recipe_mods(recipe: &compartir::Recipe, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<Instance, String> {
+    // Un nombre libre: «Mi pack», «Mi pack (2)»…
+    let mut name = recipe.name.trim().to_string();
+    let mut number = 2;
+    while instances::folder_for(&name, paths).map(|f| f.exists()).unwrap_or(false) {
+        name = format!("{} ({number})", recipe.name.trim());
+        number += 1;
+    }
+    let loader = Some(recipe.loader.as_str()).filter(|l| !l.eq_ignore_ascii_case("vanilla") && !l.eq_ignore_ascii_case("none")).map(parse_loader).transpose()?;
+    progress(t!("Preparando Minecraft {}…", "Preparing Minecraft {}…", recipe.minecraft), 0.0);
+    let report = progress.clone();
+    let (version_id, loader_version) = install_game(&recipe.minecraft, loader, recipe.loader_version.as_deref(), paths, move |stage, fraction| report(stage, fraction * 0.4)).await?;
+    let game = GameVersion {
+        version_id: &version_id,
+        minecraft: &recipe.minecraft,
+        loader: loader.map(|l| l.name()).zip(loader_version.as_deref()),
+    };
+    let instance = instances::create(&name, &game, paths)?;
+    let files = modrinth::files_for_versions(&recipe.versions()).await?;
+    if !files.is_empty() {
+        let total = files.len();
+        progress(t!("Descargando {total} archivos de Modrinth…", "Downloading {total} files from Modrinth…"), 0.4);
+        let report = progress.clone();
+        modrinth::install(&instance, &files, move |_, _, bytes, all| {
+            report(t!("Descargando {total} archivos de Modrinth…", "Downloading {total} files from Modrinth…"), 0.4 + 0.6 * bytes as f64 / all.max(1) as f64)
+        })
+        .await?;
+    }
+    progress(t!("Listo", "Done"), 1.0);
+    Ok(instance)
 }
 
 // ================= Doctor: revisar, diagnosticar y arreglar
@@ -2464,6 +2525,40 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             };
             Ok(report)
         }
+        "--probar-receta" => {
+            // Comparte una instancia (su receta, como por el chat) y la vuelve a armar como otra instancia.
+            let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
+            tauri::async_runtime::block_on(async move {
+                let recipe = compartir::recipe(&instance).await?;
+                let text = compartir::encode(&recipe)?;
+                let decoded = compartir::decode(&text).ok_or("La receta no se pudo leer de vuelta.")?;
+                let mut report = format!("receta ({} letras): {}\n", text.chars().count(), text);
+                if decoded.source != "mods" {
+                    report += &format!("viene de «{}»: se instala desde ahí\n", decoded.source);
+                    return Ok::<String, String>(report);
+                }
+                let copy = install_recipe_mods(&decoded, paths, |_, _| {}).await?;
+                let original = modrinth::identify(&instance).await;
+                let made = modrinth::identify(&copy).await;
+                let ids = |files: &[modrinth::InstalledFile]| {
+                    let mut ids: Vec<String> = files.iter().filter(|f| !f.file.ends_with(".disabled")).filter_map(|f| f.version_id.clone()).collect();
+                    ids.sort();
+                    ids
+                };
+                report += &format!(
+                    "armada: «{}» ({} {} {})\noriginal: {} archivos de Modrinth · copia: {} · iguales: {}\nno viajaron (no son de Modrinth): {}",
+                    copy.name,
+                    copy.minecraft_version,
+                    copy.loader,
+                    copy.loader_version.clone().unwrap_or_default(),
+                    ids(&original).len(),
+                    ids(&made).len(),
+                    ids(&original) == ids(&made),
+                    decoded.left_out
+                );
+                Ok(report)
+            })
+        }
         "--probar-tiempo-real" => {
             // Cuánto tarda en llegar por la escucha algo que se acaba de escribir (con la sesión guardada).
             let config = config::Config::load(paths);
@@ -2778,6 +2873,8 @@ fn main() {
             cancelar_playit,
             reintentar_playit,
             cerrar_parabellum,
+            instalar_compartida,
+            cuenta::compartir_instancia,
             desconectar_playit,
             compartir_mundo,
             preparar_servidor,

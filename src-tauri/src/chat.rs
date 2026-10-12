@@ -421,6 +421,17 @@ impl Chat {
         self.send(id, &message_id(self.db.server_now()), message, &preview(text), Map::new()).await
     }
 
+    /// Una instancia compartida (su receta, ver compartir.rs). En la lista de conversaciones se ve
+    /// «📦 nombre».
+    pub async fn send_share(&self, id: &str, text: &str, title: &str) -> Result<(), String> {
+        if text.chars().count() > MAX_TEXT {
+            return Err(t!("La instancia no cabe en un mensaje.", "The instance does not fit in a message."));
+        }
+        let name = self.my_name.lock().unwrap().clone();
+        let message = json!({ "from": self.uid, "name": name, "text": text, "at": firebase::server_timestamp() });
+        self.send(id, &message_id(self.db.server_now()), message, &preview(&format!("📦 {title}")), Map::new()).await
+    }
+
     /// `data`: imagen ya reducida, como "data:image/jpeg;base64,…". Va aparte, con el id de su mensaje.
     pub async fn send_image(&self, id: &str, data: &str, width: u32, height: u32) -> Result<(), String> {
         let id = safe(id)?;

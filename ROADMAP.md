@@ -113,6 +113,13 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### 0.18.0: más usos del chat e icono del servidor (pedido de Juan)
+- [x] **Imágenes en el chat:** el botón de imagen y pegar una captura no funcionaban: la ventana bloqueaba las imágenes abiertas como blob: (faltaba en la CSP de tauri.conf.json). Lo mismo rompía el icono del servidor («Esta imagen no se pudo abrir») y el de las instancias
+- [x] **Primer mensaje con alguien:** la conversación nueva todavía no llegaba de Firebase y la lista la cerraba; ahora se abre al momento con el nombre del amigo (state.pendingChat) hasta que llega
+- [x] **Compartir instancias por el chat** (compartir.rs): viaja una receta corta en un mensaje de texto (cabe en las reglas actuales de Firebase): modpack de Modrinth (proyecto y versión), paquete del catálogo de Drive (su id) o, si se hizo a mano, versión de Minecraft, loader y las versiones exactas de sus mods, resource packs y shaders de Modrinth (8 letras cada una; hasta ~200). Tarjeta con «Instalar» (o «Abrir» si ya la tienes). Botón en el chat y «Compartir con un amigo» en el menú de la instancia. Probado: una instancia hecha a mano se rearma con los mismos archivos (`--probar-receta`)
+- [x] **Amigos:** clic en un amigo abre su conversación; arriba, lo que está jugando y «Unirse» (a su mundo abierto o al servidor donde está)
+- [x] **Editor del icono del servidor:** cualquier imagen (PNG, JPG, GIF, WEBP…): se recorta, se mueve arrastrando, se acerca (rueda o barra), opción pixelado, vista previa como en la lista de servidores; se guarda en 64×64 PNG
+
 ### 0.17.1: vincular playit.gg sin trabas y actualización obligatoria (pedido de Juan)
 - [x] **playit.gg:** al aceptar en el navegador, la página de playit.gg espera a que el agente se conecte; Parabellum solo lo encendía al compartir algo, así que la página se quedaba «esperando», no volvía a Parabellum y no había dirección. Ahora, al aceptar: el agente se conecta en ese momento, se crea la dirección y Parabellum vuelve al frente con ella lista
 - [x] Mientras se vincula se ve el paso que dice playit.gg (abrir la página, aceptar, terminando); si playit.gg dejó a alguien en otra página tras iniciar sesión, «Abrir de nuevo» lo regresa. Hasta 30 min para crear la cuenta
