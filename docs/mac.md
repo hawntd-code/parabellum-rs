@@ -80,7 +80,11 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
   (sin firma de Apple, cada versión sería otro programa). `cargo test` usa su propia entrada,
   «Parabellum / pruebas».
 - Argumentos de Java en UTF-8 (en Windows hacía falta ANSI; en Mac no).
-- Ejecutable de Java de los runtimes de Mojang (`jre.bundle/Contents/Home/bin/java`).
+- Ejecutable de Java de los runtimes de Mojang (`jre.bundle/Contents/Home/bin/java`). Al bajarlo, los
+  programas que el manifiesto marca como ejecutables reciben su permiso (`make_executable`), y
+  `java::discover` lee el `release` junto a `bin/` (en Mac, dentro de `jre.bundle/Contents/Home`).
+- Jugar 1.19 en adelante: probado con `--probar-juego` hasta el menú principal en 1.19.2 vanilla y Fabric (Java 17),
+  1.21.1 vanilla y Fabric (Java 21, con el mod de Parabellum) y 26.3 (Java 25).
 - Carpeta de datos en `~/Library/Application Support/Parabellum` cuando corre desde una `.app`.
 - Conexión directa entre PCs (P2P, `p2p.rs` con iroh): es código compartido y iroh funciona en Mac,
   así que no hay nada que hacer en `macos/` (falta probarla).
@@ -102,6 +106,7 @@ Ordenadas por prioridad:
 3. **Jugar 1.19 en adelante** (vanilla y Fabric): Mojang trae nativos para chip Apple. Probar con
    `--probar-juego`. Revisar que se baje el Java de Mojang (`mojang.rs`, `ensure_java`) y que
    `java_binary` lo encuentre.
+   **Hecho** (ver «Qué ya está hecho»).
 4. **Avisos** — `macos/avisos.rs`. Lo más directo: el plugin oficial `tauri-plugin-notification`.
 5. **Imágenes raras en el chat** (HEIC del iPhone, TIFF…) — `decode_image` en `macos/mod.rs`. `sips`
    (viene con macOS) las pasa a PNG; falta leer ese PNG a RGBA (crate `png`), o cambiar el contrato

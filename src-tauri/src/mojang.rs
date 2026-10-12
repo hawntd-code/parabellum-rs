@@ -1,6 +1,8 @@
 //! Minecraft "vanilla" desde los servidores oficiales de Mojang: lista de versiones e instalación
 //! (JSON, juego, bibliotecas, assets, configuración de registros y el Java que pide la versión).
 
+use std::path::PathBuf;
+
 use serde::Serialize;
 use serde_json::Value;
 use sha1::{Digest, Sha1};
@@ -125,9 +127,12 @@ pub async fn install(release: &Release, paths: &Paths, progress: impl Fn(String,
     let component = version.pointer("/javaVersion/component").and_then(Value::as_str).unwrap_or("jre-legacy").to_string();
     let major = version.pointer("/javaVersion/majorVersion").and_then(Value::as_u64).unwrap_or(8) as u32;
     let runtimes = java::discover(paths);
+    let mut java_programs = Vec::new();
     if !java::select(&runtimes, Some(&component), major).is_some_and(|r| r.major == major) {
         progress(t!("Preparando Java {major}…", "Preparing Java {major}…"), 0.015);
-        files.extend(java_files(&component, paths).await?);
+        let (java, programs) = java_files(&component, paths).await?;
+        files.extend(java);
+        java_programs = programs;
     }
 
     let id = release.id.clone();
@@ -140,6 +145,7 @@ pub async fn install(release: &Release, paths: &Paths, progress: impl Fn(String,
         );
     })
     .await?;
+    java_programs.iter().for_each(|program| crate::plataforma::make_executable(program));
 
     // El JSON va al final: si la descarga se corta, la versión no parece instalada.
     let json_file = paths.version_json(&release.id);
@@ -164,32 +170,47 @@ pub async fn ensure_java(major: u32, paths: &Paths, progress: impl Fn(String, f6
         .map(|(name, _)| name.clone())
         .ok_or(t!("Mojang no ofrece Java {major}.", "Mojang does not offer Java {major}."))?;
     progress(t!("Preparando Java {major}…", "Preparing Java {major}…"), 0.0);
-    let files = java_files(&component, paths).await?;
+    let (files, programs) = java_files(&component, paths).await?;
     download::download_all(files, move |count, total, _, _| {
         progress(t!("Descargando Java {major}… {count} de {total} archivos", "Downloading Java {major}… {count} of {total} files"), count as f64 / total.max(1) as f64)
     })
-    .await
+    .await?;
+    programs.iter().for_each(|program| crate::plataforma::make_executable(program));
+    Ok(())
 }
 
-/// Archivos del Java de Mojang para este sistema (el mismo que usa el launcher oficial).
-async fn java_files(component: &str, paths: &Paths) -> Result<Vec<FileDownload>, String> {
+/// Archivos del Java de Mojang para este sistema (el mismo que usa el launcher oficial) y cuáles son
+/// programas (java, jspawnhelper…): después de bajarlos hay que marcarlos como ejecutables.
+async fn java_files(component: &str, paths: &Paths) -> Result<(Vec<FileDownload>, Vec<PathBuf>), String> {
     let platform = crate::plataforma::JAVA_RUNTIME_PLATFORM;
     let all: Value = serde_json::from_str(&download::get_text(JAVA_RUNTIMES_URL).await.map_err(|_| unavailable())?)
         .map_err(|e| e.to_string())?;
-    let manifest_url = all
-        .pointer(&format!("/{platform}/{component}/0/manifest/url"))
-        .and_then(Value::as_str)
+    let listing = all.pointer(&format!("/{platform}/{component}/0/manifest"));
+    let manifest_url = listing
+        .and_then(|l| l["url"].as_str())
         .ok_or(t!("Mojang no ofrece {component} para {platform}.", "Mojang does not offer {component} for {platform}."))?;
-    let manifest: Value = serde_json::from_str(&download::get_text(manifest_url).await.map_err(|_| unavailable())?)
-        .map_err(|e| e.to_string())?;
+    let manifest_text = download::get_text(manifest_url).await.map_err(|_| unavailable())?;
+    // Como el JSON de la versión: de esta lista sale qué se baja y qué se puede ejecutar.
+    if let Some(expected) = listing.and_then(|l| l["sha1"].as_str()) {
+        if !hex::encode(Sha1::digest(manifest_text.as_bytes())).eq_ignore_ascii_case(expected) {
+            return Err(t!("La lista de archivos de Java llegó dañada. Vuelve a intentarlo.", "The list of Java files arrived damaged. Try again."));
+        }
+    }
+    let manifest: Value = serde_json::from_str(&manifest_text).map_err(|e| e.to_string())?;
     let home = paths.java.join(component);
-    Ok(manifest["files"]
-        .as_object()
-        .into_iter()
-        .flatten()
-        .filter(|(_, entry)| entry["type"] == "file")
-        .filter_map(|(relative, entry)| FileDownload::from_json(entry.pointer("/downloads/raw")?, home.join(relative)))
-        .collect())
+    let mut downloads = Vec::new();
+    let mut programs = Vec::new();
+    for (relative, entry) in manifest["files"].as_object().into_iter().flatten().filter(|(_, entry)| entry["type"] == "file") {
+        // Solo dentro de la carpeta de este Java (sin «..» ni rutas absolutas).
+        let Some(relative) = crate::mrpack::safe_relative(relative) else { continue };
+        let Some(download) = entry.pointer("/downloads/raw").and_then(|raw| FileDownload::from_json(raw, home.join(&relative))) else { continue };
+        // Solo se marcan como programa los que se bajan (y se comprueban) aquí.
+        if entry["executable"] == true {
+            programs.push(download.path.clone());
+        }
+        downloads.push(download);
+    }
+    Ok((downloads, programs))
 }
 
 /// Versiones vanilla completas que ya están en la carpeta base (sin heredar de otra y con su .jar).

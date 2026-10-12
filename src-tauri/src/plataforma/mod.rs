@@ -20,6 +20,7 @@
 //! Funciones
 //!   data_root(exe)                 la carpeta de Parabellum (instancias, base, datos…).
 //!   java_binary(home, windowed)    el ejecutable de Java dentro de un runtime.
+//!   make_executable(ruta)          marcar un archivo descargado como programa (en Windows no hace falta).
 //!   protect(datos) / unprotect     cifrar con la cuenta del usuario (sesiones, claves).
 //!   ui_language()                  idioma del sistema: "es" o "en".
 //!   open_path / reveal_path / open_url

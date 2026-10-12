@@ -43,6 +43,9 @@ pub fn java_binary(home: &Path, windowed: bool) -> PathBuf {
     }
 }
 
+/// En Windows un .exe se puede abrir tal como se descarga.
+pub fn make_executable(_path: &Path) {}
+
 // ================= Procesos
 
 pub trait CommandExt {
