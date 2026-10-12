@@ -19,7 +19,7 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
-- Última revisión de los PR de Mac en Windows: 2026-10-12, PR #1 a #5 (todos mezclados).
+- Última revisión de los PR de Mac en Windows: 2026-10-12, PR #1 a #6 (todos mezclados).
 - Windows: la 0.25.0 (animaciones) está publicada en Drive desde el 2026-10-12. Sigue la 0.26.0.
 
 ## Pendientes para Mac
@@ -46,8 +46,11 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Pendientes para Windows
 
-- [ ] **PR #6: compilar y correr las pruebas en Windows.** `java::discover` (compartido) ahora llama a
-  `plataforma::make_executable`, que en Windows no hace nada, y la ruta de `release` no cambia.
+Nada por ahora.
+
+- [x] **PR #6: compilar y correr las pruebas en Windows** (2026-10-12): pasan las 83 pruebas (incluida
+  `encuentra_el_java_de_mojang`), compila, y Vanilla 1.21.1 llega al menú en 66 s con el Java que encuentra
+  `java::discover`. Juan lo mezcló.
 
 - [x] PR #5 (imágenes): verificado en Windows el 2026-10-12 (pasan las 83 pruebas, compila, y el
   error de una imagen que no se puede abrir dice lo mismo que antes). Juan lo mezcló.
