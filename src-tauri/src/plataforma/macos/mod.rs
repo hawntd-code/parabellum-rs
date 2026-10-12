@@ -1,15 +1,17 @@
 //! macOS (Mac con chip Apple, M1 en adelante): lo que Parabellum necesita del sistema. Mismo contrato
 //! que plataforma/windows (ver plataforma/mod.rs). Guía y lista de tareas: docs/mac.md.
 //!
-//! Lo que ya está hecho usa herramientas que trae macOS (open, sysctl, ps, kill, afplay, sips, dig).
-//! Lo marcado con TODO(mac) falta: cada uno dice qué hacer. Mientras tanto devuelve algo seguro
-//! (por ejemplo, `protect` devuelve None y Parabellum no guarda la sesión: hay que volver a entrar).
+//! Lo que ya está hecho usa herramientas que trae macOS (open, sysctl, ps, kill, afplay, sips, dig,
+//! security). Lo marcado con TODO(mac) falta: cada uno dice qué hacer. Mientras tanto devuelve algo
+//! seguro (por ejemplo, `decode_image` dice que esa imagen todavía no se puede abrir en Mac).
 
 pub mod accesos;
 pub mod avisos;
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+
+use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, CHACHA20_POLY1305, NONCE_LEN};
 
 use super::AgentDownload;
 
@@ -145,17 +147,95 @@ pub fn argfile_bytes(text: &str) -> Vec<u8> {
     text.as_bytes().to_vec()
 }
 
-// ================= Cifrado
+// ================= Cifrado con el Llavero
 
-/// TODO(mac): cifrar con el Llavero (Keychain). Idea: una clave aleatoria guardada en el Llavero
-/// (crate `security-framework` o `keyring`) y cifrar con ella (por ejemplo ChaCha20-Poly1305).
-/// Mientras devuelva None, Parabellum no guarda sesiones ni claves (hay que volver a iniciar sesión).
-pub fn protect(_data: &[u8]) -> Option<Vec<u8>> {
-    None
+// Una clave aleatoria por usuario del Mac, guardada en su Llavero de inicio de sesión. Se guarda y se
+// lee con el comando `security` (no con la API del Llavero): así la entrada queda a nombre de un
+// programa firmado por Apple y macOS no pide la contraseña cada vez que Parabellum se recompila o se
+// actualiza (sin firma de Apple, para macOS cada versión sería otro programa). Como DPAPI en Windows:
+// lo cifrado solo lo lee este usuario, en esta Mac.
+const KEYCHAIN_SERVICE: &str = "Parabellum";
+// Las pruebas usan su propia clave para no tocar la de verdad.
+const KEYCHAIN_ACCOUNT: &str = if cfg!(test) { "pruebas" } else { "clave" };
+/// Primer byte de lo cifrado: si un día cambia el formato, se distingue lo viejo.
+const CIPHER_VERSION: u8 = 1;
+
+/// La clave del Llavero. Con `create`, la crea si todavía no existe (solo al cifrar: al descifrar,
+/// sin clave no hay nada que leer). Se lee una vez por ejecución.
+fn key(create: bool) -> Option<[u8; 32]> {
+    static KEY: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
+    if let Some(key) = KEY.get() {
+        return Some(*key);
+    }
+    let key = match read_key() {
+        Ok(key) => key,
+        // 44: no existe (errSecItemNotFound). Con otro error (Llavero bloqueado…) no se crea.
+        Err(Some(44)) if create => {
+            store_new_key();
+            // Se vuelve a leer: si otro Parabellum la creó al mismo tiempo, vale la que quedó guardada.
+            read_key().ok()?
+        }
+        Err(_) => return None,
+    };
+    Some(*KEY.get_or_init(|| key))
 }
 
-pub fn unprotect(_data: &[u8]) -> Option<Vec<u8>> {
-    None
+/// Lee la clave; si no se puede, el código de salida de `security`.
+fn read_key() -> Result<[u8; 32], Option<i32>> {
+    let output = Command::new("security")
+        .args(["find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT, "-w"])
+        .output()
+        .map_err(|_| None)?;
+    if !output.status.success() {
+        return Err(output.status.code());
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    hex::decode(text.trim()).ok().and_then(|bytes| bytes.try_into().ok()).ok_or(None)
+}
+
+/// Guarda una clave nueva. Va por la entrada de `security -i` (no como argumento) para que no se vea
+/// en la lista de procesos. Sin -U: si ya hay una clave no la reemplaza (lo cifrado quedaría ilegible).
+fn store_new_key() {
+    use std::io::Write;
+    use std::process::Stdio;
+    let mut key = [0u8; 32];
+    if getrandom::getrandom(&mut key).is_err() {
+        return;
+    }
+    let child = Command::new("security").arg("-i").stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    let Ok(mut child) = child else { return };
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = writeln!(stdin, "add-generic-password -s {KEYCHAIN_SERVICE} -a {KEYCHAIN_ACCOUNT} -w {}", hex::encode(key));
+    } // Al cerrar la entrada, `security` termina.
+    let _ = child.wait();
+}
+
+fn cipher(create: bool) -> Option<LessSafeKey> {
+    Some(LessSafeKey::new(UnboundKey::new(&CHACHA20_POLY1305, &key(create)?).ok()?))
+}
+
+/// Cifra para el usuario del Mac (ChaCha20-Poly1305 con la clave del Llavero):
+/// [versión][nonce de 12 bytes al azar][cifrado][etiqueta de 16 bytes].
+pub fn protect(data: &[u8]) -> Option<Vec<u8>> {
+    let cipher = cipher(true)?;
+    let mut nonce = [0u8; NONCE_LEN];
+    getrandom::getrandom(&mut nonce).ok()?;
+    let mut sealed = [&[CIPHER_VERSION][..], &nonce[..], data].concat();
+    let tag = cipher.seal_in_place_separate_tag(Nonce::assume_unique_for_key(nonce), Aad::empty(), &mut sealed[1 + NONCE_LEN..]).ok()?;
+    sealed.extend_from_slice(tag.as_ref());
+    Some(sealed)
+}
+
+/// None si no se cifró para este usuario en esta Mac o si se alteró.
+pub fn unprotect(data: &[u8]) -> Option<Vec<u8>> {
+    let (&version, rest) = data.split_first()?;
+    if version != CIPHER_VERSION || rest.len() < NONCE_LEN {
+        return None;
+    }
+    let (nonce, sealed) = rest.split_at(NONCE_LEN);
+    let mut buffer = sealed.to_vec();
+    let plain = cipher(false)?.open_in_place(Nonce::try_assume_unique_for_key(nonce).ok()?, Aad::empty(), &mut buffer).ok()?;
+    Some(plain.to_vec())
 }
 
 // ================= Sistema
@@ -234,4 +314,23 @@ pub fn play_wav(wav: &'static [u8], wait: bool) -> bool {
 /// volver a escribirlo como PNG: en Mac se puede saltar ese paso).
 pub fn decode_image(_bytes: &[u8], _max_side: u32) -> Result<(u32, u32, Vec<u8>), String> {
     Err(t!("Esa imagen no se puede abrir todavía en Mac. Prueba con un PNG o JPG.", "That image cannot be opened on Mac yet. Try a PNG or JPG."))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cifrado_de_ida_y_vuelta() {
+        let secret = protect(b"1//token").unwrap();
+        assert_ne!(secret, b"1//token");
+        assert_eq!(unprotect(&secret).unwrap(), b"1//token");
+        // Cada vez con otro nonce: el mismo texto no da los mismos bytes.
+        assert_ne!(protect(b"1//token").unwrap(), secret);
+        // Alterado (o de otra Mac) no se descifra.
+        let mut altered = secret.clone();
+        *altered.last_mut().unwrap() ^= 1;
+        assert!(unprotect(&altered).is_none());
+        assert!(unprotect(&[]).is_none());
+    }
 }
