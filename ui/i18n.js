@@ -193,6 +193,7 @@ const HTML_EN = {
   "Actualiza Parabellum": "Update Parabellum",
   "Unirse": "Join",
   "Ver detalles": "See details",
+  "Entrar directo desde este PC (sin pasar por playit.gg)": "Join directly from this PC (without going through playit.gg)",
   "Agregar a favoritos": "Add to favorites",
   "Instalar tus favoritos en esta instancia": "Install your favorites in this instance",
   "Favoritos": "Favorites",

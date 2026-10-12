@@ -158,6 +158,35 @@ pub fn java_command_lines() -> Vec<(u32, String)> {
         .unwrap_or_default()
 }
 
+// ================= Firewall (conexión directa a los servidores)
+
+const FIREWALL_RULE: &str = "Parabellum (servidores de Minecraft)";
+/// Los puertos que usan los servidores de Parabellum (el 25565 y los que se buscan si está ocupado).
+const SERVER_PORTS: &str = "25565-25600";
+
+/// El firewall de Windows ya deja entrar conexiones a los servidores (la regla de Parabellum existe).
+pub fn firewall_open() -> bool {
+    Command::new("netsh")
+        .args(["advfirewall", "firewall", "show", "rule", &format!("name={FIREWALL_RULE}")])
+        .no_console()
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+/// Agrega la regla (Windows pide permiso de administrador una vez).
+pub fn open_firewall() -> Result<(), String> {
+    let arguments = format!("advfirewall firewall add rule name=\"{FIREWALL_RULE}\" dir=in action=allow protocol=TCP localport={SERVER_PORTS} profile=any");
+    let script = format!("Start-Process netsh -ArgumentList '{arguments}' -Verb RunAs -WindowStyle Hidden -Wait");
+    let status = Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &script]).no_console().status().map_err(|e| e.to_string())?;
+    if firewall_open() {
+        Ok(())
+    } else if status.success() {
+        Err(t!("Windows no agregó el permiso. Vuelve a intentarlo y acepta el aviso de administrador.", "Windows did not add the permission. Try again and accept the administrator prompt."))
+    } else {
+        Err(t!("No se dio permiso de administrador.", "Administrator permission was not given."))
+    }
+}
+
 // ================= Argumentos de Java
 
 /// El texto en la codificación de Windows (ANSI), o None si tiene letras que no caben en ella.

@@ -248,6 +248,25 @@ async fn convertir_imagen(datos: String) -> Result<String, String> {
     Ok(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png)))
 }
 
+/// Prueba todas las rutas a un servidor (este PC, misma red, IPv6, playit.gg) y las devuelve con su
+/// tiempo, la más rápida primero.
+#[tauri::command]
+async fn mejor_ruta(rutas: Vec<ping::Route>, max_jugadores: Option<u32>) -> Vec<ping::Route> {
+    ping::best_routes(rutas, max_jugadores).await
+}
+
+/// Si el firewall deja entrar a los servidores (conexión directa por la red o por IPv6).
+#[tauri::command]
+async fn firewall_servidores() -> bool {
+    tauri::async_runtime::spawn_blocking(plataforma::firewall_open).await.unwrap_or(false)
+}
+
+/// Abre el firewall para los servidores (pide permiso de administrador una vez).
+#[tauri::command]
+async fn abrir_firewall_servidores() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(plataforma::open_firewall).await.map_err(|e| e.to_string())?
+}
+
 /// Estado de servidores (icono, mensaje, jugadores), como la lista de Multijugador del juego.
 #[tauri::command]
 async fn estado_servidores(state: State<'_, AppState>, direcciones: Vec<String>) -> Result<HashMap<String, ping::Status>, String> {
@@ -2911,6 +2930,9 @@ fn main() {
             sonido_mensaje,
             convertir_imagen,
             estado_servidores,
+            mejor_ruta,
+            firewall_servidores,
+            abrir_firewall_servidores,
             favorito_chat,
             favorito_mod,
             uuid_offline,

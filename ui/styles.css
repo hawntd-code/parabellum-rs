@@ -1226,6 +1226,20 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 /* Lo que no hay en todos los sistemas (en Mac no hay accesos directos). */
 body.no-shortcuts .needs-shortcuts { display: none !important; }
 
+/* Rendimiento del servidor (TPS) y conexión directa */
+.stat .tps-good { color: var(--success); }
+.stat .tps-warn { color: #e0a43a; }
+.stat .tps-bad { color: var(--danger); }
+.direct-card { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: var(--r-lg); background: var(--panel); border: 1px solid var(--border); margin-top: 10px; font-size: 13px; }
+.direct-card > svg { width: 18px; height: 18px; color: var(--accent-fg); flex: none; }
+.direct-card.ok > svg { color: var(--success); }
+.direct-card .grow { min-width: 0; }
+.direct-card b { display: block; font-size: 13.5px; }
+.direct-card span { color: var(--muted); }
+.route-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.route-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; background: var(--card); font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.route-chip.best { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success); }
+
 /* Favoritos */
 .starred svg, svg.starred { fill: #f5c542; stroke: #f5c542; }
 .circle-btn.starred { color: #f5c542; }

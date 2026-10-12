@@ -40,7 +40,11 @@ impl LaunchPlan {
         if supports_quick_play(minecraft_version) {
             self.arguments.extend(["--quickPlayMultiplayer".to_string(), address.to_string()]);
         } else {
-            let (host, port) = address.rsplit_once(':').unwrap_or((address, "25565"));
+            // «[2806::1]:25565» (IPv6) o «host:puerto».
+            let (host, port) = match address.strip_prefix('[').and_then(|rest| rest.split_once(']')) {
+                Some((host, rest)) => (host, rest.strip_prefix(':').unwrap_or("25565")),
+                None => address.rsplit_once(':').unwrap_or((address, "25565")),
+            };
             self.arguments.extend(["--server", host, "--port", port].map(String::from));
         }
     }

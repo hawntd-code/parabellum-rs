@@ -122,6 +122,18 @@ pub fn java_command_lines() -> Vec<(u32, String)> {
         .unwrap_or_default()
 }
 
+// ================= Firewall (conexión directa a los servidores)
+
+/// El firewall de macOS viene apagado y, si está encendido, pregunta por cada programa la primera
+/// vez que abre un puerto. TODO(mac): si está encendido, revisar que deje entrar a Java.
+pub fn firewall_open() -> bool {
+    true
+}
+
+pub fn open_firewall() -> Result<(), String> {
+    Ok(())
+}
+
 // ================= Argumentos de Java
 
 /// En Mac Java lee los argumentos en UTF-8: no hay que cambiar nada.

@@ -243,6 +243,36 @@ fn color_code(color: &str) -> Option<char> {
         .map(|(_, code, _)| *code)
 }
 
+// ================= Elegir la ruta más rápida
+
+/// Una forma de llegar al mismo servidor: "local" (este PC), "lan" (misma red), "ipv6" (directo por
+/// internet) o "playit" (el túnel de playit.gg).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Route {
+    pub address: String,
+    pub kind: String,
+    /// Lo que tardó en responder (None si no respondió o era otro servidor).
+    #[serde(default)]
+    pub latency_ms: Option<u32>,
+}
+
+/// Prueba todas las rutas a la vez y devuelve cada una con su tiempo, la más rápida primero. Las
+/// directas tienen poco tiempo para responder (si no responden rápido, no sirven); el túnel, más.
+/// `max_players`: para comprobar que es el mismo servidor (una dirección de red local puede ser de
+/// otro equipo en la red de quien se une).
+pub async fn best_routes(routes: Vec<Route>, max_players: Option<u32>) -> Vec<Route> {
+    let checks = routes.into_iter().take(6).map(|mut route| async move {
+        let limit = if route.kind == "playit" { Duration::from_secs(6) } else { Duration::from_millis(1500) };
+        let answer = tokio::time::timeout(limit, status(&route.address)).await.ok().and_then(Result::ok);
+        route.latency_ms = answer.filter(|s| s.online && max_players.is_none_or(|max| max == 0 || s.max_players == max)).and_then(|s| s.latency_ms);
+        route
+    });
+    let mut routes = futures::future::join_all(checks).await;
+    routes.sort_by_key(|r| r.latency_ms.unwrap_or(u32::MAX));
+    routes
+}
+
 // ================= Lo último que se supo (para el icono de los que están apagados)
 
 pub fn load_cache(cache: &Path) -> HashMap<String, Status> {

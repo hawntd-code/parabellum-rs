@@ -1107,6 +1107,12 @@ fn line_patterns() -> &'static (Regex, Regex) {
     })
 }
 
+/// La respuesta de «time query gametime»: «… The time is 123456».
+pub fn gametime(line: &str) -> Option<i64> {
+    let (_, rest) = line.split_once("The time is ")?;
+    rest.trim().split_whitespace().next()?.parse().ok()
+}
+
 pub fn parse_line(line: &str) -> Option<LineEvent> {
     let (joined, left) = line_patterns();
     if line.contains("]: Done (") && line.contains("For help") {
@@ -1127,6 +1133,12 @@ pub fn parse_line(line: &str) -> Option<LineEvent> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tiempo_del_juego_para_el_tps() {
+        assert_eq!(gametime("[22:31:04] [Server thread/INFO]: The time is 123456"), Some(123456));
+        assert_eq!(gametime("[22:31:04] [Server thread/INFO]: Done (3.9s)! For help"), None);
+    }
 
     #[test]
     fn propiedades_con_tildes_y_sin_perder_lo_demas() {

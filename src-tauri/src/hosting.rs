@@ -48,6 +48,14 @@ struct Running {
     restart_needed: bool,
     /// Al apagarse, se vuelve a encender (Reiniciar).
     restart: bool,
+    /// Ticks por segundo (20 es lo normal), medidos con «time query gametime» cada pocos segundos.
+    tps: Option<f32>,
+    /// Última lectura del tiempo del juego (cuándo, ticks).
+    gametime: Option<(std::time::Instant, i64)>,
+    /// Se preguntó el tiempo del juego (su respuesta no se muestra en la consola).
+    tps_query: Option<std::time::Instant>,
+    /// La última vez que el servidor avisó «Can't keep up» (se atrasa).
+    behind_at: Option<std::time::Instant>,
 }
 
 /// Cómo terminó la última vez (si fue mal): se muestra hasta el próximo arranque.
@@ -149,6 +157,10 @@ pub struct ServerView {
     restart_needed: bool,
     /// server-icon.png como data URL.
     icon: Option<String>,
+    /// Ticks por segundo (20 = sin atrasos); None mientras no hay medida.
+    tps: Option<f32>,
+    /// Avisó que se atrasa (Can't keep up) en el último minuto.
+    behind: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -210,6 +222,8 @@ pub fn view(app: &AppHandle) -> HostView {
                     .ok()
                     .filter(|png| png.len() < 200_000)
                     .map(|png| format!("data:image/png;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, png))),
+                tps: run.and_then(|r| r.tps),
+                behind: run.and_then(|r| r.behind_at).is_some_and(|at| at.elapsed() < Duration::from_secs(60)),
                 config,
             }
         })
@@ -272,6 +286,14 @@ pub fn init(app: &AppHandle) {
                     if let Some((memory, cpu)) = proceso::usage(run.pid) {
                         run.memory = memory;
                         run.cpu_percent = run.cpu.sample(cpu);
+                    }
+                    // TPS: cuántos ticks avanzó el juego entre dos preguntas (sirve en todas las versiones).
+                    if tick % 3 == 0 && run.phase == Phase::Ready {
+                        if let Some(stdin) = run.stdin.as_mut() {
+                            if stdin.write_all(b"time query gametime\n").and_then(|_| stdin.flush()).is_ok() {
+                                run.tps_query = Some(std::time::Instant::now());
+                            }
+                        }
                     }
                 }
                 running.keys().cloned().collect()
@@ -707,6 +729,25 @@ pub async fn retarget(app: &AppHandle) {
 
 // ================= Firebase: lo que ven los invitados
 
+/// Direcciones para entrar sin el túnel: (misma red, IPv6 por internet). Que funcionen depende de la
+/// red de cada quien (y del firewall: ver plataforma::open_firewall); al unirse se prueban todas.
+fn direct_routes(port: u16) -> (Option<String>, Option<String>) {
+    let lan = crate::actividad::local_address().filter(|ip| ip.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| ip.is_private())).map(|ip| format!("{ip}:{port}"));
+    let ipv6 = public_ipv6().map(|ip| format!("[{ip}]:{port}"));
+    (lan, ipv6)
+}
+
+/// La dirección IPv6 pública de este PC (la que usa para salir a internet), si tiene.
+fn public_ipv6() -> Option<std::net::Ipv6Addr> {
+    let socket = std::net::UdpSocket::bind("[::]:0").ok()?;
+    socket.connect("[2001:4860:4860::8888]:53").ok()?;
+    match socket.local_addr().ok()?.ip() {
+        // Global: empieza con 2 o 3 (no fe80:: de enlace local ni fc/fd de red privada).
+        std::net::IpAddr::V6(ip) if (ip.segments()[0] & 0xe000) == 0x2000 => Some(ip),
+        _ => None,
+    }
+}
+
 /// Publica el servidor para los amigos invitados (encendido, dirección y jugadores).
 async fn publish(app: &AppHandle, id: &str) {
     let Some(social) = cuenta::social_handle(app) else { return };
@@ -736,7 +777,16 @@ async fn publish(app: &AppHandle, id: &str) {
         "max": max,
         "guests": guests.iter().map(|g| (g.clone(), json!(true))).collect::<serde_json::Map<_, _>>(),
     });
-    for (field, value) in [("address", address), ("modpack", config.modpack.clone()), ("project", config.modpack_project.clone())] {
+    // Rutas directas (más rápidas que el túnel): misma red y, si el PC tiene, IPv6 por internet.
+    let (lan, ipv6) = if online { direct_routes(config.port) } else { (None, None) };
+    let tps = {
+        let running = hosting(app).running.lock().unwrap();
+        running.get(id).and_then(|r| r.tps)
+    };
+    if let Some(tps) = tps {
+        data["tps"] = json!((tps * 10.0).round() / 10.0);
+    }
+    for (field, value) in [("address", address), ("lan", lan), ("ipv6", ipv6), ("modpack", config.modpack.clone()), ("project", config.modpack_project.clone())] {
         if let Some(value) = value.filter(|v| !v.is_empty()) {
             data[field] = json!(value.chars().take(200).collect::<String>());
         }
@@ -870,6 +920,10 @@ pub fn start_server(app: &AppHandle, id: &str) -> Result<(), String> {
             stop_requested: false,
             restart_needed: false,
             restart: false,
+            tps: None,
+            gametime: None,
+            tps_query: None,
+            behind_at: None,
         },
     );
     let streams: Vec<Box<dyn std::io::Read + Send>> = [child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>), child.stderr.take().map(|s| Box::new(s) as _)]
@@ -941,6 +995,23 @@ fn on_line(app: &AppHandle, id: &str, line: String) {
         let Some(run) = running.get_mut(id) else { return };
         if let Some(output) = run.output.as_mut() {
             let _ = writeln!(output, "{line}");
+        }
+        // La respuesta a la pregunta del TPS no se muestra (se pregunta cada pocos segundos).
+        if let Some(ticks) = servidor::gametime(&line).filter(|_| run.tps_query.is_some_and(|at| at.elapsed() < Duration::from_secs(4))) {
+            run.tps_query = None;
+            let now = std::time::Instant::now();
+            if let Some((before, previous)) = run.gametime {
+                let seconds = now.duration_since(before).as_secs_f32();
+                if seconds > 1.0 && ticks >= previous {
+                    let measured = ((ticks - previous) as f32 / seconds).min(20.0);
+                    run.tps = Some(run.tps.map_or(measured, |tps| tps * 0.5 + measured * 0.5));
+                }
+            }
+            run.gametime = Some((now, ticks));
+            return;
+        }
+        if line.contains("Can't keep up!") {
+            run.behind_at = Some(std::time::Instant::now());
         }
         match &event {
             Some(servidor::LineEvent::Ready) if run.phase == Phase::Starting => {

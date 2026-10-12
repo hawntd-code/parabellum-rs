@@ -487,9 +487,35 @@ async function createHosted() {
 }
 
 // ---------- Página de un servidor ----------
+/** Conexión directa: con el firewall abierto, quien está en tu red (o tiene IPv6) entra sin playit.gg. */
+function directCardHtml() {
+  if (host.firewall == null) return "";
+  return host.firewall
+    ? `<div class="direct-card ok">${icon("check-circle")}<div class="grow"><b>${t("Conexión directa lista", "Direct connection ready")}</b><span>${t("Quien esté en tu red o tenga IPv6 entra sin pasar por playit.gg (menos lag). Parabellum elige la ruta más rápida al unirse.", "Whoever is on your network or has IPv6 joins without going through playit.gg (less lag). Parabellum picks the fastest route when joining.")}</span></div></div>`
+    : `<div class="direct-card">${icon("broadcast")}<div class="grow"><b>${t("Conexión directa", "Direct connection")}</b><span>${t("Deja que quien esté en tu red (o tenga IPv6) entre sin playit.gg: menos lag. Windows pide permiso de administrador una vez.", "Let whoever is on your network (or has IPv6) join without playit.gg: less lag. Windows asks for administrator permission once.")}</span></div><button class="btn small primary" id="hosted-firewall">${t("Permitir", "Allow")}</button></div>`;
+}
+
+async function refreshFirewall() {
+  if (!tauri) return;
+  host.firewall = await invoke("firewall_servidores").catch(() => null);
+  if (state.page === "hosted") renderHosted();
+}
+
+async function openFirewall() {
+  try {
+    await invoke("abrir_firewall_servidores");
+    host.firewall = true;
+    toast(t("Listo: tus amigos en tu red o con IPv6 ya pueden entrar directo.", "Done: your friends on your network or with IPv6 can now join directly."));
+  } catch (error) {
+    toast(String(error), "error");
+  }
+  if (state.page === "hosted") renderHosted();
+}
+
 async function enterHosted(id) {
   const changed = host.id !== id;
   host.id = id;
+  if (host.firewall == null) refreshFirewall();
   if (!host.view) await loadHosting();
   if (changed) {
     host.history = [];
@@ -525,6 +551,7 @@ function renderHosted() {
   const on = s.state !== "off";
   $("#hosted-start").classList.toggle("hidden", on);
   $("#hosted-stop").classList.toggle("hidden", !on);
+  $("#hosted-play").classList.toggle("hidden", s.state !== "ready");
   $("#hosted-stop").disabled = s.state === "stopping";
   $("#hosted-command").disabled = !on;
   $("#hosted-send").disabled = !on;
@@ -550,13 +577,19 @@ function renderHosted() {
     address = `<div class="address-card">${icon("globe")}<div class="grow"><span class="faint">${t("Dirección pública", "Public address")}</span><b>${escapeHtml(p.address ?? t("Se crea al encender", "Created when you start it"))}</b></div></div>`;
   }
   if (s.lan) address += `<div class="address-card small">${icon("server")}<div class="grow"><span class="faint">${t("Misma red (LAN)", "Same network (LAN)")}</span><b>${escapeHtml(s.lan)}</b></div><button class="circle-btn small" data-copy-address="${escapeHtml(s.lan)}" title="${t("Copiar", "Copy")}">${icon("copy")}</button></div>`;
-  $("#hosted-address").innerHTML = address;
+  $("#hosted-address").innerHTML = address + directCardHtml();
 
   // Cifras
   const memoryLimit = s.ramGb * 1024;
   const memoryShare = on ? Math.min(100, (s.memoryMb / memoryLimit) * 100) : 0;
+  // TPS: 20 es lo normal; si baja, el lag es del servidor (no de la conexión).
+  const paused = s.state === "ready" && s.tps != null && s.tps < 0.5 && !s.players.length;
+  const tpsClass = s.tps == null ? "" : s.tps >= 18.5 ? "tps-good" : s.tps >= 14 ? "tps-warn" : "tps-bad";
+  const tpsText = s.state !== "ready" || s.tps == null ? "—" : paused ? t("En pausa", "Paused") : `${s.tps.toFixed(1)}`;
+  const tpsTitle = t("Ticks por segundo: 20 es lo normal. Si baja, el lag es del servidor; si está en 20 y hay lag, es la conexión.", "Ticks per second: 20 is normal. If it drops, the lag comes from the server; if it is at 20 and there is lag, it is the connection.");
   $("#hosted-stats").innerHTML = `
     <div class="stat"><span class="faint">${t("Jugadores", "Players")}</span><b>${on ? `${s.players.length} / ${s.maxPlayers}` : "—"}</b></div>
+    <div class="stat" title="${escapeHtml(tpsTitle)}"><span class="faint">TPS${s.behind ? ` · ${t("se atrasó", "fell behind")}` : ""}</span><b class="${paused ? "" : tpsClass}">${escapeHtml(tpsText)}</b></div>
     <div class="stat"><span class="faint">${t("Encendido hace", "On for")}</span><b>${s.started && on ? uptime(s.started) : "—"}</b></div>
     <div class="stat"><span class="faint">${t("Procesador", "CPU")}</span><b>${on ? `${Math.round(s.cpu)}%` : "—"}</b></div>
     <div class="stat wide"><span class="faint">${t("Memoria del servidor", "Server memory")}</span><b>${on ? `${gb(s.memoryMb)} / ${s.ramGb} GB` : `${s.ramGb} GB`}</b>
@@ -1464,11 +1497,14 @@ function renderServerDetail() {
     [t("Jugadores", "Players"), info.players ? `${info.players}${status?.sample?.length ? ` · ${status.sample.join(", ")}` : ""}` : null],
     [t("Dirección", "Address"), info.address],
     [t("Respuesta", "Ping"), status?.online && status.latencyMs ? `${status.latencyMs} ms` : null],
+    ["TPS", detail.kind === "activity" && detail.item.kind === "hosted" && detail.item.server.tps != null ? `${Number(detail.item.server.tps).toFixed(1)} ${detail.item.server.tps >= 18.5 ? t("(fluido)", "(smooth)") : t("(se está atrasando)", "(falling behind)")}` : null],
     [t("Nota", "Note"), info.note],
   ].filter(([, value]) => value);
-  $("#srv-facts").innerHTML = rows
-    .map(([label, value]) => `<div class="srv-fact"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b>${label === t("Dirección", "Address") ? `<button class="circle-btn small" data-copy-address="${escapeHtml(value)}" title="${t("Copiar", "Copy")}">${icon("copy")}</button>` : ""}</div>`)
-    .join("");
+  $("#srv-facts").innerHTML =
+    rows
+      .map(([label, value]) => `<div class="srv-fact"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b>${label === t("Dirección", "Address") ? `<button class="circle-btn small" data-copy-address="${escapeHtml(value)}" title="${t("Copiar", "Copy")}">${icon("copy")}</button>` : ""}</div>`)
+      .join("") + routesFactHtml(detail);
+  measureDetailRoutes(detail);
   const actions = [];
   if (detail.kind === "activity") {
     const friend = detail.item.friend ?? state.social?.friends?.friends?.find((f) => f.uid === detail.item.server?.host);
@@ -1480,6 +1516,36 @@ function renderServerDetail() {
     actions.push(`<button class="btn primary" data-srv-action="play" ${info.canJoin ? "" : "disabled"}>${icon("play")}${t("Jugar", "Play")}</button>`);
   }
   $("#srv-actions").innerHTML = actions.join("");
+}
+
+/** Las rutas a la partida con su tiempo (se miden al abrir el detalle). */
+function routesFactHtml(detail) {
+  if (detail.kind !== "activity") return "";
+  const routes = routesFor(detail.item);
+  if (routes.length < 2) return "";
+  const measured = state.routeTimes?.[detail.item.key];
+  const chips = measured
+    ? measured
+        .map((r, i) => `<span class="route-chip ${i === 0 && r.latencyMs != null ? "best" : ""}">${escapeHtml(routeName(r.kind))} · ${r.latencyMs != null ? `${r.latencyMs} ms` : t("no responde", "no answer")}</span>`)
+        .join("")
+    : `<span class="route-chip"><span class="spinner tiny"></span>${t("Midiendo…", "Measuring…")}</span>`;
+  return `<div class="srv-fact"><span>${t("Conexión", "Connection")}</span><div class="route-list">${chips}</div></div>`;
+}
+
+async function measureDetailRoutes(detail) {
+  if (detail.kind !== "activity" || !detail.item.online) return;
+  const key = detail.item.key;
+  const routes = routesFor(detail.item);
+  if (routes.length < 2 || state.routeMeasuring === key) return;
+  const last = state.routeTimes?.[key];
+  if (last && Date.now() - (last.at ?? 0) < 15000) return;
+  state.routeMeasuring = key;
+  const measured = await invoke("mejor_ruta", { rutas: routes, maxJugadores: detail.item.server?.maxPlayers || null }).catch(() => null);
+  state.routeMeasuring = null;
+  if (!measured) return;
+  measured.at = Date.now();
+  state.routeTimes = { ...(state.routeTimes ?? {}), [key]: measured };
+  if (state.serverDetail === key && !$("#srv-dialog").classList.contains("hidden")) renderServerDetail();
 }
 
 async function serverDetailAction(action) {
@@ -1544,8 +1610,38 @@ function findActivity(key) {
 function joinActivity(item) {
   if (item.kind === "hosted") return joinFriendServer(item.server);
   const p = item.friend.presence;
-  if (item.kind === "world") return joinFriend(item.friend, p.address ?? p.lan);
+  if (item.kind === "world") {
+    return fastestRoute(routesFor(item)).then((route) => joinFriend(item.friend, route?.address ?? p.address ?? p.lan));
+  }
   if (item.kind === "playing") return joinFriend(item.friend, p.server);
+}
+
+/** Nombre de una ruta para mostrarla. */
+function routeName(kind) {
+  return { local: t("Este PC", "This PC"), lan: t("Red local", "Local network"), ipv6: t("IPv6 directo", "Direct IPv6"), playit: "playit.gg" }[kind] ?? kind;
+}
+
+/** Las rutas para llegar a una partida (las directas primero; al unirse se prueban todas). */
+function routesFor(item) {
+  if (item.kind === "hosted") {
+    const sv = item.server;
+    return [
+      sv.lan && { address: sv.lan, kind: "lan" },
+      sv.ipv6 && { address: sv.ipv6, kind: "ipv6" },
+      sv.address && { address: sv.address, kind: "playit" },
+    ].filter(Boolean);
+  }
+  const p = item.friend?.presence ?? {};
+  if (item.kind === "world") return [p.lan && { address: p.lan, kind: "lan" }, p.address && { address: p.address, kind: "playit" }].filter(Boolean);
+  if (item.kind === "playing" && p.server) return [{ address: p.server, kind: "direct" }];
+  return [];
+}
+
+/** Prueba las rutas a la vez y devuelve la más rápida que responda (o null). */
+async function fastestRoute(routes, maxPlayers) {
+  if (routes.length <= 1 || !tauri) return routes[0] ? { ...routes[0], latencyMs: null } : null;
+  const measured = await invoke("mejor_ruta", { rutas: routes, maxJugadores: maxPlayers || null }).catch(() => []);
+  return measured.find((r) => r.latencyMs != null) ?? null;
 }
 
 async function joinFriendServer(server) {
@@ -1568,11 +1664,26 @@ async function joinFriendServer(server) {
     }
     return;
   }
+  // La ruta más rápida que responda: misma red o IPv6 directo antes que el túnel de playit.gg.
+  toast(t("Buscando la conexión más rápida…", "Looking for the fastest connection…"));
+  const route = await fastestRoute(routesFor({ kind: "hosted", server }), server.maxPlayers);
+  const address = route?.address ?? server.address;
+  if (!address) return toast(t("El servidor todavía no tiene dirección.", "The server has no address yet."), "error");
+  if (route?.latencyMs != null) toast(t(`Entrando por ${routeName(route.kind)} (${route.latencyMs} ms).`, `Joining through ${routeName(route.kind)} (${route.latencyMs} ms).`));
   if (state.running.size) {
-    await copyText(server.address, t(`Ya tienes Minecraft abierto. Copié la dirección: en el juego ve a Multijugador › Conexión directa y pégala.`, `Minecraft is already open. I copied the address: in the game go to Multiplayer › Direct Connection and paste it.`));
+    await copyText(address, t(`Ya tienes Minecraft abierto. Copié la dirección: en el juego ve a Multijugador › Conexión directa y pégala.`, `Minecraft is already open. I copied the address: in the game go to Multiplayer › Direct Connection and paste it.`));
     return;
   }
-  play(instance.id, server.address);
+  play(instance.id, address);
+}
+
+/** El anfitrión entra a su propio servidor desde este mismo PC (sin pasar por el túnel). */
+function playOwnServer(s) {
+  const instance = state.instances.find((i) => i.id === s.instance);
+  if (!instance) return toast(t("No encuentro la instancia de este servidor.", "I cannot find this server's instance."), "error");
+  const address = `127.0.0.1:${s.port}`;
+  if (state.running.size) return copyText(address, t(`Ya tienes Minecraft abierto. Copié la dirección (${address}): en el juego ve a Multijugador › Conexión directa y pégala.`, `Minecraft is already open. I copied the address (${address}): in the game go to Multiplayer › Direct Connection and paste it.`));
+  play(instance.id, address);
 }
 
 function friendServerMenu(anchor, item) {
@@ -1625,6 +1736,7 @@ function wireHostEvents() {
     const menu = event.target.closest("#tunnel-menu");
     if (menu) return void tunnelMenu(menu);
     if (event.target.closest("#hosted-go-connect")) return void navigate("host");
+    if (event.target.closest("#hosted-firewall")) return void openFirewall();
     const start = event.target.closest("[data-host-start]");
     if (start) return void startHosted(start.dataset.hostStart);
     const stop = event.target.closest("[data-host-stop]");
@@ -1685,6 +1797,10 @@ function wireHostEvents() {
   // Página del servidor
   $("#hosted-start").onclick = () => startHosted(host.id);
   $("#hosted-stop").onclick = () => stopHosted(host.id);
+  $("#hosted-play").onclick = () => {
+    const s = hostServer(host.id);
+    if (s) playOwnServer(s);
+  };
   $("#hosted-more").onclick = (event) => hostedMenu(event.currentTarget);
   for (const button of $$("#hosted-tabs .tab")) button.onclick = () => selectHostedTab(button.dataset.hostedTab);
   $("#hosted-send").onclick = () => sendHostedCommand();

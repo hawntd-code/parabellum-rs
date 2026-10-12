@@ -34,6 +34,8 @@
 //!   java_command_lines()           (pid, línea de comandos) de los Java abiertos.
 //!   java_argument(texto)           un argumento como Java lo puede leer en este sistema.
 //!   argfile_bytes(texto)           el contenido del archivo @argumentos en la codificación que lee Java.
+//!   firewall_open() / open_firewall()   si el firewall deja entrar a los servidores (conexión directa)
+//!                                  y abrirlo (pide permiso de administrador una vez).
 //!   trait CommandExt               .no_console() (sin ventana negra) y .detached() (el juego sigue
 //!                                  abierto aunque se cierre Parabellum).
 //!

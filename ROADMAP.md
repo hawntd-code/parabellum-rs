@@ -113,6 +113,14 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### 0.21.0: menos lag al jugar en los servidores (pedido de Juan)
+- [x] Medido: el túnel de playit.gg de Juan entra por un centro de datos a 140–180 ms (el agente se conecta a uno a 16 ms); su servidor respondía en ~665 ms por playit.gg y 3–14 ms en su PC, sin «Can't keep up» (no era la PC). Golpear entidades espera al servidor; romper bloques no (por eso solo se notaba al pelear)
+- [x] **«Unirse» elige la ruta más rápida:** el anfitrión publica, además de playit.gg, su dirección de la misma red y su IPv6 pública; al unirse se prueban todas a la vez (ping del juego) y se usa la más rápida que responda y sea el mismo servidor (mismo máximo de jugadores). También con los mundos abiertos. En el detalle de Servidores: cada ruta con su tiempo
+- [x] **«Jugar» para el anfitrión** en la página del servidor: entra por 127.0.0.1 (sin túnel)
+- [x] **Conexión directa:** botón «Permitir» que agrega una regla del firewall de Windows (puertos 25565–25600, pide administrador una vez); plataforma::firewall_open / open_firewall
+- [x] **TPS del servidor** (con «time query gametime» cada ~6 s, sirve en todas las versiones, sin ensuciar la consola) y aviso si se atrasa; se publica a los amigos y se ve en el detalle
+- [ ] Siguiente: abrir el puerto del módem con UPnP (IPv4 directo); playit.gg Premium para elegir región (de pago)
+
 ### 0.20.1: un proyecto, dos plataformas (pedido de Juan)
 - [x] Lo que depende del sistema se movió a `src-tauri/src/plataforma/` con un contrato común (`plataforma/mod.rs`): `windows/` (lo que ya funcionaba: DPAPI, job de Windows, ANSI/8.3 de Java, WIC, DnsQuery, PlaySound, avisos, accesos directos, Explorador…) y `macos/` (lo fácil hecho con herramientas de macOS y lo demás con `TODO(mac)`). Lo compartido ya pregunta por la plataforma donde Mojang distingue sistemas (reglas `os`, nativos, Java de Mojang, separador del classpath)
 - [x] Dependencias de Windows en `[target.'cfg(windows)'.dependencies]`; guía para el amigo que hará la versión de Mac: `docs/mac.md` (estructura, reglas, compilar, lista de tareas por prioridad); `docs/windows.md`; `.github/workflows/mac.yml` (cargo check/test en macos-14, ramas `mac/…` o a mano)

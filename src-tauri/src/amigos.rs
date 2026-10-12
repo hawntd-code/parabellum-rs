@@ -120,9 +120,14 @@ pub struct FriendServer {
     pub minecraft: Option<String>,
     pub loader: Option<String>,
     pub address: Option<String>,
+    /// Rutas directas: misma red e IPv6 (al unirse se prueban junto con la de playit.gg).
+    pub lan: Option<String>,
+    pub ipv6: Option<String>,
     pub online: bool,
     pub players: u64,
     pub max_players: u64,
+    /// Ticks por segundo del servidor (20 = sin atrasos).
+    pub tps: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -341,9 +346,12 @@ impl Social {
                     minecraft: text("mc"),
                     loader: text("loader"),
                     address: text("address"),
+                    lan: text("lan"),
+                    ipv6: text("ipv6"),
                     online: fresh && data["online"].as_bool() == Some(true),
                     players: data["players"].as_u64().unwrap_or(0),
                     max_players: data["max"].as_u64().unwrap_or(0),
+                    tps: data["tps"].as_f64(),
                 })
             })
             .collect();
