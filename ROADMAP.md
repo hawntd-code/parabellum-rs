@@ -113,6 +113,11 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### 0.24.1: el mod gasta lo mínimo y se aparta si da problemas
+- [x] Medido: dibujar el panel entero tarda 7–11 ms (solo cuando algo cambia: ratón sobre un botón, escribir, llega un mensaje); un cuadro sin cambios 0.0005 ms; el tick con el panel cerrado 0.0001 ms. En el juego (Fabric 1.21.1, menú principal, 1 min): procesador 9.7 % sin el mod y 9.7 % con él; memoria igual
+- [x] Al cerrar el panel se sueltan su imagen y su textura (8–24 MB según la ventana)
+- [x] Si el juego se cae y el error es del mod (código suyo en la pila o el cargador que no pudo con él), Parabellum ya no lo pone en esa instancia hasta la siguiente versión (`sin-panel.txt` en .lanzador)
+
 ### 0.24.0: Parabellum dentro del juego (pedido de Juan: «como Essential»)
 - [x] **Panel dentro de Minecraft** (tecla O): amigos (unirse con la ruta más rápida, invitar, mensaje, solicitudes, quitar), mensajes (chats y grupos, enviar, editar con clic derecho o flecha arriba, borrar; fotos; tarjetas de invitación con «Unirse»), capturas (F2 → mandarlas a un chat). Avisos arriba a la derecha (mensajes, invitaciones, solicitudes, amigo que abrió su mundo); dentro del juego reemplazan a los de Windows
 - [x] Hecho como mod pequeño (`mod/`): núcleo en Java 8 que dibuja todo con Java2D (igual en todas las versiones) y una capa por versión. Parabellum lo pone al jugar y lo quita al cerrar; se apaga en Ajustes › Comportamiento

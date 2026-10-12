@@ -269,6 +269,9 @@ final class Panel {
         agregar.foco = false;
         escribir.foco = false;
         menu = null;
+        // La imagen del panel (8–24 MB según la ventana) se suelta; se vuelve a dibujar al abrirlo.
+        imagen = null;
+        sucio = true;
         if (chatAbierto != null) juego.puente("cerrar_chat", null, null);
     }
 

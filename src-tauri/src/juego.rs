@@ -48,10 +48,19 @@ fn build_for(loader: &str, minecraft: &str) -> Option<&'static Build> {
     BUILDS.iter().find(|b| b.loader == loader && compare(minecraft, b.from).is_ge() && compare(minecraft, b.until).is_lt())
 }
 
+/// Marca de que el mod hizo caer el juego en esta instancia (con la versión de Parabellum de ese momento).
+const DISABLED_FILE: &str = "sin-panel.txt";
+
+/// ¿Se apagó el mod en esta instancia porque hizo caer el juego? Solo cuenta con la misma versión de
+/// Parabellum: una nueva puede traerlo arreglado y se vuelve a intentar.
+fn disabled_by_crash(instance: &Instance) -> bool {
+    std::fs::read_to_string(instance.state_dir().join(DISABLED_FILE)).is_ok_and(|v| v.trim() == env!("CARGO_PKG_VERSION"))
+}
+
 /// Antes de abrir el juego: pone el mod (si hay para su versión y está activado) o lo quita.
 pub fn install(instance: &Instance, enabled: bool) {
     let path = instance.game_dir.join("mods").join(FILE_NAME);
-    match build_for(&instance.loader, &instance.minecraft_version).filter(|_| enabled) {
+    match build_for(&instance.loader, &instance.minecraft_version).filter(|_| enabled && !disabled_by_crash(instance)) {
         Some(build) => {
             let same = std::fs::metadata(&path).is_ok_and(|m| m.len() == build.jar.len() as u64) && std::fs::read(&path).is_ok_and(|b| b == build.jar);
             if !same {
@@ -63,6 +72,39 @@ pub fn install(instance: &Instance, enabled: bool) {
         }
         None => remove(instance),
     }
+}
+
+/// Si el juego se cayó y el error menciona al mod, no se vuelve a poner en esa instancia: el juego de
+/// cada quien importa más que el panel. Devuelve true si se apagó.
+pub fn after_crash(instance: &Instance, started_ms: i64) -> bool {
+    let mut texts = Vec::new();
+    // El informe de fallo de esta partida, si lo hubo.
+    if let Ok(entries) = std::fs::read_dir(instance.game_dir.join("crash-reports")) {
+        for entry in entries.flatten() {
+            let recent = entry.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).is_some_and(|d| d.as_millis() as i64 >= started_ms - 2000);
+            if recent {
+                texts.push(std::fs::read_to_string(entry.path()).unwrap_or_default());
+            }
+        }
+    }
+    // Y el registro (Forge muestra los errores de carga en una pantalla, sin informe).
+    let log = std::fs::read(instance.game_dir.join("logs").join("latest.log")).unwrap_or_default();
+    let tail = &log[log.len().saturating_sub(400_000)..];
+    texts.push(String::from_utf8_lossy(tail).to_string());
+    let ours = texts.iter().any(|t| t.lines().any(caused_by_us));
+    if ours {
+        let _ = std::fs::create_dir_all(instance.state_dir());
+        let _ = std::fs::write(instance.state_dir().join(DISABLED_FILE), env!("CARGO_PKG_VERSION"));
+    }
+    ours
+}
+
+/// Un renglón del informe o del registro que culpa al mod: código suyo en la pila del error, o el
+/// cargador diciendo que no pudo cargarlo. (Que solo se mencione el .jar, como hacen algunos avisos de
+/// Forge, no cuenta.)
+fn caused_by_us(line: &str) -> bool {
+    let lower = line.to_lowercase();
+    lower.contains("at mx.parabellum.juego") || (lower.contains("parabellum") && (lower.contains("failed to load") || lower.contains("mod loading has failed") || lower.contains("incompatible mod")))
 }
 
 /// Al cerrar el juego (y al abrir Parabellum, por si quedó de una vez que se cerró de golpe).
@@ -93,6 +135,14 @@ pub fn is_ours(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn culpa_del_mod() {
+        assert!(caused_by_us("	at mx.parabellum.juego.Panel.pintar(Panel.java:120)"));
+        assert!(caused_by_us("Mod parabellum failed to load correctly"));
+        assert!(!caused_by_us("[ModernFix/]: PathResourcePack base class instantiated with root path of mod file parabellum-juego.jar."));
+        assert!(!caused_by_us("java.lang.NullPointerException: Cannot invoke \"Object.toString()\""));
+    }
 
     #[test]
     fn versiones() {

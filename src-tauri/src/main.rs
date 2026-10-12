@@ -565,6 +565,10 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
         state.games.lock().unwrap().remove(&id);
         // Con código distinto de 0, o si dejó un informe de fallo (la pantalla de error de Forge sale con 0).
         let failed = !stopped && (code.is_some_and(|c| c != 0) || diagnostico::crash_report_since(&instance, started));
+        // Si fue por el mod de Parabellum, la próxima vez se juega sin él.
+        if failed && juego::after_crash(&instance, started) {
+            eprintln!("juego: el mod de Parabellum hizo caer {}; se apaga en esa instancia", instance.name);
+        }
         let reason = if failed { launch::crash_reason(&instance, started) } else { None };
         let diagnosis = failed.then(|| {
             diagnostico::after_crash(&instance, &diagnostico::CrashContext { since_ms: started, exit_code: code, ram_gb, system_ram_gb: system_ram_gb() })
@@ -2251,10 +2255,12 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             // panel dentro del juego sin que se cierre al llegar al menú.
             let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
             let seconds = args.get(2).and_then(|s| s.parse::<u64>().ok()).unwrap_or(120);
+            // «sin-mod»: igual pero sin el mod (para comparar cuánto consume).
+            let with_mod = args.get(3).map(String::as_str) != Some("sin-mod");
             let mut plan = launch::plan(&instance, settings, paths)?;
             juego::write_fonts(paths);
             plan.add_jvm_arguments([format!("-Dparabellum.fuentes={}", paths.data.join("fuentes").display())]);
-            juego::install(&instance, true);
+            juego::install(&instance, with_mod);
             let mut child = launch::start(&plan, &instance)?;
             let started = std::time::Instant::now();
             while started.elapsed().as_secs() < seconds {

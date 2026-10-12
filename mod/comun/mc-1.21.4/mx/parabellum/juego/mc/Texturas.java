@@ -27,6 +27,12 @@ public final class Texturas {
     private Texturas() {
     }
 
+    /** Al cerrar el panel: su textura se suelta (la imagen se vuelve a hacer al abrirlo). */
+    public static void liberar(String nombre) {
+        Entrada e = CACHE.remove(nombre);
+        if (e != null) Minecraft.getInstance().getTextureManager().release(e.id);
+    }
+
     public static void dibujar(GuiGraphics g, String nombre, Imagen img, int x, int y, int w, int h) {
         Entrada e = CACHE.get(nombre);
         Rectangle cambio;

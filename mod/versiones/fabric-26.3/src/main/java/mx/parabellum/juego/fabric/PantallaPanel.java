@@ -100,6 +100,7 @@ public final class PantallaPanel extends Screen {
     @Override
     public void removed() {
         Juego.actual().panelCerrado();
+        Texturas.liberar("panel");
     }
 
     @Override
