@@ -115,7 +115,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 
 ### 0.19.1: los favoritos siguen a la cuenta (pedido de Juan)
 - [x] favoritos.rs: con la sesión de Google, los favoritos (conversaciones y mods) viven en favorites/{uid} de la base de datos y manda lo que hay ahí (quitar uno en otro PC también lo quita aquí); la primera vez se sube lo de este PC, salvo que fueran de otra cuenta (PC compartido: favorites_owner). Los iconos locales no suben (solo los https de Modrinth)
-- [ ] Juan: publicar firebase-reglas.json (nueva sección «favorites») en la consola de Firebase. Sin eso, los favoritos siguen funcionando solo en cada PC
+- [x] Juan publicó las reglas con «favorites» (2026-10-11). Probado con su cuenta (`--probar-favoritos` y en la ventana): sube los del PC la primera vez, marcar/quitar llega a la cuenta, los cambios de otro PC se ven al momento y las reglas rechazan tipos, iconos, campos y cuentas ajenas
 
 ### 0.19.0: favoritos (pedido de Juan)
 - [x] **Conversaciones y grupos favoritos:** estrella en el encabezado del chat, clic derecho en la lista o «Agregar a favoritos» en el menú de un amigo. Salen primero: «Favoritos» y «Recientes» en Mensajes, y una sección «Favoritos» arriba en el panel de amigos y en grupos. Se guardan en ajustes.json de este PC (favorite_chats), sin tocar las reglas de Firebase
