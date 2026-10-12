@@ -680,8 +680,12 @@ pub fn current_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
-/// La versión más nueva de Parabellum publicada en el catálogo, si es mayor que esta.
+/// La versión más nueva de Parabellum publicada en el catálogo, si es mayor que esta (y si este
+/// sistema se actualiza solo: ver plataforma::SELF_UPDATE).
 pub fn launcher_update(catalog: &[Entry]) -> Option<&Entry> {
+    if !crate::plataforma::SELF_UPDATE {
+        return None;
+    }
     catalog
         .iter()
         .filter(|e| e.is_launcher() && e.manifest.id == LAUNCHER_ID)
@@ -818,5 +822,19 @@ mod tests {
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].manifest.version, "202602010000");
         assert_eq!(merged[0].source, Source::Carpeta);
+    }
+
+    #[test]
+    fn actualizacion_del_launcher_segun_el_sistema() {
+        let newer = Entry {
+            manifest: Manifest { kind: LAUNCHER_TYPE.into(), id: LAUNCHER_ID.into(), version: "999.0.0".into(), ..Default::default() },
+            source: Source::Drive,
+            archive: String::new(),
+            size: 0,
+            icon: None,
+            location: String::new(),
+        };
+        // En Windows se ofrece; en Mac todavía no (tarea 11 de docs/mac.md).
+        assert_eq!(launcher_update(&[newer]).is_some(), crate::plataforma::SELF_UPDATE);
     }
 }

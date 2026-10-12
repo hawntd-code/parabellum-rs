@@ -14,6 +14,7 @@ pub const NAME: &str = "Windows";
 pub const MOJANG_OS: &str = "windows";
 pub const JAVA_RUNTIME_PLATFORM: &str = if cfg!(target_arch = "aarch64") { "windows-arm64" } else { "windows-x64" };
 pub const EXECUTABLE: &str = "Parabellum.exe";
+pub const SELF_UPDATE: bool = true;
 pub const CLASSPATH_SEPARATOR: &str = ";";
 pub const PLAYIT_AGENT: Option<AgentDownload> = Some(AgentDownload {
     url: "https://github.com/playit-cloud/playit-agent/releases/download/v0.17.1/playit-windows-x86_64-signed.exe",
