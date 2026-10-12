@@ -61,6 +61,14 @@ Nada por ahora.
 
 ## Cambios de Windows
 
+### 2026-10-12 · Reglas de Firebase: nadie puede inventarse una solicitud de amistad
+
+- Qué cambió: en `firebase-reglas.json`, quien recibe una solicitud ya solo puede borrarla (aceptar o
+  rechazar), no crearla. Antes, alguien podía escribir una solicitud falsa «de» otra persona hacia sí
+  mismo y con eso hacerse su amigo sin que lo aceptara. Parabellum ya solo borraba como receptor, así
+  que no cambia nada en el código. Juan publica las reglas en la consola de Firebase.
+- Mac: nada.
+
 ### 2026-10-12 · 0.25.0: animaciones y el panel se encuentra solo
 
 - Qué cambió:

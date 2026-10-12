@@ -28,7 +28,7 @@
         ".read": "auth != null && auth.uid === $to",
         "$from": {
           ".read": "auth != null && auth.uid === $from",
-          ".write": "auth != null && (auth.uid === $from || auth.uid === $to)",
+          ".write": "auth != null && (auth.uid === $from || (auth.uid === $to && !newData.exists()))",
           ".validate": "$from !== $to && newData.child('name').isString() && newData.child('name').val().length <= 16 && newData.child('at').isNumber()"
         }
       }
