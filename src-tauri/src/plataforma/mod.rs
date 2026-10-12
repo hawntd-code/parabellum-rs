@@ -13,6 +13,7 @@
 //!   MOJANG_OS               nombre del sistema en los JSON de Mojang ("windows", "osx").
 //!   JAVA_RUNTIME_PLATFORM   plataforma de los Java de Mojang ("windows-x64", "mac-os-arm64"…).
 //!   EXECUTABLE              nombre del programa al actualizarse ("Parabellum.exe").
+//!   SELF_UPDATE             si se actualiza solo con el catálogo (si no, nunca pide actualizarse).
 //!   CLASSPATH_SEPARATOR     separador de rutas del classpath de Java (";" o ":").
 //!   PLAYIT_AGENT            el agente de playit.gg para este sistema (None si no hay).
 //!

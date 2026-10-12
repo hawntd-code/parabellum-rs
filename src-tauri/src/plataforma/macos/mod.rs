@@ -19,6 +19,9 @@ pub const JAVA_RUNTIME_PLATFORM: &str = if cfg!(target_arch = "aarch64") { "mac-
 // TODO(mac): la actualización automática reemplaza el ejecutable (catalog.rs, apply_launcher_update).
 // En Mac el programa vive dentro de Parabellum.app/Contents/MacOS: hay que actualizar la .app entera.
 pub const EXECUTABLE: &str = "Parabellum";
+// Mientras eso falte, no se ofrece actualizar: el catálogo trae el .exe de Windows y la ventana de
+// actualización obligatoria dejaría a Parabellum bloqueado. En Mac se actualiza recompilando.
+pub const SELF_UPDATE: bool = false;
 pub const CLASSPATH_SEPARATOR: &str = ":";
 // TODO(mac): playit.gg no publica su agente para Mac (v0.17.1 solo trae Windows y Linux). Es de
 // código abierto (github.com/playit-cloud/playit-agent): compilarlo para aarch64-apple-darwin,

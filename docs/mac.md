@@ -116,6 +116,9 @@ Ordenadas por prioridad:
     icono `.ico`. Hacen falta un `.icns` y activar el empaquetado para Mac.
 11. **Actualización automática** — `EXECUTABLE` y `catalog::apply_launcher_update` reemplazan el
     `.exe`; en Mac hay que reemplazar la `.app` entera y publicar en Drive una entrada aparte para Mac.
+    Mientras tanto, `SELF_UPDATE` es `false` en Mac y Parabellum nunca pide actualizarse (si lo hiciera,
+    bajaría el `.exe` de Windows y se quedaría bloqueado). Para tener la versión nueva: actualiza `main`
+    y recompila. Al terminar esta tarea, ponlo en `true`.
 12. **Firma de Apple**: sin cuenta de Apple Developer, la primera vez hay que abrir la app con clic
     derecho › Abrir (o Ajustes del Sistema › Privacidad › «Abrir de todas formas»).
 
