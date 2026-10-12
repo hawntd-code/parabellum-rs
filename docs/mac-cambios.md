@@ -20,7 +20,7 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 ## Estado
 
 - Última revisión de los PR de Mac en Windows: 2026-10-12, PR #1 a #5 (todos mezclados).
-- Windows: la 0.24.1 está publicada en Drive; la 0.25.0 (animaciones) ya está en `main`. Sigue la 0.26.0.
+- Windows: la 0.25.0 (animaciones) está publicada en Drive desde el 2026-10-12. Sigue la 0.26.0.
 
 ## Pendientes para Mac
 
