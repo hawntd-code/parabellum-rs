@@ -35,6 +35,11 @@ VERSIONES = [
     ("fabric-1.21.11", "Fabric", "1.21.11", "1.21.12", 25),
     ("forge-1.19.2", "Forge", "1.19", "1.19.3", 25),
     ("fabric-1.19.2", "Fabric", "1.19", "1.19.3", 25),
+    ("forge-1.18.2", "Forge", "1.18.2", "1.18.3", 25),
+    ("fabric-1.18.2", "Fabric", "1.18.2", "1.18.3", 25),
+    # Forge 1.16.5 trae su propio Gradle 7 (ForgeGradle 5) y necesita también el JDK 8.
+    ("forge-1.16.5", "Forge", "1.16.5", "1.17", 17),
+    ("fabric-1.16.5", "Fabric", "1.16.5", "1.17", 25),
 ]
 
 

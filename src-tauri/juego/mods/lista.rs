@@ -15,4 +15,8 @@
     Build { loader: "Fabric", from: "1.21.11", until: "1.21.12", jar: include_bytes!("parabellum-fabric-1.21.11.jar") },
     Build { loader: "Forge", from: "1.19", until: "1.19.3", jar: include_bytes!("parabellum-forge-1.19.2.jar") },
     Build { loader: "Fabric", from: "1.19", until: "1.19.3", jar: include_bytes!("parabellum-fabric-1.19.2.jar") },
+    Build { loader: "Forge", from: "1.18.2", until: "1.18.3", jar: include_bytes!("parabellum-forge-1.18.2.jar") },
+    Build { loader: "Fabric", from: "1.18.2", until: "1.18.3", jar: include_bytes!("parabellum-fabric-1.18.2.jar") },
+    Build { loader: "Forge", from: "1.16.5", until: "1.17", jar: include_bytes!("parabellum-forge-1.16.5.jar") },
+    Build { loader: "Fabric", from: "1.16.5", until: "1.17", jar: include_bytes!("parabellum-fabric-1.16.5.jar") },
 ]

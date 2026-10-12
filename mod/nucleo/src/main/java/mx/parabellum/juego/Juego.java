@@ -21,6 +21,7 @@ public final class Juego {
 
     private Juego(Plataforma plataforma) {
         this.plataforma = plataforma;
+        if (PRUEBA) estado = ejemplo();
         capturas = new Capturas(plataforma.carpeta());
         panel = new Panel(this);
         puente = Puente.desdePropiedades(new Puente.Eventos() {
@@ -110,6 +111,14 @@ public final class Juego {
 
     /** -Dparabellum.prueba=true: el panel se dibuja como conectado (para probar el diseño sin Parabellum). */
     private static final boolean PRUEBA = Boolean.getBoolean("parabellum.prueba");
+
+    /** Datos de ejemplo para el modo de prueba (un amigo y una conversación). */
+    @SuppressWarnings("deprecation")
+    private static JsonObject ejemplo() {
+        return new com.google.gson.JsonParser().parse("{\"ev\":\"estado\",\"sesion\":true,\"yo\":{\"nombre\":\"Prueba\"},\"puedoInvitar\":true,"
+            + "\"amigos\":[{\"uid\":\"a\",\"nombre\":\"Amigo\",\"enLinea\":true,\"jugando\":true,\"mundo\":true,\"pack\":\"Prueba\",\"unirse\":true}],"
+            + "\"solicitudes\":[],\"servidores\":[],\"chats\":[{\"id\":\"c\",\"nombre\":\"Amigo\",\"tipo\":\"directo\",\"ultimo\":\"Hola\",\"sinLeer\":true}]}").getAsJsonObject();
+    }
 
     boolean conectado() {
         return PRUEBA || (puente != null && puente.conectado());

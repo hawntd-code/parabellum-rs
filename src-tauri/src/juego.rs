@@ -98,7 +98,10 @@ mod tests {
     fn versiones() {
         assert!(build_for("Fabric", "1.21.1").is_some());
         assert!(build_for("Quilt", "1.21").is_some());
-        assert!(build_for("Fabric", "1.21.2").is_none());
+        assert!(build_for("Fabric", "1.21.2").is_some());
+        assert!(build_for("Forge", "1.17.1").is_none());
+        // NeoForge 1.20.1 todavía carga los mods de Forge.
+        assert!(build_for("NeoForge", "1.20.1").is_some_and(|b| std::ptr::eq(b.jar, build_for("Forge", "1.20.1").unwrap().jar)));
         assert!(build_for("Vanilla", "1.21.1").is_none());
         assert!(compare("26.1.2", "1.21.11").is_gt());
         assert!(compare("1.21", "1.21.0").is_eq());

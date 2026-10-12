@@ -113,6 +113,16 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* chatear con un compañero
 - [ ] (Más adelante) overlay dentro del juego
 
+### 0.24.0: Parabellum dentro del juego (pedido de Juan: «como Essential»)
+- [x] **Panel dentro de Minecraft** (tecla O): amigos (unirse con la ruta más rápida, invitar, mensaje, solicitudes, quitar), mensajes (chats y grupos, enviar, editar con clic derecho o flecha arriba, borrar; fotos; tarjetas de invitación con «Unirse»), capturas (F2 → mandarlas a un chat). Avisos arriba a la derecha (mensajes, invitaciones, solicitudes, amigo que abrió su mundo); dentro del juego reemplazan a los de Windows
+- [x] Hecho como mod pequeño (`mod/`): núcleo en Java 8 que dibuja todo con Java2D (igual en todas las versiones) y una capa por versión. Parabellum lo pone al jugar y lo quita al cerrar; se apaga en Ajustes › Comportamiento
+- [x] **Puente** (`puente.rs`): 127.0.0.1 con clave; estado de amigos y chats al momento, mensajes, imágenes, editar/borrar, solicitudes, invitar (al servidor encendido —entra a la lista blanca— o al mundo abierto) y unirse (P2P, red local o playit.gg; avisa si es otro modpack)
+- [x] **18 .jar**: Fabric 1.16.5, 1.18.2, 1.19–1.19.2, 1.20–1.20.1, 1.21–1.21.1, 1.21.2–1.21.4, 1.21.5, 1.21.6–1.21.8, 1.21.9–1.21.10, 1.21.11, 26.1.x, 26.2, 26.3 (y Quilt); Forge 1.16.5, 1.18.2, 1.19–1.19.2, 1.20–1.20.1; NeoForge 1.20.1 y 1.21–1.21.1. Elegidas por popularidad en Modrinth. Cada una abierta en el juego con el panel; clics y escritura probados en 1.16.5, 1.21.1, 1.21.10 y 26.2; «Unirse» entró a un servidor 1.21.1
+- [x] Arreglo: Minecraft 1.18.2 no arrancaba (bibliotecas duplicadas por sistema: la de Mac tapaba a la de Windows y se perdían los nativos de LWJGL)
+- [x] `--abrir-juego <instancia> [segundos]`; JDK 8/17/21/25 en ~/.jdks solo para compilar el mod (no van en Parabellum)
+- [ ] *Prueba:* con un compañero (mensajes, invitar y unirse desde el juego). En 26.3 (usa SDL3) revisar a mano el teclado del panel
+- [ ] Después: NeoForge 1.21.11/26.x si alguien lo usa, Fabric 1.20.2–1.20.6
+
 ### 0.23.0: conexiones por servidor y editar/borrar mensajes (pedido de Juan)
 - [x] **Conexiones** en cada servidor (tarjetas con interruptor): **P2P** y **red local** activadas (no muestran ninguna IP; «Unirse» elige), **playit.gg** desactivado (dirección pública para quien no usa Parabellum; al activarlo se vincula si hace falta). `servidor::Connections` en parabellum-servidor.json; solo se publica y se deja pasar lo activado
 - [x] Hostear sin la tarjeta de playit.gg ni el interruptor «Abrir mi mundo»: el mundo abierto en LAN se comparte solo con los amigos (P2P y red local); por playit.gg, en Ajustes › Comportamiento (desactivado). playit.gg solo aparece arriba mientras se vincula o si algo falta

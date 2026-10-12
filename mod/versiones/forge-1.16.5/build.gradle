@@ -1,0 +1,41 @@
+// Forge 1.16.5: ForgeGradle 5 (el de esa época) con su propio Gradle 7 (ver gradle/wrapper).
+// El .jar sale reofuscado (SRG) para Forge y para Java 8.
+buildscript {
+    repositories {
+        maven { url = "https://maven.minecraftforge.net" }
+        mavenCentral()
+    }
+    dependencies {
+        classpath group: "net.minecraftforge.gradle", name: "ForgeGradle", version: "5.1.+", changing: true
+    }
+}
+apply plugin: "net.minecraftforge.gradle"
+
+version = "1.0.0"
+group = "mx.parabellum"
+archivesBaseName = "parabellum-forge-1.16.5"
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(8)
+
+minecraft {
+    mappings channel: "official", version: "1.16.5"
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:1.16.5-36.2.42"
+}
+
+sourceSets.main.java.srcDir "../../nucleo/src/main/java"
+sourceSets.main.java.srcDir "../../comun/mc-1.16.5-forge"
+sourceSets.main.resources.srcDir "../../comun/recursos"
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("META-INF/mods.toml") { expand "version": project.version }
+}
+
+jar.finalizedBy("reobfJar")

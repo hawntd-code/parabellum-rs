@@ -78,6 +78,9 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
 - Carpeta de datos en `~/Library/Application Support/Parabellum` cuando corre desde una `.app`.
 - Conexión directa entre PCs (P2P, `p2p.rs` con iroh): es código compartido y iroh funciona en Mac,
   así que no hay nada que hacer en `macos/` (falta probarla).
+- El panel dentro del juego (`mod/`): es Java y se dibuja con Java2D en modo «headless» (Minecraft lo
+  pone así en Mac), así que debería funcionar igual; falta probarlo. Los .jar se compilan en Windows o
+  Mac con `mod/compilar.py` (JDK en `~/.jdks`).
 - El juego se abre en su propio grupo de procesos (sigue abierto si se cierra Parabellum).
 - Lo compartido ya pregunta por Mac donde Mojang distingue sistemas: reglas `"os": "osx"` (así se
   agrega `-XstartOnFirstThread`), nativos `natives-macos`, Java de Mojang `mac-os-arm64` y separador

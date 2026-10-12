@@ -132,14 +132,22 @@ impl ResolvedVersion {
             chain.push(json);
         }
 
-        // Bibliotecas: primero las del hijo (loader), luego las del padre, sin duplicados.
+        // Bibliotecas: primero las del hijo (loader), luego las del padre, sin duplicados. Las de otro
+        // sistema salen antes de buscar duplicados: 1.18.2 trae LWJGL 3.2.1 (solo Mac) y 3.2.2 (los
+        // demás) y, si no, la de Mac tapaba a la buena y el juego no arrancaba.
         let mut libraries = Vec::new();
         let mut seen = HashSet::new();
         for version in &chain {
             for library in version.get("libraries").and_then(Value::as_array).into_iter().flatten() {
+                if !rules_allow(library.get("rules"), &Features::new()) {
+                    continue;
+                }
                 let Some(name) = library.get("name").and_then(Value::as_str) else { continue };
                 let Some(maven) = Maven::parse(name) else { continue };
-                if seen.insert(maven.dedup_key()) {
+                // El formato antiguo repite la biblioteca: una entrada con el .jar y otra con los
+                // nativos (las .dll); las dos hacen falta.
+                let key = if library.get("natives").is_some() { format!("{}#nativos", maven.dedup_key()) } else { maven.dedup_key() };
+                if seen.insert(key) {
                     libraries.push(library.clone());
                 }
             }
@@ -175,5 +183,36 @@ impl ResolvedVersion {
             client_jar_id: first_str("jar").unwrap_or_else(|| ids.last().unwrap().clone()),
             version_type: first_str("type").unwrap_or_else(|| "release".into()),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 1.18.2: la misma biblioteca para Mac (3.2.1) y para los demás (3.2.2), cada una con su entrada de
+    /// nativos; en Windows quedan las dos de la 3.2.2.
+    #[test]
+    #[cfg_attr(target_os = "macos", ignore = "en Mac queda la de Mac")]
+    fn duplicadas_por_sistema() {
+        let dir = std::env::temp_dir().join(format!("parabellum-version-{}", std::process::id()));
+        let paths = Paths::new(&dir);
+        let json = serde_json::json!({
+            "id": "prueba", "mainClass": "net.minecraft.client.main.Main",
+            "libraries": [
+                { "name": "org.lwjgl:lwjgl:3.2.1", "rules": [{ "action": "allow", "os": { "name": "osx" } }] },
+                { "name": "org.lwjgl:lwjgl:3.2.2", "rules": [{ "action": "allow" }, { "action": "disallow", "os": { "name": "osx" } }] },
+                { "name": "org.lwjgl:lwjgl:3.2.1", "natives": { "osx": "natives-macos" }, "rules": [{ "action": "allow", "os": { "name": "osx" } }] },
+                { "name": "org.lwjgl:lwjgl:3.2.2", "natives": { "windows": "natives-windows" }, "rules": [{ "action": "allow" }, { "action": "disallow", "os": { "name": "osx" } }] }
+            ]
+        });
+        let file = paths.version_json("prueba");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, json.to_string()).unwrap();
+        let resolved = ResolvedVersion::resolve("prueba", &paths).unwrap();
+        let names: Vec<&str> = resolved.libraries.iter().filter_map(|l| l["name"].as_str()).collect();
+        assert_eq!(names, vec!["org.lwjgl:lwjgl:3.2.2", "org.lwjgl:lwjgl:3.2.2"]);
+        assert!(resolved.libraries[1].get("natives").is_some());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -1,0 +1,18 @@
+modLoader = "javafml"
+loaderVersion = "[40,)"
+license = "Privado"
+
+[[mods]]
+modId = "parabellum"
+version = "${version}"
+displayName = "Parabellum"
+description = "Amigos, chat, capturas e invitaciones de Parabellum dentro del juego."
+logoFile = "assets/parabellum/icon.png"
+displayTest = "IGNORE_ALL_VERSION"
+
+[[dependencies.parabellum]]
+modId = "minecraft"
+mandatory = true
+versionRange = "[1.18.2,1.18.3)"
+ordering = "NONE"
+side = "CLIENT"

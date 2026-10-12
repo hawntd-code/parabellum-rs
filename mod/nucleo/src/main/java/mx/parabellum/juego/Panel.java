@@ -232,7 +232,7 @@ final class Panel {
     }
 
     /** -Dparabellum.prueba.pestana=1: al abrir, la primera conversación (para probar sin tocar nada). */
-    private boolean pruebaHecha;
+    private boolean pruebaHecha, pruebaConectada;
 
     void abierto() {
         sucio = true;
@@ -241,6 +241,15 @@ final class Panel {
             try {
                 java.nio.file.Files.write(new File(juego.plataforma.carpeta(), "parabellum-prueba.txt").toPath(), String.valueOf(System.currentTimeMillis()).getBytes("UTF-8"));
             } catch (Exception ignored) {
+            }
+            // -Dparabellum.prueba.conectar=<dirección>: entra a ese servidor como lo haría «Unirse».
+            final String direccion = System.getProperty("parabellum.prueba.conectar");
+            if (direccion != null && !pruebaConectada) {
+                pruebaConectada = true;
+                juego.plataforma.enJuego(() -> {
+                    juego.plataforma.cerrarPanel();
+                    juego.plataforma.conectar(direccion);
+                });
             }
         }
         if (!pruebaHecha && "1".equals(System.getProperty("parabellum.prueba.pestana"))) {
