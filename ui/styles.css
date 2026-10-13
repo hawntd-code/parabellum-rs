@@ -897,7 +897,7 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 
 /* ================= 0.27: Amigos, responder, reaccionar y grupos con foto */
 .home-summary:not(:has(.summary-tile:not(.hidden))) { display: none; }
-.friends-page { max-width: 1100px; }
+.workspace .page-inner.friends-page { max-width: 1100px; }
 .fp-head { display: flex; align-items: baseline; gap: 12px; }
 .fp-head .section-title { margin-bottom: 14px; }
 .fp-out { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 60px 20px; text-align: center; color: var(--muted); }
@@ -987,6 +987,51 @@ img.group-avatar { object-fit: cover; background: var(--field); }
 .menu .menu-emojis button { width: 36px; height: 36px; padding: 0; justify-content: center; font-size: 20px; border-radius: 9px; transition: transform var(--dur-fast) var(--ease-spring); }
 .menu .menu-emojis button:hover { transform: scale(1.18); }
 .menu .menu-emojis button.current { background: var(--accent-soft); }
+
+/* 0.27.1: Servidores (con lo que era «Hostear partida») en filas */
+/* Más específico que .workspace.no-sidebar .page-inner: sin el panel derecho tampoco se estira. */
+.workspace .page-inner.servers-page { max-width: 1040px; }
+.servers-page .section-title { margin-bottom: 6px; }
+.srv-head { display: flex; align-items: center; gap: 9px; margin: 22px 2px 8px; }
+.srv-head > svg { width: 17px; height: 17px; color: var(--muted); flex: none; }
+.srv-head h2 { margin: 0; font: 700 15px var(--font-display); }
+.srv-count { color: var(--faint); font-size: 13px; font-weight: 600; }
+.srv-head .btn { margin-left: auto; }
+.srv-rows { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel); overflow: hidden; }
+.srv-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 7px 12px; cursor: pointer; transition: background var(--dur-fast); }
+.srv-row + .srv-row, .srv-rows > * + .srv-more, .srv-rows > .srv-more + * { border-top: 1px solid var(--border); }
+.srv-row:hover, .srv-row:focus-visible { background: var(--raised); outline: none; }
+.srv-row.dim { opacity: .6; }
+.srv-row-icon { width: 34px; height: 34px; flex: none; border-radius: 8px; display: grid; place-items: center; overflow: hidden; background: var(--accent-soft); color: var(--accent-fg); }
+.srv-row-icon img { width: 100%; height: 100%; image-rendering: pixelated; display: block; }
+.srv-row-icon svg { width: 18px; height: 18px; }
+.srv-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.srv-row-text b { font-size: 14px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srv-row-sub { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); font-size: 12.5px; }
+.srv-row-sub span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srv-row-sub .head { width: 14px; height: 14px; border-radius: 3px; image-rendering: pixelated; flex: none; }
+.srv-row-sub.error { color: var(--danger); }
+.srv-row .state-pill { flex: none; margin: 0; }
+.srv-row-players { flex: none; min-width: 44px; text-align: right; color: var(--muted); font-size: 12.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.srv-row .btn.small { flex: none; min-width: 84px; justify-content: center; }
+.srv-empty { margin: 0; padding: 14px 14px; color: var(--muted); font-size: 13px; }
+.srv-more { display: block; width: 100%; padding: 9px 14px; border: 0; background: transparent; color: var(--accent-fg); font: 600 12.5px var(--font); text-align: left; cursor: pointer; }
+.srv-more:hover { background: var(--raised); }
+.servers-page .host-world-status { margin: 0 0 8px; }
+.servers-page .host-e4mc, .servers-page .host-playit { margin-top: 12px; }
+@media (max-width: 640px) {
+  .srv-row-players { display: none; }
+}
+
+/* 0.27.2: vista previa de una imagen antes de mandarla */
+.modal.image-modal { width: min(720px, calc(100vw - 48px)); }
+.image-preview { display: grid; place-items: center; min-height: 160px; max-height: min(62vh, 560px); border-radius: var(--r-lg); background: var(--field); overflow: hidden; }
+.image-preview img { display: block; max-width: 100%; max-height: min(62vh, 560px); object-fit: contain; animation: rise var(--dur) var(--ease-out) both; }
+.image-foot { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.image-foot .grow { flex: 1; }
+/* En Mensajes, quién está en línea (como en el panel de la derecha) */
+.chat-item .friend-head .presence-dot, #chat-avatar .friend-head .presence-dot { border-color: var(--surface); }
+.chat-item.active .friend-head .presence-dot { border-color: color-mix(in srgb, var(--accent) 16%, var(--surface)); }
 
 /* Reportar problema */
 .report-note { width: 100%; resize: vertical; min-height: 70px; padding: 10px 12px; border-radius: var(--r); border: 1px solid var(--border); background: var(--field); color: var(--text); font: inherit; outline: none; user-select: text; }

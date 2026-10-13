@@ -25,6 +25,9 @@ en `ui/`.
   con un `TODO(mac)`).
 - **Si cambias código compartido en `main`** (lo que hace Juan): en el mismo commit, agrega una
   entrada en `docs/mac-cambios.md` › «Cambios de Windows» con qué tiene que hacer Mac (o «nada»).
+- **Si se publica una versión de Windows en Drive** (la publique Juan o su agente): en ese momento,
+  agrega arriba en `docs/mac-cambios.md` › «Versiones publicadas en Drive» el número, la fecha y qué
+  cambió para quien juega, y súbelo a `main`. Lo pidió Diego.
 - **Si terminas un PR de Mac:** marca en `docs/mac-cambios.md` los pendientes que resolviste. Si
   Windows tiene que compilar o probar algo, ponlo en el PR y en «Pendientes para Windows».
 - Nunca subas `config-integrada.json` (las claves), sesiones ni datos de usuarios. El repo es privado.

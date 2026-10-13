@@ -87,7 +87,7 @@ function applyHostView(view) {
   const running = view.servers.some((s) => s.state !== "off");
   $("#host-dot").classList.toggle("hidden", !running && !(view.playit.state === "on"));
   $("#world-playit").checked = !!view.worldPlayit;
-  if (state.page === "host") renderHost();
+  if (state.page === "servers") renderHost();
   if (state.page === "hosted") renderHosted();
   updateServersChanged();
 }
@@ -292,7 +292,7 @@ async function connectPlayit() {
   }
   host.connecting = true;
   if (state.page === "hosted") renderHosted();
-  if (state.page === "host") renderHost();
+  if (state.page === "servers") renderHost();
   try {
     applyHostView(await invoke("conectar_playit"));
     const address = host.view.playit.address;
@@ -354,28 +354,31 @@ function renderHost() {
     status.classList.add("hidden");
   }
   const names = stateNames();
-  setHtml($("#host-servers"), view.servers
-    .map((s, index) => {
-      const sub = [s.instanceName, `${s.loader} ${s.minecraft}`];
-      if (s.state === "ready") sub.push(t(`${s.players.length} de ${s.maxPlayers} jugadores`, `${s.players.length} of ${s.maxPlayers} players`));
-
-      const action =
-        s.state === "off"
-          ? `<button class="btn primary" data-host-start="${escapeHtml(s.id)}">${icon("play")}${t("Encender", "Start")}</button>`
-          : `<button class="btn danger" data-host-stop="${escapeHtml(s.id)}" ${s.state === "stopping" ? "disabled" : ""}>${icon("stop")}${t("Apagar", "Stop")}</button>`;
-      return `<div class="server host-card" data-hosted="${escapeHtml(s.id)}" data-key="h:${escapeHtml(s.id)}" style="animation-delay:${index * 40}ms" tabindex="0">
-        <div class="server-icon">${icon("server")}</div>
-        <div class="grow">
-          <div class="title">${escapeHtml(s.name)} <span class="state-pill ${s.state}">${escapeHtml(names[s.state])}</span></div>
-          <div class="sub">${sub.map(escapeHtml).join(" · ")}</div>
-          ${s.error ? `<div class="sub host-error">${escapeHtml(s.error)}</div>` : ""}
-        </div>
-        ${action}
-        <button class="circle-btn" data-hosted-open="${escapeHtml(s.id)}" title="${t("Abrir", "Open")}">${icon("right")}</button>
-      </div>`;
-    })
-    .join(""));
-  $("#host-empty").classList.toggle("hidden", view.servers.length > 0);
+  setHtml(
+    $("#host-servers"),
+    view.servers.length
+      ? view.servers
+          .map((s) => {
+            // Si la instancia se llama como su versión («Forge 1.18.2»), no se repite.
+            const version = `${s.loader} ${s.minecraft}`;
+            const sub = s.error ? s.error : [s.instanceName, s.instanceName === version ? null : version].filter(Boolean).join(" · ");
+            const players = s.state === "ready" ? `${s.players.length}/${s.maxPlayers}` : "";
+            const action =
+              s.state === "off"
+                ? `<button class="btn small" data-host-start="${escapeHtml(s.id)}">${icon("play")}${t("Encender", "Start")}</button>`
+                : `<button class="btn danger small" data-host-stop="${escapeHtml(s.id)}" ${s.state === "stopping" ? "disabled" : ""}>${icon("stop")}${t("Apagar", "Stop")}</button>`;
+            return `<div class="srv-row host-card" data-hosted="${escapeHtml(s.id)}" data-key="h:${escapeHtml(s.id)}" tabindex="0" role="button" title="${t("Abrir", "Open")}">
+              <div class="srv-row-icon">${icon("server")}</div>
+              <div class="srv-row-text"><b>${escapeHtml(s.name)}</b><div class="srv-row-sub ${s.error ? "error" : ""}"><span>${escapeHtml(sub)}</span></div></div>
+              <span class="state-pill ${s.state}">${escapeHtml(names[s.state])}</span>
+              <span class="srv-row-players">${escapeHtml(players)}</span>
+              ${action}
+            </div>`;
+          })
+          .join("")
+      : `<p class="srv-empty" data-key="vacio">${t("Crea un servidor con tu modpack para jugar con tus amigos desde tu PC.", "Create a server with your modpack to play with your friends from your PC.")}</p>`,
+  );
+  $("#host-count").textContent = view.servers.length || "";
 }
 
 // ---------- Encender y apagar ----------
@@ -1353,6 +1356,9 @@ async function refreshServerStatus() {
 }
 
 function enterServers() {
+  enterHost();
+  renderFriendServers();
+  renderServers();
   refreshServerStatus();
   clearInterval(state.serverStatusTimer);
   state.serverStatusTimer = setInterval(() => {
@@ -1400,15 +1406,15 @@ function activityInfo(item) {
   return { ...base, fallback: "broadcast", name: p.hosting, hostLine: t(`Servidor de ${f.name}`, `${f.name}'s server`), pill: pill(true, t("Encendido", "On")), canJoin: false, note: t("Pídele que te invite para ver la dirección", "Ask them to invite you to see the address") };
 }
 
+/** Una fila de la página Servidores (de tus amigos o guardado); clic para el detalle. */
 function serverCardHtml({ key, info, button, dim }) {
   const head = info.host ? `<canvas width="8" height="8" class="head" data-head="${escapeHtml(info.host)}"></canvas>` : "";
-  const players = info.players ? `<span class="srv-players">${icon("user")}${escapeHtml(info.players)}</span>` : "";
-  return `<div class="srv-card ${dim ? "dim" : ""}" data-srv-open="${escapeHtml(key)}" data-key="s:${escapeHtml(key)}" tabindex="0" role="button" title="${t("Ver detalles", "See details")}">
-      ${serverIconHtml(info.favicon, info.fallback)}
-      <div class="grow srv-text">
-        <div class="srv-name">${escapeHtml(info.name)}</div>
-        <div class="srv-meta">${head}<span class="srv-host">${escapeHtml(info.hostLine)}</span>${info.pill ?? ""}${players}</div>
-      </div>
+  const sub = [info.hostLine, info.pack && info.pack !== info.hostLine ? info.pack : null].filter(Boolean).join(" · ");
+  return `<div class="srv-row ${dim ? "dim" : ""}" data-srv-open="${escapeHtml(key)}" data-key="s:${escapeHtml(key)}" tabindex="0" role="button" title="${t("Ver detalles", "See details")}">
+      <div class="srv-row-icon">${info.favicon ? `<img src="${escapeHtml(info.favicon)}" alt="">` : icon(info.fallback)}</div>
+      <div class="srv-row-text"><b>${escapeHtml(info.name)}</b><div class="srv-row-sub">${head}<span>${escapeHtml(sub)}</span></div></div>
+      ${info.pill ?? ""}
+      <span class="srv-row-players">${escapeHtml(info.players ?? "")}</span>
       ${button}
     </div>`;
 }
@@ -1417,23 +1423,29 @@ function renderFriendServers() {
   const box = $("#friend-servers");
   const s = state.social;
   if (!(s?.signedIn && s.connected)) {
-    setHtml(box, `<p class="muted small-text friend-servers-empty">${t("Inicia sesión con Google para ver las partidas de tus amigos.", "Sign in with Google to see your friends' games.")}</p>`);
+    $("#friend-servers-count").textContent = "";
+    setHtml(box, `<p class="srv-empty" data-key="vacio">${t("Inicia sesión con Google para ver las partidas de tus amigos.", "Sign in with Google to see your friends' games.")}</p>`);
     return;
   }
-  // Encendidos primero; los servidores apagados a los que te invitaron, al final.
-  const items = friendActivity().sort((a, b) => Number(b.online) - Number(a.online));
-  if (!items.length) {
-    setHtml(box, `<p class="muted small-text friend-servers-empty">${t("Ninguno de tus amigos está jugando ahora.", "None of your friends is playing right now.")}</p>`);
-    return;
-  }
-  const html = items
-    .map((item) => {
-      const info = activityInfo(item);
-      const button = `<button class="btn primary play" data-friend-join="${escapeHtml(item.key)}" ${info.canJoin ? "" : "disabled"}>${icon("play")}${t("Unirse", "Join")}</button>`;
-      return serverCardHtml({ key: item.key, info, button, dim: !item.online });
-    })
-    .join("");
-  setHtml(box, html);
+  // A donde se puede entrar ahora, arriba; los servidores apagados a los que te invitaron, al final y
+  // plegados (con muchos amigos llenarían la página).
+  const items = friendActivity();
+  const online = items.filter((item) => item.online);
+  const offline = items.filter((item) => !item.online);
+  $("#friend-servers-count").textContent = online.length || "";
+  const row = (item) => {
+    const info = activityInfo(item);
+    const button = `<button class="btn ${item.online && info.canJoin ? "primary" : ""} small" data-friend-join="${escapeHtml(item.key)}" ${info.canJoin ? "" : "disabled"}>${icon("play")}${t("Unirse", "Join")}</button>`;
+    return serverCardHtml({ key: item.key, info, button, dim: !item.online });
+  };
+  const open = host.showOffline;
+  const more = offline.length
+    ? `<button class="srv-more" data-key="mas" data-friend-offline>${
+        open ? t("Ocultar los apagados", "Hide the ones that are off") : t(`Ver ${offline.length === 1 ? "1 apagado" : `${offline.length} apagados`}`, `See ${offline.length} off`)
+      }</button>`
+    : "";
+  const empty = online.length ? "" : `<p class="srv-empty" data-key="vacio">${t("Ninguno de tus amigos está jugando ahora.", "None of your friends is playing right now.")}</p>`;
+  setHtml(box, empty + online.map(row).join("") + more + (open ? offline.map(row).join("") : ""));
   for (const canvas of $$("#friend-servers canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
 }
 
@@ -1742,6 +1754,10 @@ function wireHostEvents() {
   document.addEventListener("click", (event) => {
     const disable = event.target.closest("[data-disable-tunnel]");
     if (disable) return void disableTunnelMod(Number(disable.dataset.disableTunnel));
+    if (event.target.closest("[data-friend-offline]")) {
+      host.showOffline = !host.showOffline;
+      return void renderFriendServers();
+    }
     const copy = event.target.closest("[data-copy-address]");
     if (copy) {
       copyText(copy.dataset.copyAddress, t("Dirección copiada.", "Address copied."));

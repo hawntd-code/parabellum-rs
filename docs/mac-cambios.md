@@ -14,16 +14,28 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 - **Mac → Windows.** Lo que necesites de Windows (compilar, probar, cambiar el contrato) sigue en la
   descripción del PR («para que Juan revise»). Si queda pendiente después de mezclarlo, anótalo en
   «Pendientes para Windows».
+- **Versiones publicadas.** Cada vez que una versión de Windows se publica en Drive (la que se
+  actualiza sola en los PC de los compañeros), se anota en «Versiones publicadas en Drive» en ese
+  momento: número, fecha y qué cambió para quien juega. Lo pidió Diego para saber qué tienen ya los
+  demás.
 - Lo más nuevo, arriba. Cada entrada con su fecha y el título del commit. Para ver lo nuevo desde tu
   última sesión: `git log --oneline <último commit que viste>..origin/main`.
 
 ## Estado
 
-- Última revisión de los PR de Mac en Windows: 2026-10-12, PR #1 a #9 (todos mezclados).
-- Windows: la 0.25.0 está publicada en Drive; la 0.27.0 está en `main` (Juan publica primero las reglas
-  de Firebase y luego la versión).
-- Mac: hechas las tareas 1 a 8 de `mac.md`. Quedan la 9 a la 12; el orden que sugiere Juan está en
-  «Lo que sigue en Mac», abajo.
+- Última revisión de los PR de Mac en Windows: 2026-10-12, PR #1 a #11 (todos mezclados).
+- Windows: la última publicada en Drive es la 0.25.0 (ver «Versiones publicadas en Drive»). En `main` va
+  la 0.27.1; Juan publica primero las reglas de Firebase y luego la versión.
+- Mac: hechas las tareas 1 a 10 de `mac.md`. Quedan la 11 (actualizarse solo) y la 12 (firma de Apple):
+  ver «Lo que sigue en Mac», abajo.
+
+## Versiones publicadas en Drive
+
+Lo que ya tienen los compañeros con Windows. La más nueva, arriba.
+
+- **0.25.0** · 2026-10-12 · animaciones en toda la ventana; dentro del juego, panel animado, botón
+  «Parabellum» en el menú de pausa, aviso «Pulsa O» al entrar a un mundo y avisos abajo a la derecha.
+- **0.24.1** · 2026-10-12 · el mod del juego gasta lo mínimo y se aparta solo si hace caer el juego.
 
 ## Lo que sigue en Mac
 
@@ -89,7 +101,12 @@ En este orden (las dos primeras hacen que un compañero con Mac pueda usar Parab
 3. ~~**Tarea 9, versiones 1.18 y anteriores**~~ — hecha en el PR #10: 1.18 nativa (LWJGL 3.3.1) y 1.17.1
    y anteriores con Rosetta y el Java de Intel de Mojang.
 4. **Tarea 12, firma de Apple**: cuesta 99 USD al año, decisión de Juan. Mientras, la guía de
-   instalación dice lo del clic derecho › Abrir.
+   instalación dice cómo abrirla la primera vez (desde macOS 15: Ajustes del Sistema › Privacidad y
+   seguridad › «Abrir de todas formas»).
+
+Siguiente para Diego: la **tarea 11**. Con la `.app` lista, es lo que falta para que un compañero con Mac
+reciba las versiones nuevas sin compilar. Antes de hacerla, comenta la propuesta de arriba en un PR o
+issue para acordar con Juan cómo se publica la de Mac en Drive.
 
 Opcional y pequeño: los servidores de Forge 1.17+ creados en Mac **antes** del PR #7 guardaron
 `win_args.txt` en `parabellum-servidor.json` (`launch`) y siguen sin arrancar. Si tienes alguno,
@@ -141,9 +158,18 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 - [ ] **PR #11 (`.app` y `.dmg` de Mac): compilar en Windows.** `main.rs` atiende los eventos con un
   `match` y la rama de `RunEvent::Reopen` lleva `#[cfg(target_os = "macos")]` (en Windows no existe);
   `RunEvent::Exit` hace lo mismo que antes. Lo demás es de Mac: `src-tauri/mac/` y el workflow de Mac.
+Nada por ahora.
 
-- [ ] **PR #10 (versiones viejas en Mac): compilar, correr las pruebas y abrir una 1.16.5 y una 1.18.2
-  en Windows.** En Windows todo debe seguir igual. Lo compartido:
+- [x] **PR #11 (`.app` y `.dmg` de Mac)** (2026-10-12): compila en Windows sin advertencias. `main.rs`
+  atiende los eventos con un `match` y la rama de `RunEvent::Reopen` lleva `#[cfg(target_os = "macos")]`
+  (en Windows no existe); `RunEvent::Exit` hace lo mismo que antes. Lo demás es de Mac: `src-tauri/mac/`
+  y el workflow de Mac.
+
+- [x] **PR #10 (versiones viejas en Mac)** (2026-10-12): en Windows pasan las 87 pruebas (incluida
+  `version_mayor`), compila sin advertencias y, con `--probar-juego`, Fabric 1.16.5 llega al menú en 35 s
+  y Fabric 1.18.2 en 58 s, con el mod de Parabellum. Revisé que exportar no meta cada biblioteca dos
+  veces (`version_files` quita repetidos al final). Buen hallazgo lo de `major_of` con el Java 8 de
+  Mojang: también fallaba en Windows. Lo compartido:
   - Contrato: `java_runtime_platform(major)` (en Windows, `JAVA_RUNTIME_PLATFORM`), `adapt_libraries`
     (devuelve las mismas), `foreign_java_ready()` (`true`) e `install_foreign_java()` (no hace nada).
   - `mojang.rs`: el Java se baja de `java_runtime_platform(major)` y, si Mojang no tiene ese componente,
@@ -189,6 +215,38 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   del juego, y la prueba con compañeros en sus casas.
 
 ## Cambios de Windows
+
+### 2026-10-13 · 0.28.0: el panel del juego con lo mismo que la ventana
+
+- Qué cambió:
+  - Mod, núcleo (`mod/nucleo`): `Panel` rehecho (Amigos, Mensajes y Capturas como en la ventana), `Iconos`
+    (los trazos de `ui/index.html`), `Emojis` (las seis reacciones dibujadas), `Lienzo` escribe con una
+    fuente del sistema lo que Inter no tiene, y `Plataforma.teclaCaptura()` (método por defecto: «F2»).
+    Los 18 .jar se recompilaron.
+  - `puente.rs`: el estado trae favoritos, miembros, dueño y huella de la foto de cada grupo; operaciones
+    nuevas (`reaccionar`, `favorito_chat`, `favorito_amigo`, `crear_grupo`, `agregar_al_grupo`,
+    `editar_grupo`, `sacar_del_grupo`, `pasar_grupo`, `salir_chat`, `foto_grupo`, `abrir_carpeta`) y
+    `enviar` acepta `respuesta`.
+  - `chat.rs`: `watch` (el chat del juego) escucha también las reacciones y devuelve `chat::Watch`.
+  - `main.rs`: `set_favorite_chat` (lo usan la ventana y el juego; avisa a los dos).
+- Mac: nada de código. En Mac Java2D no tiene emojis de color: `Lienzo.respaldo` busca «Apple Symbols»
+  (si no, «Dialog»); revisa cómo se ve un emoji en un mensaje dentro del juego y dime si sale un
+  cuadrito. Prueba también «Abrir carpeta» en Capturas (abre Finder).
+
+### 2026-10-13 · Vista previa de imágenes y quién está en línea en Mensajes
+
+- Qué cambió: solo `ui/`. Al adjuntar, pegar o soltar una imagen en el chat ya no se manda directo: sale
+  `#image-dialog` con la imagen tal como se va a mandar (Enter envía, Esc cancela). En Mensajes, las
+  conversaciones directas y la cabecera llevan el punto de en línea (`presenceHead`).
+- Mac: nada de código. Revisa que pegar una captura (Cmd+V) abra la vista previa.
+
+### 2026-10-12 · 0.27.1: Servidores y Hostear en una sola página
+
+- Qué cambió: solo `ui/`. Ya no hay página `host` (`navigate("host")` lleva a `servers`): «Tus servidores»
+  (lo que era Hostear partida), «De tus amigos» y «Guardados» van en Servidores, en filas compactas
+  (`.srv-row`, `serverCardHtml`). El punto de servidor encendido (`#host-dot`) está en el botón de
+  Servidores.
+- Mac: nada de código. Revisa que la página se vea bien en la ventana de Mac.
 
 ### 2026-10-12 · 0.27.0: amigos, mensajes y grupos
 

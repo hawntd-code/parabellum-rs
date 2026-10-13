@@ -39,4 +39,9 @@ public interface Plataforma {
 
     /** El nombre de la tecla de Parabellum (para los avisos), por ejemplo "O". */
     String tecla();
+
+    /** La tecla de las capturas de Minecraft (para explicar cómo sacar una). */
+    default String teclaCaptura() {
+        return "F2";
+    }
 }

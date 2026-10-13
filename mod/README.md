@@ -1,7 +1,17 @@
 # Parabellum dentro del juego (el mod)
 
-El panel de Parabellum dentro de Minecraft: amigos (unirse, invitar, mensaje, solicitudes), mensajes
-(chats y grupos, enviar, editar y borrar), capturas (mandarlas a un chat) y avisos abajo a la derecha. Se
+El panel de Parabellum dentro de Minecraft, con lo mismo que la parte social de la ventana (desde la 0.28):
+
+- **Amigos:** agregar por nombre, solicitudes, la lista con filtros (todos, en línea, jugando) y búsqueda,
+  y en cada amigo Unirse, Invitar, Mensaje y ⋯ (favorito, eliminar); a la derecha, los grupos.
+- **Mensajes:** conversaciones (favoritas primero, el punto de en línea, fotos de grupo), responder,
+  reaccionar (las seis de Parabellum, dibujadas en `Emojis`), editar y borrar, invitaciones e imágenes;
+  crear grupos y, si eres el dueño, agregar, sacar, pasar el grupo y cambiarle el nombre.
+- **Capturas:** mandarlas a una conversación, con «Abrir carpeta» y cómo sacarlas (F2, o Fn + F2 en
+  muchas laptops).
+
+Los avisos salen abajo a la derecha. Los iconos son los mismos trazos de `ui/index.html` (`Iconos`) y lo
+que la fuente Inter no tiene (emojis) se escribe con una del sistema (`Lienzo.respaldo`). Se
 abre con la tecla **O** (se cambia en Controles › Multijugador) o con el botón «Parabellum» del menú de
 pausa. La primera vez que se entra a un mundo sale el aviso «Pulsa O para abrirlo», hasta que se abra
 una vez (la marca es `datos/panel-visto.txt` de Parabellum).
@@ -77,7 +87,14 @@ Con el JSON de una instancia (`extraJvmArgs`) o en la línea de comandos de Java
 - `-Dparabellum.prueba.abrir=1`: abre el panel solo en el menú principal (y deja
   `parabellum-prueba.txt` en la carpeta del juego).
 - `-Dparabellum.prueba=true`: el panel se dibuja como conectado, con un amigo y un chat de ejemplo.
-- `-Dparabellum.prueba.pestana=1`: abre la primera conversación; `=capturas`: abre Capturas.
+- `-Dparabellum.prueba.pestana=1`: abre la primera conversación; `=2`: la segunda (un grupo con
+  respuestas y reacciones de ejemplo); `=grupo`: el diálogo «Nuevo grupo»; `=capturas`: Capturas.
+
+Sin Minecraft: `python mod/vista/vista.py` compila el núcleo con `vista/Vista.java` (una `Plataforma`
+de mentira), dibuja el panel en modo de prueba y guarda un PNG de cada estado en `vista/png` (amigos,
+menú, conversación, grupo con citas y reacciones, herramientas, respuesta, diálogos y capturas): sirve
+para revisar el diseño en segundos. Las fuentes las toma de `PARABELLUM_FUENTES` o de
+`$PARABELLUM_ROOT/datos/fuentes`.
 - `-Dparabellum.prueba.conectar=<dirección>`: entra a ese servidor como lo haría «Unirse».
 - `-Dparabellum.prueba.lento=<N>`: el panel tarda N veces más en entrar (para verlo en una captura).
 

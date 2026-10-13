@@ -336,6 +336,8 @@ const HTML_EN = {
   "Foto del grupo": "Group photo",
   "Quitar foto": "Remove photo",
   "Reportar problema": "Report a problem",
+  "Enviar imagen": "Send image",
+  "Cancelar (Esc)": "Cancel (Esc)",
   "¿Qué pasó?": "What happened?",
   "Por ejemplo: se cierra al entrar al mundo de mi amigo": "For example: it closes when I join my friend's world",
   "Va con esto": "It goes with this",

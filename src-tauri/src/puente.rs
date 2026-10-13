@@ -5,7 +5,7 @@
 //! -Dparabellum.puente / -Dparabellum.clave (ver jvm_arguments); la clave se guarda en
 //! datos/puente.txt para que un juego abierto siga conectando si Parabellum se reinicia.
 //!
-//!   Del mod:        {"op": "enviar", "id": 7, "chat": "…", "texto": "…"}
+//!   Del mod:        {"op": "enviar", "id": 7, "chat": "…", "texto": "…", "respuesta": "…"}
 //!   Respuesta:      {"re": 7, "ok": true, "datos": …}   o   {"re": 7, "error": "…"}
 //!   De Parabellum:  {"ev": "estado" | "mensajes" | "aviso", …}   (cuando cambia algo)
 
@@ -157,7 +157,7 @@ async fn serve(app: AppHandle, bridge: Arc<Puente>, stream: TcpStream) {
     let _ = tx.send(line(&snapshot(&app)));
     bridge.clients.lock().unwrap().push(tx.clone());
     // La conversación que el juego tiene abierta (su propia escucha: la ventana puede ver otra).
-    let mut watching: Option<crate::firebase::Listener> = None;
+    let mut watching: Option<crate::chat::Watch> = None;
     loop {
         let next = match lines.next_line().await {
             Ok(Some(text)) => text,
@@ -192,6 +192,19 @@ async fn serve(app: AppHandle, bridge: Arc<Puente>, stream: TcpStream) {
     writer.abort();
 }
 
+/// Una lista de ids de amigos (crear un grupo, agregar a uno).
+fn uids(request: &Value, field: &str) -> Vec<String> {
+    request[field].as_array().map(|list| list.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default()
+}
+
+/// Para que el juego sepa si la foto de un grupo cambió sin mandarla en cada estado (se pide aparte).
+fn photo_key(photo: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    photo.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
 fn text<'a>(request: &'a Value, field: &str) -> Result<&'a str, String> {
     request[field].as_str().filter(|s| !s.is_empty()).ok_or_else(|| format!("falta «{field}»"))
 }
@@ -204,7 +217,7 @@ fn social(app: &AppHandle) -> Result<Arc<crate::amigos::Social>, String> {
     cuenta::social_handle(app).ok_or(t!("Inicia sesión con Google en Parabellum.", "Sign in with Google in Parabellum."))
 }
 
-fn watch_chat(app: &AppHandle, request: &Value, tx: &mpsc::UnboundedSender<String>) -> Result<crate::firebase::Listener, String> {
+fn watch_chat(app: &AppHandle, request: &Value, tx: &mpsc::UnboundedSender<String>) -> Result<crate::chat::Watch, String> {
     let chat = text(request, "chat")?.to_string();
     let service = chat_service(app)?;
     let (tx, id) = (tx.clone(), chat.clone());
@@ -221,7 +234,38 @@ async fn handle(app: &AppHandle, op: &str, request: &Value) -> Result<Value, Str
     match op {
         "estado" => Ok(snapshot(app)),
         "chat_amigo" => Ok(json!({ "chat": chat_service(app)?.direct(text(request, "uid")?).await? })),
-        "enviar" => chat_service(app)?.send_text(text(request, "chat")?, text(request, "texto")?, None).await.map(|_| Value::Null),
+        "enviar" => chat_service(app)?.send_text(text(request, "chat")?, text(request, "texto")?, request["respuesta"].as_str().filter(|r| !r.is_empty())).await.map(|_| Value::Null),
+        "reaccionar" => {
+            let emoji = request["emoji"].as_str().filter(|e| !e.is_empty());
+            chat_service(app)?.react(text(request, "chat")?, text(request, "mensaje")?, emoji).await.map(|_| Value::Null)
+        }
+        "favorito_chat" => crate::set_favorite_chat(app, text(request, "chat")?, request["activo"].as_bool().unwrap_or(true)).map(|_| Value::Null),
+        "favorito_amigo" => {
+            let chat = chat_service(app)?.direct(text(request, "uid")?).await?;
+            crate::set_favorite_chat(app, &chat, request["activo"].as_bool().unwrap_or(true)).map(|_| Value::Null)
+        }
+        "crear_grupo" => Ok(json!({ "chat": chat_service(app)?.create_group(text(request, "nombre")?, &uids(request, "amigos"), request["foto"].as_str()).await? })),
+        "agregar_al_grupo" => chat_service(app)?.add_members(text(request, "chat")?, &uids(request, "amigos")).await.map(|_| Value::Null),
+        "editar_grupo" => {
+            let name = request["nombre"].as_str().filter(|n| !n.trim().is_empty());
+            let photo = request["foto"].as_str().map(Some);
+            chat_service(app)?.edit_group(text(request, "chat")?, name, photo).await.map(|_| Value::Null)
+        }
+        "sacar_del_grupo" => chat_service(app)?.remove_member(text(request, "chat")?, text(request, "uid")?).await.map(|_| Value::Null),
+        "pasar_grupo" => chat_service(app)?.transfer_group(text(request, "chat")?, text(request, "uid")?).await.map(|_| Value::Null),
+        "salir_chat" => chat_service(app)?.leave(text(request, "chat")?).await.map(|_| Value::Null),
+        "foto_grupo" => {
+            let photo = chat_service(app)?.summary(text(request, "chat")?).and_then(|s| s.photo).ok_or(t!("Ese grupo no tiene foto.", "That group has no photo."))?;
+            Ok(json!({ "datos": photo }))
+        }
+        "abrir_carpeta" => {
+            // Solo la carpeta de capturas de un juego (la ruta la manda el mod).
+            let folder = std::path::PathBuf::from(text(request, "ruta")?);
+            if !folder.is_dir() || folder.file_name().is_none_or(|n| n != "screenshots") {
+                return Err(t!("Esa carpeta no existe.", "That folder does not exist."));
+            }
+            crate::plataforma::open_path(&folder).map(|_| Value::Null)
+        }
         "enviar_imagen" => {
             let (width, height) = (request["ancho"].as_u64().unwrap_or(0) as u32, request["alto"].as_u64().unwrap_or(0) as u32);
             chat_service(app)?.send_image(text(request, "chat")?, text(request, "datos")?, width, height).await.map(|_| Value::Null)
@@ -256,6 +300,8 @@ fn snapshot(app: &AppHandle) -> Value {
     let social = cuenta::social_handle(app);
     let chats = cuenta::chat_handle(app).map(|c| c.list()).unwrap_or_default();
     let view = social.as_ref().map(|s| s.view());
+    let favorites: std::collections::HashSet<String> = app.state::<AppState>().settings.lock().unwrap().favorite_chats.iter().cloned().collect();
+    let my_uid = social.as_ref().map(|s| s.uid.clone()).unwrap_or_default();
     let friends: Vec<Value> = view
         .as_ref()
         .map(|v| {
@@ -279,6 +325,7 @@ fn snapshot(app: &AppHandle) -> Value {
                         "hostea": hosting,
                         "unirse": joinable,
                         "visto": f.last_seen,
+                        "favorito": favorites.contains(&crate::chat::direct_id(&my_uid, &f.uid)),
                     })
                 })
                 .collect()
@@ -296,7 +343,19 @@ fn snapshot(app: &AppHandle) -> Value {
         .unwrap_or_default();
     let chat_list: Vec<Value> = chats
         .iter()
-        .map(|c| json!({ "id": c.id, "nombre": c.name, "tipo": c.kind, "ultimo": c.last_text, "ultimoNombre": c.last_name, "hora": c.last_at, "sinLeer": c.unread }))
+        .map(|c| {
+            let friend = (c.kind != "grupo").then(|| c.members.iter().find(|m| !m.you).map(|m| m.uid.clone())).flatten();
+            let members: Vec<Value> = c.members.iter().map(|m| json!({ "uid": m.uid, "nombre": m.name, "tu": m.you })).collect();
+            json!({
+                "id": c.id, "nombre": c.name, "tipo": c.kind, "ultimo": c.last_text, "ultimoNombre": c.last_name, "hora": c.last_at, "sinLeer": c.unread,
+                "favorito": favorites.contains(&c.id),
+                "amigo": friend,
+                "dueno": c.owner,
+                "puedoEditar": c.can_edit,
+                "miembros": members,
+                "foto": c.photo.as_deref().map(photo_key),
+            })
+        })
         .collect();
     let me = social.as_ref().map(|s| s.my_presence()).unwrap_or_default();
     // Sin sesión de Google, el nombre con el que juegas.
