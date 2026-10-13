@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       build:
-        description: "Además de revisar, compilar el programa y dejarlo para descargar"
+        description: "Además de revisar, compilar Parabellum.app y dejar el .dmg para descargar"
         type: boolean
         default: false
 
@@ -44,13 +44,13 @@ jobs:
       - name: Pruebas
         run: cargo test --release
 
-      - name: Compilar
+      - name: Compilar y empaquetar (Parabellum.app y .dmg)
         if: ${{ inputs.build }}
-        run: cargo build --release
+        run: mac/empaquetar.sh
 
-      - name: Guardar el programa
+      - name: Guardar el .dmg
         if: ${{ inputs.build }}
         uses: actions/upload-artifact@v4
         with:
           name: Parabellum-mac-arm64
-          path: src-tauri/target/release/Parabellum
+          path: src-tauri/target/mac/*.dmg

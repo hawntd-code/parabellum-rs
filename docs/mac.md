@@ -53,6 +53,17 @@ Para no mezclar tus pruebas con tus datos, usa una carpeta aparte:
 PARABELLUM_ROOT=~/parabellum-pruebas ./target/release/Parabellum
 ```
 
+Para armar `Parabellum.app` y el `.dmg` que se reparte (compila y deja los dos en `src-tauri/target/mac/`):
+
+```bash
+src-tauri/mac/empaquetar.sh
+```
+
+Usa herramientas que trae macOS: `sips` e `iconutil` para el ícono (sale de `ui/logo.png`), `codesign`
+para la firma ad hoc y `hdiutil` para el `.dmg`. El `Info.plist` está en `src-tauri/mac/`. Para abrir la
+app con una carpeta de pruebas: `open -n --env PARABELLUM_ROOT=~/parabellum-pruebas
+src-tauri/target/mac/Parabellum.app`. Sin `PARABELLUM_ROOT`, usa `~/Library/Application Support/Parabellum`.
+
 Parabellum también tiene comandos sin ventana para probar (el resultado queda en
 `datos/logs/comando.txt`). Ver la tabla del README; los más útiles para Mac:
 
@@ -123,10 +134,14 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
 - Avisos (`macos/avisos.rs`) con la API de Apple, UserNotifications (crate `objc2-user-notifications`):
   título, texto, sonido y clic (abre Parabellum o el chat). macOS solo los deja salir desde una `.app`
   que no esté en una carpeta temporal: con el programa suelto de `cargo build` no salen, y
-  `--probar-aviso` dice por qué. Para probarlos antes de la tarea 10, arma una `Parabellum.app` en
-  `src-tauri/target/`: dentro van `Contents/Info.plist` (con `CFBundleIdentifier` igual a
-  `mx.parabellum.launcher`) y `Contents/MacOS/Parabellum`. Fírmala con `codesign --force --sign -` y ábrela con
-  `open -n -W --env PARABELLUM_ROOT=… Parabellum.app --args --probar-aviso`.
+  `--probar-aviso` dice por qué. Para probarlos, arma la app con `src-tauri/mac/empaquetar.sh` y ábrela
+  con `open -n -W --env PARABELLUM_ROOT=… src-tauri/target/mac/Parabellum.app --args --probar-aviso`.
+- `Parabellum.app` y su `.dmg` (`src-tauri/mac/empaquetar.sh`, ver «Compilar en tu Mac»): la app lleva
+  todo dentro (la interfaz, el mod del juego y las fuentes van en el programa) y guarda los datos en
+  `~/Library/Application Support/Parabellum`. Firma ad hoc. Al cerrar la ventana, Parabellum sigue en la
+  barra de menús; un clic en su ícono del Dock (o abrir la app otra vez) la vuelve a mostrar
+  (`RunEvent::Reopen` en `main.rs`). Probado: los avisos salen desde la app y `spctl` la rechaza, como
+  se espera sin firma de Apple (tarea 12).
 - Lo compartido ya pregunta por Mac donde Mojang distingue sistemas: reglas `"os": "osx"` (así se
   agrega `-XstartOnFirstThread`), nativos `natives-macos`, Java de Mojang `mac-os-arm64` y separador
   del classpath `:`.
@@ -170,15 +185,16 @@ Ordenadas por prioridad:
    diegovc20/playit-agent (ver «Qué ya está hecho»). Falta probar un túnel con una cuenta de playit.gg.
 9. ~~**Versiones viejas (1.18 y anteriores)**~~ — hecho: 1.18 nativa con LWJGL 3.3.1 y 1.17.1 y
    anteriores con Rosetta (ver «Qué ya está hecho»).
-10. **Empaquetar como `.app`** (y `.dmg`): `tauri.conf.json` tiene `bundle.active = false` y solo un
-    icono `.ico`. Hacen falta un `.icns` y activar el empaquetado para Mac.
+10. ~~**Empaquetar como `.app`** (y `.dmg`)~~ — hecho, con `src-tauri/mac/empaquetar.sh` (ver «Qué ya
+    está hecho»). No usa el CLI de Tauri: `bundle.active` sigue en `false`.
 11. **Actualización automática** — `EXECUTABLE` y `catalog::apply_launcher_update` reemplazan el
     `.exe`; en Mac hay que reemplazar la `.app` entera y publicar en Drive una entrada aparte para Mac.
     Mientras tanto, `SELF_UPDATE` es `false` en Mac y Parabellum nunca pide actualizarse (si lo hiciera,
     bajaría el `.exe` de Windows y se quedaría bloqueado). Para tener la versión nueva: actualiza `main`
     y recompila. Al terminar esta tarea, ponlo en `true`.
-12. **Firma de Apple**: sin cuenta de Apple Developer, la primera vez hay que abrir la app con clic
-    derecho › Abrir (o Ajustes del Sistema › Privacidad › «Abrir de todas formas»).
+12. **Firma de Apple**: sin cuenta de Apple Developer, macOS no abre la app bajada de internet la primera
+    vez. Hay que ir a Ajustes del Sistema › Privacidad y seguridad › «Abrir de todas formas» (desde
+    macOS 15 ya no sirve clic derecho › Abrir).
 
 ## Compilar en GitHub (sin Mac a la mano)
 
@@ -188,7 +204,7 @@ Ordenadas por prioridad:
 - **A mano:** en GitHub › Actions › «Mac» › Run workflow (o `gh workflow run mac.yml --ref <rama>`).
 
 Hace `cargo check` (rápido; avisa si algo no compila). Con «build» en la entrada del workflow, además
-compila el programa y lo deja para descargar en la página de esa ejecución.
+arma `Parabellum.app` (`mac/empaquetar.sh`) y deja el `.dmg` para descargar en la página de esa ejecución.
 
 Ojo: en repos privados, los minutos de Mac en GitHub cuentan 10 veces. Úsalo cuando haga falta, no en
 cada cambio pequeño.

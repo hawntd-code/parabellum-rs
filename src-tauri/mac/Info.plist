@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Info.plist de Parabellum.app. empaquetar.sh cambia __VERSION__ por la de Cargo.toml. El
+     identificador es el de tauri.conf.json: con él salen los avisos del Centro de Notificaciones. -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>es</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>es</string>
+		<string>en</string>
+	</array>
+	<key>CFBundleDisplayName</key>
+	<string>Parabellum</string>
+	<key>CFBundleName</key>
+	<string>Parabellum</string>
+	<key>CFBundleExecutable</key>
+	<string>Parabellum</string>
+	<key>CFBundleIdentifier</key>
+	<string>mx.parabellum.launcher</string>
+	<key>CFBundleIconFile</key>
+	<string>Parabellum</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>__VERSION__</string>
+	<key>CFBundleVersion</key>
+	<string>__VERSION__</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.games</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Parabellum, launcher de Minecraft no premium</string>
+</dict>
+</plist>

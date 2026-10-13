@@ -29,7 +29,8 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 En este orden (las dos primeras hacen que un compañero con Mac pueda usar Parabellum sin compilar):
 
-1. **Tarea 10, empaquetar como `.app` y `.dmg`.** Además del `.icns` y `bundle.active`:
+1. ~~**Tarea 10, empaquetar como `.app` y `.dmg`.**~~ — hecha en el PR #11, con un script propio
+   (`src-tauri/mac/empaquetar.sh`; `bundle.active` sigue en `false`) y `RunEvent::Reopen`. Lo que pedía:
    - **Clic en el Dock con la ventana escondida.** Al cerrar la ventana, Parabellum se queda junto al
      reloj (en Mac, en la barra de menús). Abrir la `.app` otra vez no abre otra copia: macOS le manda
      al que ya está abierto `RunEvent::Reopen`, y hoy nadie lo atiende (en `main.rs` solo se atiende
@@ -82,6 +83,10 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   encabezado de `macos/mod.rs` y la tarea 1 de `mac.md`): resuelto en el PR #5.
 
 ## Pendientes para Windows
+
+- [ ] **PR #11 (`.app` y `.dmg` de Mac): compilar en Windows.** `main.rs` atiende los eventos con un
+  `match` y la rama de `RunEvent::Reopen` lleva `#[cfg(target_os = "macos")]` (en Windows no existe);
+  `RunEvent::Exit` hace lo mismo que antes. Lo demás es de Mac: `src-tauri/mac/` y el workflow de Mac.
 
 - [ ] **PR #10 (versiones viejas en Mac): compilar, correr las pruebas y abrir una 1.16.5 y una 1.18.2
   en Windows.** En Windows todo debe seguir igual. Lo compartido:
