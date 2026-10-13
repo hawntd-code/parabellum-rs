@@ -694,9 +694,15 @@ pub fn launcher_update(catalog: &[Entry]) -> Option<&Entry> {
 }
 
 /// Al actualizarse, el exe anterior queda como .old (Windows deja renombrar un exe abierto, no borrarlo).
+/// También los .old-<hora> que quedaron cuando el .old de antes no se podía borrar.
 pub fn cleanup_previous_version() {
-    if let Ok(exe) = std::env::current_exe() {
-        let _ = std::fs::remove_file(PathBuf::from(format!("{}.old", exe.display())));
+    let Ok(exe) = std::env::current_exe() else { return };
+    let (Some(folder), Some(name)) = (exe.parent(), exe.file_name().map(|n| n.to_string_lossy().to_lowercase())) else { return };
+    for entry in std::fs::read_dir(folder).into_iter().flatten().flatten() {
+        let file = entry.file_name().to_string_lossy().to_lowercase();
+        if file == format!("{name}.old") || file.starts_with(&format!("{name}.old-")) {
+            let _ = std::fs::remove_file(entry.path());
+        }
     }
 }
 
@@ -719,10 +725,14 @@ pub async fn apply_launcher_update(entry: &Entry, paths: &Paths, progress: impl 
         let _ = std::fs::remove_file(&zip);
     }
     let current = std::env::current_exe().map_err(|e| e.to_string())?;
-    let old = PathBuf::from(format!("{}.old", current.display()));
-    let _ = std::fs::remove_file(&old);
-    std::fs::rename(&current, &old).map_err(|_| {
-        t!("No hay permiso para cambiar la carpeta del launcher. Cópialo a una carpeta tuya (Escritorio, USB…) y actualiza desde ahí.", "There is no permission to change the launcher folder. Copy it to a folder of yours (Desktop, USB…) and update from there.")
+    // El .old de la actualización anterior: si no se deja borrar (un Parabellum viejo que sigue abierto,
+    // un antivirus revisándolo), el exe actual se aparta con otro nombre en vez de fallar.
+    let mut old = PathBuf::from(format!("{}.old", current.display()));
+    if std::fs::remove_file(&old).is_err() && old.exists() {
+        old = PathBuf::from(format!("{}.old-{}", current.display(), chrono::Utc::now().timestamp()));
+    }
+    std::fs::rename(&current, &old).map_err(|e| {
+        t!("No hay permiso para cambiar la carpeta del launcher ({e}). Cierra los demás Parabellum (también junto al reloj) o cópialo a una carpeta tuya (Escritorio, USB…) y actualiza desde ahí.", "There is no permission to change the launcher folder ({e}). Close the other Parabellum windows (also next to the clock) or copy it to a folder of yours (Desktop, USB…) and update from there.")
     })?;
     if let Err(error) = std::fs::rename(&fresh, &current).or_else(|_| std::fs::copy(&fresh, &current).map(|_| ())) {
         let _ = std::fs::rename(&old, &current); // deshacer: todo queda como estaba

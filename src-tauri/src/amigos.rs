@@ -181,6 +181,8 @@ pub struct Social {
     publishing: tokio::sync::Mutex<()>,
     changed: Callback,
     failed: ErrorCallback,
+    /// La última vez que se releyó la presencia de todos (refresh_presence).
+    presence_refreshed: Mutex<Option<std::time::Instant>>,
 }
 
 impl Social {
@@ -201,7 +203,41 @@ impl Social {
             publishing: tokio::sync::Mutex::new(()),
             changed: Box::new(changed),
             failed: Box::new(failed),
+            presence_refreshed: Mutex::default(),
         }))
+    }
+
+    /// Vuelve a leer la presencia de todos los amigos (por si una escucha se quedó atrás: p. ej. entra
+    /// por P2P alguien que no se reconoce). Como mucho una vez cada 10 s.
+    pub fn refresh_presence(self: &Arc<Self>) {
+        {
+            let mut last = self.presence_refreshed.lock().unwrap();
+            if last.is_some_and(|at| at.elapsed() < Duration::from_secs(10)) {
+                return;
+            }
+            *last = Some(std::time::Instant::now());
+        }
+        let social = self.clone();
+        tauri::async_runtime::spawn(async move {
+            let ids: Vec<String> = social.inner.lock().unwrap().friend_ids.iter().cloned().collect();
+            // En p2p.log, lo que impide reconocer a un amigo: su presencia no se deja leer (¿te quitó
+            // de amigos?) o no tiene dirección P2P (su Parabellum es viejo o no llega al relevo).
+            let mut missing = Vec::new();
+            for uid in &ids {
+                match social.db.get(&format!("presence/{uid}")).await {
+                    Ok(presence) if !presence.is_null() => {
+                        if presence["p2p"].as_str().is_none_or(str::is_empty) {
+                            missing.push(format!("{} sin dirección P2P", presence["name"].as_str().unwrap_or(uid)));
+                        }
+                        social.inner.lock().unwrap().presence.insert(uid.clone(), presence);
+                    }
+                    Ok(_) => missing.push(format!("{uid} sin presencia")),
+                    Err(error) => missing.push(format!("{uid}: {error}")),
+                }
+            }
+            crate::p2p::note(format!("presencia releída ({} amigos){}", ids.len(), if missing.is_empty() { String::new() } else { format!(": {}", missing.join("; ")) }));
+            (social.changed)();
+        });
     }
 
     /// Empieza a escuchar amigos y solicitudes y a publicar la presencia cada minuto.

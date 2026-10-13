@@ -27,6 +27,9 @@ public final class PantallaPanel extends Screen {
     @Override
     protected void init() {
         Juego.actual().panelAbierto();
+        // Desde la 26.3 (SDL3) las letras solo llegan si alguien pide entrada de texto, como hace una
+        // caja de texto del juego: el panel la pide mientras está abierto.
+        minecraft.textInputManager().startTextInput(this);
     }
 
     @Override
@@ -108,6 +111,7 @@ public final class PantallaPanel extends Screen {
 
     @Override
     public void removed() {
+        minecraft.textInputManager().stopTextInput(this);
         Juego.actual().panelCerrado();
         Texturas.liberar("panel");
     }

@@ -825,14 +825,23 @@ pub async fn set_connections(app: &AppHandle, id: &str, connections: servidor::C
 /// Conexión directa (P2P): a qué puerto de este PC entra un amigo. Solo amigos de Parabellum (su
 /// identidad P2P está en su presencia) y solo a lo que está encendido: un servidor (`target` es su
 /// clave) o el mundo abierto en LAN ("world"). Quién puede jugar lo sigue decidiendo la lista blanca.
-pub fn p2p_port(app: &AppHandle, remote: &str, target: &str) -> Option<u16> {
-    cuenta::social_handle(app)?.friend_by_p2p(remote)?;
+pub fn p2p_port(app: &AppHandle, remote: &str, target: &str) -> Result<u16, String> {
+    let social = cuenta::social_handle(app).ok_or("sin sesión de Google")?;
+    if social.friend_by_p2p(remote).is_none() {
+        // Su dirección P2P cambia cada vez que abre Parabellum: si su presencia nueva no llegó por la
+        // escucha, se vuelve a leer y el siguiente intento ya lo reconoce.
+        social.refresh_presence();
+        return Err("no coincide con la dirección P2P de ningún amigo (se vuelve a leer su presencia)".into());
+    }
     if target == "world" {
-        return hosting(app).world.lock().unwrap().as_ref().map(|w| w.port);
+        return hosting(app).world.lock().unwrap().as_ref().map(|w| w.port).ok_or_else(|| "no hay mundo abierto".into());
     }
     let paths = app.state::<AppState>().paths.clone();
-    let config = servidor::list(&paths).into_iter().find(|c| c.key == target && c.connections.p2p)?;
-    hosting(app).running.lock().unwrap().get(&config.id).map(|r| r.port)
+    let config = servidor::list(&paths).into_iter().find(|c| c.key == target).ok_or("no hay un servidor con esa clave")?;
+    if !config.connections.p2p {
+        return Err("ese servidor tiene apagado el P2P".into());
+    }
+    hosting(app).running.lock().unwrap().get(&config.id).map(|r| r.port).ok_or_else(|| "ese servidor no está encendido".into())
 }
 
 /// Publica el servidor para los amigos invitados (encendido, dirección y jugadores).

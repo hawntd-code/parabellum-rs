@@ -28,7 +28,7 @@ pub fn log_to(path: std::path::PathBuf) {
     let _ = LOG.set(path);
 }
 
-fn note(text: String) {
+pub(crate) fn note(text: String) {
     eprintln!("p2p: {text}");
     if let Some(path) = LOG.get() {
         use std::io::Write;
@@ -40,8 +40,8 @@ fn note(text: String) {
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Para cada flujo entrante: (id P2P de quien se conecta, destino pedido) -> puerto local al que va.
-/// None: no se deja pasar (no es amigo, o ese servidor no está encendido).
-pub type Gate = Arc<dyn Fn(&str, &str) -> Option<u16> + Send + Sync>;
+/// Err: no se deja pasar, con el motivo (no es amigo, o ese servidor no está encendido) para p2p.log.
+pub type Gate = Arc<dyn Fn(&str, &str) -> Result<u16, String> + Send + Sync>;
 
 /// Alguien que está jugando ahora en este PC por P2P.
 #[derive(Clone, Debug)]
@@ -174,9 +174,12 @@ impl P2p {
         let mut target = vec![0u8; length[0] as usize];
         AsyncReadExt::read_exact(&mut recv, &mut target).await?;
         let target = String::from_utf8_lossy(&target).to_string();
-        let Some(port) = (self.gate)(remote, &target) else {
-            note(format!("rechazado {} -> {target}", short(remote)));
-            return Ok(());
+        let port = match (self.gate)(remote, &target) {
+            Ok(port) => port,
+            Err(why) => {
+                note(format!("rechazado {} -> {target}: {why}", short(remote)));
+                return Ok(());
+            }
         };
         self.count(remote, &target, true);
         let result = async {
@@ -429,8 +432,8 @@ mod tests {
                 });
             }
         });
-        let host = P2p::start(Arc::new(move |_, target| (target == "world").then_some(server_port))).await.unwrap();
-        let guest = P2p::start(Arc::new(|_, _| None)).await.unwrap();
+        let host = P2p::start(Arc::new(move |_, target| (target == "world").then_some(server_port).ok_or_else(|| "no".to_string()))).await.unwrap();
+        let guest = P2p::start(Arc::new(|_, _| Err("no".to_string()))).await.unwrap();
         assert!(host.online(Duration::from_secs(15)).await);
         let address = host.address().unwrap();
         // Un destino que el anfitrión no deja pasar: se cierra sin respuesta.

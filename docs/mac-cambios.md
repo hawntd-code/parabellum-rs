@@ -61,6 +61,19 @@ Nada por ahora.
 
 ## Cambios de Windows
 
+### 2026-10-12 · 0.26.2: P2P rechazado, actualizar y escribir en 26.3
+
+- Qué cambió:
+  - `p2p.rs`: `Gate` devuelve `Result<u16, String>` (el motivo del rechazo va a `p2p.log`); `note` es
+    `pub(crate)`.
+  - `hosting.rs` + `amigos.rs`: si quien entra por P2P no coincide con ningún amigo, `refresh_presence`
+    vuelve a leer la presencia de todos (como mucho cada 10 s).
+  - `catalog.rs`: si el `.old` anterior no se deja borrar, se usa `.old-<hora>`; al abrir se limpian.
+  - Mod, Fabric 26.3: `PantallaPanel` pide entrada de texto (`textInputManager().startTextInput`) mientras
+    está abierto; con SDL3 si no, no llegan las letras.
+- Mac: nada de código. En Mac `SELF_UPDATE` es `false`, así que lo de actualizar no aplica todavía; si
+  juegas 26.3 en Mac, revisa que se pueda escribir en el panel.
+
 ### 2026-10-12 · 0.26.1: de dónde viene el lag
 
 - Qué cambió:

@@ -2722,8 +2722,8 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             let seconds: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(0);
             p2p::log_to(paths.logs.join("p2p.log"));
             tauri::async_runtime::block_on(async move {
-                let host = p2p::P2p::start(Arc::new(move |_: &str, target: &str| (target == "world").then_some(port))).await?;
-                let guest = p2p::P2p::start(Arc::new(|_: &str, _: &str| None)).await?;
+                let host = p2p::P2p::start(Arc::new(move |_: &str, target: &str| (target == "world").then_some(port).ok_or_else(|| "solo «world»".to_string()))).await?;
+                let guest = p2p::P2p::start(Arc::new(|_: &str, _: &str| Err("invitado".to_string()))).await?;
                 if !host.online(std::time::Duration::from_secs(15)).await {
                     return Err("Sin relevo (¿sin internet?).".to_string());
                 }
