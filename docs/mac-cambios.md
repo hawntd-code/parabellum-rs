@@ -46,6 +46,40 @@ En este orden (las dos primeras hacen que un compañero con Mac pueda usar Parab
    - `--publicar-launcher` lo corre Juan en Windows: hace falta poder pasarle el zip de Mac que le
      mandes (o un `--publicar-launcher-mac <zip>`). Juan lo publica en Drive.
    - Después, `SELF_UPDATE = true`.
+
+   **Respuesta de Mac (PR #12, en borrador: sin código hasta que Juan conteste).** De acuerdo con todo,
+   con estos detalles:
+   - **Id y carpeta.** Contrato nuevo `LAUNCHER_ID`: `"parabellum"` en Windows (como hoy) y
+     `"parabellum-mac"` en Mac. Mac publica en su propia carpeta de Drive, `_parabellum-mac` (el nombre
+     sale del id), y no en `_parabellum`: `publish_launcher` y `Publisher::remove_old_launchers` borran
+     todo lo que empieza con `Parabellum-` en la carpeta que se publica, así que en la misma carpeta se
+     borrarían uno al otro. El catálogo ya la encuentra sola (lee hasta 3 niveles de carpetas), y
+     `merge` separa los launchers por id y versión.
+   - **Publicar.** En vez de un `--publicar-launcher-mac <zip>` en Windows, «Publicar esta versión» (y
+     `--publicar-launcher`) haría lo mismo en Mac: comprime la `.app` con la que está abierto Parabellum
+     y deja `_parabellum-mac/` con el zip, el `.json` y un `LEEME.txt` para Mac. Así cada versión se
+     publica desde el sistema donde se compiló. Para subirla, dos opciones (decides tú, el Drive es tuyo):
+     - **(a)** Me das permiso de edición en la carpeta del catálogo y la subo desde mi Mac con «Subir a
+       Drive» (el permiso de Drive queda cifrado con el Llavero, como en Windows con DPAPI).
+     - **(b)** Te mando la carpeta `_parabellum-mac` y la subes tú (a mano en Drive o con «Subir a
+       Drive»).
+   - **Reemplazar** (`plataforma::replace_launcher`, contrato nuevo; Windows mueve ahí lo de hoy). En
+     Mac:
+     1. Descomprime en `datos/actualizacion/Parabellum.app` y da permiso de ejecución al programa.
+     2. Comprueba la firma (`codesign --verify --strict`) y que el identificador sea
+        `mx.parabellum.launcher`.
+     3. Aparta la actual como `Parabellum.app.old` y pone la nueva en su lugar; si algo falla, deja la
+        anterior.
+     4. Reabre con `open -n <app> --args --reiniciar`, que también sería del contrato, porque hoy es un
+        `Command::new(exe)` en `main.rs`.
+     5. `cleanup_previous_version` borra la `.app.old` al arrancar.
+
+     Si la app corre desde el `.dmg` o desde la copia temporal que hace macOS a las apps recién bajadas
+     («App Translocation»), no se puede reemplazar: dice que la arrastren a Aplicaciones.
+   - **Versiones.** El mismo número que Windows: cuando publicas una, compilo esa misma de `main` en Mac
+     y la publico. Si Mac se atrasa, los de Mac siguen en la anterior hasta que salga la suya.
+   - **Cómo lo pruebo antes del PR final.** Con una versión falsa (0.26.4) en la carpeta `paquetes` local:
+     el 0.26.3 de una `.app` se actualiza solo y reabre en 0.26.4.
 3. ~~**Tarea 9, versiones 1.18 y anteriores**~~ — hecha en el PR #10: 1.18 nativa (LWJGL 3.3.1) y 1.17.1
    y anteriores con Rosetta y el Java de Intel de Mojang.
 4. **Tarea 12, firma de Apple**: cuesta 99 USD al año, decisión de Juan. Mientras, la guía de
