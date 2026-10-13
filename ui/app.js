@@ -4566,6 +4566,7 @@ async function init() {
   setCreator(initial.creator);
   // Lo que depende del sistema (Windows o macOS): por ejemplo, en Mac no hay accesos directos.
   document.body.dataset.platform = initial.platform ?? "Windows";
+  $("#platform-text").textContent = document.body.dataset.platform;
   document.body.classList.toggle("no-shortcuts", initial.shortcuts === false);
   // Al abrir se busca una versión nueva (y cada media hora, por si se queda junto al reloj): si la
   // hay, hay que actualizar para seguir.
@@ -5999,7 +6000,10 @@ async function publishLauncher() {
     if (!folder) return;
     refreshAbout();
     if (!state.drivePublisher) {
-      toast(t(`Listo: sube la carpeta «_parabellum» (está en ${folder.replace(/[\\/]_parabellum$/, "")}) a tu Drive. Quien abra Parabellum se actualizará.`, `Done: upload the «_parabellum» folder (it is in ${folder.replace(/[\\/]_parabellum$/, "")}) to your Drive. Whoever opens Parabellum will update.`));
+      // _parabellum en Windows, _parabellum-mac en Mac.
+      const name = folder.split(/[\\/]/).pop();
+      const parent = folder.slice(0, folder.length - name.length - 1);
+      toast(t(`Listo: sube la carpeta «${name}» (está en ${parent}) a tu Drive. Quien abra Parabellum se actualizará.`, `Done: upload the «${name}» folder (it is in ${parent}) to your Drive. Whoever opens Parabellum will update.`));
       return;
     }
     state.driveUpload = "about";

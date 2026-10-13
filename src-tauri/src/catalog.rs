@@ -3,7 +3,8 @@
 //! ejemplo, copiada de una USB). Mismo formato y organización que la versión C#:
 //!   <carpeta>/<versión>/base-minecraft-<versión>.zip y .json
 //!   <carpeta>/<versión>/<Modpack>/<Modpack>.zip, .json y .png
-//!   <carpeta>/_parabellum/Parabellum-<versión>.zip y .json   (actualizaciones del launcher)
+//!   <carpeta>/_parabellum/Parabellum-<versión>.zip y .json   (actualizaciones del launcher en Windows;
+//!                                                             en Mac, _parabellum-mac)
 //! La API de Drive (con clave) solo se usa para LISTAR; los archivos se bajan por el enlace directo
 //! de Drive, que no necesita clave, deja reanudar y descargar por partes.
 
@@ -26,8 +27,6 @@ use crate::remote_zip::{self, RemoteZip};
 const API: &str = "https://www.googleapis.com/drive/v3/files";
 const FOLDER_MIME: &str = "application/vnd.google-apps.folder";
 pub const LOCAL_FOLDER: &str = "paquetes";
-/// Id de las actualizaciones de este launcher (la versión C# usa "parabellum-lanzador").
-pub const LAUNCHER_ID: &str = "parabellum";
 pub const LAUNCHER_TYPE: &str = "lanzador";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -680,74 +679,42 @@ pub fn current_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
-/// La versión más nueva de Parabellum publicada en el catálogo, si es mayor que esta (y si este
-/// sistema se actualiza solo: ver plataforma::SELF_UPDATE).
+/// La versión más nueva de Parabellum publicada en el catálogo para este sistema (con su id,
+/// plataforma::lanzador::ID), si es mayor que esta y si este sistema se actualiza solo (SELF_UPDATE).
 pub fn launcher_update(catalog: &[Entry]) -> Option<&Entry> {
     if !crate::plataforma::SELF_UPDATE {
         return None;
     }
     catalog
         .iter()
-        .filter(|e| e.is_launcher() && e.manifest.id == LAUNCHER_ID)
+        .filter(|e| e.is_launcher() && e.manifest.id == crate::plataforma::lanzador::ID)
         .filter(|e| compare_versions(&e.manifest.version, current_version()) == Ordering::Greater)
         .max_by(|a, b| compare_versions(&a.manifest.version, &b.manifest.version))
 }
 
-/// Al actualizarse, el exe anterior queda como .old (Windows deja renombrar un exe abierto, no borrarlo).
-/// También los .old-<hora> que quedaron cuando el .old de antes no se podía borrar.
-pub fn cleanup_previous_version() {
-    let Ok(exe) = std::env::current_exe() else { return };
-    let (Some(folder), Some(name)) = (exe.parent(), exe.file_name().map(|n| n.to_string_lossy().to_lowercase())) else { return };
-    for entry in std::fs::read_dir(folder).into_iter().flatten().flatten() {
-        let file = entry.file_name().to_string_lossy().to_lowercase();
-        if file == format!("{name}.old") || file.starts_with(&format!("{name}.old-")) {
-            let _ = std::fs::remove_file(entry.path());
-        }
-    }
-}
-
-/// Descarga la versión nueva, la verifica y la deja en lugar del exe actual. Devuelve su ruta.
+/// Descarga la versión nueva, la verifica y la deja en lugar de esta (en Windows el .exe; en Mac la
+/// app entera). Devuelve lo que hay que abrir para reiniciar (plataforma::lanzador::restart).
 pub async fn apply_launcher_update(entry: &Entry, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<PathBuf, String> {
     let (zip, is_copy) = fetch(entry, paths, progress.clone()).await?;
     verify(&zip, &entry.manifest).await?;
     let staging = paths.data.join("actualizacion");
     std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
-    let fresh = staging.join("Parabellum.nuevo.exe");
-    {
-        let mut archive = zip::ZipArchive::new(std::fs::File::open(&zip).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-        let executable = crate::plataforma::EXECUTABLE.to_lowercase();
-        let name = archive.file_names().find(|n| n.to_lowercase().ends_with(&executable)).map(String::from).ok_or(t!("La actualización no trae el ejecutable.", "The update does not contain the executable."))?;
-        let mut source = archive.by_name(&name).map_err(|e| e.to_string())?;
-        let mut out = std::fs::File::create(&fresh).map_err(|e| e.to_string())?;
-        std::io::copy(&mut source, &mut out).map_err(|e| t!("La actualización está dañada: {e}", "The update is damaged: {e}"))?;
-    }
+    let installed = crate::plataforma::lanzador::install(&zip, &staging);
     if is_copy {
         let _ = std::fs::remove_file(&zip);
     }
-    let current = std::env::current_exe().map_err(|e| e.to_string())?;
-    // El .old de la actualización anterior: si no se deja borrar (un Parabellum viejo que sigue abierto,
-    // un antivirus revisándolo), el exe actual se aparta con otro nombre en vez de fallar.
-    let mut old = PathBuf::from(format!("{}.old", current.display()));
-    if std::fs::remove_file(&old).is_err() && old.exists() {
-        old = PathBuf::from(format!("{}.old-{}", current.display(), chrono::Utc::now().timestamp()));
-    }
-    std::fs::rename(&current, &old).map_err(|e| {
-        t!("No hay permiso para cambiar la carpeta del launcher ({e}). Cierra los demás Parabellum (también junto al reloj) o cópialo a una carpeta tuya (Escritorio, USB…) y actualiza desde ahí.", "There is no permission to change the launcher folder ({e}). Close the other Parabellum windows (also next to the clock) or copy it to a folder of yours (Desktop, USB…) and update from there.")
-    })?;
-    if let Err(error) = std::fs::rename(&fresh, &current).or_else(|_| std::fs::copy(&fresh, &current).map(|_| ())) {
-        let _ = std::fs::rename(&old, &current); // deshacer: todo queda como estaba
-        return Err(t!("No se pudo instalar la actualización: {error}", "Could not install the update: {error}"));
-    }
-    Ok(current)
+    installed
 }
 
-/// Prepara la carpeta "_parabellum" con este mismo exe para subirla a Drive (solo la versión final).
+/// Prepara la carpeta de las versiones de este sistema («_» + su id: _parabellum en Windows,
+/// _parabellum-mac en Mac) con este mismo Parabellum para subirla a Drive (solo la versión final).
 pub fn publish_launcher(out_dir: &Path, notes: &str) -> Result<PathBuf, String> {
     if cfg!(debug_assertions) {
-        return Err(t!("Este Parabellum es una compilación de desarrollo: publica desde el Parabellum.exe final.", "This Parabellum is a development build: publish from the final Parabellum.exe."));
+        return Err(t!("Este Parabellum es una compilación de desarrollo: publica desde el Parabellum final (compilado con --release).", "This Parabellum is a development build: publish from the final Parabellum (built with --release)."));
     }
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let folder = out_dir.join("_parabellum");
+    let launcher = crate::plataforma::lanzador::published_files()?;
+    let id = crate::plataforma::lanzador::ID;
+    let folder = out_dir.join(format!("_{id}"));
     std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
     // Solo la última versión
     for old in std::fs::read_dir(&folder).into_iter().flatten().flatten() {
@@ -759,12 +726,14 @@ pub fn publish_launcher(out_dir: &Path, notes: &str) -> Result<PathBuf, String> 
     let zip_name = format!("Parabellum-{version}.zip");
     let zip_path = folder.join(&zip_name);
     let mut zip = packs::ZipOut::create(&zip_path)?;
-    zip.add_file(&exe, crate::plataforma::EXECUTABLE)?;
+    for (source, name) in &launcher {
+        zip.add_file(source, name)?;
+    }
     zip.finish()?;
     let manifest = Manifest {
         format: 1,
         kind: LAUNCHER_TYPE.into(),
-        id: LAUNCHER_ID.into(),
+        id: id.into(),
         name: "Parabellum".into(),
         description: notes.trim().to_string(),
         version: version.into(),
@@ -776,33 +745,8 @@ pub fn publish_launcher(out_dir: &Path, notes: &str) -> Result<PathBuf, String> 
     };
     std::fs::write(folder.join(format!("Parabellum-{version}.json")), serde_json::to_vec_pretty(&manifest).unwrap()).map_err(|e| e.to_string())?;
     // Para quien lo baja por primera vez desde Drive (el catálogo solo lee los .json).
-    let _ = std::fs::write(folder.join("LEEME.txt"), readme(version));
+    let _ = std::fs::write(folder.join("LEEME.txt"), crate::plataforma::lanzador::readme(version));
     Ok(folder)
-}
-
-/// Instrucciones de la primera vez: el exe no lleva firma de pago, así que Windows avisa al abrirlo.
-fn readme(version: &str) -> String {
-    format!(
-        "PARABELLUM {version} — CÓMO EMPEZAR\r\n\
-         \r\n\
-         1. Descarga Parabellum-{version}.zip y descomprímelo en una carpeta tuya (Escritorio, Documentos o una USB).\r\n\
-         \x20  No se instala nada: todo queda en esa carpeta.\r\n\
-         2. Abre Parabellum.exe. Si Windows muestra «Windows protegió tu PC», pulsa «Más información» y luego\r\n\
-         \x20  «Ejecutar de todas formas». Sale porque el programa no tiene una firma de pago; solo pasa la primera vez.\r\n\
-         3. Desde ahí Parabellum se actualiza solo cuando se publica una versión nueva en esta carpeta.\r\n\
-         \x20  Para tenerlo a mano: Ajustes › Comportamiento › Acceso directo en el Escritorio o en el menú Inicio.\r\n\
-         \r\n\
-         ---\r\n\
-         \r\n\
-         PARABELLUM {version} — GETTING STARTED\r\n\
-         \r\n\
-         1. Download Parabellum-{version}.zip and unzip it into a folder of yours (Desktop, Documents or a USB drive).\r\n\
-         \x20  Nothing is installed: everything stays in that folder.\r\n\
-         2. Open Parabellum.exe. If Windows shows «Windows protected your PC», click «More info» and then\r\n\
-         \x20  «Run anyway». It appears because the program has no paid signature; it only happens the first time.\r\n\
-         3. From then on Parabellum updates itself when a new version is published in this folder.\r\n\
-         \x20  To keep it handy: Settings › Behavior › Desktop or Start menu shortcut.\r\n"
-    )
 }
 
 #[cfg(test)]
@@ -837,14 +781,16 @@ mod tests {
     #[test]
     fn actualizacion_del_launcher_segun_el_sistema() {
         let newer = Entry {
-            manifest: Manifest { kind: LAUNCHER_TYPE.into(), id: LAUNCHER_ID.into(), version: "999.0.0".into(), ..Default::default() },
+            manifest: Manifest { kind: LAUNCHER_TYPE.into(), id: crate::plataforma::lanzador::ID.into(), version: "999.0.0".into(), ..Default::default() },
             source: Source::Drive,
             archive: String::new(),
             size: 0,
             icon: None,
             location: String::new(),
         };
-        // En Windows se ofrece; en Mac todavía no (tarea 11 de docs/mac.md).
-        assert_eq!(launcher_update(&[newer]).is_some(), crate::plataforma::SELF_UPDATE);
+        // Cada sistema ve solo la suya: la de Windows ("parabellum") no se ofrece en Mac ni al revés.
+        assert_eq!(launcher_update(std::slice::from_ref(&newer)).is_some(), crate::plataforma::SELF_UPDATE);
+        let other = Entry { manifest: Manifest { id: if crate::plataforma::lanzador::ID == "parabellum" { "parabellum-mac".into() } else { "parabellum".into() }, ..newer.manifest.clone() }, ..newer };
+        assert!(launcher_update(&[other]).is_none());
     }
 }

@@ -188,7 +188,7 @@ const HTML_EN = {
   "Seguir junto al reloj al cerrar": "Stay next to the clock when closed",
   "Con la sesión de Google iniciada, la X deja Parabellum junto al reloj para que tus amigos te vean y puedan entrar a tu mundo. Para cerrarlo del todo: clic derecho en su icono › Salir.": "When signed in with Google, the X leaves Parabellum next to the clock so your friends can see you and join your world. To close it completely: right-click its icon › Quit.",
   "Avisos de amigos": "Friend notifications",
-  "Un aviso de Windows cuando te escriben, te mandan solicitud de amistad o un amigo abre su mundo.": "A Windows notification when someone messages you, sends you a friend request or a friend opens their world.",
+  "Un aviso del sistema cuando te escriben, te mandan solicitud de amistad o un amigo abre su mundo.": "A system notification when someone messages you, sends you a friend request or a friend opens their world.",
   "Sonido de mensajes": "Message sound",
   "Mi mundo abierto por playit.gg": "My open world via playit.gg",
   "Parabellum dentro del juego": "Parabellum inside the game",

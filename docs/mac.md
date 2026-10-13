@@ -136,6 +136,19 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
   que no esté en una carpeta temporal: con el programa suelto de `cargo build` no salen, y
   `--probar-aviso` dice por qué. Para probarlos, arma la app con `src-tauri/mac/empaquetar.sh` y ábrela
   con `open -n -W --env PARABELLUM_ROOT=… src-tauri/target/mac/Parabellum.app --args --probar-aviso`.
+- Se actualiza sola (`plataforma/macos/lanzador.rs`, `SELF_UPDATE = true`). Las versiones de Mac van en
+  el catálogo con su propio id, `parabellum-mac`, en la carpeta `_parabellum-mac` de la raíz del Drive
+  (junto a `_parabellum`, la de Windows): ninguno baja la del otro. Al actualizarse, Parabellum:
+  1. Baja el zip de la app y comprueba su SHA-256.
+  2. Lo descomprime en `datos/actualizacion` y comprueba la firma (`codesign --verify`) y el
+     identificador.
+  3. Aparta la app actual como `Parabellum.app.old` y pone la nueva en su lugar; si algo falla, deja la
+     anterior.
+  4. Se reabre con `open -n … --args --reiniciar` y, al arrancar, borra la `.old`.
+
+  Desde el `.dmg` o desde la copia temporal de macOS («App Translocation») no se puede: pide moverla a
+  Aplicaciones. Probado con una 0.27.1 de prueba en la carpeta `paquetes` local: una `.app` 0.27.0 la
+  ofreció, se reemplazó y se reabrió en 0.27.1, con la firma válida y con su `PARABELLUM_ROOT`.
 - `Parabellum.app` y su `.dmg` (`src-tauri/mac/empaquetar.sh`, ver «Compilar en tu Mac»): la app lleva
   todo dentro (la interfaz, el mod del juego y las fuentes van en el programa) y guarda los datos en
   `~/Library/Application Support/Parabellum`. Firma ad hoc. Al cerrar la ventana, Parabellum sigue en la
@@ -187,14 +200,33 @@ Ordenadas por prioridad:
    anteriores con Rosetta (ver «Qué ya está hecho»).
 10. ~~**Empaquetar como `.app`** (y `.dmg`)~~ — hecho, con `src-tauri/mac/empaquetar.sh` (ver «Qué ya
     está hecho»). No usa el CLI de Tauri: `bundle.active` sigue en `false`.
-11. **Actualización automática** — `EXECUTABLE` y `catalog::apply_launcher_update` reemplazan el
-    `.exe`; en Mac hay que reemplazar la `.app` entera y publicar en Drive una entrada aparte para Mac.
-    Mientras tanto, `SELF_UPDATE` es `false` en Mac y Parabellum nunca pide actualizarse (si lo hiciera,
-    bajaría el `.exe` de Windows y se quedaría bloqueado). Para tener la versión nueva: actualiza `main`
-    y recompila. Al terminar esta tarea, ponlo en `true`.
+11. ~~**Actualización automática**~~ — hecho: la app entera se reemplaza sola con la versión de Mac que
+    se publica en `_parabellum-mac` (ver «Qué ya está hecho» y «Publicar una versión para Mac»).
 12. **Firma de Apple**: sin cuenta de Apple Developer, macOS no abre la app bajada de internet la primera
     vez. Hay que ir a Ajustes del Sistema › Privacidad y seguridad › «Abrir de todas formas» (desde
     macOS 15 ya no sirve clic derecho › Abrir).
+
+## Publicar una versión para Mac
+
+Cuando Juan publica una versión de Windows, lo avisa en `mac-cambios.md`. Para publicar la de Mac del
+mismo commit:
+
+1. Actualiza `main` a ese commit y arma la app: `src-tauri/mac/empaquetar.sh`.
+2. La primera vez, conecta Drive desde esa app (Acerca de › Conectar Drive) con la cuenta que es
+   editora de la carpeta del catálogo. El permiso queda cifrado con el Llavero en
+   `~/Library/Application Support/Parabellum/datos`.
+3. Publica desde la ventana (Acerca de › Publicar esta versión: arma `_parabellum-mac` y la sube) o sin
+   ella:
+
+```bash
+APP=src-tauri/target/mac/Parabellum.app/Contents/MacOS/Parabellum
+$APP --publicar-launcher ~/parabellum-publicar "Notas de la versión"
+$APP --subir-launcher-drive ~/parabellum-publicar/_parabellum-mac
+```
+
+El resultado queda en `~/Library/Application Support/Parabellum/datos/logs/comando.txt`. Al subir, las
+versiones anteriores de `_parabellum-mac` se van a la papelera de Drive. Cada Mac con Parabellum se
+actualiza la próxima vez que lo abra.
 
 ## Compilar en GitHub (sin Mac a la mano)
 

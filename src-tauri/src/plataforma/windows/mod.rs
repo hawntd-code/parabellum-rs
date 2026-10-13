@@ -2,6 +2,7 @@
 
 pub mod accesos;
 pub mod avisos;
+pub mod lanzador;
 
 use std::os::windows::process::CommandExt as _;
 use std::path::{Path, PathBuf};

@@ -48,7 +48,8 @@ En este orden (las dos primeras hacen que un compañero con Mac pueda usar Parab
      al que ya está abierto `RunEvent::Reopen`, y hoy nadie lo atiende (en `main.rs` solo se atiende
      `RunEvent::Exit`). Que llame a `cuenta::show_window`. Va en código compartido con
      `#[cfg(target_os = "macos")]`: dilo en el PR.
-2. **Tarea 11, actualizarse solo.** Propuesta, para que la discutamos en el PR antes de hacerla:
+2. ~~**Tarea 11, actualizarse solo.**~~ — hecha en el PR #12 (ver abajo lo que contestó Juan). Propuesta,
+   para que la discutamos en el PR antes de hacerla:
    - En Drive, un zip aparte para Mac con su propio id en el catálogo (p. ej. `parabellum-mac`, junto a
      `LAUNCHER_ID`), así un Windows nunca baja la de Mac ni al revés. `launcher_update` filtra por el id
      del sistema (constante nueva en el contrato).
@@ -58,6 +59,45 @@ En este orden (las dos primeras hacen que un compañero con Mac pueda usar Parab
    - `--publicar-launcher` lo corre Juan en Windows: hace falta poder pasarle el zip de Mac que le
      mandes (o un `--publicar-launcher-mac <zip>`). Juan lo publica en Drive.
    - Después, `SELF_UPDATE = true`.
+
+   **Lo que contestó Juan (2026-10-13):** la de Mac va en la raíz del catálogo (`_parabellum-mac`, junto a
+   `_parabellum`); la sube Diego desde su cuenta (editor de la carpeta; puede delegárselo a Claude); los
+   nombres están bien, y Juan avisa aquí cuando publique una versión de Windows. Quedó como en la
+   respuesta de abajo; el id y lo demás del launcher están en un módulo del contrato,
+   `plataforma::lanzador` (`ID`, `published_files`, `install`, `restart`, `cleanup`, `readme`).
+
+   **Respuesta de Mac (PR #12).** De acuerdo con todo, con estos detalles:
+   - **Id y carpeta.** Contrato nuevo `LAUNCHER_ID`: `"parabellum"` en Windows (como hoy) y
+     `"parabellum-mac"` en Mac. Mac publica en su propia carpeta de Drive, `_parabellum-mac` (el nombre
+     sale del id), y no en `_parabellum`: `publish_launcher` y `Publisher::remove_old_launchers` borran
+     todo lo que empieza con `Parabellum-` en la carpeta que se publica, así que en la misma carpeta se
+     borrarían uno al otro. El catálogo ya la encuentra sola (lee hasta 3 niveles de carpetas), y
+     `merge` separa los launchers por id y versión.
+   - **Publicar.** En vez de un `--publicar-launcher-mac <zip>` en Windows, «Publicar esta versión» (y
+     `--publicar-launcher`) haría lo mismo en Mac: comprime la `.app` con la que está abierto Parabellum
+     y deja `_parabellum-mac/` con el zip, el `.json` y un `LEEME.txt` para Mac. Así cada versión se
+     publica desde el sistema donde se compiló. Para subirla, dos opciones (decides tú, el Drive es tuyo):
+     - **(a)** Me das permiso de edición en la carpeta del catálogo y la subo desde mi Mac con «Subir a
+       Drive» (el permiso de Drive queda cifrado con el Llavero, como en Windows con DPAPI).
+     - **(b)** Te mando la carpeta `_parabellum-mac` y la subes tú (a mano en Drive o con «Subir a
+       Drive»).
+   - **Reemplazar** (`plataforma::replace_launcher`, contrato nuevo; Windows mueve ahí lo de hoy). En
+     Mac:
+     1. Descomprime en `datos/actualizacion/Parabellum.app` y da permiso de ejecución al programa.
+     2. Comprueba la firma (`codesign --verify --strict`) y que el identificador sea
+        `mx.parabellum.launcher`.
+     3. Aparta la actual como `Parabellum.app.old` y pone la nueva en su lugar; si algo falla, deja la
+        anterior.
+     4. Reabre con `open -n <app> --args --reiniciar`, que también sería del contrato, porque hoy es un
+        `Command::new(exe)` en `main.rs`.
+     5. `cleanup_previous_version` borra la `.app.old` al arrancar.
+
+     Si la app corre desde el `.dmg` o desde la copia temporal que hace macOS a las apps recién bajadas
+     («App Translocation»), no se puede reemplazar: dice que la arrastren a Aplicaciones.
+   - **Versiones.** El mismo número que Windows: cuando publicas una, compilo esa misma de `main` en Mac
+     y la publico. Si Mac se atrasa, los de Mac siguen en la anterior hasta que salga la suya.
+   - **Cómo lo pruebo antes del PR final.** Con una versión falsa (0.26.4) en la carpeta `paquetes` local:
+     el 0.26.3 de una `.app` se actualiza solo y reabre en 0.26.4.
 3. ~~**Tarea 9, versiones 1.18 y anteriores**~~ — hecha en el PR #10: 1.18 nativa (LWJGL 3.3.1) y 1.17.1
    y anteriores con Rosetta y el Java de Intel de Mojang.
 4. **Tarea 12, firma de Apple**: cuesta 99 USD al año, decisión de Juan. Mientras, la guía de
@@ -101,6 +141,23 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Pendientes para Windows
 
+- [ ] **PR #12 (actualizarse solo en Mac): compilar, correr las pruebas y publicar una de prueba.** Lo que
+  Windows hacía con su `.exe` se movió tal cual de `catalog.rs` a `plataforma/windows/lanzador.rs`
+  (módulo nuevo del contrato: `ID`, `published_files`, `install`, `restart`, `cleanup`, `readme`; el
+  `LEEME.txt` es idéntico). `catalog::LAUNCHER_ID` ya no existe: es `plataforma::lanzador::ID`, que en
+  Windows sigue siendo `"parabellum"`. También:
+  - El título del diálogo de «Publicar esta versión» ya no nombra `_parabellum`, y el aviso de la
+    interfaz usa el nombre real de la carpeta.
+  - Comando nuevo `--subir-launcher-drive <carpeta>`: lo mismo que «Subir a Drive», sin la ventana.
+  - `ui/`: abajo a la izquierda, junto a la versión, decía «Windows» fijo también en Mac; ahora pone el
+    sistema que manda Parabellum (`platform`: «Windows» o «macOS»). Y en Ajustes › Comportamiento,
+    «Un aviso de Windows cuando te escriben…» pasa a «Un aviso del sistema…» (también en `i18n.js`).
+  - Para probar: «Publicar esta versión» en una carpeta de prueba deja `_parabellum` igual que antes, y
+    `cargo test` pasa `actualizacion_del_launcher_segun_el_sistema` (la de Mac no se ofrece en Windows).
+
+- [ ] **PR #11 (`.app` y `.dmg` de Mac): compilar en Windows.** `main.rs` atiende los eventos con un
+  `match` y la rama de `RunEvent::Reopen` lleva `#[cfg(target_os = "macos")]` (en Windows no existe);
+  `RunEvent::Exit` hace lo mismo que antes. Lo demás es de Mac: `src-tauri/mac/` y el workflow de Mac.
 Nada por ahora.
 
 - [x] **PR #11 (`.app` y `.dmg` de Mac)** (2026-10-12): compila en Windows sin advertencias. `main.rs`
