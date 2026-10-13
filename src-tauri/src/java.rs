@@ -43,8 +43,10 @@ pub fn discover(paths: &Paths) -> Vec<JavaRuntime> {
         .collect()
 }
 
+/// La versión mayor de un Java: "17.0.15", "1.8.0_74" (Java 8) o "8u51-cacert462b08" (así nombra
+/// Mojang a su Java 8 en la lista de Java).
 pub fn major_of(version: &str) -> u32 {
-    let parts: Vec<&str> = version.split(['.', '_', '+', '-']).collect();
+    let parts: Vec<&str> = version.split(['.', '_', '+', '-', 'u']).collect();
     if parts.first() == Some(&"1") {
         if let Some(Ok(legacy)) = parts.get(1).map(|p| p.parse()) {
             return legacy; // 1.8.0_xx
@@ -65,6 +67,15 @@ pub fn select<'a>(runtimes: &'a [JavaRuntime], component: Option<&str>, major: u
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn version_mayor() {
+        assert_eq!(major_of("17.0.15"), 17);
+        assert_eq!(major_of("1.8.0_74"), 8);
+        assert_eq!(major_of("8u51-cacert462b08"), 8);
+        assert_eq!(major_of("16.0.1.9.1_3"), 16);
+        assert_eq!(major_of("25.0.1"), 25);
+    }
 
     #[test]
     fn encuentra_el_java_de_mojang() {

@@ -1461,7 +1461,8 @@ async function play(id, server = null, { skipCheck = false } = {}) {
 }
 
 async function launch(instance, id, server, skipCheck) {
-  if (!skipCheck && instance.loader !== "Vanilla") {
+  // También en Vanilla: en Mac con chip Apple, 1.17 y anteriores necesitan Rosetta (lo ofrece el doctor).
+  if (!skipCheck) {
     try {
       const diagnosis = await invoke("revisar_instancia", { id });
       if (diagnosis.findings.some((f) => f.severity === "error")) return openDoctor(id, "prelaunch", { diagnosis, server });

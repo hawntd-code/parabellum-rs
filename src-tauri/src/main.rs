@@ -535,6 +535,14 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
             }
         }
     }
+    // Lo que falte de la base (bibliotecas, Java…) se completa con Mojang antes de abrir. Pasa, p. ej., en
+    // Mac con chip Apple con instancias de antes de que 1.18 usara LWJGL arm64 y 1.17 y anteriores el
+    // Java de Intel.
+    let (checked, check_settings, check_paths) = (instance.clone(), settings.clone(), paths.clone());
+    let incomplete = tauri::async_runtime::spawn_blocking(move || launch::plan(&checked, &check_settings, &check_paths).is_ok_and(|p| !p.missing.is_empty())).await.unwrap_or(false);
+    if incomplete {
+        let _ = install_vanilla(&instance.minecraft_version, &paths, progress_emitter(&app, "jugar")).await;
+    }
     let launched = instance.clone();
     let session = cuenta::session_arguments(&app);
     let ram_gb = instance.ram_gb.unwrap_or(settings.ram_gb);
@@ -1614,6 +1622,11 @@ async fn apply_fix(
             Ok(t!("La instancia ahora usa Java {major}.", "The instance now uses Java {major}."))
         }
         Fix::InstallProject { project, title } => install_project(instance, &project, &title, progress).await,
+        Fix::InstallForeignJava => {
+            progress(t!("Instalando Rosetta (macOS te pedirá tu contraseña)…", "Installing Rosetta (macOS will ask for your password)…"), 0.0);
+            tauri::async_runtime::spawn_blocking(crate::plataforma::install_foreign_java).await.map_err(|e| e.to_string())??;
+            Ok(t!("Rosetta quedó instalado.", "Rosetta is installed."))
+        }
         Fix::Repair => {
             let report = ensure_complete(instance, paths, config, catalog, true, progress).await;
             Ok(match (report.repaired.len(), report.failed.len()) {

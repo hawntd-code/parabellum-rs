@@ -38,6 +38,9 @@ pub enum Fix {
     Repair,
     /// Instalar un proyecto de Modrinth (un mod que corrige un fallo conocido, como TF-Intel-Fix).
     InstallProject { project: String, title: String },
+    /// Instalar lo que hace falta para abrir un Java ajeno (en Mac con chip Apple, Rosetta: 1.17 y
+    /// anteriores van con el Java de Intel).
+    InstallForeignJava,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -416,9 +419,36 @@ fn missing_mods_checker(text: &str) -> Option<Finding> {
 
 /// Revisa los mods de la instancia sin abrir el juego.
 pub fn check(instance: &Instance) -> Diagnosis {
-    if instance.loader == "Vanilla" {
-        return Diagnosis::default();
+    let mut diagnosis = if instance.loader == "Vanilla" { Diagnosis::default() } else { check_mods(instance) };
+    if let Some(finding) = foreign_java_missing(instance) {
+        diagnosis.findings.insert(0, finding);
     }
+    diagnosis
+}
+
+/// La versión se abre aquí con un Java ajeno (en Mac con chip Apple, 1.17 y anteriores con el de Intel)
+/// y falta lo que hace falta para eso (Rosetta).
+fn foreign_java_missing(instance: &Instance) -> Option<Finding> {
+    let below = |version: &str| crate::loaders::compare_versions(&instance.minecraft_version, version).is_lt();
+    // El Java que pide Mojang: 8 hasta 1.16, 16 en 1.17 y 17 o más desde 1.18.
+    let major = instance.java_major.unwrap_or(if below("1.17") { 8 } else if below("1.18") { 16 } else { 17 });
+    if crate::plataforma::java_runtime_platform(major) == crate::plataforma::JAVA_RUNTIME_PLATFORM || crate::plataforma::foreign_java_ready() {
+        return None;
+    }
+    Some(Finding {
+        severity: "error",
+        title: t!("Falta Rosetta", "Rosetta is missing"),
+        detail: t!(
+            "Minecraft {} usa Java {major}, que solo existe para Mac con Intel. En esta Mac se abre con Rosetta, el traductor de Apple, y no está instalado. Al instalarlo aceptas la licencia de Apple; macOS te pedirá tu contraseña.",
+            "Minecraft {} uses Java {major}, which only exists for Intel Macs. On this Mac it opens with Rosetta, Apple's translator, and it is not installed. Installing it accepts Apple's license; macOS will ask for your password.",
+            instance.minecraft_version
+        ),
+        evidence: None,
+        fixes: vec![option(t!("Instalar Rosetta", "Install Rosetta"), Fix::InstallForeignJava, true)],
+    })
+}
+
+fn check_mods(instance: &Instance) -> Diagnosis {
     let jars = all_jars(instance);
     let connector = jars.iter().any(|(file, jar)| !file.to_lowercase().ends_with(".disabled") && jar.metas.iter().any(|m| m.id == "connectormod"));
     // Mods hechos para otro loader (uno de Forge en NeoForge 1.21, uno de Fabric en Forge…): no cargan.
@@ -1193,6 +1223,7 @@ fn already_done(instance: &Instance, fix: &Fix) -> bool {
         Fix::SetRam { gb } => instance.ram_gb == Some(*gb),
         Fix::UseJava { major } => instance.java_major == Some(*major),
         Fix::InstallMod { .. } | Fix::Repair | Fix::InstallProject { .. } => false,
+        Fix::InstallForeignJava => crate::plataforma::foreign_java_ready(),
     }
 }
 

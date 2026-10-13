@@ -45,7 +45,8 @@ En este orden (las dos primeras hacen que un compañero con Mac pueda usar Parab
    - `--publicar-launcher` lo corre Juan en Windows: hace falta poder pasarle el zip de Mac que le
      mandes (o un `--publicar-launcher-mac <zip>`). Juan lo publica en Drive.
    - Después, `SELF_UPDATE = true`.
-3. **Tarea 9, versiones 1.18 y anteriores** (LWJGL arm64). Las usan pocos modpacks; puede esperar.
+3. ~~**Tarea 9, versiones 1.18 y anteriores**~~ — hecha en el PR #10: 1.18 nativa (LWJGL 3.3.1) y 1.17.1
+   y anteriores con Rosetta y el Java de Intel de Mojang.
 4. **Tarea 12, firma de Apple**: cuesta 99 USD al año, decisión de Juan. Mientras, la guía de
    instalación dice lo del clic derecho › Abrir.
 
@@ -82,7 +83,21 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Pendientes para Windows
 
-Nada por ahora.
+- [ ] **PR #10 (versiones viejas en Mac): compilar, correr las pruebas y abrir una 1.16.5 y una 1.18.2
+  en Windows.** En Windows todo debe seguir igual. Lo compartido:
+  - Contrato: `java_runtime_platform(major)` (en Windows, `JAVA_RUNTIME_PLATFORM`), `adapt_libraries`
+    (devuelve las mismas), `foreign_java_ready()` (`true`) e `install_foreign_java()` (no hace nada).
+  - `mojang.rs`: el Java se baja de `java_runtime_platform(major)` y, si Mojang no tiene ese componente,
+    sirve otro de la misma versión mayor. También se bajan las bibliotecas de `adapt_libraries`.
+  - `java.rs`: `major_of` entiende «8u51-cacert462b08», el nombre que Mojang da a su Java 8. Antes daba 0
+    y `ensure_java(8)` (servidores, «Usar Java 8») decía «Mojang no ofrece Java 8», también en Windows.
+  - `launch.rs`: usa `adapt_libraries`; con un Java ajeno no acepta otro de reemplazo y avisa si falta
+    Rosetta.
+  - `main.rs` (`jugar`): si al armar el lanzamiento falta algo de la base, primero lo completa con
+    Mojang (`install_vanilla`). Antes salía «Faltan archivos».
+  - Arreglo nuevo `Fix::InstallForeignJava` (doctor de instancias y servidores) y `servidor::command`
+    avisa si un servidor viejo necesita Rosetta.
+  - `ui/app.js`: la revisión de antes de jugar también corre en Vanilla (en Windows no encuentra nada).
 
 - [x] **PR #9 (playit en Mac)** (2026-10-12): en Windows pasan las 85 pruebas (incluidas
   `otro_archivo_del_mismo_tamano_no_es_el_agente` y `ultima_linea_sin_trabarse`) y compila sin

@@ -23,6 +23,14 @@
 //!   data_root(exe)                 la carpeta de Parabellum (instancias, base, datos…).
 //!   java_binary(home, windowed)    el ejecutable de Java dentro de un runtime.
 //!   make_executable(ruta)          marcar un archivo descargado como programa (en Windows no hace falta).
+//!   java_runtime_platform(major)   de qué plataforma se baja el Java de Mojang que pide una versión: la
+//!                                  del sistema (JAVA_RUNTIME_PLATFORM) o, si Mojang no lo tiene para
+//!                                  él, otra que también se puede abrir (Mac con chip Apple: el de
+//!                                  Intel, con Rosetta). Ese Java es «ajeno».
+//!   adapt_libraries(libs, major)   las bibliotecas de una versión, cambiadas si en este sistema hacen
+//!                                  falta otras (Mac con chip Apple: LWJGL arm64 para 1.18).
+//!   foreign_java_ready()           si se puede abrir un Java ajeno (Mac: si Rosetta está instalado).
+//!   install_foreign_java()         instala lo que hace falta para eso (Mac: Rosetta; pide permiso).
 //!   protect(datos) / unprotect     cifrar con la cuenta del usuario (sesiones, claves).
 //!   ui_language()                  idioma del sistema: "es" o "en".
 //!   open_path / reveal_path / open_url

@@ -77,6 +77,94 @@ pub fn make_executable(path: &Path) {
     let _ = std::fs::set_permissions(path, permissions);
 }
 
+// ================= Versiones viejas (1.18 y anteriores)
+
+/// Mojang tiene para chip Apple los Java 17, 21 y 25, pero no el 8 (hasta 1.16) ni el 16 (1.17). Esos
+/// se bajan de Intel y se abren con Rosetta, y el juego usa sus nativos de Intel tal cual.
+pub fn java_runtime_platform(major: u32) -> &'static str {
+    if cfg!(target_arch = "aarch64") && major < 17 {
+        "mac-os"
+    } else {
+        JAVA_RUNTIME_PLATFORM
+    }
+}
+
+/// 1.18 pide Java 17, que sí hay para chip Apple, pero trae LWJGL 3.2, sin nativos arm64: se cambia
+/// por la 3.3.1 de 1.19 (la misma de Mojang) y java-objc-bridge por la 1.1. Antes de 1.18 no se toca,
+/// porque va con el Java de Intel: con LWJGL 3.3.1 se caerían al ponerle ícono a la ventana (su GLFW
+/// da el error 65548, «Regular windows do not have icons on macOS», y Minecraft lo trata como fatal).
+pub fn adapt_libraries(libraries: Vec<serde_json::Value>, java_major: u32) -> Vec<serde_json::Value> {
+    let name = |library: &serde_json::Value| library["name"].as_str().unwrap_or_default().to_string();
+    // LWJGL 3.0 a 3.2 (la 2 es de versiones que piden Java 8).
+    let old_lwjgl = libraries.iter().map(name).any(|n| {
+        n.strip_prefix("org.lwjgl:").and_then(|rest| rest.split(':').nth(1)).is_some_and(|version| {
+            let mut parts = version.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
+            parts.next() == Some(3) && parts.next().is_some_and(|minor| minor < 3)
+        })
+    });
+    if java_runtime_platform(java_major) != JAVA_RUNTIME_PLATFORM || !old_lwjgl {
+        return libraries;
+    }
+    let replaced = |n: &str| n.starts_with("org.lwjgl:") || n.starts_with("ca.weblite:java-objc-bridge:");
+    let mut adapted: Vec<serde_json::Value> = libraries.into_iter().filter(|l| !replaced(&name(l))).collect();
+    for (coordinate, sha1, size) in ARM64_LWJGL {
+        let Some(path) = crate::version::Maven::parse(coordinate).map(|m| m.relative_path()) else { continue };
+        let url = format!("https://libraries.minecraft.net/{path}");
+        adapted.push(serde_json::json!({ "name": coordinate, "downloads": { "artifact": { "path": path, "sha1": sha1, "size": size, "url": url } } }));
+    }
+    adapted
+}
+
+/// Las bibliotecas de 1.19 para Mac con chip Apple (de su JSON en Mojang): LWJGL 3.3.1 con sus nativos
+/// arm64 y java-objc-bridge 1.1, que ya trae los suyos.
+const ARM64_LWJGL: [(&str, &str, u64); 15] = [
+    ("org.lwjgl:lwjgl:3.3.1", "ae58664f88e18a9bb2c77b063833ca7aaec484cb", 724243),
+    ("org.lwjgl:lwjgl:3.3.1:natives-macos-arm64", "71d0d5e469c9c95351eb949064497e3391616ac9", 42693),
+    ("org.lwjgl:lwjgl-jemalloc:3.3.1", "a817bcf213db49f710603677457567c37d53e103", 36601),
+    ("org.lwjgl:lwjgl-jemalloc:3.3.1:natives-macos-arm64", "e577b87d8ad2ade361aaea2fcf226c660b15dee8", 103475),
+    ("org.lwjgl:lwjgl-openal:3.3.1", "2623a6b8ae1dfcd880738656a9f0243d2e6840bd", 88237),
+    ("org.lwjgl:lwjgl-openal:3.3.1:natives-macos-arm64", "23d55e7490b57495320f6c9e1936d78fd72c4ef8", 346125),
+    ("org.lwjgl:lwjgl-opengl:3.3.1", "831a5533a21a5f4f81bbc51bb13e9899319b5411", 921563),
+    ("org.lwjgl:lwjgl-opengl:3.3.1:natives-macos-arm64", "eafe34b871d966292e8db0f1f3d6b8b110d4e91d", 41665),
+    ("org.lwjgl:lwjgl-glfw:3.3.1", "cbac1b8d30cb4795149c1ef540f912671a8616d0", 128801),
+    ("org.lwjgl:lwjgl-glfw:3.3.1:natives-macos-arm64", "cac0d3f712a3da7641fa174735a5f315de7ffe0a", 129077),
+    ("org.lwjgl:lwjgl-stb:3.3.1", "b119297cf8ed01f247abe8685857f8e7fcf5980f", 112380),
+    ("org.lwjgl:lwjgl-stb:3.3.1:natives-macos-arm64", "fcf073ed911752abdca5f0b00a53cfdf17ff8e8b", 178408),
+    ("org.lwjgl:lwjgl-tinyfd:3.3.1", "0ff1914111ef2e3e0110ef2dabc8d8cdaad82347", 6767),
+    ("org.lwjgl:lwjgl-tinyfd:3.3.1:natives-macos-arm64", "972ecc17bad3571e81162153077b4d47b7b9eaa9", 41380),
+    ("ca.weblite:java-objc-bridge:1.1", "1227f9e0666314f9de41477e3ec277e542ed7f7b", 1330045),
+];
+
+/// Rosetta está instalado si se puede abrir un programa de Intel (uno del sistema, con `arch`).
+pub fn foreign_java_ready() -> bool {
+    !cfg!(target_arch = "aarch64")
+        || Command::new("/usr/bin/arch").args(["-x86_64", "/usr/bin/true"]).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success())
+}
+
+/// Instala Rosetta con el instalador de Apple (acepta su licencia). macOS pide la contraseña de un
+/// administrador con su propia ventana.
+pub fn install_foreign_java() -> Result<(), String> {
+    if foreign_java_ready() {
+        return Ok(());
+    }
+    let script = r#"do shell script "/usr/sbin/softwareupdate --install-rosetta --agree-to-license" with administrator privileges"#;
+    let output = Command::new("/usr/bin/osascript").args(["-e", script]).output().map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        // -128: el usuario cerró la ventana de la contraseña.
+        return Err(if detail.contains("-128") {
+            t!("No se instaló Rosetta: se canceló la contraseña.", "Rosetta was not installed: the password was cancelled.")
+        } else {
+            t!("No se pudo instalar Rosetta: {detail}", "Could not install Rosetta: {detail}")
+        });
+    }
+    if foreign_java_ready() {
+        Ok(())
+    } else {
+        Err(t!("El instalador de Apple terminó, pero Rosetta no funciona. Reinicia la Mac y vuelve a intentarlo.", "Apple's installer finished, but Rosetta does not work. Restart the Mac and try again."))
+    }
+}
+
 // ================= Procesos
 
 pub trait CommandExt {
@@ -615,6 +703,32 @@ mod tests {
         let _ = other.kill();
         let _ = other.wait();
         assert!(untouched, "el vigilante cerró otro programa");
+    }
+
+    #[test]
+    fn versiones_viejas_en_chip_apple() {
+        if !cfg!(target_arch = "aarch64") {
+            return;
+        }
+        assert_eq!(java_runtime_platform(8), "mac-os");
+        assert_eq!(java_runtime_platform(16), "mac-os");
+        assert_eq!(java_runtime_platform(17), "mac-os-arm64");
+        assert_eq!(java_runtime_platform(25), "mac-os-arm64");
+        let library = |name: &str| serde_json::json!({ "name": name });
+        // 1.18.2: LWJGL 3.2 y java-objc-bridge 1.0.0 pasan a los de 1.19; lo demás queda igual.
+        let old = vec![library("org.lwjgl:lwjgl:3.2.1"), library("org.lwjgl:lwjgl-glfw:3.2.1"), library("ca.weblite:java-objc-bridge:1.0.0"), library("com.mojang:brigadier:1.0.18")];
+        let adapted = adapt_libraries(old.clone(), 17);
+        let names: Vec<&str> = adapted.iter().filter_map(|l| l["name"].as_str()).collect();
+        assert!(names.contains(&"com.mojang:brigadier:1.0.18"));
+        assert!(names.contains(&"org.lwjgl:lwjgl-glfw:3.3.1:natives-macos-arm64"));
+        assert!(names.contains(&"ca.weblite:java-objc-bridge:1.1"));
+        assert!(!names.iter().any(|n| n.ends_with(":3.2.1") || n.ends_with(":1.0.0")));
+        let glfw = adapted.iter().find(|l| l["name"] == "org.lwjgl:lwjgl-glfw:3.3.1:natives-macos-arm64").unwrap();
+        assert_eq!(glfw.pointer("/downloads/artifact/url").and_then(|u| u.as_str()), Some("https://libraries.minecraft.net/org/lwjgl/lwjgl-glfw/3.3.1/lwjgl-glfw-3.3.1-natives-macos-arm64.jar"));
+        // Con el Java de Intel (1.16.5) o si ya trae LWJGL 3.3 (1.19 en adelante), no se toca.
+        assert_eq!(adapt_libraries(old.clone(), 8), old);
+        let current = vec![library("org.lwjgl:lwjgl:3.3.3"), library("org.lwjgl:lwjgl:3.3.3:natives-macos-arm64")];
+        assert_eq!(adapt_libraries(current.clone(), 21), current);
     }
 
     #[test]
