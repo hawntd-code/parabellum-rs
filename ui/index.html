@@ -46,8 +46,7 @@
     <nav class="rail">
       <button class="rail-btn active" data-page="home" title="Inicio"><svg><use href="#i-play-outline"/></svg></button>
       <button class="rail-btn" data-page="explore" title="Explorar"><svg><use href="#i-compass"/></svg></button>
-      <button class="rail-btn" data-page="servers" title="Servidores"><svg><use href="#i-server"/></svg></button>
-      <button class="rail-btn" data-page="host" title="Hostear partida"><svg><use href="#i-broadcast"/></svg><span class="rail-dot hidden" id="host-dot"></span></button>
+      <button class="rail-btn" data-page="servers" title="Servidores"><svg><use href="#i-server"/></svg><span class="rail-dot hidden" id="host-dot"></span></button>
       <button class="rail-btn" data-page="friends" title="Amigos"><svg><use href="#i-users"/></svg><span class="rail-badge hidden" id="friends-badge"></span></button>
       <button class="rail-btn" data-page="chat" title="Mensajes"><svg><use href="#i-chat"/></svg><span class="rail-badge hidden" id="chat-badge"></span></button>
       <div class="rail-sep"></div>
@@ -210,33 +209,34 @@
 
         <!-- SERVIDORES -->
         <section class="page hidden" id="page-servers">
-          <div class="page-inner">
+          <div class="page-inner servers-page">
             <h1 class="section-title">Servidores</h1>
-            <div id="friend-servers-box">
-              <h2 class="host-subtitle">De tus amigos</h2>
-              <div class="srv-grid" id="friend-servers"></div>
-            </div>
-            <div class="list-head">
-              <h2 class="host-subtitle">Guardados</h2>
-              <button class="btn small" id="server-new"><svg><use href="#i-plus"/></svg>Agregar servidor</button>
-            </div>
-            <div class="srv-grid" id="server-list"></div>
-            <p class="no-results hidden" id="servers-empty">Todavía no tienes servidores guardados.</p>
-          </div>
-        </section>
-
-        <!-- HOSTEAR PARTIDA -->
-        <section class="page hidden" id="page-host">
-          <div class="page-inner">
-            <div class="host-bar">
-              <h2 class="host-subtitle">Tus servidores</h2>
-              <button class="btn primary" id="host-new-server"><svg><use href="#i-plus"/></svg>Crear servidor</button>
-            </div>
-            <div class="host-playit hidden" id="host-playit"></div>
-            <div class="host-world-status hidden" id="host-world-status"></div>
             <div class="host-e4mc hidden" id="host-e4mc"></div>
-            <div class="server-list" id="host-servers"></div>
-            <p class="no-results hidden" id="host-empty">Todavía no tienes servidores. Crea uno con «Crear un servidor».</p>
+            <div class="host-playit hidden" id="host-playit"></div>
+
+            <div class="srv-head">
+              <svg><use href="#i-broadcast"/></svg>
+              <h2>Tus servidores</h2>
+              <span class="srv-count" id="host-count"></span>
+              <button class="btn small" id="host-new-server"><svg><use href="#i-plus"/></svg>Crear servidor</button>
+            </div>
+            <div class="host-world-status hidden" id="host-world-status"></div>
+            <div class="srv-rows" id="host-servers"></div>
+
+            <div class="srv-head">
+              <svg><use href="#i-users"/></svg>
+              <h2>De tus amigos</h2>
+              <span class="srv-count" id="friend-servers-count"></span>
+            </div>
+            <div class="srv-rows" id="friend-servers"></div>
+
+            <div class="srv-head">
+              <svg><use href="#i-star"/></svg>
+              <h2>Guardados</h2>
+              <span class="srv-count" id="servers-count"></span>
+              <button class="btn small" id="server-new"><svg><use href="#i-plus"/></svg>Agregar</button>
+            </div>
+            <div class="srv-rows" id="server-list"></div>
           </div>
         </section>
 

@@ -135,6 +135,11 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Probado: la prueba P2P por internet ve al invitado (destino, directo, ping) y lo quita al salir; Grupos y Capturas capturados en Fabric 1.21.1 (clic en una captura → «Enviar a»); el panel de 26.3 abre (sus clics no se pueden simular: los revisa Juan)
 - [ ] *Prueba:* Juan: en 26.3 cambiar de pestaña, «Mensaje» y Capturas; ver los jugadores del servidor; con un amigo, la tarjeta P2P (directo o relevo y ping)
 
+### 0.27.1: Servidores y Hostear en una sola página (pedido de Juan)
+- [x] «Hostear partida» ya no es un botón aparte: es la sección «Tus servidores» de Servidores (con «Crear servidor», el aviso de tu mundo abierto y lo de playit.gg). El punto verde de «servidor encendido» pasó al botón de Servidores
+- [x] Tres secciones con su encabezado: Tus servidores, De tus amigos y Guardados. Cada una es una lista de filas compactas (unos 52 px: icono, nombre, de quién o qué instancia, estado, jugadores y su botón) en vez de tarjetas grandes
+- [x] De tus amigos: arriba a donde puedes entrar ahora; los servidores apagados a los que te invitaron, al final y plegados («Ver 3 apagados»)
+
 ### 0.27.0: amigos, mensajes y grupos (pedido de Juan)
 - [x] **Inicio sin tarjetas**: se quitaron «Tu servidor», «Amigos» y «Novedades»; arriba solo quedan los primeros pasos mientras falten
 - [x] **Página de Amigos** en la barra (con aviso de solicitudes): agregar por nombre, solicitudes, la lista con filtros (todos, en línea, jugando) y búsqueda, y en cada amigo Unirse, Invitar (si tienes un servidor encendido o tu mundo abierto), Mensaje y Más; a la derecha, los grupos. También se agrega desde Mensajes (botón junto a «Nuevo grupo»)

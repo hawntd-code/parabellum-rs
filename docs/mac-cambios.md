@@ -14,16 +14,28 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 - **Mac → Windows.** Lo que necesites de Windows (compilar, probar, cambiar el contrato) sigue en la
   descripción del PR («para que Juan revise»). Si queda pendiente después de mezclarlo, anótalo en
   «Pendientes para Windows».
+- **Versiones publicadas.** Cada vez que una versión de Windows se publica en Drive (la que se
+  actualiza sola en los PC de los compañeros), se anota en «Versiones publicadas en Drive» en ese
+  momento: número, fecha y qué cambió para quien juega. Lo pidió Diego para saber qué tienen ya los
+  demás.
 - Lo más nuevo, arriba. Cada entrada con su fecha y el título del commit. Para ver lo nuevo desde tu
   última sesión: `git log --oneline <último commit que viste>..origin/main`.
 
 ## Estado
 
 - Última revisión de los PR de Mac en Windows: 2026-10-12, PR #1 a #9 (todos mezclados).
-- Windows: la 0.25.0 está publicada en Drive; la 0.27.0 está en `main` (Juan publica primero las reglas
-  de Firebase y luego la versión).
+- Windows: la última publicada en Drive es la 0.25.0 (ver «Versiones publicadas en Drive»). En `main` va
+  la 0.27.1; Juan publica primero las reglas de Firebase y luego la versión.
 - Mac: hechas las tareas 1 a 8 de `mac.md`. Quedan la 9 a la 12; el orden que sugiere Juan está en
   «Lo que sigue en Mac», abajo.
+
+## Versiones publicadas en Drive
+
+Lo que ya tienen los compañeros con Windows. La más nueva, arriba.
+
+- **0.25.0** · 2026-10-12 · animaciones en toda la ventana; dentro del juego, panel animado, botón
+  «Parabellum» en el menú de pausa, aviso «Pulsa O» al entrar a un mundo y avisos abajo a la derecha.
+- **0.24.1** · 2026-10-12 · el mod del juego gasta lo mínimo y se aparta solo si hace caer el juego.
 
 ## Lo que sigue en Mac
 
@@ -135,6 +147,14 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   del juego, y la prueba con compañeros en sus casas.
 
 ## Cambios de Windows
+
+### 2026-10-12 · 0.27.1: Servidores y Hostear en una sola página
+
+- Qué cambió: solo `ui/`. Ya no hay página `host` (`navigate("host")` lleva a `servers`): «Tus servidores»
+  (lo que era Hostear partida), «De tus amigos» y «Guardados» van en Servidores, en filas compactas
+  (`.srv-row`, `serverCardHtml`). El punto de servidor encendido (`#host-dot`) está en el botón de
+  Servidores.
+- Mac: nada de código. Revisa que la página se vea bien en la ventana de Mac.
 
 ### 2026-10-12 · 0.27.0: amigos, mensajes y grupos
 

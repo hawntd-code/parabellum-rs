@@ -75,7 +75,6 @@ const pages = {
   explore: { title: t("Explorar", "Explore"), icon: "compass", sidebar: false },
   project: { title: t("Proyecto", "Project"), icon: "compass", sidebar: false },
   servers: { title: t("Servidores", "Servers"), icon: "server", sidebar: true },
-  host: { title: t("Hostear partida", "Host a game"), icon: "broadcast", sidebar: true },
   hosted: { title: "", icon: "server", sidebar: false },
   friends: { title: t("Amigos", "Friends"), icon: "users", sidebar: false },
   chat: { title: t("Mensajes", "Messages"), icon: "chat", sidebar: false },
@@ -353,6 +352,8 @@ function currentParam() {
 }
 
 function navigate(page, param = null, record = true) {
+  // «Hostear partida» ahora es la sección «Tus servidores» de Servidores.
+  if (page === "host") page = "servers";
   const same = state.page === page && currentParam() === param;
   if (record && !same) {
     state.back.push({ page: state.page, param: currentParam() });
@@ -372,9 +373,8 @@ function navigate(page, param = null, record = true) {
     else renderProjectInstall();
   }
   if (page === "explore") enterExplore();
-  if (page === "host") enterHost();
   if (page === "hosted") {
-    if (!param) return navigate("host", null, false);
+    if (!param) return navigate("servers", null, false);
     enterHosted(param);
   }
   if (page === "servers") enterServers();
@@ -408,7 +408,7 @@ function navigate(page, param = null, record = true) {
   }
   if (page === "instance") morphArt(param, "#detail-art", "#page-instance");
   if (page === "hosted") morphArt(param, "#hosted-icon", "#page-hosted");
-  const railPage = page === "project" ? "explore" : page === "hosted" ? "host" : page;
+  const railPage = page === "project" ? "explore" : page === "hosted" ? "servers" : page;
   for (const button of $$(".rail-btn[data-page]")) button.classList.toggle("active", button.dataset.page === railPage);
   updateSidebar();
   $("#crumb-icon").innerHTML = `<use href="#i-${pages[page].icon}"/>`;
@@ -3387,15 +3387,20 @@ function renderServers() {
     : `<option value="">${t("Primero crea una instancia", "Create an instance first")}</option>`;
   if (previous) select.value = previous;
   const servers = state.settings.servers ?? [];
-  // Tarjetas como las de tus amigos: icono y mensaje del propio servidor; clic para el detalle.
-  $("#server-list").innerHTML = servers
-    .map((s, index) => {
-      const info = savedInfo(s);
-      const button = `<button class="btn primary play" data-server-play="${index}" ${info.canJoin ? "" : "disabled"}>${icon("play")}${t("Jugar", "Play")}</button>`;
-      return serverCardHtml({ key: `saved:${index}`, info, button });
-    })
-    .join("");
-  $("#servers-empty").classList.toggle("hidden", servers.length > 0);
+  // Filas como las de tus amigos: icono y estado del propio servidor; clic para el detalle.
+  setHtml(
+    $("#server-list"),
+    servers.length
+      ? servers
+          .map((s, index) => {
+            const info = savedInfo(s);
+            const button = `<button class="btn small" data-server-play="${index}" ${info.canJoin ? "" : "disabled"}>${icon("play")}${t("Jugar", "Play")}</button>`;
+            return serverCardHtml({ key: `saved:${index}`, info, button, dim: info.status && !info.status.online });
+          })
+          .join("")
+      : `<p class="srv-empty" data-key="vacio">${t("Guarda aquí los servidores públicos a los que entras, con la instancia con la que juegas en cada uno.", "Save the public servers you join here, with the instance you play each one with.")}</p>`,
+  );
+  $("#servers-count").textContent = servers.length || "";
 }
 
 async function saveServers(servers) {
@@ -4350,7 +4355,7 @@ function wireEvents() {
     "click",
     (event) => {
       const opener = event.target.closest?.("[data-open], [data-hosted]");
-      const cover = opener && (opener.matches(".art, .server-icon") ? opener : $(".art, .server-icon", opener));
+      const cover = opener && (opener.matches(".art, .server-icon, .srv-row-icon") ? opener : $(".art, .server-icon, .srv-row-icon", opener));
       state.morphFrom = cover ? { id: opener.dataset.open ?? opener.dataset.hosted, rect: cover.getBoundingClientRect(), at: performance.now() } : null;
     },
     true,
@@ -4459,7 +4464,7 @@ function wireEvents() {
     if (payload.task === "playit") {
       if (host.view) host.view.playit.message = payload.stage;
       if (state.page === "hosted") renderHosted();
-      if (state.page === "host") renderHost();
+      if (state.page === "servers") renderHost();
       return;
     }
     if (payload.task === "verificar") {
