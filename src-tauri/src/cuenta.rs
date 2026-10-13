@@ -697,6 +697,10 @@ pub fn startup(app: &AppHandle) {
         }
         loop {
             tokio::time::sleep(Duration::from_secs(2)).await;
+            // Alguien volvió a abrir Parabellum (este seguía junto al reloj): se muestra este, no otro.
+            if std::fs::remove_file(app.state::<AppState>().paths.data.join("mostrar-ventana")).is_ok() {
+                show_window(&app);
+            }
             // Se mira el juego aunque no haya sesión: el mundo abierto en LAN se comparte por playit.gg.
             let Some((presence, shared)) = current_presence(&app) else { continue };
             crate::hosting::world_tick(&app, shared);

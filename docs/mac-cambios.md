@@ -61,6 +61,14 @@ Nada por ahora.
 
 ## Cambios de Windows
 
+### 2026-10-12 · 0.26.3: un solo Parabellum abierto
+
+- Qué cambió: `main.rs` toma un candado por carpeta (`datos/parabellum.lock` con `File::try_lock`, de la
+  biblioteca estándar de Rust). Si ya hay otro abierto, deja `datos/mostrar-ventana` y se cierra; el que
+  está abierto (bucle de 2 s en `cuenta.rs`) lo ve y se muestra. Con `--reiniciar` espera hasta 20 s.
+- Mac: nada de código (el bloqueo de archivos es el mismo en Mac). Revisa que al abrir Parabellum dos
+  veces se muestre el primero y no queden dos.
+
 ### 2026-10-12 · 0.26.2: P2P rechazado, actualizar y escribir en 26.3
 
 - Qué cambió:

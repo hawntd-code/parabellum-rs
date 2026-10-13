@@ -2947,6 +2947,35 @@ abierto {seconds} s"));
     }
 }
 
+enum LauncherCopy {
+    /// Este es el único abierto con esta carpeta (el archivo queda bloqueado mientras viva).
+    First(std::fs::File),
+    /// Ya hay otro abierto.
+    Second,
+    /// No se pudo saber (sin permiso para crear el candado): se abre igual.
+    Unknown,
+}
+
+/// Un solo Parabellum por carpeta. Con dos abiertos (uno escondido junto al reloj y otro nuevo), cada
+/// uno publicaba su propia dirección P2P en la misma presencia y los amigos quedaban rechazados; además
+/// se duplicaban las conexiones a Firebase y el exe viejo no dejaba actualizar. Al reiniciarse tras
+/// actualizar, la versión anterior todavía se está cerrando: se espera hasta 20 s.
+fn single_instance(paths: &Paths, restarting: bool) -> LauncherCopy {
+    let Ok(lock) = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(paths.data.join("parabellum.lock")) else {
+        return LauncherCopy::Unknown;
+    };
+    let tries = if restarting { 40 } else { 1 };
+    for attempt in 0..tries {
+        match lock.try_lock() {
+            Ok(()) => return LauncherCopy::First(lock),
+            Err(std::fs::TryLockError::WouldBlock) if attempt + 1 < tries => std::thread::sleep(std::time::Duration::from_millis(500)),
+            Err(std::fs::TryLockError::WouldBlock) => return LauncherCopy::Second,
+            Err(std::fs::TryLockError::Error(_)) => return LauncherCopy::Unknown,
+        }
+    }
+    LauncherCopy::Second
+}
+
 fn main() {
     let paths = Paths::detect();
     let _ = paths.ensure_created();
@@ -2968,6 +2997,16 @@ fn main() {
         let _ = std::fs::write(paths.logs.join("comando.txt"), report);
         return;
     }
+    // Un solo Parabellum por carpeta (se suelta solo al cerrarse el proceso).
+    let _instance = match single_instance(&paths, restarting) {
+        LauncherCopy::First(lock) => Some(lock),
+        LauncherCopy::Unknown => None,
+        LauncherCopy::Second => {
+            // El que ya está abierto (quizá junto al reloj) ve esta marca y se muestra.
+            let _ = std::fs::write(paths.data.join("mostrar-ventana"), b"");
+            return;
+        }
+    };
     catalog::cleanup_previous_version();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
