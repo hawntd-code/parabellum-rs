@@ -21,6 +21,8 @@ pub struct Config {
     pub google_client_secret: String,
     pub firebase_api_key: String,
     pub firebase_database_url: String,
+    /// Nombre de jugador de quien recibe los «Reportar problema» (sale elegido si es tu amigo).
+    pub support_name: String,
 }
 
 impl Config {
@@ -35,6 +37,7 @@ impl Config {
                 (&mut config.google_client_secret, local.google_client_secret),
                 (&mut config.firebase_api_key, local.firebase_api_key),
                 (&mut config.firebase_database_url, local.firebase_database_url),
+                (&mut config.support_name, local.support_name),
             ];
             for (target, value) in fields {
                 if !value.trim().is_empty() {

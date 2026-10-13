@@ -48,6 +48,7 @@
       <button class="rail-btn" data-page="explore" title="Explorar"><svg><use href="#i-compass"/></svg></button>
       <button class="rail-btn" data-page="servers" title="Servidores"><svg><use href="#i-server"/></svg></button>
       <button class="rail-btn" data-page="host" title="Hostear partida"><svg><use href="#i-broadcast"/></svg><span class="rail-dot hidden" id="host-dot"></span></button>
+      <button class="rail-btn" data-page="friends" title="Amigos"><svg><use href="#i-users"/></svg><span class="rail-badge hidden" id="friends-badge"></span></button>
       <button class="rail-btn" data-page="chat" title="Mensajes"><svg><use href="#i-chat"/></svg><span class="rail-badge hidden" id="chat-badge"></span></button>
       <div class="rail-sep"></div>
       <div class="rail-instances" id="rail-instances"></div>
@@ -69,14 +70,6 @@
                 <div class="summary-tile hidden" id="tile-steps">
                   <div class="tile-head"><span class="tile-icon"><svg><use href="#i-sparkle"/></svg></span><h3>Primeros pasos</h3></div>
                   <div class="steps" id="steps-list"></div>
-                </div>
-                <div class="summary-tile" id="tile-server"></div>
-                <div class="summary-tile" id="tile-friends"></div>
-                <div class="summary-tile tile-news" id="tile-news">
-                  <div class="tile-head"><span class="tile-icon news-logo"><img src="logo.png" alt=""></span><h3>Novedades</h3></div>
-                  <b>Parabellum dentro del juego</b>
-                  <p class="muted">Pulsa O en Minecraft (o «Parabellum» en el menú de pausa) para ver a tus amigos, escribirles y mandar capturas sin salir del juego.</p>
-                  <span class="faint">Octubre 2026</span>
                 </div>
               </div>
               <h1 class="section-title">Biblioteca</h1>
@@ -334,12 +327,59 @@
         </section>
 
         <!-- MENSAJES -->
+        <section class="page hidden" id="page-friends">
+          <div class="page-inner friends-page">
+            <div class="fp-head">
+              <h1 class="section-title">Amigos</h1>
+              <span class="faint" id="fp-count"></span>
+            </div>
+            <div class="fp-out hidden" id="fp-signed-out"></div>
+            <div id="fp-signed-in" class="hidden">
+              <div class="fp-add">
+                <div class="search grow">
+                  <svg><use href="#i-user-plus"/></svg>
+                  <input id="fp-add-name" maxlength="16" placeholder="Nombre de jugador de tu amigo" autocomplete="off" spellcheck="false">
+                </div>
+                <button class="btn primary" id="fp-add-button"><svg><use href="#i-send"/></svg>Enviar solicitud</button>
+              </div>
+              <p class="side-note hidden" id="fp-add-message"></p>
+              <div class="fp-requests" id="fp-requests"></div>
+              <div class="fp-columns">
+                <div class="fp-main">
+                  <div class="fp-tools">
+                    <div class="fp-filters" id="fp-filters">
+                      <button data-filter="all" class="active">Todos <span></span></button>
+                      <button data-filter="online">En línea <span></span></button>
+                      <button data-filter="playing">Jugando <span></span></button>
+                    </div>
+                    <div class="search small">
+                      <svg><use href="#i-search"/></svg>
+                      <input id="fp-search" placeholder="Buscar" autocomplete="off" spellcheck="false">
+                    </div>
+                  </div>
+                  <div class="fp-list" id="fp-list"></div>
+                </div>
+                <aside class="fp-side">
+                  <div class="groups-head">
+                    <h5>Grupos</h5>
+                    <button class="circle-btn small" id="fp-new-group" title="Nuevo grupo"><svg><use href="#i-plus"/></svg></button>
+                  </div>
+                  <div class="group-list" id="fp-groups"></div>
+                </aside>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section class="page hidden" id="page-chat">
           <div class="chat-layout">
             <aside class="chat-side">
               <div class="chat-side-head">
                 <h1 class="section-title">Mensajes</h1>
-                <button class="circle-btn" id="chat-new-group" title="Nuevo grupo"><svg><use href="#i-user-plus"/></svg></button>
+                <div class="chat-side-actions">
+                  <button class="circle-btn" id="chat-add-friend" title="Agregar amigo"><svg><use href="#i-user-plus"/></svg></button>
+                  <button class="circle-btn" id="chat-new-group" title="Nuevo grupo"><svg><use href="#i-users"/></svg></button>
+                </div>
               </div>
               <div class="chat-list" id="chat-list"></div>
             </aside>
@@ -355,6 +395,7 @@
                 </header>
                 <div class="chat-messages" id="chat-messages"></div>
                 <button class="chat-new-below hidden" id="chat-new-below"></button>
+                <div class="chat-reply hidden" id="chat-reply"></div>
                 <div class="chat-composer">
                   <button class="circle-btn" id="chat-attach" title="Enviar una imagen"><svg><use href="#i-image"/></svg></button>
                   <button class="circle-btn" id="chat-share" title="Compartir una instancia"><svg><use href="#i-cubes"/></svg></button>
@@ -707,6 +748,10 @@
               <div class="grow"><b id="about-version">Parabellum</b><span id="about-update">Busca si hay una versión nueva de Parabellum.</span></div>
               <button class="btn" id="about-check"><svg><use href="#i-refresh"/></svg>Buscar actualizaciones</button>
             </div>
+            <div class="setting">
+              <div class="grow"><b>Reportar problema</b><span>Manda por chat lo que hace falta para ayudarte: la versión, tu PC y el último error.</span></div>
+              <button class="btn" id="about-report"><svg><use href="#i-flag"/></svg>Reportar</button>
+            </div>
             <div class="creator-only">
             <div class="setting">
               <div class="grow"><b>Carpeta para Drive</b><span class="mono" id="about-folder">Todavía no eliges una</span></div>
@@ -959,9 +1004,14 @@
         <h2 id="group-title">Nuevo grupo</h2>
       </div>
       <div class="modal-body">
-        <div id="group-name-box">
-          <label class="label" for="group-name">Nombre del grupo</label>
-          <input id="group-name" maxlength="40" autocomplete="off" spellcheck="false">
+        <div class="group-identity" id="group-name-box">
+          <button class="group-photo-pick" id="group-photo" title="Foto del grupo"></button>
+          <div class="grow">
+            <label class="label" for="group-name">Nombre del grupo</label>
+            <input id="group-name" maxlength="40" autocomplete="off" spellcheck="false">
+            <button class="link-btn hidden" id="group-photo-remove">Quitar foto</button>
+          </div>
+          <input type="file" id="group-photo-file" accept="image/*,.heic,.heif" class="hidden">
         </div>
         <label class="label" id="group-friends-label">Amigos</label>
         <div class="group-friends" id="group-friends"></div>
@@ -969,6 +1019,48 @@
         <div class="modal-actions">
           <button class="btn" id="group-cancel">Cancelar</button>
           <button class="btn primary" id="group-ok">Crear grupo</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="report-dialog">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Reportar problema</h2>
+        <button class="circle-btn" id="report-close" title="Cerrar"><svg><use href="#i-close"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <label class="label" for="report-note">¿Qué pasó?</label>
+        <textarea id="report-note" class="report-note" rows="3" maxlength="400" placeholder="Por ejemplo: se cierra al entrar al mundo de mi amigo" spellcheck="true"></textarea>
+        <label class="label">Va con esto</label>
+        <pre class="report-preview" id="report-preview"></pre>
+        <div class="report-to hidden" id="report-to-box">
+          <label class="label" for="report-to">Enviar a</label>
+          <select id="report-to"></select>
+        </div>
+        <p class="side-note hidden" id="report-hint"></p>
+        <div class="modal-actions">
+          <button class="btn" id="report-copy"><svg><use href="#i-copy"/></svg>Copiar</button>
+          <span class="grow"></span>
+          <button class="btn primary" id="report-send"><svg><use href="#i-send"/></svg>Enviar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="add-friend-dialog">
+    <div class="modal small">
+      <div class="modal-head">
+        <h2>Agregar amigo</h2>
+      </div>
+      <div class="modal-body">
+        <label class="label" for="dialog-friend-name">Su nombre de jugador en Parabellum</label>
+        <input id="dialog-friend-name" maxlength="16" autocomplete="off" spellcheck="false">
+        <p class="side-note hidden" id="dialog-friend-message"></p>
+        <div class="modal-actions">
+          <button class="btn" id="dialog-friend-cancel">Cerrar</button>
+          <button class="btn primary" id="dialog-friend-send">Enviar solicitud</button>
         </div>
       </div>
     </div>
@@ -1114,6 +1206,7 @@
       </div>
       <footer class="doc-foot">
         <button class="btn ghost" id="doctor-logs"><svg><use href="#i-terminal"/></svg>Registro</button>
+        <button class="btn ghost" id="doctor-report"><svg><use href="#i-flag"/></svg>Reportar</button>
         <span class="grow"></span>
         <button class="btn ghost" id="doctor-anyway">Jugar de todos modos</button>
         <button class="btn" id="doctor-auto"><svg><use href="#i-play-outline"/></svg>Probar y arreglar solo</button>
@@ -1188,6 +1281,12 @@
       <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4zM13.5 6.5l4 4"/></symbol>
       <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
       <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 19.5a6.5 6.5 0 0 1 13 0"/><path d="M15.5 5.2a3.5 3.5 0 0 1 0 6.6M18 14.2a6.5 6.5 0 0 1 3.5 5.3"/></symbol>
+      <symbol id="i-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/></symbol>
+      <symbol id="i-reply" viewBox="0 0 24 24"><path d="M9.5 6 4 11.5 9.5 17"/><path d="M4 11.5h10a6 6 0 0 1 6 6V19"/></symbol>
+      <symbol id="i-crown" viewBox="0 0 24 24"><path d="M4 17.5 3 7.5l5 4 4-6 4 6 5-4-1 10z"/><path d="M4.5 20.5h15"/></symbol>
+      <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.5A2 2 0 0 1 6 6.5h2l1.5-2h5l1.5 2h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+      <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4.5M5 4.5h11l-2 4 2 4H5"/></symbol>
     </defs>
   </svg>
   <script src="i18n.js"></script>

@@ -20,8 +20,8 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 ## Estado
 
 - Última revisión de los PR de Mac en Windows: 2026-10-12, PR #1 a #9 (todos mezclados).
-- Windows: la 0.25.0 está publicada en Drive; la 0.26.3 está lista para publicarse. Sigue la 0.27.0
-  (ver «Próximo en Windows»).
+- Windows: la 0.25.0 está publicada en Drive; la 0.27.0 está en `main` (Juan publica primero las reglas
+  de Firebase y luego la versión).
 - Mac: hechas las tareas 1 a 8 de `mac.md`. Quedan la 9 a la 12; el orden que sugiere Juan está en
   «Lo que sigue en Mac», abajo.
 
@@ -111,17 +111,28 @@ Nada por ahora.
 
 ## Próximo en Windows
 
-**0.27.0** (lo que pidió Juan tras probar con sus amigos). Casi todo es `ui/` y `amigos.rs`, compartido:
-cuando llegue, cada entrada de «Cambios de Windows» dirá qué revisar en Mac.
-
-- Mensajes: responder a un mensaje (la cita va arriba de la burbuja) y reaccionar con emojis.
-- Página «Amigos» propia en la barra (agregar, solicitudes, lista, grupos) y otra forma de agregar
-  desde Mensajes. Inicio sin las tarjetas «Tu servidor», «Amigos» y «Novedades».
-- Grupos con foto y con dueño (quien lo crea): solo el dueño cambia nombre, foto y miembros. Cambia
-  `firebase-reglas.json`; Juan publica las reglas.
-- «Reportar problema»: manda un resumen por chat a Juan.
+- La 0.27.0 ya está en `main` (ver «Cambios de Windows»). Sigue: responder y reaccionar desde el panel
+  del juego, y la prueba con compañeros en sus casas.
 
 ## Cambios de Windows
+
+### 2026-10-12 · 0.27.0: amigos, mensajes y grupos
+
+- Qué cambió:
+  - `ui/`: página «Amigos» (`renderFriendsPage`), Inicio sin las tarjetas, responder y reaccionar en el
+    chat (`startReply`, `react`, `contextMenu(..., { emojis })`), grupos con foto y dueño (diálogo del
+    grupo con modos `create`, `add`, `edit` y `members`), tarjeta de invitación y «Reportar problema».
+  - `chat.rs`: `Message` trae `reply` y `reactions`; `Summary` trae `owner`, `photo` y `canEdit`; `Member`
+    trae `you`. Nuevos: `react`, `edit_group`, `remove_member`, `transfer_group`; `send_text` recibe la
+    respuesta. Comandos nuevos en `cuenta.rs`: `reaccionar`, `editar_grupo`, `sacar_del_grupo`,
+    `pasar_grupo`, `invitar_amigo`.
+  - `reporte.rs` (nuevo) y el comando `reporte_problema`; `Config` tiene `support_name`
+    (`supportName` en config-integrada.json).
+  - `firebase-reglas.json`: reglas nuevas. Juan las publica antes de la 0.27.
+- Mac: nada de código. Revisa en la ventana de Mac: la página de Amigos, responder (Esc cancela),
+  reaccionar, la foto de un grupo (elegir una imagen; HEIC no se puede elegir desde el navegador) y
+  «Reportar problema» (el resumen dice «Mac (aarch64)»). Si tu `config-integrada.json` no trae
+  `supportName`, el reporte sale sin nadie elegido: pídeselo a Juan.
 
 ### 2026-10-12 · 0.26.3: un solo Parabellum abierto
 

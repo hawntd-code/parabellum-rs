@@ -77,6 +77,7 @@ const pages = {
   servers: { title: t("Servidores", "Servers"), icon: "server", sidebar: true },
   host: { title: t("Hostear partida", "Host a game"), icon: "broadcast", sidebar: true },
   hosted: { title: "", icon: "server", sidebar: false },
+  friends: { title: t("Amigos", "Friends"), icon: "users", sidebar: false },
   chat: { title: t("Mensajes", "Messages"), icon: "chat", sidebar: false },
   instance: { title: "", icon: "cubes", sidebar: false },
 };
@@ -268,10 +269,14 @@ function toast(message, kind = "info") {
   }, kind === "error" ? 7000 : 3500);
 }
 
-function contextMenu(anchor, items, { matchWidth = false } = {}) {
+function contextMenu(anchor, items, { matchWidth = false, emojis = null } = {}) {
   $$(".menu").forEach((m) => m.remove());
   const menu = document.createElement("div");
   menu.className = "menu";
+  // Con `emojis` ({ list, current, pick }): una fila para reaccionar encima de las entradas.
+  const emojiRow = emojis
+    ? `<div class="menu-emojis">${emojis.list.map((e) => `<button data-emoji="${escapeHtml(e)}" class="${e === emojis.current ? "current" : ""}" aria-label="${escapeHtml(e)}">${e}</button>`).join("")}</div>${items.length ? "<hr>" : ""}`
+    : "";
   // Una entrada puede llevar la cabeza de un jugador en lugar de icono, una línea debajo y una marca.
   menu.innerHTML = items
     .map((item, i) => {
@@ -281,6 +286,7 @@ function contextMenu(anchor, items, { matchWidth = false } = {}) {
       return `${item.separator ? "<hr>" : ""}<button data-i="${i}" class="${item.danger ? "danger" : ""}">${lead}${text}${check}</button>`;
     })
     .join("");
+  menu.insertAdjacentHTML("afterbegin", emojiRow);
   if (matchWidth) menu.style.minWidth = `${Math.max(220, anchor.getBoundingClientRect().width)}px`;
   menu.style.maxHeight = `${innerHeight - 20}px`;
   document.body.appendChild(menu);
@@ -308,9 +314,11 @@ function contextMenu(anchor, items, { matchWidth = false } = {}) {
     if (refocus && anchor.isConnected) anchor.focus();
   };
   menu.onclick = (event) => {
+    const emoji = event.target.closest("[data-emoji]");
     const button = event.target.closest("[data-i]");
-    close(!button);
-    if (button) items[button.dataset.i].action();
+    close(!button && !emoji);
+    if (emoji) emojis.pick(emoji.dataset.emoji);
+    else if (button) items[button.dataset.i].action();
   };
   // Con el teclado: flechas para moverse, Enter para elegir, Escape o Tab para cerrar.
   menu.onkeydown = (event) => {
@@ -370,6 +378,7 @@ function navigate(page, param = null, record = true) {
     enterHosted(param);
   }
   if (page === "servers") enterServers();
+  if (page === "friends") renderFriendsPage();
   if (page === "chat") enterChat();
   else if (state.chatOpen) closeChat();
   // La página anterior se queda un momento debajo, desvaneciéndose, mientras entra la nueva.
@@ -522,7 +531,6 @@ function renderHome() {
   renderLibrary();
 }
 
-// ---------- Inicio: tarjetas de lo que pasa ahora ----------
 /** Partidas abiertas de tus amigos: servidores a los que te invitaron, mundos abiertos, servidores
  * donde juegan y servidores que hostean (aunque no te hayan invitado). */
 function friendActivity() {
@@ -545,68 +553,7 @@ function friendActivity() {
 }
 
 function renderHomeTiles() {
-  if (!$("#home-summary")) return;
   renderSteps();
-  renderHomeServerTile();
-  renderHomeFriendsTile();
-}
-
-function renderHomeServerTile() {
-  const view = typeof host !== "undefined" ? host.view : null;
-  const servers = view?.servers ?? [];
-  const server = servers.find((s) => s.state !== "off") ?? servers[0];
-  let html;
-  if (!server) {
-    html = `<div class="tile-head"><span class="tile-icon">${icon("broadcast")}</span><h3>${t("Tu servidor", "Your server")}</h3></div>
-      <p class="muted">${t("Juega con tus amigos desde tu PC: crea un servidor con tu modpack o abre tu mundo.", "Play with your friends from your PC: create a server with your modpack or open your world.")}</p>
-      <div class="tile-actions"><button class="btn primary small" data-home-action="create-server">${icon("plus")}${t("Crear servidor", "Create server")}</button></div>`;
-  } else {
-    const names = stateNames();
-    const detail =
-      server.state === "ready"
-        ? [t(`${server.players.length} de ${server.maxPlayers} jugadores`, `${server.players.length} of ${server.maxPlayers} players`), server.address].filter(Boolean).join(" · ")
-        : `${server.instanceName} · ${server.loader} ${server.minecraft}`;
-    const action =
-      server.state === "off"
-        ? `<button class="btn primary small" data-host-start="${escapeHtml(server.id)}">${icon("play")}${t("Encender", "Start")}</button>`
-        : `<button class="btn danger small" data-host-stop="${escapeHtml(server.id)}" ${server.state === "stopping" ? "disabled" : ""}>${icon("stop")}${t("Apagar", "Stop")}</button>`;
-    html = `<div class="tile-head"><span class="tile-icon">${icon("broadcast")}</span><h3>${t("Tu servidor", "Your server")}</h3></div>
-      <button class="tile-link" data-hosted="${escapeHtml(server.id)}"><b>${escapeHtml(server.name)}</b><span class="state-pill ${server.state}">${escapeHtml(names[server.state])}</span></button>
-      <p class="muted">${escapeHtml(detail)}</p>
-      <div class="tile-actions">${action}${servers.length > 1 ? `<button class="btn small" data-home-action="host">${t(`Ver los ${servers.length}`, `See all ${servers.length}`)}</button>` : ""}</div>`;
-  }
-  setHtml($("#tile-server"), html);
-}
-
-function renderHomeFriendsTile() {
-  const s = state.social;
-  const connected = !!(s?.signedIn && s.connected);
-  let html;
-  if (!connected) {
-    html = `<div class="tile-head"><span class="tile-icon">${icon("user-plus")}</span><h3>${t("Amigos", "Friends")}</h3></div>
-      <p class="muted">${t("Inicia sesión con Google para ver a qué juegan tus amigos y entrar a sus partidas con un clic.", "Sign in with Google to see what your friends are playing and join their games with one click.")}</p>
-      ${s?.available === false ? "" : `<div class="tile-actions"><button class="btn primary small" data-home-action="sign-in">${icon("user")}${t("Iniciar sesión con Google", "Sign in with Google")}</button></div>`}`;
-  } else {
-    const friends = s.friends?.friends ?? [];
-    const online = friends.filter((f) => f.online);
-    const playing = online.filter((f) => f.presence?.state === "playing");
-    const open = friendActivity().filter((a) => a.online && a.kind !== "uninvited").length;
-    const heads = online
-      .slice(0, 7)
-      .map((f) => `<span class="tile-head-avatar" title="${escapeHtml(f.name)}"><canvas width="8" height="8" class="head" data-head="${escapeHtml(f.name)}"></canvas><i class="presence-dot ${f.presence?.state === "playing" ? "playing" : "online"}"></i></span>`)
-      .join("");
-    html = `<div class="tile-head"><span class="tile-icon">${icon("user-plus")}</span><h3>${t("Amigos", "Friends")}</h3></div>
-      <p class="muted">${
-        friends.length
-          ? t(`${online.length} en línea · ${playing.length} jugando`, `${online.length} online · ${playing.length} playing`)
-          : t("Todavía no tienes amigos en Parabellum: agrégalos en el panel de la derecha.", "You have no friends on Parabellum yet: add them in the panel on the right.")
-      }</p>
-      ${heads ? `<div class="tile-avatars">${heads}</div>` : ""}
-      <div class="tile-actions"><button class="btn ${open ? "primary" : ""} small" data-home-action="servers">${icon("server")}${
-        open ? t(`${open === 1 ? "1 partida abierta" : `${open} partidas abiertas`}`, `${open === 1 ? "1 open game" : `${open} open games`}`) : t("Servidores de amigos", "Friends' servers")
-      }</button></div>`;
-  }
-  if (setHtml($("#tile-friends"), html)) for (const canvas of $$("#tile-friends canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
 }
 
 function renderLibrary() {
@@ -912,6 +859,7 @@ function instanceMenuItems(id) {
     { icon: "duplicate", label: t("Duplicar", "Duplicate"), action: () => duplicateInstance(id) },
     { icon: "chat", label: t("Compartir con un amigo", "Share with a friend"), action: () => shareWithMenu(pointerAnchor(), id) },
     { icon: "upload", label: t("Exportar modpack", "Export modpack"), action: () => openExport(id) },
+    { icon: "flag", label: t("Reportar problema", "Report a problem"), action: () => openReport(id) },
     { icon: "trash", label: t("Eliminar", "Delete"), danger: true, action: () => deleteInstance(id) },
   ];
 }
@@ -1652,10 +1600,7 @@ function renderSteps() {
     )
     .join("")}</div>`;
   $$("#steps-list .step").forEach((button) => (button.onclick = () => steps[button.dataset.step].action?.()));
-  // Una sola fila: mientras falten pasos ocupan el lugar de las novedades.
-  const allDone = steps.every((s) => s.done);
-  $("#tile-steps")?.classList.toggle("hidden", allDone);
-  $("#tile-news")?.classList.toggle("hidden", !allDone);
+  $("#tile-steps")?.classList.toggle("hidden", steps.every((s) => s.done));
 }
 
 // ======================================================================
@@ -1701,7 +1646,8 @@ function renderFriends() {
     $("#friends-note").textContent = note;
     $("#friends-sign-in span").textContent = label;
     $("#friends-sign-in").classList.toggle("hidden", !show);
-    renderHomeFriendsTile();
+    updateFriendsBadge();
+    renderFriendsPage();
     return;
   }
 
@@ -1772,28 +1718,141 @@ function renderFriends() {
   const online = view.friends.filter((f) => f.online).length;
   $("#friends-count").textContent = view.friends.length ? t(`${online} en línea`, `${online} online`) : "";
   renderGroups();
-  renderHomeFriendsTile();
+  updateFriendsBadge();
+  renderFriendsPage();
 }
 
-/** Los grupos de chat, debajo de los amigos. */
+/** Solicitudes de amistad sin contestar, en el botón de Amigos de la barra. */
+function updateFriendsBadge() {
+  const count = state.social?.connected ? state.social?.friends?.requests?.length ?? 0 : 0;
+  $("#friends-badge").textContent = count > 9 ? "9+" : String(count);
+  $("#friends-badge").classList.toggle("hidden", count === 0);
+}
+
+/** El avatar de un grupo: su foto o el icono. */
+function groupAvatar(chat) {
+  return chat.photo ? `<img class="group-avatar" src="${escapeHtml(chat.photo)}" alt="">` : `<span class="group-avatar">${icon("users")}</span>`;
+}
+
+/** Los grupos de chat: en el panel de la derecha y en la página de Amigos. */
 function renderGroups() {
-  const box = $("#group-list");
-  if (!box) return;
   const groups = (state.chats ?? []).filter((c) => c.kind === "grupo").sort((a, b) => isFavoriteChat(b.id) - isFavoriteChat(a.id));
+  const html = groups.length
+    ? groups
+        .map(
+          (g) => `<button class="group-row ${g.unread ? "unread" : ""}" data-open-group="${escapeHtml(g.id)}" data-key="g:${escapeHtml(g.id)}">
+            ${groupAvatar(g)}
+            <span class="grow"><b>${escapeHtml(g.name)}${isFavoriteChat(g.id) ? favMark() : ""}</b><span>${escapeHtml(g.lastText ? `${g.lastName}: ${chatPreview(g.lastText)}` : t(`${g.members.length} miembros`, `${g.members.length} members`))}</span></span>
+            ${g.unread ? `<i class="unread-dot"></i>` : ""}
+          </button>`,
+        )
+        .join("")
+    : `<p class="side-note no-top">${t("Crea un grupo para hablar con varios amigos a la vez.", "Create a group to talk with several friends at once.")}</p>`;
+  for (const box of [$("#group-list"), $("#fp-groups")]) if (box) setHtml(box, html);
+}
+
+// ---------- Página de Amigos ----------
+/** Tienes algo a lo que invitar: un servidor encendido o tu mundo abierto. */
+function canInviteNow() {
+  const servers = typeof host !== "undefined" ? host.view?.servers ?? [] : [];
+  const me = state.social?.me;
+  return servers.some((s) => s.state === "ready") || (me?.state === "playing" && !!(me.lan || me.address));
+}
+
+function renderFriendsPage() {
+  if (!$("#page-friends")) return;
+  const s = state.social;
+  const connected = !!(s?.signedIn && s.connected);
+  $("#fp-signed-out").classList.toggle("hidden", connected);
+  $("#fp-signed-in").classList.toggle("hidden", !connected);
+  if (!connected) {
+    $("#fp-count").textContent = "";
+    const withButton = !$("#friends-sign-in").classList.contains("hidden");
+    $("#fp-signed-out").innerHTML = `<span class="chat-empty-icon">${icon("users")}</span><p>${escapeHtml($("#friends-note").textContent)}</p>${
+      withButton ? `<button class="btn primary" id="fp-sign-in">${icon("user")}<span>${escapeHtml($("#friends-sign-in span").textContent)}</span></button>` : ""
+    }`;
+    const button = $("#fp-sign-in");
+    if (button) button.onclick = signInGoogle;
+    return;
+  }
+  const view = s.friends ?? { friends: [], requests: [] };
+  const online = view.friends.filter((f) => f.online);
+  const playing = online.filter((f) => f.presence?.state === "playing");
+  $("#fp-count").textContent = view.friends.length ? t(`${online.length} de ${view.friends.length} en línea`, `${online.length} of ${view.friends.length} online`) : "";
   setHtml(
-    box,
-    groups.length
-      ? groups
-          .map(
-            (g) => `<button class="group-row ${g.unread ? "unread" : ""}" data-open-group="${escapeHtml(g.id)}" data-key="g:${escapeHtml(g.id)}">
-              <span class="group-avatar">${icon("chat")}</span>
-              <span class="grow"><b>${escapeHtml(g.name)}${isFavoriteChat(g.id) ? favMark() : ""}</b><span>${escapeHtml(g.lastText ? `${g.lastName}: ${chatPreview(g.lastText)}` : t(`${g.members.length} miembros`, `${g.members.length} members`))}</span></span>
-              ${g.unread ? `<i class="unread-dot"></i>` : ""}
-            </button>`,
-          )
-          .join("")
-      : `<p class="side-note no-top">${t("Crea un grupo para hablar con varios amigos a la vez.", "Create a group to talk with several friends at once.")}</p>`,
+    $("#fp-requests"),
+    view.requests
+      .map(
+        (r) => `<div class="fp-request" data-key="r:${escapeHtml(r.uid)}">
+          <canvas width="8" height="8" class="head" data-head="${escapeHtml(r.name)}"></canvas>
+          <div class="grow"><b>${escapeHtml(r.name)}</b><span>${t("Quiere ser tu amigo", "Wants to be your friend")}</span></div>
+          <button class="btn primary small" data-accept="${escapeHtml(r.uid)}">${t("Aceptar", "Accept")}</button>
+          <button class="btn small" data-decline="${escapeHtml(r.uid)}">${t("Rechazar", "Decline")}</button>
+        </div>`,
+      )
+      .join(""),
   );
+  const filter = state.friendsFilter ?? "all";
+  const counts = { all: view.friends.length, online: online.length, playing: playing.length };
+  for (const button of $$("#fp-filters [data-filter]")) {
+    button.classList.toggle("active", button.dataset.filter === filter);
+    button.querySelector("span").textContent = counts[button.dataset.filter] || "";
+  }
+  const query = $("#fp-search").value.trim().toLowerCase();
+  const starred = favoriteFriendUids();
+  const rank = (f) => (starred.has(f.uid) ? 0 : !f.online ? 3 : f.presence?.state === "playing" ? 1 : 2);
+  const list = view.friends
+    .filter((f) => filter === "all" || (f.online && (filter === "online" || f.presence?.state === "playing")))
+    .filter((f) => !query || f.name.toLowerCase().includes(query))
+    .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
+  const invite = canInviteNow();
+  const card = (f) => {
+    const join = joinTarget(f);
+    return `<div class="fp-friend ${f.online ? "online" : ""}" data-uid="${escapeHtml(f.uid)}" data-key="f:${escapeHtml(f.uid)}" title="${t(`Escribirle a ${escapeHtml(f.name)}`, `Message ${escapeHtml(f.name)}`)}">
+      <div class="friend-head"><canvas width="8" height="8" class="head" data-head="${escapeHtml(f.name)}"></canvas><span class="presence-dot ${f.online ? (f.presence?.state === "playing" ? "playing" : "online") : ""}"></span></div>
+      <div class="grow"><b>${escapeHtml(f.name)}${starred.has(f.uid) ? favMark() : ""}</b><span>${escapeHtml(friendStatus(f))}</span></div>
+      ${join ? `<button class="btn primary small" data-fp-join="${escapeHtml(f.uid)}" title="${escapeHtml(join.title)}">${icon("play")}${t("Unirse", "Join")}</button>` : ""}
+      ${invite && f.online && !join ? `<button class="btn small" data-fp-invite="${escapeHtml(f.uid)}" title="${t("Invitarlo a tu partida", "Invite them to your game")}">${icon("send")}${t("Invitar", "Invite")}</button>` : ""}
+      <button class="circle-btn small" data-fp-chat="${escapeHtml(f.uid)}" title="${t("Enviar mensaje", "Send message")}">${icon("chat")}</button>
+      <button class="circle-btn small" data-fp-menu="${escapeHtml(f.uid)}" title="${t("Más", "More")}">${icon("more")}</button>
+    </div>`;
+  };
+  const empty = !view.friends.length
+    ? t("Todavía no tienes amigos en Parabellum. Escribe arriba el nombre de jugador de un amigo.", "You have no friends on Parabellum yet. Type a friend's player name above.")
+    : query
+      ? t("Nadie coincide con la búsqueda.", "No one matches the search.")
+      : filter === "playing"
+        ? t("Nadie está jugando ahora.", "No one is playing right now.")
+        : t("Nadie está en línea ahora.", "No one is online right now.");
+  setHtml($("#fp-list"), list.length ? list.map(card).join("") : `<p class="fp-none" data-key="none">${escapeHtml(empty)}</p>`);
+  for (const canvas of $$("#page-friends canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
+}
+
+async function inviteFriend(uid) {
+  try {
+    toast(await invoke("invitar_amigo", { uid }));
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+/** Aceptar o rechazar una solicitud (panel de la derecha y página de Amigos). */
+async function answerRequest(event) {
+  const accept = event.target.closest("[data-accept]");
+  const decline = event.target.closest("[data-decline]");
+  try {
+    if (accept) await invoke("aceptar_solicitud", { uid: accept.dataset.accept });
+    if (decline) await invoke("rechazar_solicitud", { uid: decline.dataset.decline });
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+function openAddFriendDialog() {
+  $("#dialog-friend-name").value = "";
+  $("#dialog-friend-message").className = "side-note hidden";
+  openModal("#add-friend-dialog");
+  setTimeout(() => $("#dialog-friend-name").focus(), 60);
 }
 
 function renderGoogleBox() {
@@ -1859,22 +1918,23 @@ async function copyText(text, message) {
   }
 }
 
-async function addFriend() {
-  const name = $("#add-friend").value.trim();
-  const message = $("#add-friend-message");
+/** Envía una solicitud con el nombre escrito: en el panel de la derecha, en Amigos o en Mensajes. */
+async function addFriend(input = "#add-friend", messageBox = "#add-friend-message", button = "#add-friend-button") {
+  const name = $(input).value.trim();
+  const message = $(messageBox);
   const show = (text, kind = "") => {
     message.textContent = text;
     message.className = `side-note ${kind}`;
   };
   if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) return show(t("Escribe su nombre de jugador (1 a 16 letras, números o guiones bajos).", "Type their player name (1 to 16 letters, numbers or underscores)."), "danger");
-  $("#add-friend-button").disabled = true;
+  $(button).disabled = true;
   try {
     show(await invoke("agregar_amigo", { nombre: name }), "accent");
-    $("#add-friend").value = "";
+    $(input).value = "";
   } catch (error) {
     show(String(error), "warn");
   } finally {
-    $("#add-friend-button").disabled = false;
+    $(button).disabled = false;
   }
 }
 
@@ -1906,6 +1966,7 @@ function friendMenu(anchor, friend) {
     { icon: "chat", label: t("Enviar mensaje", "Send message"), action: () => messageFriend(friend.uid) },
     { icon: "star", label: starred ? t("Quitar de favoritos", "Remove from favorites") : t("Agregar a favoritos", "Add to favorites"), action: () => toggleFavoriteFriend(friend) },
   ];
+  if (friend.online && canInviteNow()) items.push({ icon: "send", label: t("Invitar a tu partida", "Invite to your game"), action: () => inviteFriend(friend.uid) });
   if (friend.worldOpen) {
     if (p.address) items.push({ icon: "globe", label: t("Unirse por Internet", "Join over the Internet"), action: () => joinFriend(friend, p.address) });
     if (p.lan) items.push({ icon: "server", label: t("Unirse por red local", "Join over the local network"), action: () => joinFriend(friend, p.lan) });
@@ -1935,21 +1996,59 @@ function wireFriendsEvents() {
   $("#add-friend").onkeydown = (event) => {
     if (event.key === "Enter") addFriend();
   };
-  $("#friend-requests").onclick = async (event) => {
-    const accept = event.target.closest("[data-accept]");
-    const decline = event.target.closest("[data-decline]");
-    try {
-      if (accept) await invoke("aceptar_solicitud", { uid: accept.dataset.accept });
-      if (decline) await invoke("rechazar_solicitud", { uid: decline.dataset.decline });
-    } catch (error) {
-      toast(String(error), "error");
-    }
-  };
+  $("#friend-requests").onclick = answerRequest;
   $("#side-new-group").onclick = () => openGroupDialog("create");
   $("#group-list").onclick = (event) => {
     const group = event.target.closest("[data-open-group]");
     if (group) openChat(group.dataset.openGroup);
   };
+  // Página de Amigos
+  $("#fp-add-button").onclick = () => addFriend("#fp-add-name", "#fp-add-message", "#fp-add-button");
+  $("#fp-add-name").onkeydown = (event) => {
+    if (event.key === "Enter") addFriend("#fp-add-name", "#fp-add-message", "#fp-add-button");
+  };
+  $("#fp-requests").onclick = answerRequest;
+  $("#fp-filters").onclick = (event) => {
+    const button = event.target.closest("[data-filter]");
+    if (!button) return;
+    state.friendsFilter = button.dataset.filter;
+    renderFriendsPage();
+  };
+  $("#fp-search").oninput = () => renderFriendsPage();
+  $("#fp-new-group").onclick = () => openGroupDialog("create");
+  $("#fp-groups").onclick = (event) => {
+    const group = event.target.closest("[data-open-group]");
+    if (group) openChat(group.dataset.openGroup);
+  };
+  $("#fp-list").onclick = (event) => {
+    const by = (attribute) => event.target.closest(`[${attribute}]`)?.getAttribute(attribute);
+    const join = by("data-fp-join");
+    if (join) {
+      const target = findFriend(join) && joinTarget(findFriend(join));
+      if (target) target.world ? joinFriendWorld(target.friend) : joinFriend(target.friend, target.address);
+      return;
+    }
+    const invite = by("data-fp-invite");
+    if (invite) return void inviteFriend(invite);
+    const chat = by("data-fp-chat");
+    if (chat) return void messageFriend(chat);
+    const menu = event.target.closest("[data-fp-menu]");
+    if (menu) {
+      const friend = findFriend(menu.dataset.fpMenu);
+      if (friend) friendMenu(menu, friend);
+      return;
+    }
+    const row = event.target.closest(".fp-friend[data-uid]");
+    if (row) messageFriend(row.dataset.uid);
+  };
+  // Agregar amigo desde Mensajes
+  $("#chat-add-friend").onclick = openAddFriendDialog;
+  const sendDialogRequest = () => addFriend("#dialog-friend-name", "#dialog-friend-message", "#dialog-friend-send");
+  $("#dialog-friend-send").onclick = sendDialogRequest;
+  $("#dialog-friend-name").onkeydown = (event) => {
+    if (event.key === "Enter") sendDialogRequest();
+  };
+  $("#dialog-friend-cancel").onclick = () => closeModal("#add-friend-dialog");
   $("#friend-list").onclick = (event) => {
     const chat = event.target.closest("[data-friend-chat]");
     if (chat) {
@@ -1975,6 +2074,7 @@ function wireFriendsEvents() {
   listen("social", ({ payload }) => {
     state.social = payload;
     renderFriends();
+    if (state.page === "chat" && state.chatOpen) renderChatHeader();
     renderFriendServers();
     if (state.page === "chat") renderChatList();
     if (state.page === "hosted" && host.tab === "players") renderGuests();
@@ -2007,7 +2107,7 @@ function chatPreview(text) {
 }
 
 function chatAvatar(chat) {
-  if (chat.kind === "grupo") return `<span class="group-avatar">${icon("chat")}</span>`;
+  if (chat.kind === "grupo") return groupAvatar(chat);
   return `<canvas width="8" height="8" class="head" data-head="${escapeHtml(chat.name)}"></canvas>`;
 }
 
@@ -2029,6 +2129,7 @@ function renderChatList() {
   updateChatBadge();
   const connected = !!state.social?.connected;
   $("#chat-new-group").classList.toggle("hidden", !connected);
+  $("#chat-add-friend").classList.toggle("hidden", !connected);
   if (!connected) {
     setHtml($("#chat-list"), "", { scope: "fuera" });
     showChatEmpty(
@@ -2070,7 +2171,7 @@ function renderChatList() {
           )
           .join("")
       : "") ||
-    `<p class="side-note">${t("Todavía no tienes conversaciones. Agrega amigos en el panel de Inicio para escribirles.", "You have no conversations yet. Add friends in the Home panel to write to them.")}</p>`;
+    `<p class="side-note">${t("Todavía no tienes conversaciones. Agrega amigos con el botón de arriba para escribirles.", "You have no conversations yet. Add friends with the button above to write to them.")}</p>`;
   // La conversación con un mensaje nuevo sube a su lugar en vez de saltar.
   if (setHtml($("#chat-list"), listHtml)) for (const canvas of $$("#chat-list canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
   if (!state.chatOpen) showChatEmpty(chats.length ? t("Elige una conversación.", "Choose a conversation.") : t("Escríbele a un amigo para empezar.", "Write to a friend to start."), false);
@@ -2147,6 +2248,8 @@ function renderChatHeader() {
   if (canvas) drawHead(canvas, canvas.dataset.head);
   $("#chat-title").textContent = chat.name;
   let join = null;
+  $("#chat-avatar").classList.toggle("clickable", chat.kind === "grupo");
+  $("#chat-avatar").title = chat.kind === "grupo" ? t("Miembros del grupo", "Group members") : "";
   if (chat.kind === "grupo") {
     $("#chat-subtitle").textContent = chat.members.map((m) => m.name).join(", ");
   } else {
@@ -2173,6 +2276,8 @@ function joinTarget(friend) {
 
 async function openChat(id) {
   if (state.page !== "chat") navigate("chat");
+  if (state.chatOpen !== id) state.chatReply = null;
+  renderReplyBar();
   state.chatOpen = id;
   state.chatMessages = null;
   $("#chat-empty").classList.add("hidden");
@@ -2222,6 +2327,7 @@ function renderMessages() {
     const continued = previous && previous.from === m.from && m.at - previous.at < 5 * 60000 && new Date(previous.at).toDateString() === day;
     const author = group && !m.mine && !continued ? `<span class="bubble-author">${escapeHtml(m.name)}</span>` : "";
     const share = !m.image && parseShare(m.text);
+    const invite = !m.image && !share && parseInvite(m.text);
     const editing = state.chatEditing?.id === m.id;
     const body = editing
       ? `<textarea class="bubble-edit" rows="1" maxlength="2000" aria-label="${t("Editar mensaje", "Edit message")}">${escapeHtml(state.chatEditing.draft)}</textarea><span class="bubble-edit-hint">${t("Enter: guardar · Esc: cancelar", "Enter: save · Esc: cancel")}</span>`
@@ -2231,15 +2337,30 @@ function renderMessages() {
         }</button>`
       : share
         ? shareCardHtml(share, m)
-        : `<span class="bubble-text">${escapeHtml(m.text ?? "")}</span>`;
-    // Tus mensajes: editar (solo texto) y borrar al pasar el ratón; clic derecho para el menú.
-    const tools =
-      m.mine && !editing
-        ? `<div class="bubble-tools">${canEditMessage(m) ? `<button class="bubble-tool" data-msg-edit="${escapeHtml(m.id)}" title="${t("Editar", "Edit")}">${icon("pencil")}</button>` : ""}<button class="bubble-tool" data-msg-delete="${escapeHtml(m.id)}" title="${t("Borrar", "Delete")}">${icon("trash")}</button></div>`
-        : "";
+        : invite
+          ? inviteCardHtml(invite, m)
+          : `<span class="bubble-text">${escapeHtml(m.text ?? "")}</span>`;
+    // Al pasar el ratón: reaccionar y responder; en los tuyos también editar (solo texto) y borrar.
+    // Clic derecho para el menú.
+    const tool = (attribute, name, title) => `<button class="bubble-tool" ${attribute}="${escapeHtml(m.id)}" title="${title}">${icon(name)}</button>`;
+    const tools = editing
+      ? ""
+      : `<div class="bubble-tools">${tool("data-msg-react", "smile", t("Reaccionar", "React"))}${tool("data-msg-reply", "reply", t("Responder", "Reply"))}${
+          m.mine ? `${canEditMessage(m) ? tool("data-msg-edit", "pencil", t("Editar", "Edit")) : ""}${tool("data-msg-delete", "trash", t("Borrar", "Delete"))}` : ""
+        }</div>`;
+    const quote = m.reply && !editing ? replyQuoteHtml(m.reply, messages) : "";
+    const reactions = m.reactions?.length
+      ? `<div class="bubble-reactions">${m.reactions
+          .map(
+            (r) =>
+              `<button class="reaction ${r.mine ? "mine" : ""}" data-reaction="${escapeHtml(m.id)}" data-emoji="${escapeHtml(r.emoji)}" title="${escapeHtml(r.names.join(", "))}">${escapeHtml(r.emoji)}${r.count > 1 ? `<span>${r.count}</span>` : ""}</button>`,
+          )
+          .join("")}</div>`
+      : "";
     const time = new Date(m.at).toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
+    const stack = `<div class="bubble-stack"><div class="bubble ${editing ? "editing" : ""}">${author}${quote}${body}<span class="bubble-time">${m.edited ? `<span class="bubble-edited">${t("editado", "edited")}</span> · ` : ""}${escapeHtml(time)}</span></div>${reactions}</div>`;
     html += `<div class="bubble-row ${m.mine ? "mine" : ""} ${continued ? "continued" : ""}" data-msg="${escapeHtml(m.id)}" data-key="m:${escapeHtml(m.id)}">
-      ${tools}<div class="bubble ${editing ? "editing" : ""}">${author}${body}<span class="bubble-time">${m.edited ? `<span class="bubble-edited">${t("editado", "edited")}</span> · ` : ""}${escapeHtml(time)}</span></div>
+      ${m.mine ? tools + stack : stack + tools}
     </div>`;
     previous = m;
   }
@@ -2266,7 +2387,220 @@ function renderMessages() {
 // ---------- Editar y borrar tus mensajes ----------
 /** El texto se edita; las imágenes y las instancias compartidas solo se borran. */
 function canEditMessage(m) {
-  return m.mine && !m.image && !parseShare(m.text);
+  return m.mine && !m.image && !parseShare(m.text) && !parseInvite(m.text);
+}
+
+// ---------- Responder y reaccionar ----------
+/** Lo que se ve de un mensaje al citarlo o en la lista. */
+function messagePreview(m) {
+  if (m.image) return t("📷 Imagen", "📷 Image");
+  const share = parseShare(m.text);
+  if (share) return `📦 ${share.n}`;
+  const invite = parseInvite(m.text);
+  if (invite) return `🎮 ${t("Invitación", "Invite")}`;
+  return (m.text ?? "").replace(/\s+/g, " ").trim();
+}
+
+function replyQuoteHtml(reply, messages) {
+  const original = messages.find((x) => x.id === reply.id);
+  // Si estaba entre los mensajes cargados (los ids van por hora) y ya no está, lo borraron.
+  const gone = !original && messages.length > 0 && reply.id >= messages[0].id;
+  const text = gone ? t("Mensaje borrado", "Deleted message") : original ? messagePreview(original) : chatPreview(reply.text);
+  return `<button class="bubble-quote ${gone ? "gone" : ""}" data-quote="${escapeHtml(reply.id)}" title="${t("Ir al mensaje", "Go to the message")}"><b>${escapeHtml(original?.name ?? reply.name)}</b><span>${escapeHtml(text)}</span></button>`;
+}
+
+function startReply(id) {
+  const m = state.chatMessages?.find((x) => x.id === id);
+  if (!m) return;
+  if (state.chatEditing) cancelEditMessage();
+  state.chatReply = { id, name: m.name, mine: m.mine, text: messagePreview(m) };
+  renderReplyBar();
+  $("#chat-input").focus();
+}
+
+function cancelReply() {
+  state.chatReply = null;
+  renderReplyBar();
+  $("#chat-input").focus();
+}
+
+/** La barra «Respondiendo a…» encima de la caja de escribir. */
+function renderReplyBar() {
+  const bar = $("#chat-reply");
+  const reply = state.chatReply;
+  bar.classList.toggle("hidden", !reply);
+  if (!reply) return void (bar.innerHTML = "");
+  const who = reply.mine ? t("Respondiendo a tu mensaje", "Replying to your message") : t(`Respondiendo a ${reply.name}`, `Replying to ${reply.name}`);
+  bar.innerHTML = `${icon("reply")}<div class="grow"><b>${escapeHtml(who)}</b><span>${escapeHtml(reply.text)}</span></div>
+    <button class="circle-btn small" id="chat-reply-cancel" title="${t("Cancelar (Esc)", "Cancel (Esc)")}">${icon("close")}</button>`;
+  $("#chat-reply-cancel").onclick = cancelReply;
+}
+
+/** Lleva al mensaje citado y lo resalta un momento. */
+function showQuoted(id) {
+  const row = $(`#chat-messages [data-msg="${CSS.escape(id)}"]`);
+  if (!row) return toast(t("Ese mensaje es más viejo que los que se ven aquí.", "That message is older than the ones shown here."));
+  row.scrollIntoView({ block: "center", behavior: motionOk() ? "smooth" : "auto" });
+  row.classList.remove("flash");
+  void row.offsetWidth;
+  row.classList.add("flash");
+  setTimeout(() => row.classList.remove("flash"), 1300);
+}
+
+const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🔥"];
+
+/** Pone tu reacción (o la quita si ya era esa). Se ve al momento; Firebase la confirma después. */
+async function react(id, emoji) {
+  const m = state.chatMessages?.find((x) => x.id === id);
+  if (!m || !state.chatOpen) return;
+  const current = m.reactions?.find((r) => r.mine)?.emoji ?? null;
+  const next = current === emoji ? null : emoji;
+  const me = state.social?.friends?.name ?? state.settings.username;
+  const list = (m.reactions ?? []).map((r) => ({ ...r, names: [...r.names] }));
+  const mine = list.find((r) => r.mine);
+  if (mine) Object.assign(mine, { count: mine.count - 1, mine: false, names: mine.names.filter((n) => n !== me) });
+  if (next) {
+    let target = list.find((r) => r.emoji === next);
+    if (!target) list.push((target = { emoji: next, count: 0, mine: false, names: [] }));
+    Object.assign(target, { count: target.count + 1, mine: true, names: [...target.names, me] });
+  }
+  m.reactions = list.filter((r) => r.count > 0);
+  renderMessages();
+  try {
+    await invoke("reaccionar", { chat: state.chatOpen, mensaje: id, emoji: next });
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+/** Las reacciones para elegir, en un menú junto al mensaje. */
+function reactionPicker(anchor, id, extra = []) {
+  const m = state.chatMessages?.find((x) => x.id === id);
+  if (!m) return;
+  const current = m.reactions?.find((r) => r.mine)?.emoji;
+  contextMenu(anchor, extra, { emojis: { list: REACTIONS, current, pick: (emoji) => react(id, emoji) } });
+}
+
+// ---------- Reportar problema ----------
+/** Arma el resumen (versión, PC, instancia, error, doctor y P2P) y lo manda por chat a quien elijas
+ * (sale elegido quien da soporte, si es tu amigo). Sin sesión de Google, se puede copiar. */
+async function openReport(id = null) {
+  state.report = { id, text: null, to: null };
+  $("#report-note").value = "";
+  $("#report-preview").innerHTML = `<span class="spinner tiny"></span>${t("Revisando la instancia…", "Checking the instance…")}`;
+  $("#report-send").disabled = true;
+  $("#report-copy").disabled = true;
+  renderReportTargets();
+  openModal("#report-dialog");
+  setTimeout(() => $("#report-note").focus(), 60);
+  try {
+    const report = await invoke("reporte_problema", { id });
+    if (state.report?.id !== id) return;
+    Object.assign(state.report, report);
+    $("#report-preview").textContent = report.text;
+    $("#report-copy").disabled = false;
+    renderReportTargets();
+  } catch (error) {
+    $("#report-preview").textContent = String(error);
+  }
+}
+
+/** A quién se puede mandar: amigos (quien da soporte primero) y grupos. */
+function renderReportTargets() {
+  const connected = !!state.social?.connected;
+  const friends = [...(state.social?.friends?.friends ?? [])];
+  const support = state.report?.to?.toLowerCase();
+  friends.sort((a, b) => (b.name.toLowerCase() === support) - (a.name.toLowerCase() === support) || a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
+  const groups = (state.chats ?? []).filter((c) => c.kind === "grupo");
+  const options = [...friends.map((f) => `<option value="f:${escapeHtml(f.uid)}">${escapeHtml(f.name)}</option>`), ...groups.map((g) => `<option value="g:${escapeHtml(g.id)}">${escapeHtml(g.name)} (${t("grupo", "group")})</option>`)];
+  // Lo que eligió el jugador se respeta; si no, va a quien da soporte (sale primero).
+  const picked = state.report?.picked;
+  $("#report-to").innerHTML = options.join("");
+  if (picked && $(`#report-to option[value="${CSS.escape(picked)}"]`)) $("#report-to").value = picked;
+  $("#report-to-box").classList.toggle("hidden", !connected || !options.length);
+  const hint = !connected
+    ? t("Inicia sesión con Google para mandarlo por chat. Mientras, puedes copiarlo y pegarlo donde quieras.", "Sign in with Google to send it by chat. Meanwhile, you can copy it and paste it anywhere.")
+    : !options.length
+      ? t("Agrega un amigo para mandárselo. Mientras, puedes copiarlo.", "Add a friend to send it to them. Meanwhile, you can copy it.")
+      : state.report?.to && !friends.some((f) => f.name.toLowerCase() === support)
+        ? t(`Los reportes los revisa ${state.report.to}: agrégalo en Amigos para mandárselo a él.`, `Reports are checked by ${state.report.to}: add them in Friends to send it to them.`)
+        : "";
+  $("#report-hint").textContent = hint;
+  $("#report-hint").classList.toggle("hidden", !hint);
+  $("#report-send").disabled = !connected || !options.length || !state.report?.text;
+}
+
+function reportMessage() {
+  const note = $("#report-note").value.trim();
+  return note ? `${note}\n\n${state.report.text}` : state.report.text;
+}
+
+async function sendReport() {
+  const target = $("#report-to").value;
+  if (!target || !state.report?.text) return;
+  $("#report-send").disabled = true;
+  try {
+    const chat = target.startsWith("f:") ? await invoke("chat_con_amigo", { uid: target.slice(2) }) : target.slice(2);
+    await invoke("enviar_mensaje", { chat, texto: reportMessage(), respuesta: null });
+    closeModal("#report-dialog");
+    toast(t("Reporte enviado. Gracias.", "Report sent. Thanks."));
+  } catch (error) {
+    toast(String(error), "error");
+    $("#report-send").disabled = false;
+  }
+}
+
+function wireReportEvents() {
+  $("#report-close").onclick = () => closeModal("#report-dialog");
+  $("#report-send").onclick = sendReport;
+  $("#report-to").onchange = () => state.report && (state.report.picked = $("#report-to").value);
+  $("#report-copy").onclick = () => state.report?.text && copyText(reportMessage(), t("Reporte copiado.", "Report copied."));
+  $("#about-report").onclick = () => {
+    closeModal("#settings-dialog");
+    openReport(null);
+  };
+  $("#doctor-report").onclick = () => {
+    const id = state.doctor?.id;
+    closeModal("#doctor-dialog");
+    openReport(id ?? null);
+  };
+}
+
+// ---------- Invitaciones que se mandan desde el juego ----------
+const INVITE_PREFIX = "parabellum:invitacion:";
+
+function parseInvite(text) {
+  if (!text?.startsWith(INVITE_PREFIX)) return null;
+  try {
+    const invite = JSON.parse(text.slice(INVITE_PREFIX.length));
+    return invite?.t ? invite : null;
+  } catch {
+    return null;
+  }
+}
+
+function inviteCardHtml(invite, m) {
+  const server = invite.t === "servidor";
+  const title = m.mine
+    ? server ? t(`Invitaste a ${invite.n}`, `You invited them to ${invite.n}`) : t("Invitaste a tu mundo", "You invited them to your world")
+    : server ? t(`Te invitó a ${invite.n}`, `Invited you to ${invite.n}`) : t("Te invitó a su mundo", "Invited you to their world");
+  return `<div class="invite-card"><span class="invite-icon">🎮</span><div class="grow"><b>${escapeHtml(title)}</b><span>${escapeHtml(invite.p ?? "")}</span></div>${
+    m.mine ? "" : `<button class="btn small" data-invite-join="${escapeHtml(m.id)}">${t("Unirse", "Join")}</button>`
+  }</div>`;
+}
+
+function joinInvite(id) {
+  const m = state.chatMessages?.find((x) => x.id === id);
+  const invite = m && parseInvite(m.text);
+  if (!invite) return;
+  if (invite.t === "servidor") {
+    const item = findActivity(`hosted:${m.from}:${invite.k}`);
+    if (item?.online) return joinActivity(item);
+    return toast(t(`${invite.n} no está encendido ahora.`, `${invite.n} is not on right now.`), "error");
+  }
+  const friend = findFriend(m.from);
+  if (friend?.worldOpen) return joinFriendWorld(friend);
+  toast(t(`${m.name} ya no tiene su mundo abierto.`, `${m.name} no longer has their world open.`), "error");
 }
 
 function startEditMessage(id) {
@@ -2320,11 +2654,11 @@ async function deleteMessage(id) {
 function messageMenu(anchor, id) {
   const m = state.chatMessages?.find((x) => x.id === id);
   if (!m) return;
-  const items = [];
-  if (m.text && !parseShare(m.text)) items.push({ icon: "copy", label: t("Copiar texto", "Copy text"), action: () => copyText(m.text, t("Texto copiado.", "Text copied.")) });
+  const items = [{ icon: "reply", label: t("Responder", "Reply"), action: () => startReply(id) }];
+  if (m.text && !parseShare(m.text) && !parseInvite(m.text)) items.push({ icon: "copy", label: t("Copiar texto", "Copy text"), action: () => copyText(m.text, t("Texto copiado.", "Text copied.")) });
   if (canEditMessage(m)) items.push({ icon: "pencil", label: t("Editar", "Edit"), action: () => startEditMessage(id) });
-  if (m.mine) items.push({ icon: "trash", label: t("Borrar", "Delete"), danger: true, separator: items.length > 0, action: () => deleteMessage(id) });
-  if (items.length) contextMenu(anchor, items);
+  if (m.mine) items.push({ icon: "trash", label: t("Borrar", "Delete"), danger: true, separator: true, action: () => deleteMessage(id) });
+  reactionPicker(anchor, id, items);
 }
 
 async function loadChatImages() {
@@ -2364,10 +2698,15 @@ async function sendChatText() {
   state.chatStick = true;
   input.value = "";
   autoGrow(input);
+  const reply = state.chatReply;
+  state.chatReply = null;
+  renderReplyBar();
   try {
-    await invoke("enviar_mensaje", { chat: state.chatOpen, texto: text });
+    await invoke("enviar_mensaje", { chat: state.chatOpen, texto: text, respuesta: reply?.id ?? null });
   } catch (error) {
     input.value = text;
+    state.chatReply = reply;
+    renderReplyBar();
     toast(String(error), "error");
   }
 }
@@ -2666,15 +3005,30 @@ async function messageFriend(uid) {
 function openGroupDialog(mode) {
   const chat = currentChat();
   state.groupDialog = mode;
+  state.groupPhoto = { data: mode === "edit" ? chat?.photo ?? null : null, changed: false };
   const inGroup = new Set(mode === "add" ? chat?.members.map((m) => m.uid) : []);
   const friends = (state.social?.friends?.friends ?? []).filter((f) => !inGroup.has(f.uid));
-  $("#group-title").textContent = mode === "add" ? t("Agregar amigos al grupo", "Add friends to the group") : mode === "rename" ? t("Cambiar nombre del grupo", "Rename the group") : t("Nuevo grupo", "New group");
-  $("#group-ok").textContent = mode === "add" ? t("Agregar", "Add") : mode === "rename" ? t("Guardar", "Save") : t("Crear grupo", "Create group");
-  $("#group-name-box").classList.toggle("hidden", mode === "add");
-  $("#group-friends").classList.toggle("hidden", mode === "rename");
-  $("#group-friends-label").classList.toggle("hidden", mode === "rename");
-  $("#group-name").value = mode === "rename" ? chat?.name ?? "" : "";
+  const [title, ok] = {
+    add: [t("Agregar amigos al grupo", "Add friends to the group"), t("Agregar", "Add")],
+    edit: [t("Editar grupo", "Edit group"), t("Guardar", "Save")],
+    members: [t("Miembros del grupo", "Group members"), t("Listo", "Done")],
+    create: [t("Nuevo grupo", "New group"), t("Crear grupo", "Create group")],
+  }[mode];
+  $("#group-title").textContent = title;
+  $("#group-ok").textContent = ok;
+  $("#group-cancel").classList.toggle("hidden", mode === "members");
+  $("#group-name-box").classList.toggle("hidden", mode === "add" || mode === "members");
+  $("#group-friends").classList.toggle("hidden", mode === "edit");
+  $("#group-friends-label").classList.toggle("hidden", mode === "edit");
+  $("#group-friends-label").textContent = mode === "members" ? t("Miembros", "Members") : t("Amigos", "Friends");
+  $("#group-name").value = mode === "edit" ? chat?.name ?? "" : "";
   $("#group-error").classList.add("hidden");
+  renderGroupPhoto();
+  if (mode === "members") {
+    renderGroupMembers();
+    openModal("#group-dialog");
+    return;
+  }
   $("#group-friends").innerHTML = friends.length
     ? friends
         .map(
@@ -2687,10 +3041,85 @@ function openGroupDialog(mode) {
   setTimeout(() => (mode === "add" ? null : $("#group-name").focus()), 60);
 }
 
+function renderGroupPhoto() {
+  const data = state.groupPhoto?.data;
+  const pick = $("#group-photo");
+  pick.classList.toggle("has-photo", !!data);
+  pick.style.backgroundImage = data ? `url("${data}")` : "";
+  pick.innerHTML = icon("camera");
+  $("#group-photo-remove").classList.toggle("hidden", !data);
+}
+
+/** La foto de un grupo: un cuadrado de 128 px del centro de la imagen, en JPEG (unos 10 KB). */
+async function reduceGroupPhoto(file) {
+  const image = await loadImageFile(file);
+  const size = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const side = Math.min(image.naturalWidth, image.naturalHeight);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, size, size);
+  ctx.drawImage(image, (image.naturalWidth - side) / 2, (image.naturalHeight - side) / 2, side, side, 0, 0, size, size);
+  for (const quality of [0.85, 0.72, 0.6, 0.45]) {
+    const data = canvas.toDataURL("image/jpeg", quality);
+    if (data.length <= 38000) return data;
+  }
+  throw new Error(t("No se pudo reducir la foto lo suficiente.", "The photo could not be shrunk enough."));
+}
+
+/** Los miembros, con el dueño primero. El dueño puede sacar a alguien o pasarle el grupo. */
+function renderGroupMembers() {
+  const chat = currentChat();
+  if (!chat) return;
+  const members = [...chat.members].sort((a, b) => (b.uid === chat.owner) - (a.uid === chat.owner) || b.you - a.you || a.name.localeCompare(b.name, "es", { sensitivity: "base" }));
+  const ownerName = chat.members.find((m) => m.uid === chat.owner)?.name;
+  $("#group-friends").innerHTML =
+    members
+      .map((m) => {
+        const owner = m.uid === chat.owner;
+        const tag = owner ? `<span class="owner-badge">${icon("crown")}${t("Creó el grupo", "Created the group")}</span>` : m.you ? `<span>${t("Tú", "You")}</span>` : "";
+        const actions =
+          chat.canEdit && !m.you
+            ? `<button class="circle-btn small" data-member-owner="${escapeHtml(m.uid)}" title="${t("Pasarle el grupo", "Hand the group over")}">${icon("crown")}</button>
+               <button class="circle-btn small" data-member-remove="${escapeHtml(m.uid)}" title="${t("Sacar del grupo", "Remove from the group")}">${icon("close")}</button>`
+            : "";
+        return `<div class="member-row"><canvas width="8" height="8" class="head" data-head="${escapeHtml(m.name)}"></canvas><div class="grow"><b>${escapeHtml(m.name)}${m.you && owner ? ` · ${t("tú", "you")}` : ""}</b>${tag}</div>${actions}</div>`;
+      })
+      .join("") +
+    (chat.canEdit
+      ? ""
+      : `<p class="muted small-text">${escapeHtml(ownerName ? t(`Solo ${ownerName} puede cambiar el nombre, la foto y los miembros.`, `Only ${ownerName} can change the name, the photo and the members.`) : "")}</p>`);
+  for (const canvas of $$("#group-friends canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
+}
+
+async function groupMemberAction(event) {
+  if (state.groupDialog !== "members") return;
+  const chat = currentChat();
+  const remove = event.target.closest("[data-member-remove]");
+  const owner = event.target.closest("[data-member-owner]");
+  const uid = remove?.dataset.memberRemove ?? owner?.dataset.memberOwner;
+  const member = chat?.members.find((m) => m.uid === uid);
+  if (!member) return;
+  const ok = await confirmAction(
+    remove
+      ? { title: t(`Sacar a ${member.name}`, `Remove ${member.name}`), text: t("Dejará de ver los mensajes del grupo. Puedes volver a agregarlo.", "They will stop seeing the group's messages. You can add them again."), ok: t("Sacar", "Remove") }
+      : { title: t(`Pasarle el grupo a ${member.name}`, `Hand the group over to ${member.name}`), text: t("Podrá cambiar el nombre, la foto y los miembros. Tú ya no.", "They will be able to change the name, the photo and the members. You will not."), ok: t("Pasárselo", "Hand it over") },
+  );
+  if (!ok) return;
+  try {
+    await invoke(remove ? "sacar_del_grupo" : "pasar_grupo", { chat: chat.id, uid });
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
 async function confirmGroupDialog() {
   const mode = state.groupDialog;
+  if (mode === "members") return closeModal("#group-dialog");
   const name = $("#group-name").value.trim();
   const picked = $$("#group-friends input:checked").map((i) => i.value);
+  const photo = state.groupPhoto ?? { data: null, changed: false };
   const fail = (text) => {
     $("#group-error").textContent = text;
     $("#group-error").classList.remove("hidden");
@@ -2699,7 +3128,7 @@ async function confirmGroupDialog() {
     if (mode === "create") {
       if (!name) return fail(t("Ponle un nombre al grupo.", "Give the group a name."));
       if (!picked.length) return fail(t("Elige al menos un amigo.", "Choose at least one friend."));
-      const id = await invoke("crear_grupo", { nombre: name, amigos: picked });
+      const id = await invoke("crear_grupo", { nombre: name, amigos: picked, foto: photo.data });
       closeModal("#group-dialog");
       openChat(id);
     } else if (mode === "add") {
@@ -2708,7 +3137,10 @@ async function confirmGroupDialog() {
       closeModal("#group-dialog");
     } else {
       if (!name) return fail(t("Ponle un nombre al grupo.", "Give the group a name."));
-      await invoke("renombrar_grupo", { chat: state.chatOpen, nombre: name });
+      const changed = name !== currentChat()?.name;
+      if (changed || photo.changed) {
+        await invoke("editar_grupo", { chat: state.chatOpen, nombre: changed ? name : null, foto: photo.changed ? photo.data : null, quitarFoto: photo.changed && !photo.data });
+      }
       closeModal("#group-dialog");
     }
   } catch (error) {
@@ -2719,14 +3151,35 @@ async function confirmGroupDialog() {
 function chatMenu(anchor) {
   const chat = currentChat();
   if (!chat) return;
-  const items =
-    chat.kind === "grupo"
-      ? [
-          { icon: "user-plus", label: t("Agregar amigos", "Add friends"), action: () => openGroupDialog("add") },
-          { icon: "brush", label: t("Cambiar nombre del grupo", "Rename the group"), action: () => openGroupDialog("rename") },
-          { icon: "close", label: t("Salir del grupo", "Leave the group"), danger: true, separator: true, action: () => leaveChat(chat, t("Salir del grupo", "Leave the group"), t("Dejarás de ver sus mensajes. Alguien del grupo puede volver a agregarte.", "You will stop seeing its messages. Someone in the group can add you again.")) },
-        ]
-      : [{ icon: "close", label: t("Ocultar conversación", "Hide conversation"), action: () => leaveChat(chat, t("Ocultar conversación", "Hide conversation"), t("Desaparece de tu lista; vuelve si te escribe de nuevo.", "It disappears from your list; it comes back if they write to you again.")) }];
+  let items;
+  if (chat.kind === "grupo") {
+    const owner = chat.owner && chat.members.find((m) => m.uid === chat.owner && m.you);
+    items = [
+      ...(chat.canEdit
+        ? [
+            { icon: "pencil", label: t("Editar grupo", "Edit group"), action: () => openGroupDialog("edit") },
+            { icon: "user-plus", label: t("Agregar amigos", "Add friends"), action: () => openGroupDialog("add") },
+          ]
+        : []),
+      { icon: "users", label: t("Miembros", "Members"), action: () => openGroupDialog("members") },
+      {
+        icon: "close",
+        label: t("Salir del grupo", "Leave the group"),
+        danger: true,
+        separator: true,
+        action: () =>
+          leaveChat(
+            chat,
+            t("Salir del grupo", "Leave the group"),
+            owner
+              ? t("Dejarás de ver sus mensajes y el grupo pasará a otro miembro.", "You will stop seeing its messages and the group will pass to another member.")
+              : t("Dejarás de ver sus mensajes. Quien creó el grupo puede volver a agregarte.", "You will stop seeing its messages. Whoever created the group can add you again."),
+          ),
+      },
+    ];
+  } else {
+    items = [{ icon: "close", label: t("Ocultar conversación", "Hide conversation"), action: () => leaveChat(chat, t("Ocultar conversación", "Hide conversation"), t("Desaparece de tu lista; vuelve si te escribe de nuevo.", "It disappears from your list; it comes back if they write to you again.")) }];
+  }
   contextMenu(anchor, items);
 }
 
@@ -2763,6 +3216,10 @@ function wireChatEvents() {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       sendChatText();
+    } else if (event.key === "Escape" && state.chatReply) {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelReply();
     } else if (event.key === "ArrowUp" && !event.target.value) {
       // Como en Discord: flecha arriba con la caja vacía edita tu último mensaje.
       const last = [...(state.chatMessages ?? [])].reverse().find((m) => m.mine);
@@ -2827,6 +3284,16 @@ function wireChatEvents() {
     messageMenu(row.querySelector(".bubble"), row.dataset.msg);
   });
   $("#chat-messages").onclick = (event) => {
+    const reaction = event.target.closest("[data-reaction]");
+    if (reaction) return void react(reaction.dataset.reaction, reaction.dataset.emoji);
+    const reactTool = event.target.closest("[data-msg-react]");
+    if (reactTool) return void reactionPicker(reactTool, reactTool.dataset.msgReact);
+    const reply = event.target.closest("[data-msg-reply]");
+    if (reply) return void startReply(reply.dataset.msgReply);
+    const quote = event.target.closest("[data-quote]");
+    if (quote) return void showQuoted(quote.dataset.quote);
+    const inviteJoin = event.target.closest("[data-invite-join]");
+    if (inviteJoin) return void joinInvite(inviteJoin.dataset.inviteJoin);
     const edit = event.target.closest("[data-msg-edit]");
     if (edit) return void startEditMessage(edit.dataset.msgEdit);
     const remove = event.target.closest("[data-msg-delete]");
@@ -2842,8 +3309,27 @@ function wireChatEvents() {
     $("#lightbox").classList.remove("hidden");
   };
   $("#chat-more").onclick = (event) => chatMenu(event.currentTarget);
+  $("#chat-avatar").onclick = () => currentChat()?.kind === "grupo" && openGroupDialog("members");
   $("#chat-new-group").onclick = () => openGroupDialog("create");
   $("#group-ok").onclick = confirmGroupDialog;
+  $("#group-friends").addEventListener("click", groupMemberAction);
+  $("#group-photo").onclick = () => $("#group-photo-file").click();
+  $("#group-photo-file").onchange = async () => {
+    const file = $("#group-photo-file").files[0];
+    $("#group-photo-file").value = "";
+    if (!file) return;
+    try {
+      state.groupPhoto = { data: await reduceGroupPhoto(file), changed: true };
+      renderGroupPhoto();
+    } catch (error) {
+      $("#group-error").textContent = String(error?.message ?? error);
+      $("#group-error").classList.remove("hidden");
+    }
+  };
+  $("#group-photo-remove").onclick = () => {
+    state.groupPhoto = { data: null, changed: true };
+    renderGroupPhoto();
+  };
   $("#group-cancel").onclick = () => closeModal("#group-dialog");
   $("#group-name").addEventListener("keydown", (event) => {
     if (event.key === "Enter") confirmGroupDialog();
@@ -2855,6 +3341,8 @@ function wireChatEvents() {
     if (state.chatOpen && !payload.some((c) => c.id === state.chatOpen) && state.pendingChat?.id !== state.chatOpen) closeChat();
     if (state.page === "chat") renderChatList();
     else updateChatBadge();
+    // Con la lista de miembros abierta: alguien entró, salió o cambió el dueño.
+    if (state.groupDialog === "members" && !$("#group-dialog").classList.contains("hidden")) renderGroupMembers();
   });
   // Favoritos que llegan de la cuenta de Google (cambiados en otro PC).
   listen("favoritos", ({ payload }) => {
@@ -3871,6 +4359,7 @@ function wireEvents() {
   wireDriveEvents();
   wireFriendsEvents();
   wireChatEvents();
+  wireReportEvents();
   listen("juego-cerrado", ({ payload }) => onGameClosed(payload));
   // Arrastrar archivos a la ventana: se agregan a la instancia abierta.
   // Fuera de una instancia (o con un .mrpack) lo que se suelta se instala como modpack.
@@ -5608,17 +6097,19 @@ function demoInvoke(command, args = {}) {
   if (command === "chats") {
     const now = Date.now();
     return soon([
-      { id: "d_a_f1", kind: "directo", name: "Hawntd", members: [{ uid: "me", name: "GxxseS" }, { uid: "f1", name: "Hawntd" }], lastText: "¿Abres tu mundo? Ya tengo el modpack", lastName: "Hawntd", lastAt: now - 120e3, unread: true },
-      { id: "g_demo", kind: "grupo", name: "Los del salón", members: [{ uid: "me", name: "GxxseS" }, { uid: "f2", name: "Alex_mx" }, { uid: "f3", name: "Dani" }], lastText: "📷 Imagen", lastName: "Dani", lastAt: now - 3600e3, unread: false },
+      { id: "d_a_f1", kind: "directo", name: "Hawntd", members: [{ uid: "me", name: "GxxseS", you: true }, { uid: "f1", name: "Hawntd", you: false }], lastText: "¿Abres tu mundo? Ya tengo el modpack", lastName: "Hawntd", lastAt: now - 120e3, unread: true, owner: null, photo: null, canEdit: false },
+      { id: "g_demo", kind: "grupo", name: "Los del salón", members: [{ uid: "me", name: "GxxseS", you: true }, { uid: "f2", name: "Alex_mx", you: false }, { uid: "f3", name: "Dani", you: false }], lastText: "📷 Imagen", lastName: "Dani", lastAt: now - 3600e3, unread: false, owner: "me", photo: null, canEdit: true },
+      { id: "g_demo2", kind: "grupo", name: "Los panas", members: [{ uid: "me", name: "GxxseS", you: true }, { uid: "f1", name: "Hawntd", you: false }], lastText: "", lastName: "", lastAt: now - 86400e3, unread: false, owner: "f1", photo: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#2f9e6e"/><circle cx="32" cy="28" r="14" fill="#fff"/></svg>')}`, canEdit: false },
     ]);
   }
   if (command === "abrir_chat") {
     const now = Date.now();
     const messages = args.chat === "g_demo"
       ? [
-          { id: "1", from: "f2", name: "Alex_mx", text: "¿Quién juega hoy en la tarde?", at: now - 7200e3, mine: false, image: false },
-          { id: "2", from: "me", name: "GxxseS", text: "Yo, a las 5 abro mi mundo de Better MC", at: now - 7000e3, mine: true, image: false },
-          { id: "3", from: "f3", name: "Dani", text: null, image: true, width: 640, height: 360, at: now - 3600e3, mine: false },
+          { id: "1", from: "f2", name: "Alex_mx", text: "¿Quién juega hoy en la tarde?", at: now - 7200e3, mine: false, image: false, reactions: [{ emoji: "👍", count: 2, mine: true, names: ["GxxseS", "Dani"] }] },
+          { id: "2", from: "me", name: "GxxseS", text: "Yo, a las 5 abro mi mundo de Better MC", at: now - 7000e3, mine: true, image: false, reply: { id: "1", name: "Alex_mx", text: "¿Quién juega hoy en la tarde?" }, reactions: [{ emoji: "🔥", count: 1, mine: false, names: ["Alex_mx"] }, { emoji: "😂", count: 1, mine: false, names: ["Dani"] }] },
+          { id: "3", from: "f3", name: "Dani", text: null, image: true, width: 640, height: 360, at: now - 3600e3, mine: false, reactions: [] },
+          { id: "4", from: "f2", name: "Alex_mx", text: 'parabellum:invitacion:{"t":"servidor","n":"SESE","p":"Better MC [FORGE] - BMC4","k":"s0123456789ab"}', at: now - 1800e3, mine: false, image: false, reactions: [] },
         ]
       : [
           { id: "1", from: "f1", name: "Hawntd", text: "Oye, ¿ya instalaste Minecraft++?", at: now - 600e3, mine: false, image: false },
@@ -5629,7 +6120,12 @@ function demoInvoke(command, args = {}) {
     return soon(null);
   }
   if (command === "imagen_chat") return soon(`data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#6d4bd8"/><text x="320" y="190" font-size="40" text-anchor="middle" fill="white">Captura</text></svg>')}`);
-  if (["cerrar_chat", "marcar_leido", "enviar_mensaje", "enviar_imagen", "salir_del_chat", "agregar_al_grupo", "renombrar_grupo"].includes(command)) return soon(null);
+  if (["cerrar_chat", "marcar_leido", "enviar_mensaje", "enviar_imagen", "salir_del_chat", "agregar_al_grupo", "renombrar_grupo", "reaccionar", "editar_grupo", "sacar_del_grupo", "pasar_grupo"].includes(command)) return soon(null);
+  if (command === "invitar_amigo") return soon("Invitaste a tu amigo.");
+  if (command === "reporte_problema") {
+    const text = ["🛠 Parabellum 0.27.0 · Windows (x86_64) · 16 GB de RAM", "Instancia: Better MC BMC4 · Minecraft 1.20.1 · Forge 47.4.20 · 6 GB", "Se abrió hace 5 min", "Error:", "Rendering overlay", "java.lang.NullPointerException", "P2P:", "19:38:00 David se conectó: directo (36 ms)"];
+    return soon({ text: text.join("\n"), to: "Hawntd" });
+  }
   if (command === "chat_con_amigo") return soon("d_a_f1");
   if (command === "crear_grupo") return soon("g_demo");
   if (command === "agregar_amigo") return soon(`Solicitud enviada a ${args.nombre}. Aparecerá en tu lista cuando la acepte.`);

@@ -85,31 +85,46 @@
         ".read": "auth != null && data.child('members').child(auth.uid).val() === true",
         "members": {
           "$member": {
-            ".write": "auth != null && ((!newData.exists() && $member === auth.uid) || (newData.val() === true && ($member === auth.uid || root.child('friends').child(auth.uid).child($member).val() === true) && (!data.parent().exists() || data.parent().child(auth.uid).val() === true)))",
+            ".write": "auth != null && ((!newData.exists() && ($member === auth.uid || root.child('chats').child($chat).child('meta').child('owner').val() === auth.uid)) || (newData.val() === true && ($member === auth.uid || root.child('friends').child(auth.uid).child($member).val() === true) && (!data.parent().exists() || data.parent().child(auth.uid).val() === true) && ($member === auth.uid || (!root.child('chats').child($chat).child('meta').child('owner').exists() || root.child('chats').child($chat).child('meta').child('owner').val() === auth.uid || root.child('chats').child($chat).child('members').child(root.child('chats').child($chat).child('meta').child('owner').val()).val() !== true))))",
             ".validate": "newData.val() === true"
           }
         },
         "meta": {
-          ".write": "auth != null && newData.parent().child('members').child(auth.uid).val() === true",
+          ".write": "auth != null && !data.exists() && newData.parent().child('members').child(auth.uid).val() === true",
           "kind": {
+            ".write": "auth != null && newData.parent().parent().child('members').child(auth.uid).val() === true",
             ".validate": "newData.val() === 'directo' || newData.val() === 'grupo'"
           },
           "name": {
+            ".write": "auth != null && newData.parent().parent().child('members').child(auth.uid).val() === true && (!root.child('chats').child($chat).child('meta').child('owner').exists() || root.child('chats').child($chat).child('meta').child('owner').val() === auth.uid || root.child('chats').child($chat).child('members').child(root.child('chats').child($chat).child('meta').child('owner').val()).val() !== true)",
             ".validate": "newData.isString() && newData.val().length <= 40"
           },
+          "photo": {
+            ".write": "auth != null && newData.parent().parent().child('members').child(auth.uid).val() === true && (!root.child('chats').child($chat).child('meta').child('owner').exists() || root.child('chats').child($chat).child('meta').child('owner').val() === auth.uid || root.child('chats').child($chat).child('members').child(root.child('chats').child($chat).child('meta').child('owner').val()).val() !== true)",
+            ".validate": "newData.isString() && newData.val().length <= 40000 && newData.val().beginsWith('data:image/')"
+          },
+          "owner": {
+            ".write": "auth != null && root.child('chats').child($chat).child('members').child(auth.uid).val() === true && (data.val() === auth.uid || (newData.val() === auth.uid && (!root.child('chats').child($chat).child('meta').child('owner').exists() || root.child('chats').child($chat).child('meta').child('owner').val() === auth.uid || root.child('chats').child($chat).child('members').child(root.child('chats').child($chat).child('meta').child('owner').val()).val() !== true)))",
+            ".validate": "newData.isString() && newData.parent().parent().child('members').child(newData.val()).val() === true"
+          },
           "created": {
+            ".write": "auth != null && newData.parent().parent().child('members').child(auth.uid).val() === true",
             ".validate": "newData.isNumber()"
           },
           "lastText": {
+            ".write": "auth != null && newData.parent().parent().child('members').child(auth.uid).val() === true",
             ".validate": "newData.isString() && newData.val().length <= 200"
           },
           "lastName": {
+            ".write": "auth != null && newData.parent().parent().child('members').child(auth.uid).val() === true",
             ".validate": "newData.isString() && newData.val().length <= 16"
           },
           "lastUid": {
+            ".write": "auth != null && newData.parent().parent().child('members').child(auth.uid).val() === true",
             ".validate": "newData.isString() && newData.val().length <= 128"
           },
           "lastAt": {
+            ".write": "auth != null && newData.parent().parent().child('members').child(auth.uid).val() === true",
             ".validate": "newData.isNumber()"
           },
           "$other": {
@@ -151,8 +166,35 @@
           "edited": {
             ".validate": "newData.isNumber()"
           },
+          "reply": {
+            ".validate": "newData.hasChildren(['id', 'name', 'text'])",
+            "id": {
+              ".validate": "newData.isString() && newData.val().length <= 40"
+            },
+            "name": {
+              ".validate": "newData.isString() && newData.val().length <= 16"
+            },
+            "text": {
+              ".validate": "newData.isString() && newData.val().length <= 200"
+            },
+            "$other": {
+              ".validate": false
+            }
+          },
           "$other": {
             ".validate": false
+          }
+        }
+      }
+    },
+    "reactions": {
+      "$chat": {
+        ".read": "auth != null && root.child('chats').child($chat).child('members').child(auth.uid).val() === true",
+        "$msg": {
+          ".write": "auth != null && !newData.exists() && root.child('messages').child($chat).child($msg).child('from').val() === auth.uid",
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && root.child('chats').child($chat).child('members').child(auth.uid).val() === true",
+            ".validate": "newData.isString() && newData.val().length <= 16 && root.child('messages').child($chat).child($msg).exists()"
           }
         }
       }
@@ -170,7 +212,7 @@
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
         "$chat": {
-          ".write": "auth != null && (auth.uid === $uid || (newData.parent().parent().parent().child('chats').child($chat).child('members').child(auth.uid).val() === true && newData.parent().parent().parent().child('chats').child($chat).child('members').child($uid).val() === true))",
+          ".write": "auth != null && (auth.uid === $uid || (newData.val() === true && newData.parent().parent().parent().child('chats').child($chat).child('members').child(auth.uid).val() === true && newData.parent().parent().parent().child('chats').child($chat).child('members').child($uid).val() === true) || (!newData.exists() && root.child('chats').child($chat).child('meta').child('owner').val() === auth.uid && newData.parent().parent().parent().child('chats').child($chat).child('members').child($uid).val() !== true))",
           ".validate": "newData.val() === true"
         }
       }

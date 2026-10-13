@@ -1,8 +1,13 @@
 //! Chat con amigos y grupos sobre la misma Realtime Database (reglas en firebase-reglas.json):
 //!   chats/{chat}/members/{uid} = true       (directo: "d_{uid}_{uid}" ordenados; grupo: "g_…")
-//!   chats/{chat}/meta = { kind, name, created, lastText, lastName, lastUid, lastAt }
-//!   messages/{chat}/{mensaje} = { from, name, text | image, w, h, at, edited }
-//!                                            (quien lo mandó puede editar el texto o borrarlo)
+//!   chats/{chat}/meta = { kind, name, created, lastText, lastName, lastUid, lastAt, owner, photo }
+//!                                            (grupos: solo el dueño cambia nombre, foto y miembros;
+//!                                            los de antes de la 0.27 no tienen dueño hasta que alguien
+//!                                            los edita)
+//!   messages/{chat}/{mensaje} = { from, name, text | image, w, h, at, edited, reply }
+//!                                            (quien lo mandó puede editar el texto o borrarlo; reply es
+//!                                            una copia corta del mensaje al que responde)
+//!   reactions/{chat}/{mensaje}/{uid} = "👍"  (una por persona y mensaje)
 //!   images/{chat}/{mensaje} = "data:image/jpeg;base64,…"   (aparte: la lista de mensajes es ligera)
 //!   userChats/{uid}/{chat} = true            (las conversaciones de cada jugador)
 //!   reads/{uid}/{chat} = hora de la última lectura
@@ -20,11 +25,17 @@ use crate::firebase::{self, Database, Listener};
 const HISTORY: usize = 150;
 pub const MAX_TEXT: usize = 2000;
 pub const MAX_IMAGE: usize = 450_000;
+/// La foto de un grupo (ya reducida por la interfaz a 128 px).
+pub const MAX_PHOTO: usize = 40_000;
+/// Las reacciones que se pueden poner, en el orden en que se muestran.
+pub const REACTIONS: [&str; 6] = ["👍", "❤️", "😂", "😮", "😢", "🔥"];
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Member {
     pub uid: String,
     pub name: String,
+    /// Eres tú.
+    pub you: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -40,6 +51,30 @@ pub struct Summary {
     pub last_name: String,
     pub last_at: i64,
     pub unread: bool,
+    /// Grupos: quien lo creó (o a quien se lo pasaron). None en los de antes de la 0.27.
+    pub owner: Option<String>,
+    /// Grupos: su foto, como "data:image/jpeg;base64,…".
+    pub photo: Option<String>,
+    /// Puedes cambiar nombre, foto y miembros (eres el dueño, o el grupo todavía no tiene).
+    pub can_edit: bool,
+}
+
+/// El mensaje al que responde otro: una copia corta (el original puede borrarse).
+#[derive(Clone, Debug, Serialize)]
+pub struct Reply {
+    pub id: String,
+    pub name: String,
+    pub text: String,
+}
+
+/// Las reacciones de un mensaje con el mismo emoji.
+#[derive(Clone, Debug, Serialize)]
+pub struct Reaction {
+    pub emoji: String,
+    pub count: usize,
+    /// Una es tuya.
+    pub mine: bool,
+    pub names: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -56,6 +91,8 @@ pub struct Message {
     pub mine: bool,
     /// Se cambió el texto después de mandarlo.
     pub edited: bool,
+    pub reply: Option<Reply>,
+    pub reactions: Vec<Reaction>,
 }
 
 #[derive(Default)]
@@ -66,11 +103,18 @@ struct Inner {
     reads: HashMap<String, i64>,
     names: HashMap<String, String>,
     asked_names: HashSet<String>,
-    /// La conversación abierta en la ventana y sus mensajes.
-    open: Option<(String, Listener)>,
+    /// La conversación abierta en la ventana, sus mensajes y sus reacciones.
+    open: Option<Open>,
     messages: Value,
+    reactions: Value,
     /// Último mensaje conocido de cada chat (para avisar solo de lo nuevo).
     last_seen: HashMap<String, i64>,
+}
+
+struct Open {
+    id: String,
+    _messages: Listener,
+    _reactions: Listener,
 }
 
 type Notify = Box<dyn Fn() + Send + Sync>;
@@ -117,6 +161,17 @@ fn safe(id: &str) -> Result<&str, String> {
     } else {
         Err(t!("Conversación no válida.", "Invalid conversation."))
     }
+}
+
+/// La foto de un grupo: una imagen ya reducida, como data URL.
+fn check_photo(photo: &str) -> Result<(), String> {
+    if !photo.starts_with("data:image/") || !photo.contains(";base64,") {
+        return Err(t!("La foto no es válida.", "The photo is not valid."));
+    }
+    if photo.len() > MAX_PHOTO {
+        return Err(t!("La foto pesa demasiado incluso reducida.", "The photo is too large even after shrinking it."));
+    }
+    Ok(())
 }
 
 fn preview(text: &str) -> String {
@@ -267,7 +322,7 @@ impl Chat {
             .map(|m| {
                 m.iter()
                     .filter(|(_, v)| v.as_bool() == Some(true))
-                    .map(|(uid, _)| Member { uid: uid.clone(), name: inner.names.get(uid).cloned().unwrap_or_else(|| "…".into()) })
+                    .map(|(uid, _)| Member { uid: uid.clone(), name: inner.names.get(uid).cloned().unwrap_or_else(|| "…".into()), you: *uid == self.uid })
                     .collect()
             })
             .unwrap_or_default();
@@ -280,6 +335,10 @@ impl Chat {
         let last_at = meta["lastAt"].as_i64().unwrap_or(0);
         let last_uid = meta["lastUid"].as_str().unwrap_or_default();
         let read = inner.reads.get(id).copied().unwrap_or(0);
+        // Si el dueño ya no está en el grupo, es como si no tuviera (cualquiera puede tomarlo).
+        let owner = meta["owner"].as_str().filter(|o| members.iter().any(|m| m.uid == *o)).map(String::from);
+        let can_edit = kind == "grupo" && owner.as_deref().is_none_or(|o| o == self.uid);
+        let photo = meta["photo"].as_str().filter(|p| p.starts_with("data:image/")).map(String::from);
         Summary {
             id: id.to_string(),
             kind,
@@ -289,6 +348,9 @@ impl Chat {
             last_name: meta["lastName"].as_str().unwrap_or_default().to_string(),
             last_at,
             unread: !last_uid.is_empty() && last_uid != self.uid && last_at > read,
+            owner,
+            photo,
+            can_edit,
         }
     }
 
@@ -307,7 +369,7 @@ impl Chat {
     }
 
     pub fn open_chat(&self) -> Option<String> {
-        self.inner.lock().unwrap().open.as_ref().map(|(id, _)| id.clone())
+        self.inner.lock().unwrap().open.as_ref().map(|o| o.id.clone())
     }
 
     // ================= Conversación abierta
@@ -319,26 +381,34 @@ impl Chat {
             self.emit_messages();
             return Ok(());
         }
-        let weak = Arc::downgrade(self);
-        let chat_id = id.clone();
-        let listener = self.db.listen(
-            format!("messages/{id}?orderBy=\"$key\"&limitToLast={HISTORY}"),
-            move |data| {
-                if let Some(chat) = weak.upgrade() {
-                    {
-                        let mut inner = chat.inner.lock().unwrap();
-                        if inner.open.as_ref().is_some_and(|(open, _)| *open == chat_id) {
-                            inner.messages = data;
+        let listen = |path: String, reactions: bool| {
+            let weak = Arc::downgrade(self);
+            let chat_id = id.clone();
+            self.db.listen(
+                format!("{path}/{id}?orderBy=\"$key\"&limitToLast={HISTORY}"),
+                move |data| {
+                    if let Some(chat) = weak.upgrade() {
+                        {
+                            let mut inner = chat.inner.lock().unwrap();
+                            if inner.open.as_ref().is_some_and(|o| o.id == chat_id) {
+                                if reactions {
+                                    inner.reactions = data;
+                                } else {
+                                    inner.messages = data;
+                                }
+                            }
                         }
+                        chat.emit_messages();
                     }
-                    chat.emit_messages();
-                }
-            },
-            |_| {},
-        );
+                },
+                |_| {},
+            )
+        };
+        let open = Open { _messages: listen("messages".into(), false), _reactions: listen("reactions".into(), true), id };
         let mut inner = self.inner.lock().unwrap();
         inner.messages = Value::Null;
-        inner.open = Some((id, listener));
+        inner.reactions = Value::Null;
+        inner.open = Some(open);
         Ok(())
     }
 
@@ -346,10 +416,30 @@ impl Chat {
         let mut inner = self.inner.lock().unwrap();
         inner.open = None;
         inner.messages = Value::Null;
+        inner.reactions = Value::Null;
     }
 
-    /// Los mensajes de una conversación tal como llegan de Firebase, en orden.
-    fn parse_messages(&self, data: &Value) -> Vec<Message> {
+    /// Las reacciones de un mensaje ({uid: emoji}), juntas por emoji y en el orden de REACTIONS.
+    fn parse_reactions(&self, data: &Value, names: &HashMap<String, String>) -> Vec<Reaction> {
+        let mut list: Vec<Reaction> = Vec::new();
+        for (uid, emoji) in data.as_object().into_iter().flatten() {
+            let Some(emoji) = emoji.as_str().filter(|e| !e.is_empty()) else { continue };
+            let name = names.get(uid).cloned().unwrap_or_else(|| "…".into());
+            match list.iter_mut().find(|r| r.emoji == emoji) {
+                Some(reaction) => {
+                    reaction.count += 1;
+                    reaction.mine |= *uid == self.uid;
+                    reaction.names.push(name);
+                }
+                None => list.push(Reaction { emoji: emoji.to_string(), count: 1, mine: *uid == self.uid, names: vec![name] }),
+            }
+        }
+        list.sort_by_key(|r| REACTIONS.iter().position(|e| *e == r.emoji).unwrap_or(REACTIONS.len()));
+        list
+    }
+
+    /// Los mensajes de una conversación tal como llegan de Firebase, en orden, con sus reacciones.
+    fn parse_messages(&self, data: &Value, reactions: &Value, names: &HashMap<String, String>) -> Vec<Message> {
         let mut list: Vec<Message> = data
                 .as_object()
                 .map(|o| {
@@ -366,6 +456,12 @@ impl Chat {
                             at: m["at"].as_i64().unwrap_or(0),
                             mine: m["from"].as_str() == Some(self.uid.as_str()),
                             edited: m["edited"].is_number(),
+                            reply: m["reply"]["id"].as_str().map(|id| Reply {
+                                id: id.to_string(),
+                                name: m["reply"]["name"].as_str().unwrap_or("?").to_string(),
+                                text: m["reply"]["text"].as_str().unwrap_or_default().to_string(),
+                            }),
+                            reactions: self.parse_reactions(&reactions[key.as_str()], names),
                         })
                         .collect()
                 })
@@ -379,8 +475,8 @@ impl Chat {
     fn emit_messages(&self) {
         let (id, list) = {
             let inner = self.inner.lock().unwrap();
-            let Some((id, _)) = &inner.open else { return };
-            (id.clone(), self.parse_messages(&inner.messages))
+            let Some(open) = &inner.open else { return };
+            (open.id.clone(), self.parse_messages(&inner.messages, &inner.reactions, &inner.names))
         };
         (self.messages)(id, list);
     }
@@ -393,7 +489,7 @@ impl Chat {
             format!("messages/{id}?orderBy=\"$key\"&limitToLast={HISTORY}"),
             move |data| {
                 if let Some(chat) = weak.upgrade() {
-                    on_messages(chat.parse_messages(&data));
+                    on_messages(chat.parse_messages(&data, &Value::Null, &HashMap::new()));
                 }
             },
             |_| {},
@@ -431,7 +527,8 @@ impl Chat {
         Ok(())
     }
 
-    pub async fn send_text(&self, id: &str, text: &str) -> Result<(), String> {
+    /// `reply_to`: el mensaje al que responde (de la misma conversación).
+    pub async fn send_text(&self, id: &str, text: &str, reply_to: Option<&str>) -> Result<(), String> {
         let text = text.trim();
         if text.is_empty() {
             return Ok(());
@@ -440,8 +537,30 @@ impl Chat {
             return Err(t!("El mensaje es muy largo (máximo {MAX_TEXT} letras).", "The message is too long (maximum {MAX_TEXT} characters)."));
         }
         let name = self.my_name.lock().unwrap().clone();
-        let message = json!({ "from": self.uid, "name": name, "text": text, "at": firebase::server_timestamp() });
+        let mut message = json!({ "from": self.uid, "name": name, "text": text, "at": firebase::server_timestamp() });
+        if let Some(original) = reply_to {
+            message["reply"] = self.quote(safe(id)?, safe(original)?).await?;
+        }
         self.send(id, &message_id(self.db.server_now()), message, &preview(text), Map::new()).await
+    }
+
+    /// La copia corta de un mensaje para responderle: quién lo mandó y su vista previa.
+    async fn quote(&self, id: &str, message: &str) -> Result<Value, String> {
+        let original = self.recent(id).await.get(message).filter(|m| m.is_object()).cloned().ok_or(t!("El mensaje al que respondes ya no está.", "The message you are replying to is no longer there."))?;
+        let name: String = original["name"].as_str().unwrap_or("?").chars().take(16).collect();
+        Ok(json!({ "id": message, "name": name, "text": Self::preview_of(&original) }))
+    }
+
+    /// Pone (o quita, con None) tu reacción a un mensaje. Una por persona: otra la reemplaza.
+    pub async fn react(&self, id: &str, message: &str, emoji: Option<&str>) -> Result<(), String> {
+        let (id, message) = (safe(id)?, safe(message)?);
+        let path = format!("reactions/{id}/{message}/{}", self.uid);
+        match emoji {
+            Some(emoji) if REACTIONS.contains(&emoji) => self.db.put(&path, &json!(emoji)).await.map(|_| ()),
+            Some(_) => return Err(t!("Esa reacción no está disponible.", "That reaction is not available.")),
+            None => self.db.delete(&path).await,
+        }
+        .map_err(|e| e.to_string())
     }
 
     /// Una instancia compartida (su receta, ver compartir.rs). En la lista de conversaciones se ve
@@ -499,7 +618,7 @@ impl Chat {
     async fn recent(&self, id: &str) -> Value {
         {
             let inner = self.inner.lock().unwrap();
-            if inner.open.as_ref().is_some_and(|(open, _)| open == id) {
+            if inner.open.as_ref().is_some_and(|o| o.id == id) {
                 return inner.messages.clone();
             }
         }
@@ -533,6 +652,7 @@ impl Chat {
             let text = message["text"].as_str().unwrap_or_default();
             match crate::compartir::decode(text) {
                 Some(recipe) => preview(&format!("📦 {}", recipe.name)),
+                None if text.starts_with(crate::puente::INVITE_PREFIX) => "🎮 Invitación".into(),
                 None => preview(text),
             }
         }
@@ -550,8 +670,8 @@ impl Chat {
         }
         let mut data = self.own_message(id, message).await?;
         let old = data["text"].as_str().ok_or(t!("Las imágenes no se editan.", "Images cannot be edited."))?;
-        if crate::compartir::decode(old).is_some() {
-            return Err(t!("Las instancias compartidas no se editan.", "Shared instances cannot be edited."));
+        if crate::compartir::decode(old).is_some() || old.starts_with(crate::puente::INVITE_PREFIX) {
+            return Err(t!("Las instancias compartidas y las invitaciones no se editan.", "Shared instances and invites cannot be edited."));
         }
         if old == text {
             return Ok(());
@@ -574,6 +694,13 @@ impl Chat {
         update.insert(format!("messages/{id}/{message}"), Value::Null);
         if data["image"].as_bool() == Some(true) {
             update.insert(format!("images/{id}/{message}"), Value::Null);
+        }
+        let reacted = {
+            let inner = self.inner.lock().unwrap();
+            inner.open.as_ref().is_none_or(|o| o.id != id) || inner.reactions.get(message).is_some_and(|r| r.is_object())
+        };
+        if reacted {
+            update.insert(format!("reactions/{id}/{message}"), Value::Null);
         }
         if let Some(previous) = self.is_last(id, message).await {
             let (text, name, uid) = if previous.is_object() {
@@ -608,13 +735,16 @@ impl Chat {
         Ok(id)
     }
 
-    pub async fn create_group(&self, name: &str, friends: &[String]) -> Result<String, String> {
+    pub async fn create_group(&self, name: &str, friends: &[String], photo: Option<&str>) -> Result<String, String> {
         let name = name.trim();
         if name.is_empty() || name.chars().count() > 40 {
             return Err(t!("El nombre del grupo debe tener de 1 a 40 letras.", "The group name must have 1 to 40 characters."));
         }
         if friends.is_empty() {
             return Err(t!("Elige al menos un amigo.", "Choose at least one friend."));
+        }
+        if let Some(photo) = photo {
+            check_photo(photo)?;
         }
         let id = format!("g_{}", random_text(16));
         let mut update = Map::new();
@@ -624,17 +754,33 @@ impl Chat {
             update.insert(format!("chats/{id}/members/{uid}"), json!(true));
             update.insert(format!("userChats/{uid}/{id}"), json!(true));
         }
-        update.insert(
-            format!("chats/{id}/meta"),
-            json!({ "kind": "grupo", "name": name, "created": firebase::server_timestamp(), "lastText": "", "lastName": "", "lastUid": "", "lastAt": firebase::server_timestamp() }),
-        );
+        let mut meta = json!({ "kind": "grupo", "name": name, "owner": me, "created": firebase::server_timestamp(), "lastText": "", "lastName": "", "lastUid": "", "lastAt": firebase::server_timestamp() });
+        if let Some(photo) = photo {
+            meta["photo"] = json!(photo);
+        }
+        update.insert(format!("chats/{id}/meta"), meta);
         self.db.patch("", &Value::Object(update)).await.map_err(|e| e.to_string())?;
         Ok(id)
+    }
+
+    /// Un grupo que puedes editar. Si todavía no tiene dueño (de antes de la 0.27), quien lo edita
+    /// queda como dueño: se agrega a `update`.
+    fn editable(&self, id: &str, update: &mut Map<String, Value>) -> Result<Summary, String> {
+        let group = self.summary(id).filter(|s| s.kind == "grupo").ok_or(t!("Ese grupo ya no está.", "That group is no longer there."))?;
+        if !group.can_edit {
+            let owner = group.members.iter().find(|m| Some(&m.uid) == group.owner.as_ref()).map(|m| m.name.clone()).unwrap_or_default();
+            return Err(t!("Solo {owner}, quien creó el grupo, puede cambiarlo.", "Only {owner}, who created the group, can change it."));
+        }
+        if group.owner.is_none() {
+            update.insert(format!("chats/{id}/meta/owner"), json!(self.uid));
+        }
+        Ok(group)
     }
 
     pub async fn add_members(&self, id: &str, friends: &[String]) -> Result<(), String> {
         let id = safe(id)?;
         let mut update = Map::new();
+        self.editable(id, &mut update)?;
         for uid in friends {
             let uid = safe(uid)?;
             update.insert(format!("chats/{id}/members/{uid}"), json!(true));
@@ -643,22 +789,80 @@ impl Chat {
         self.db.patch("", &Value::Object(update)).await.map(|_| ()).map_err(|e| e.to_string())
     }
 
-    pub async fn rename_group(&self, id: &str, name: &str) -> Result<(), String> {
+    /// Cambia el nombre y la foto de un grupo. `photo`: None la deja igual; Some(None) la quita.
+    pub async fn edit_group(&self, id: &str, name: Option<&str>, photo: Option<Option<&str>>) -> Result<(), String> {
         let id = safe(id)?;
-        let name = name.trim();
-        if name.is_empty() || name.chars().count() > 40 {
-            return Err(t!("El nombre del grupo debe tener de 1 a 40 letras.", "The group name must have 1 to 40 characters."));
+        let mut update = Map::new();
+        self.editable(id, &mut update)?;
+        if let Some(name) = name {
+            let name = name.trim();
+            if name.is_empty() || name.chars().count() > 40 {
+                return Err(t!("El nombre del grupo debe tener de 1 a 40 letras.", "The group name must have 1 to 40 characters."));
+            }
+            update.insert(format!("chats/{id}/meta/name"), json!(name));
         }
-        self.db.put(&format!("chats/{id}/meta/name"), &json!(name)).await.map(|_| ()).map_err(|e| e.to_string())
+        match photo {
+            Some(Some(photo)) => {
+                check_photo(photo)?;
+                update.insert(format!("chats/{id}/meta/photo"), json!(photo));
+            }
+            Some(None) => {
+                update.insert(format!("chats/{id}/meta/photo"), Value::Null);
+            }
+            None => {}
+        }
+        self.db.patch("", &Value::Object(update)).await.map(|_| ()).map_err(|e| e.to_string())
     }
 
-    /// Salir de un grupo, u ocultar una conversación directa (vuelve si el amigo escribe).
+    pub async fn rename_group(&self, id: &str, name: &str) -> Result<(), String> {
+        self.edit_group(id, Some(name), None).await
+    }
+
+    /// Saca a alguien del grupo (solo el dueño).
+    pub async fn remove_member(&self, id: &str, uid: &str) -> Result<(), String> {
+        let (id, uid) = (safe(id)?, safe(uid)?);
+        let mut claim = Map::new();
+        self.editable(id, &mut claim)?;
+        if uid == self.uid {
+            return self.leave(id).await;
+        }
+        // Las reglas miran quién era el dueño antes de escribir: si el grupo no tenía, primero se toma.
+        if !claim.is_empty() {
+            self.db.patch("", &Value::Object(claim)).await.map_err(|e| e.to_string())?;
+        }
+        let update = json!({ format!("chats/{id}/members/{uid}"): null, format!("userChats/{uid}/{id}"): null });
+        self.db.patch("", &update).await.map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    /// Le pasa el grupo a otro miembro (deja de ser tuyo).
+    pub async fn transfer_group(&self, id: &str, uid: &str) -> Result<(), String> {
+        let (id, uid) = (safe(id)?, safe(uid)?);
+        let mut claim = Map::new();
+        let group = self.editable(id, &mut claim)?;
+        if !group.members.iter().any(|m| m.uid == uid) {
+            return Err(t!("Esa persona ya no está en el grupo.", "That person is no longer in the group."));
+        }
+        if !claim.is_empty() {
+            self.db.patch("", &Value::Object(claim)).await.map_err(|e| e.to_string())?;
+        }
+        self.db.put(&format!("chats/{id}/meta/owner"), &json!(uid)).await.map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    /// Salir de un grupo, u ocultar una conversación directa (vuelve si el amigo escribe). Si eras el
+    /// dueño, el grupo pasa a otro miembro.
     pub async fn leave(&self, id: &str) -> Result<(), String> {
         let id = safe(id)?;
         let me = &self.uid;
         let mut update = json!({ format!("userChats/{me}/{id}"): null });
         if id.starts_with("g_") {
             update[format!("chats/{id}/members/{me}")] = Value::Null;
+            if let Some(group) = self.summary(id).filter(|s| s.owner.as_deref() == Some(me.as_str())) {
+                let mut others: Vec<&Member> = group.members.iter().filter(|m| m.uid != *me).collect();
+                others.sort_by_key(|m| m.name.to_lowercase());
+                if let Some(next) = others.first() {
+                    update[format!("chats/{id}/meta/owner")] = json!(next.uid);
+                }
+            }
         }
         self.db.patch("", &update).await.map(|_| ()).map_err(|e| e.to_string())
     }
