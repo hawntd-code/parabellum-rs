@@ -101,6 +101,15 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
   pone así en Mac), así que debería funcionar igual; falta probarlo. Los .jar se compilan en Windows o
   Mac con `mod/compilar.py` (JDK en `~/.jdks`).
 - El juego se abre en su propio grupo de procesos (sigue abierto si se cierra Parabellum).
+- El servidor y el agente de playit.gg se cierran solos si Parabellum se cae (`tie_to_launcher`). Un
+  vigilante (`sh`) espera leyendo una tubería que solo Parabellum tiene abierta: cuando Parabellum
+  termina, aunque sea de golpe, macOS la cierra y el vigilante le manda SIGTERM al proceso (el servidor
+  guarda el mundo; en Windows se cierra sin guardar) y, si a los 40 s sigue abierto, SIGKILL. Si el
+  proceso termina antes, un hilo de Parabellum se entera con kqueue y cierra al vigilante. Y solo manda
+  una señal si el proceso con ese número empezó a la hora que anotó Parabellum (`ps -o lstart=`): así
+  no toca otro programa si macOS ya le dio ese número. Probado con `kill -9` a Parabellum: un servidor
+  1.21.1 guarda el mundo y se cierra en 1 s. Ojo: Minecraft no anota ese apagado en `latest.log` (su
+  registro se apaga antes); se ve en la hora de `level.dat`.
 - Avisos (`macos/avisos.rs`) con la API de Apple, UserNotifications (crate `objc2-user-notifications`):
   título, texto, sonido y clic (abre Parabellum o el chat). macOS solo los deja salir desde una `.app`
   que no esté en una carpeta temporal: con el programa suelto de `cargo build` no salen, y
@@ -127,9 +136,7 @@ Ordenadas por prioridad:
 5. ~~**Imágenes raras en el chat**~~ — hecho, con `sips` y el crate `png` (ver «Qué ya está hecho»).
 6. ~~**Forge y NeoForge**~~ — hecho: el juego y los modpacks funcionan igual; los servidores
    necesitaban `unix_args.txt` (ver «Qué ya está hecho»).
-7. **Procesos atados a Parabellum** — `tie_to_launcher`: en Windows, el servidor y el agente de
-   playit.gg se cierran solos si Parabellum se cae. En Mac: guardar los PID y cerrarlos al arrancar si
-   quedaron vivos, o un vigilante con kqueue.
+7. ~~**Procesos atados a Parabellum**~~ — hecho, con un vigilante y kqueue (ver «Qué ya está hecho»).
 8. **Hostear servidores** — `PLAYIT_AGENT` es `None` porque playit.gg no publica su agente para Mac.
    Es de código abierto (github.com/playit-cloud/playit-agent): compilarlo para
    `aarch64-apple-darwin`, publicarlo en un release propio y poner aquí su enlace, SHA-256 y tamaño.
