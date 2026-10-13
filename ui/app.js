@@ -2112,6 +2112,19 @@ function chatAvatar(chat) {
   return `<canvas width="8" height="8" class="head" data-head="${escapeHtml(chat.name)}"></canvas>`;
 }
 
+/** El amigo de una conversación directa (para su punto de en línea). */
+function chatFriend(chat) {
+  if (chat?.kind === "grupo") return null;
+  const other = chat?.members?.find((m) => !m.you) ?? chat?.members?.[0];
+  return other ? findFriend(other.uid) : null;
+}
+
+/** Cabeza con el punto verde (en línea) o morado (jugando), como en el panel de la derecha. */
+function presenceHead(name, friend) {
+  const dot = friend?.online ? (friend.presence?.state === "playing" ? "playing" : "online") : "";
+  return `<div class="friend-head"><canvas width="8" height="8" class="head" data-head="${escapeHtml(name)}"></canvas><span class="presence-dot ${dot}"></span></div>`;
+}
+
 function updateChatBadge() {
   const unread = (state.chats ?? []).filter((c) => c.unread).length;
   $("#chat-badge").textContent = unread > 9 ? "9+" : String(unread);
@@ -2149,7 +2162,7 @@ function renderChatList() {
   const favorites = chats.filter((c) => isFavoriteChat(c.id));
   const recent = chats.filter((c) => !isFavoriteChat(c.id));
   const chatRow = (c) => `<button class="chat-item ${c.id === state.chatOpen ? "active" : ""} ${c.unread ? "unread" : ""}" data-chat="${escapeHtml(c.id)}" data-key="c:${escapeHtml(c.id)}">
-          ${chatAvatar(c)}
+          ${c.kind === "grupo" ? chatAvatar(c) : presenceHead(c.name, chatFriend(c))}
           <span class="grow">
             <span class="chat-item-top"><b>${escapeHtml(c.name)}${isFavoriteChat(c.id) ? favMark() : ""}</b><small>${escapeHtml(chatTime(c.lastAt))}</small></span>
             <span class="chat-item-last">${escapeHtml(c.lastText ? (c.kind === "grupo" && c.lastName ? `${c.lastName}: ${chatPreview(c.lastText)}` : chatPreview(c.lastText)) : c.kind === "grupo" ? t("Grupo nuevo", "New group") : t("Sin mensajes todavía", "No messages yet"))}</span>
@@ -2166,7 +2179,7 @@ function renderChatList() {
         others
           .map(
             (f) => `<button class="chat-item" data-chat-friend="${escapeHtml(f.uid)}" data-key="f:${escapeHtml(f.uid)}">
-              <canvas width="8" height="8" class="head" data-head="${escapeHtml(f.name)}"></canvas>
+              ${presenceHead(f.name, f)}
               <span class="grow"><span class="chat-item-top"><b>${escapeHtml(f.name)}</b></span><span class="chat-item-last">${escapeHtml(friendStatus(f))}</span></span>
             </button>`,
           )
@@ -2244,7 +2257,7 @@ function allChats() {
 function renderChatHeader() {
   const chat = currentChat();
   if (!chat) return;
-  $("#chat-avatar").innerHTML = chatAvatar(chat);
+  $("#chat-avatar").innerHTML = chat.kind === "grupo" ? chatAvatar(chat) : presenceHead(chat.name, chatFriend(chat));
   const canvas = $("#chat-avatar canvas");
   if (canvas) drawHead(canvas, canvas.dataset.head);
   $("#chat-title").textContent = chat.name;
@@ -2741,16 +2754,46 @@ async function reduceImage(source) {
   throw new Error(t("No se pudo reducir la imagen lo suficiente.", "The image could not be shrunk enough."));
 }
 
+/** Elegida, pegada o soltada: primero se ve tal como se va a mandar (ya reducida) y se confirma. */
 async function sendChatImage(source) {
   if (!state.chatOpen) return toast(t("Primero abre una conversación.", "Open a conversation first."), "error");
   const chat = state.chatOpen;
+  let image;
   try {
-    toast(t("Enviando imagen…", "Sending image…"));
-    const { data, width, height } = await reduceImage(source);
-    await invoke("enviar_imagen", { chat, datos: data, ancho: width, alto: height });
+    image = await reduceImage(source);
   } catch (error) {
+    return toast(String(error?.message ?? error), "error");
+  }
+  const name = currentChat()?.name;
+  state.imageToSend = { chat, ...image };
+  $("#image-title").textContent = name ? t(`Enviar imagen a ${name}`, `Send image to ${name}`) : t("Enviar imagen", "Send image");
+  $("#image-preview").innerHTML = `<img src="${image.data}" alt="">`;
+  const kb = Math.round((image.data.length * 3) / 4 / 1024);
+  $("#image-meta").textContent = `${image.width} × ${image.height} · ${kb} KB`;
+  $("#image-send").disabled = false;
+  openModal("#image-dialog");
+  setTimeout(() => $("#image-send").focus(), 60);
+}
+
+async function confirmChatImage() {
+  const image = state.imageToSend;
+  if (!image) return;
+  $("#image-send").disabled = true;
+  try {
+    await invoke("enviar_imagen", { chat: image.chat, datos: image.data, ancho: image.width, alto: image.height });
+    state.imageToSend = null;
+    closeModal("#image-dialog");
+    if (state.chatOpen === image.chat) state.chatStick = true;
+  } catch (error) {
+    $("#image-send").disabled = false;
     toast(String(error?.message ?? error), "error");
   }
+}
+
+function cancelChatImage() {
+  state.imageToSend = null;
+  closeModal("#image-dialog");
+  $("#chat-input")?.focus();
 }
 
 /** Ancla en el último clic: para abrir un menú que sale de otro menú (que ya se cerró). */
@@ -3239,6 +3282,15 @@ function wireChatEvents() {
     sendChatImage(file);
   });
   $("#chat-attach").onclick = () => $("#chat-file").click();
+  $("#image-send").onclick = confirmChatImage;
+  $("#image-cancel").onclick = cancelChatImage;
+  $("#image-close").onclick = cancelChatImage;
+  $("#image-dialog").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      confirmChatImage();
+    }
+  });
   $("#chat-file").onchange = () => {
     const file = $("#chat-file").files[0];
     $("#chat-file").value = "";
@@ -4333,6 +4385,9 @@ function wireEvents() {
       closeModal("#srv-dialog");
       if (!state.favDialog?.busy) closeModal("#fav-dialog");
       closeModal("#account-dialog");
+      closeModal("#add-friend-dialog");
+      closeModal("#report-dialog");
+      if (!$("#image-dialog").classList.contains("hidden")) cancelChatImage();
       if (!state.exporting?.busy) closeModal("#export-dialog");
       $("#lightbox").classList.add("hidden");
       if (!$("#confirm-dialog").classList.contains("hidden")) state.confirmCancel?.();

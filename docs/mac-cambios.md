@@ -159,6 +159,13 @@ Nada por ahora.
 
 ## Cambios de Windows
 
+### 2026-10-13 · Vista previa de imágenes y quién está en línea en Mensajes
+
+- Qué cambió: solo `ui/`. Al adjuntar, pegar o soltar una imagen en el chat ya no se manda directo: sale
+  `#image-dialog` con la imagen tal como se va a mandar (Enter envía, Esc cancela). En Mensajes, las
+  conversaciones directas y la cabecera llevan el punto de en línea (`presenceHead`).
+- Mac: nada de código. Revisa que pegar una captura (Cmd+V) abra la vista previa.
+
 ### 2026-10-12 · 0.27.1: Servidores y Hostear en una sola página
 
 - Qué cambió: solo `ui/`. Ya no hay página `host` (`navigate("host")` lleva a `servers`): «Tus servidores»
