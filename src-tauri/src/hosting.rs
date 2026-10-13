@@ -1634,6 +1634,10 @@ pub async fn apply_server_fix(app: &AppHandle, id: &str, fix: Fix) -> Result<Str
             }
             t!("{path} se mandó a la papelera (se crea de nuevo al arrancar).", "{path} was moved to the Recycle Bin (it is created again on startup).")
         }
+        Fix::InstallForeignJava => {
+            tauri::async_runtime::spawn_blocking(crate::plataforma::install_foreign_java).await.map_err(|e| e.to_string())??;
+            t!("Rosetta quedó instalado.", "Rosetta is installed.")
+        }
         Fix::InstallMod { .. } | Fix::SetLoader { .. } | Fix::Repair | Fix::InstallProject { .. } => {
             return Err(t!("Esto se arregla en la instancia.", "This is fixed in the instance."));
         }

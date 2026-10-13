@@ -1094,6 +1094,14 @@ pub fn mod_count(folder: &Path) -> usize {
 
 pub fn command(config: &ServerConfig, paths: &Paths) -> Result<Command, String> {
     let java = java_executable(config.java_major, paths).ok_or(t!("Falta Java {}.", "Java {} is missing.", config.java_major))?;
+    // En Mac con chip Apple, los servidores de 1.17 y anteriores van con el Java de Intel.
+    if crate::plataforma::java_runtime_platform(config.java_major) != crate::plataforma::JAVA_RUNTIME_PLATFORM && !crate::plataforma::foreign_java_ready() {
+        return Err(t!(
+            "Este servidor usa Java {}, que solo existe para Mac con Intel, y en esta Mac hace falta Rosetta para abrirlo. Instálalo desde su instancia: al pulsar «Jugar» Parabellum lo ofrece.",
+            "This server uses Java {}, which only exists for Intel Macs, and this Mac needs Rosetta to open it. Install it from its instance: Parabellum offers it when you press «Play».",
+            config.java_major
+        ));
+    }
     if config.launch.is_empty() {
         return Err(t!("El servidor no está instalado del todo. Bórralo y créalo otra vez.", "The server is not fully installed. Delete it and create it again."));
     }

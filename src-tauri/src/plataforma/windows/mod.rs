@@ -47,6 +47,25 @@ pub fn java_binary(home: &Path, windowed: bool) -> PathBuf {
 /// En Windows un .exe se puede abrir tal como se descarga.
 pub fn make_executable(_path: &Path) {}
 
+/// Mojang tiene todos sus Java para Windows.
+pub fn java_runtime_platform(_major: u32) -> &'static str {
+    JAVA_RUNTIME_PLATFORM
+}
+
+/// En Windows las bibliotecas de Mojang sirven tal cual.
+pub fn adapt_libraries(libraries: Vec<serde_json::Value>, _java_major: u32) -> Vec<serde_json::Value> {
+    libraries
+}
+
+/// En Windows no hay Java ajeno (ver java_runtime_platform).
+pub fn foreign_java_ready() -> bool {
+    true
+}
+
+pub fn install_foreign_java() -> Result<(), String> {
+    Ok(())
+}
+
 // ================= Procesos
 
 pub trait CommandExt {

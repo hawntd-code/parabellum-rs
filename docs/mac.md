@@ -130,6 +130,25 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
 - Lo compartido ya pregunta por Mac donde Mojang distingue sistemas: reglas `"os": "osx"` (así se
   agrega `-XstartOnFirstThread`), nativos `natives-macos`, Java de Mojang `mac-os-arm64` y separador
   del classpath `:`.
+- Versiones viejas (1.18 y anteriores), que no traen nativos para chip Apple:
+  - **1.18.x** pide Java 17, que sí hay para chip Apple. Se le cambia LWJGL 3.2 por la 3.3.1 de 1.19,
+    con sus nativos arm64, y java-objc-bridge por la 1.1 (`adapt_libraries`). Las de Mojang se bajan
+    igual, para que un paquete hecho en Mac sirva en Windows.
+  - **1.17.1 y anteriores** piden Java 16 u 8, que Mojang solo tiene para Mac con Intel: se baja ese
+    (`java_runtime_platform`) y el juego corre con Rosetta, con sus nativos de Intel tal cual, también
+    los de LWJGL 2 (1.12.2 y antes). Con LWJGL 3.3.1 no se puede: su GLFW da el error 65548 al ponerle
+    ícono a la ventana y Minecraft (hasta 1.17) lo trata como fatal.
+  - Si falta Rosetta, la revisión de antes de jugar (ahora también en Vanilla) lo dice y ofrece
+    instalarlo: `softwareupdate --install-rosetta`, con la contraseña del administrador. Sin probar en
+    una Mac sin Rosetta.
+  - Si a una instancia le falta algo de la base (las bibliotecas nuevas, el Java de Intel), «Jugar» lo
+    completa con Mojang antes de abrir.
+  - Apple anunció que macOS 27 es el último con Rosetta completo. Cuando lo quite, 1.17.1 y anteriores
+    necesitarán otra cosa: un GLFW parcheado y un Java 8 arm64, y LWJGL 2 arm64 para 1.12.2 y antes.
+  - Probado con `--crear` y `--probar-juego` hasta el menú: 1.18.2 vanilla, Fabric y Forge (nativo,
+    12–23 s); 1.17.1, 1.16.5 vanilla, Fabric y Forge, 1.12.2 y 1.8.9 (Rosetta, 20–56 s); el mod de
+    Parabellum carga en Fabric 1.16.5, Forge 1.16.5 y Forge 1.18.2. Un servidor 1.16.5 arranca con el
+    Java 8 de Intel.
 - Imágenes del chat en cualquier formato que abra el Mac (HEIC, TIFF, GIF, BMP…; `decode_image`):
   `sips -g` las mide, `sips` las pasa a PNG en un proceso aparte (`-Z` solo si son más grandes que
   el límite, porque también agranda) y el crate `png` las lee a RGBA. Como en Windows, no se giran
@@ -149,8 +168,8 @@ Ordenadas por prioridad:
 7. ~~**Procesos atados a Parabellum**~~ — hecho, con un vigilante y kqueue (ver «Qué ya está hecho»).
 8. ~~**Hostear servidores**~~ — hecho, con el agente de playit.gg compilado en el fork
    diegovc20/playit-agent (ver «Qué ya está hecho»). Falta probar un túnel con una cuenta de playit.gg.
-9. **Versiones viejas (1.18 y anteriores)**: no traen nativos para chip Apple. Hay que sustituir LWJGL
-   por versiones arm64 (como hacen Prism y otros launchers) o correrlas con Rosetta y un Java x86_64.
+9. ~~**Versiones viejas (1.18 y anteriores)**~~ — hecho: 1.18 nativa con LWJGL 3.3.1 y 1.17.1 y
+   anteriores con Rosetta (ver «Qué ya está hecho»).
 10. **Empaquetar como `.app`** (y `.dmg`): `tauri.conf.json` tiene `bundle.active = false` y solo un
     icono `.ico`. Hacen falta un `.icns` y activar el empaquetado para Mac.
 11. **Actualización automática** — `EXECUTABLE` y `catalog::apply_launcher_update` reemplazan el

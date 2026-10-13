@@ -75,9 +75,22 @@ pub async fn install(release: &Release, paths: &Paths, progress: impl Fn(String,
     let client = version.pointer("/downloads/client").ok_or(t!("Esta versión no tiene cliente descargable.", "This version has no downloadable client."))?;
     files.extend(FileDownload::from_json(client, paths.version_jar(&release.id)));
 
-    // Bibliotecas de Windows (y los nativos del formato antiguo)
+    // Java que pide la versión (las antiguas no lo dicen: Java 8, "jre-legacy")
+    let component = version.pointer("/javaVersion/component").and_then(Value::as_str).unwrap_or("jre-legacy").to_string();
+    let major = version.pointer("/javaVersion/majorVersion").and_then(Value::as_u64).unwrap_or(8) as u32;
+
+    // Bibliotecas de este sistema (y los nativos del formato antiguo). Si aquí hacen falta otras (Mac
+    // con chip Apple, 1.18), se bajan también, sin quitar las de Mojang: así un paquete exportado de
+    // aquí sirve en otro sistema.
     let no_features = Features::new();
-    for library in version["libraries"].as_array().into_iter().flatten() {
+    let original = version["libraries"].as_array().cloned().unwrap_or_default();
+    let mut libraries = original.clone();
+    for library in crate::plataforma::adapt_libraries(original, major) {
+        if !libraries.contains(&library) {
+            libraries.push(library);
+        }
+    }
+    for library in &libraries {
         if !rules_allow(library.get("rules"), &no_features) {
             continue;
         }
@@ -123,14 +136,11 @@ pub async fn install(release: &Release, paths: &Paths, progress: impl Fn(String,
         }
     }
 
-    // Java que pide la versión (las antiguas no lo dicen: Java 8, "jre-legacy")
-    let component = version.pointer("/javaVersion/component").and_then(Value::as_str).unwrap_or("jre-legacy").to_string();
-    let major = version.pointer("/javaVersion/majorVersion").and_then(Value::as_u64).unwrap_or(8) as u32;
     let runtimes = java::discover(paths);
     let mut java_programs = Vec::new();
     if !java::select(&runtimes, Some(&component), major).is_some_and(|r| r.major == major) {
         progress(t!("Preparando Java {major}…", "Preparing Java {major}…"), 0.015);
-        let (java, programs) = java_files(&component, paths).await?;
+        let (java, programs) = java_files(&component, major, paths).await?;
         files.extend(java);
         java_programs = programs;
     }
@@ -160,7 +170,7 @@ pub async fn ensure_java(major: u32, paths: &Paths, progress: impl Fn(String, f6
     if java::discover(paths).iter().any(|r| r.major == major) {
         return Ok(());
     }
-    let platform = crate::plataforma::JAVA_RUNTIME_PLATFORM;
+    let platform = crate::plataforma::java_runtime_platform(major);
     let all: Value = serde_json::from_str(&download::get_text(JAVA_RUNTIMES_URL).await.map_err(|_| unavailable())?).map_err(|e| e.to_string())?;
     let component = all[platform]
         .as_object()
@@ -170,7 +180,7 @@ pub async fn ensure_java(major: u32, paths: &Paths, progress: impl Fn(String, f6
         .map(|(name, _)| name.clone())
         .ok_or(t!("Mojang no ofrece Java {major}.", "Mojang does not offer Java {major}."))?;
     progress(t!("Preparando Java {major}…", "Preparing Java {major}…"), 0.0);
-    let (files, programs) = java_files(&component, paths).await?;
+    let (files, programs) = java_files(&component, major, paths).await?;
     download::download_all(files, move |count, total, _, _| {
         progress(t!("Descargando Java {major}… {count} de {total} archivos", "Downloading Java {major}… {count} of {total} files"), count as f64 / total.max(1) as f64)
     })
@@ -180,11 +190,25 @@ pub async fn ensure_java(major: u32, paths: &Paths, progress: impl Fn(String, f6
 }
 
 /// Archivos del Java de Mojang para este sistema (el mismo que usa el launcher oficial) y cuáles son
-/// programas (java, jspawnhelper…): después de bajarlos hay que marcarlos como ejecutables.
-async fn java_files(component: &str, paths: &Paths) -> Result<(Vec<FileDownload>, Vec<PathBuf>), String> {
-    let platform = crate::plataforma::JAVA_RUNTIME_PLATFORM;
+/// programas (java, jspawnhelper…): después de bajarlos hay que marcarlos como ejecutables. Si Mojang
+/// no tiene ese componente para este sistema, sirve otro con la misma versión mayor (en Mac con chip
+/// Apple, 1.18 pide «java-runtime-beta», que no hay, y «java-runtime-gamma» también es Java 17).
+async fn java_files(component: &str, major: u32, paths: &Paths) -> Result<(Vec<FileDownload>, Vec<PathBuf>), String> {
+    let platform = crate::plataforma::java_runtime_platform(major);
     let all: Value = serde_json::from_str(&download::get_text(JAVA_RUNTIMES_URL).await.map_err(|_| unavailable())?)
         .map_err(|e| e.to_string())?;
+    let offered = |name: &str| all.pointer(&format!("/{platform}/{name}/0/version/name")).and_then(Value::as_str).map(java::major_of);
+    let component = if offered(component).is_some() {
+        component.to_string()
+    } else {
+        all[platform]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .map(|(name, _)| name.clone())
+            .find(|name| offered(name) == Some(major))
+            .ok_or(t!("Mojang no ofrece {component} para {platform}.", "Mojang does not offer {component} for {platform}."))?
+    };
     let listing = all.pointer(&format!("/{platform}/{component}/0/manifest"));
     let manifest_url = listing
         .and_then(|l| l["url"].as_str())
@@ -197,7 +221,7 @@ async fn java_files(component: &str, paths: &Paths) -> Result<(Vec<FileDownload>
         }
     }
     let manifest: Value = serde_json::from_str(&manifest_text).map_err(|e| e.to_string())?;
-    let home = paths.java.join(component);
+    let home = paths.java.join(&component);
     let mut downloads = Vec::new();
     let mut programs = Vec::new();
     for (relative, entry) in manifest["files"].as_object().into_iter().flatten().filter(|(_, entry)| entry["type"] == "file") {

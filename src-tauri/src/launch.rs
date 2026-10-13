@@ -110,7 +110,11 @@ pub fn version_files(version_id: &str, paths: &Paths) -> Result<VersionFiles, St
     }
     files.extend(generated);
     let features = Features::new();
-    for library in version.libraries.iter().filter(|l| rules_allow(l.get("rules"), &features)) {
+    // Las de Mojang y las que este sistema usa en su lugar (Mac con chip Apple, 1.18): el paquete sirve
+    // en los dos.
+    let mut libraries = version.libraries.clone();
+    libraries.extend(plataforma::adapt_libraries(version.libraries.clone(), version.java_major));
+    for library in libraries.iter().filter(|l| rules_allow(l.get("rules"), &features)) {
         let (native, artifact) = library_paths(library, paths);
         files.extend(native);
         files.extend(artifact);
@@ -148,9 +152,16 @@ pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<L
         ("is_quick_play_realms", false),
     ]);
 
+    // El Java que se usará: el que pide la versión o el que eligió la instancia (el doctor lo cambia si un
+    // mod necesita uno más nuevo). De él depende qué bibliotecas sirven en este sistema.
+    let (component, major) = match instance.java_major {
+        Some(major) => (None, major),
+        None => (version.java_component.as_deref(), version.java_major),
+    };
+
     // Bibliotecas y classpath
     let mut classpath: Vec<PathBuf> = Vec::new();
-    for library in &version.libraries {
+    for library in &plataforma::adapt_libraries(version.libraries.clone(), major) {
         if !rules_allow(library.get("rules"), &features) {
             continue;
         }
@@ -201,16 +212,16 @@ pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<L
         }
     }
 
-    // Java
-    // La instancia puede pedir otro Java (el doctor lo cambia si un mod necesita uno más nuevo).
+    // Java. Uno ajeno (en Mac con chip Apple, el de Intel para 1.17 y anteriores) tiene que ser
+    // justo esa versión: otro, del sistema, no abriría los nativos de la versión.
     let runtimes = java::discover(paths);
-    let (component, major) = match instance.java_major {
-        Some(major) => (None, major),
-        None => (version.java_component.as_deref(), version.java_major),
-    };
-    let java = java::select(&runtimes, component, major).filter(|r| instance.java_major.is_none() || r.major == major).cloned();
+    let foreign = plataforma::java_runtime_platform(major) != plataforma::JAVA_RUNTIME_PLATFORM;
+    let java = java::select(&runtimes, component, major).filter(|r| (instance.java_major.is_none() && !foreign) || r.major == major).cloned();
     if java.is_none() {
         missing.push(format!("Java {major}"));
+    }
+    if foreign && !plataforma::foreign_java_ready() {
+        missing.push(t!("Rosetta, para abrir Java {major} (de Intel)", "Rosetta, to open Java {major} (Intel)"));
     }
 
     // Variables de los argumentos
