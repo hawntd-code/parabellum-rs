@@ -514,9 +514,16 @@ pub async fn marcar_leido(app: AppHandle, chat: String) -> Result<(), String> {
     chat_ready(&app)?.mark_read(&chat).await
 }
 
+/// `respuesta`: el mensaje al que responde.
 #[tauri::command]
-pub async fn enviar_mensaje(app: AppHandle, chat: String, texto: String) -> Result<(), String> {
-    chat_ready(&app)?.send_text(&chat, &texto).await
+pub async fn enviar_mensaje(app: AppHandle, chat: String, texto: String, respuesta: Option<String>) -> Result<(), String> {
+    chat_ready(&app)?.send_text(&chat, &texto, respuesta.as_deref()).await
+}
+
+/// Pone tu reacción a un mensaje, o la quita (`emoji` vacío).
+#[tauri::command]
+pub async fn reaccionar(app: AppHandle, chat: String, mensaje: String, emoji: Option<String>) -> Result<(), String> {
+    chat_ready(&app)?.react(&chat, &mensaje, emoji.as_deref()).await
 }
 
 #[tauri::command]
@@ -545,8 +552,31 @@ pub async fn chat_con_amigo(app: AppHandle, uid: String) -> Result<String, Strin
 }
 
 #[tauri::command]
-pub async fn crear_grupo(app: AppHandle, nombre: String, amigos: Vec<String>) -> Result<String, String> {
-    chat_ready(&app)?.create_group(&nombre, &amigos).await
+pub async fn crear_grupo(app: AppHandle, nombre: String, amigos: Vec<String>, foto: Option<String>) -> Result<String, String> {
+    chat_ready(&app)?.create_group(&nombre, &amigos, foto.as_deref()).await
+}
+
+/// Nombre y foto de un grupo (solo el dueño). `foto`: la nueva; `quitar_foto`: sin foto.
+#[tauri::command]
+pub async fn editar_grupo(app: AppHandle, chat: String, nombre: Option<String>, foto: Option<String>, quitar_foto: bool) -> Result<(), String> {
+    let photo = if quitar_foto { Some(None) } else { foto.as_deref().map(Some) };
+    chat_ready(&app)?.edit_group(&chat, nombre.as_deref(), photo).await
+}
+
+#[tauri::command]
+pub async fn sacar_del_grupo(app: AppHandle, chat: String, uid: String) -> Result<(), String> {
+    chat_ready(&app)?.remove_member(&chat, &uid).await
+}
+
+/// Invita a un amigo a tu servidor encendido o a tu mundo abierto (lo mismo que «Invitar» en el juego).
+#[tauri::command]
+pub async fn invitar_amigo(app: AppHandle, uid: String) -> Result<String, String> {
+    crate::puente::invite(&app, &uid).await
+}
+
+#[tauri::command]
+pub async fn pasar_grupo(app: AppHandle, chat: String, uid: String) -> Result<(), String> {
+    chat_ready(&app)?.transfer_group(&chat, &uid).await
 }
 
 #[tauri::command]

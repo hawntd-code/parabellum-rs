@@ -221,7 +221,7 @@ async fn handle(app: &AppHandle, op: &str, request: &Value) -> Result<Value, Str
     match op {
         "estado" => Ok(snapshot(app)),
         "chat_amigo" => Ok(json!({ "chat": chat_service(app)?.direct(text(request, "uid")?).await? })),
-        "enviar" => chat_service(app)?.send_text(text(request, "chat")?, text(request, "texto")?).await.map(|_| Value::Null),
+        "enviar" => chat_service(app)?.send_text(text(request, "chat")?, text(request, "texto")?, None).await.map(|_| Value::Null),
         "enviar_imagen" => {
             let (width, height) = (request["ancho"].as_u64().unwrap_or(0) as u32, request["alto"].as_u64().unwrap_or(0) as u32);
             chat_service(app)?.send_image(text(request, "chat")?, text(request, "datos")?, width, height).await.map(|_| Value::Null)
@@ -321,7 +321,7 @@ fn world_open(me: &Presence) -> bool {
 // ================= Invitar y unirse
 
 /// Invita a un amigo a lo que tienes: tu servidor encendido (entra a la lista blanca) o tu mundo abierto.
-async fn invite(app: &AppHandle, uid: &str) -> Result<String, String> {
+pub async fn invite(app: &AppHandle, uid: &str) -> Result<String, String> {
     let social = social(app)?;
     let friend = social.view().friends.into_iter().find(|f| f.uid == uid).ok_or(t!("Ese jugador ya no está en tus amigos.", "That player is no longer your friend."))?;
     let (invite, label) = if let Some(config) = hosting::ready_server(app) {

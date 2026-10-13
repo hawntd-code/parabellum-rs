@@ -37,6 +37,7 @@ mod opciones;
 mod juego;
 mod p2p;
 mod puente;
+mod reporte;
 mod packs;
 mod paths;
 mod plataforma;
@@ -1378,6 +1379,28 @@ async fn diagnosticar(state: State<'_, AppState>, id: String) -> Result<diagnost
     })
     .await
     .map_err(|e| e.to_string())
+}
+
+/// «Reportar problema»: el resumen para mandar por chat y a quién va (el nombre de soporte de la config).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProblemReport {
+    text: String,
+    to: Option<String>,
+}
+
+/// Con `id`, esa instancia; sin él, la última que se jugó.
+#[tauri::command]
+async fn reporte_problema(state: State<'_, AppState>, id: Option<String>) -> Result<ProblemReport, String> {
+    let paths = state.paths.clone();
+    let instance = match id {
+        Some(id) => Some(instance_or_error(&state, &id)?),
+        None => instances::list(&paths).into_iter().filter(|i| i.last_played.is_some()).max_by_key(|i| i.last_played),
+    };
+    let ram_gb = instance.as_ref().and_then(|i| i.ram_gb).unwrap_or(state.settings.lock().unwrap().ram_gb);
+    let to = Some(state.config.support_name.clone()).filter(|n| !n.is_empty());
+    let text = tauri::async_runtime::spawn_blocking(move || reporte::summary(&paths, instance.as_ref(), ram_gb, system_ram_gb())).await.map_err(|e| e.to_string())?;
+    Ok(ProblemReport { text, to })
 }
 
 /// «Probar y arreglar»: abre el juego hasta el menú principal (y lo cierra). Si no llega, aplica los
@@ -2875,6 +2898,11 @@ abierto {seconds} s"));
             let diagnosis = diagnostico::after_crash(&instance, &context);
             Ok(serde_json::to_string_pretty(&diagnosis).unwrap())
         }
+        "--reporte" => {
+            // Lo que manda «Reportar problema» de una instancia.
+            let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
+            Ok(reporte::summary(paths, Some(&instance), instance.ram_gb.unwrap_or(settings.ram_gb), system_ram_gb()))
+        }
         "--arreglar" => {
             let id = args.get(1).ok_or("Falta la instancia.")?.clone();
             let config = config::Config::load(paths);
@@ -3154,6 +3182,12 @@ fn main() {
             cuenta::crear_grupo,
             cuenta::agregar_al_grupo,
             cuenta::renombrar_grupo,
+            cuenta::reaccionar,
+            cuenta::editar_grupo,
+            cuenta::sacar_del_grupo,
+            cuenta::pasar_grupo,
+            cuenta::invitar_amigo,
+            reporte_problema,
             cuenta::salir_del_chat,
             cuenta::leer_imagen,
             instalar_modpack,

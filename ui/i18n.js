@@ -326,6 +326,22 @@ const HTML_EN = {
   "Leer el EULA de Minecraft": "Read the Minecraft EULA",
   "Lo leí y lo acepto": "I have read it and I accept it",
   "Aceptar y encender": "Accept and start",
+  "Nombre de jugador de tu amigo": "Your friend's player name",
+  "Enviar solicitud": "Send request",
+  "Todos": "All",
+  "En línea": "Online",
+  "Jugando": "Playing",
+  "Agregar amigo": "Add friend",
+  "Su nombre de jugador en Parabellum": "Their player name in Parabellum",
+  "Foto del grupo": "Group photo",
+  "Quitar foto": "Remove photo",
+  "Reportar problema": "Report a problem",
+  "¿Qué pasó?": "What happened?",
+  "Por ejemplo: se cierra al entrar al mundo de mi amigo": "For example: it closes when I join my friend's world",
+  "Va con esto": "It goes with this",
+  "Enviar a": "Send to",
+  "Reportar": "Report",
+  "Manda por chat lo que hace falta para ayudarte: la versión, tu PC y el último error.": "Sends by chat what is needed to help you: the version, your PC and the last error.",
 };
 
 /** Traduce los textos fijos de la página (y sus title, placeholder y aria-label). */

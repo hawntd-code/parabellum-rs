@@ -89,7 +89,6 @@ function applyHostView(view) {
   $("#world-playit").checked = !!view.worldPlayit;
   if (state.page === "host") renderHost();
   if (state.page === "hosted") renderHosted();
-  if (state.page === "home") renderHomeServerTile();
   updateServersChanged();
 }
 
@@ -1796,16 +1795,6 @@ function wireHostEvents() {
       const item = findActivity(serverMenu.dataset.friendServerMenu);
       if (item) friendServerMenu(serverMenu, item);
       return;
-    }
-    const homeAction = event.target.closest("[data-home-action]");
-    if (homeAction) {
-      const action = homeAction.dataset.homeAction;
-      if (action === "create-server") {
-        navigate("host");
-        openHostCreate();
-      } else if (action === "host") navigate("host");
-      else if (action === "servers") navigate("servers");
-      else if (action === "sign-in") signInGoogle();
     }
   });
   $("#host-servers").addEventListener("keydown", (event) => {

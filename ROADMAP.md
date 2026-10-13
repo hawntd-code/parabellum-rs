@@ -135,8 +135,17 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Probado: la prueba P2P por internet ve al invitado (destino, directo, ping) y lo quita al salir; Grupos y Capturas capturados en Fabric 1.21.1 (clic en una captura → «Enviar a»); el panel de 26.3 abre (sus clics no se pueden simular: los revisa Juan)
 - [ ] *Prueba:* Juan: en 26.3 cambiar de pestaña, «Mensaje» y Capturas; ver los jugadores del servidor; con un amigo, la tarjeta P2P (directo o relevo y ping)
 
-### 0.27.0: reportar problemas y prueba con compañeros
-- [ ] **«Reportar problema»**: un resumen (versión, instancia, ruta usada, P2P directo o por relevo y ping, últimas líneas del error) que se manda por chat a Juan
+### 0.27.0: amigos, mensajes y grupos (pedido de Juan)
+- [x] **Inicio sin tarjetas**: se quitaron «Tu servidor», «Amigos» y «Novedades»; arriba solo quedan los primeros pasos mientras falten
+- [x] **Página de Amigos** en la barra (con aviso de solicitudes): agregar por nombre, solicitudes, la lista con filtros (todos, en línea, jugando) y búsqueda, y en cada amigo Unirse, Invitar (si tienes un servidor encendido o tu mundo abierto), Mensaje y Más; a la derecha, los grupos. También se agrega desde Mensajes (botón junto a «Nuevo grupo»)
+- [x] **Responder** a un mensaje (pasar el ratón › ↩, o clic derecho): la cita va arriba de la burbuja y lleva al original; si lo borran dice «Mensaje borrado». Esc cancela
+- [x] **Reaccionar** con 👍 ❤️ 😂 😮 😢 🔥: una por persona (otra la reemplaza, la misma la quita); se ve al momento y al pasar el ratón dice quién
+- [x] **Grupos con foto y dueño**: quien lo crea es el dueño y solo él cambia nombre, foto y miembros (puede sacar a alguien o pasarle el grupo). Si el dueño sale, el grupo pasa a otro. Los grupos de antes no tienen dueño: quien los edite primero queda como dueño. Clic en el avatar del grupo: sus miembros
+- [x] **Invitaciones del juego en la ventana**: antes se veía el texto crudo; ahora una tarjeta con «Unirse»
+- [x] **«Reportar problema»** (Ajustes › Acerca de, menú ⋯ de la instancia y el doctor): versión, sistema, instancia, error, lo que dice el doctor y lo último del P2P, con lo que escribe el jugador arriba. Va por chat a quien da soporte (`supportName` en config-integrada.json: Juan) o a quien elijas; sin sesión, se copia
+- [x] Reglas de Firebase (`firebase-reglas.json`): `reply` en los mensajes, `reactions/`, `owner` y `photo` en los grupos, y solo el dueño cambia el grupo. Probadas con el emulador oficial de Firebase (`docs/probar-reglas.py`): 50 casos (crear como la 0.26 y la 0.27, editar, sacar, pasar el grupo, responder, reaccionar, borrar). De paso se cerró un hueco: cualquier miembro podía esconderle una conversación a otro
+- [ ] **Juan: publicar las reglas ANTES de publicar la 0.27** (si no, responder, reaccionar y crear grupos fallan)
+- [ ] Después: responder y reaccionar también desde el panel del juego
 - [ ] *Prueba:* con compañeros en sus casas: P2P, mensajes, invitar y «Unirse» desde el juego, y el teclado del panel en 26.3
 
 ### Después
