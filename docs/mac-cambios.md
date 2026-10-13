@@ -23,11 +23,11 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
-- Última revisión de los PR de Mac en Windows: 2026-10-12, PR #1 a #9 (todos mezclados).
+- Última revisión de los PR de Mac en Windows: 2026-10-12, PR #1 a #11 (todos mezclados).
 - Windows: la última publicada en Drive es la 0.25.0 (ver «Versiones publicadas en Drive»). En `main` va
   la 0.27.1; Juan publica primero las reglas de Firebase y luego la versión.
-- Mac: hechas las tareas 1 a 8 de `mac.md`. Quedan la 9 a la 12; el orden que sugiere Juan está en
-  «Lo que sigue en Mac», abajo.
+- Mac: hechas las tareas 1 a 10 de `mac.md`. Quedan la 11 (actualizarse solo) y la 12 (firma de Apple):
+  ver «Lo que sigue en Mac», abajo.
 
 ## Versiones publicadas en Drive
 
@@ -61,7 +61,12 @@ En este orden (las dos primeras hacen que un compañero con Mac pueda usar Parab
 3. ~~**Tarea 9, versiones 1.18 y anteriores**~~ — hecha en el PR #10: 1.18 nativa (LWJGL 3.3.1) y 1.17.1
    y anteriores con Rosetta y el Java de Intel de Mojang.
 4. **Tarea 12, firma de Apple**: cuesta 99 USD al año, decisión de Juan. Mientras, la guía de
-   instalación dice lo del clic derecho › Abrir.
+   instalación dice cómo abrirla la primera vez (desde macOS 15: Ajustes del Sistema › Privacidad y
+   seguridad › «Abrir de todas formas»).
+
+Siguiente para Diego: la **tarea 11**. Con la `.app` lista, es lo que falta para que un compañero con Mac
+reciba las versiones nuevas sin compilar. Antes de hacerla, comenta la propuesta de arriba en un PR o
+issue para acordar con Juan cómo se publica la de Mac en Drive.
 
 Opcional y pequeño: los servidores de Forge 1.17+ creados en Mac **antes** del PR #7 guardaron
 `win_args.txt` en `parabellum-servidor.json` (`launch`) y siguen sin arrancar. Si tienes alguno,
@@ -96,12 +101,18 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Pendientes para Windows
 
-- [ ] **PR #11 (`.app` y `.dmg` de Mac): compilar en Windows.** `main.rs` atiende los eventos con un
-  `match` y la rama de `RunEvent::Reopen` lleva `#[cfg(target_os = "macos")]` (en Windows no existe);
-  `RunEvent::Exit` hace lo mismo que antes. Lo demás es de Mac: `src-tauri/mac/` y el workflow de Mac.
+Nada por ahora.
 
-- [ ] **PR #10 (versiones viejas en Mac): compilar, correr las pruebas y abrir una 1.16.5 y una 1.18.2
-  en Windows.** En Windows todo debe seguir igual. Lo compartido:
+- [x] **PR #11 (`.app` y `.dmg` de Mac)** (2026-10-12): compila en Windows sin advertencias. `main.rs`
+  atiende los eventos con un `match` y la rama de `RunEvent::Reopen` lleva `#[cfg(target_os = "macos")]`
+  (en Windows no existe); `RunEvent::Exit` hace lo mismo que antes. Lo demás es de Mac: `src-tauri/mac/`
+  y el workflow de Mac.
+
+- [x] **PR #10 (versiones viejas en Mac)** (2026-10-12): en Windows pasan las 87 pruebas (incluida
+  `version_mayor`), compila sin advertencias y, con `--probar-juego`, Fabric 1.16.5 llega al menú en 35 s
+  y Fabric 1.18.2 en 58 s, con el mod de Parabellum. Revisé que exportar no meta cada biblioteca dos
+  veces (`version_files` quita repetidos al final). Buen hallazgo lo de `major_of` con el Java 8 de
+  Mojang: también fallaba en Windows. Lo compartido:
   - Contrato: `java_runtime_platform(major)` (en Windows, `JAVA_RUNTIME_PLATFORM`), `adapt_libraries`
     (devuelve las mismas), `foreign_java_ready()` (`true`) e `install_foreign_java()` (no hace nada).
   - `mojang.rs`: el Java se baja de `java_runtime_platform(major)` y, si Mojang no tiene ese componente,
