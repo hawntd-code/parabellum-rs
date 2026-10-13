@@ -3,10 +3,11 @@
 //!
 //! Lo que ya está hecho usa herramientas que trae macOS (open, sysctl, ps, kill, afplay, sips, dig,
 //! security, sh). Lo marcado con TODO(mac) falta: cada uno dice qué hacer. Mientras tanto devuelve
-//! algo seguro (por ejemplo, `SELF_UPDATE` es `false`: Parabellum nunca pide actualizarse).
+//! algo seguro (por ejemplo, `firewall_open` dice que sí: no revisa el firewall de macOS).
 
 pub mod accesos;
 pub mod avisos;
+pub mod lanzador;
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -18,12 +19,10 @@ use super::AgentDownload;
 pub const NAME: &str = "macOS";
 pub const MOJANG_OS: &str = "osx";
 pub const JAVA_RUNTIME_PLATFORM: &str = if cfg!(target_arch = "aarch64") { "mac-os-arm64" } else { "mac-os" };
-// TODO(mac): la actualización automática reemplaza el ejecutable (catalog.rs, apply_launcher_update).
-// En Mac el programa vive dentro de Parabellum.app/Contents/MacOS: hay que actualizar la .app entera.
+// El programa, dentro de Parabellum.app/Contents/MacOS. Al actualizarse se cambia la app entera
+// (lanzador.rs), con su propio id en el catálogo: nunca baja el .exe de Windows.
 pub const EXECUTABLE: &str = "Parabellum";
-// Mientras eso falte, no se ofrece actualizar: el catálogo trae el .exe de Windows y la ventana de
-// actualización obligatoria dejaría a Parabellum bloqueado. En Mac se actualiza recompilando.
-pub const SELF_UPDATE: bool = false;
+pub const SELF_UPDATE: bool = true;
 pub const CLASSPATH_SEPARATOR: &str = ":";
 // El de Windows separa las rutas con «;» y aquí Java no encontraría la clase principal de Forge.
 pub const FORGE_SERVER_ARGS: &str = "unix_args.txt";

@@ -36,7 +36,8 @@ En este orden (las dos primeras hacen que un compañero con Mac pueda usar Parab
      al que ya está abierto `RunEvent::Reopen`, y hoy nadie lo atiende (en `main.rs` solo se atiende
      `RunEvent::Exit`). Que llame a `cuenta::show_window`. Va en código compartido con
      `#[cfg(target_os = "macos")]`: dilo en el PR.
-2. **Tarea 11, actualizarse solo.** Propuesta, para que la discutamos en el PR antes de hacerla:
+2. ~~**Tarea 11, actualizarse solo.**~~ — hecha en el PR #12 (ver abajo lo que contestó Juan). Propuesta,
+   para que la discutamos en el PR antes de hacerla:
    - En Drive, un zip aparte para Mac con su propio id en el catálogo (p. ej. `parabellum-mac`, junto a
      `LAUNCHER_ID`), así un Windows nunca baja la de Mac ni al revés. `launcher_update` filtra por el id
      del sistema (constante nueva en el contrato).
@@ -47,8 +48,13 @@ En este orden (las dos primeras hacen que un compañero con Mac pueda usar Parab
      mandes (o un `--publicar-launcher-mac <zip>`). Juan lo publica en Drive.
    - Después, `SELF_UPDATE = true`.
 
-   **Respuesta de Mac (PR #12, en borrador: sin código hasta que Juan conteste).** De acuerdo con todo,
-   con estos detalles:
+   **Lo que contestó Juan (2026-10-13):** la de Mac va en la raíz del catálogo (`_parabellum-mac`, junto a
+   `_parabellum`); la sube Diego desde su cuenta (editor de la carpeta; puede delegárselo a Claude); los
+   nombres están bien, y Juan avisa aquí cuando publique una versión de Windows. Quedó como en la
+   respuesta de abajo; el id y lo demás del launcher están en un módulo del contrato,
+   `plataforma::lanzador` (`ID`, `published_files`, `install`, `restart`, `cleanup`, `readme`).
+
+   **Respuesta de Mac (PR #12).** De acuerdo con todo, con estos detalles:
    - **Id y carpeta.** Contrato nuevo `LAUNCHER_ID`: `"parabellum"` en Windows (como hoy) y
      `"parabellum-mac"` en Mac. Mac publica en su propia carpeta de Drive, `_parabellum-mac` (el nombre
      sale del id), y no en `_parabellum`: `publish_launcher` y `Publisher::remove_old_launchers` borran
@@ -117,6 +123,17 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   encabezado de `macos/mod.rs` y la tarea 1 de `mac.md`): resuelto en el PR #5.
 
 ## Pendientes para Windows
+
+- [ ] **PR #12 (actualizarse solo en Mac): compilar, correr las pruebas y publicar una de prueba.** Lo que
+  Windows hacía con su `.exe` se movió tal cual de `catalog.rs` a `plataforma/windows/lanzador.rs`
+  (módulo nuevo del contrato: `ID`, `published_files`, `install`, `restart`, `cleanup`, `readme`; el
+  `LEEME.txt` es idéntico). `catalog::LAUNCHER_ID` ya no existe: es `plataforma::lanzador::ID`, que en
+  Windows sigue siendo `"parabellum"`. También:
+  - El título del diálogo de «Publicar esta versión» ya no nombra `_parabellum`, y el aviso de la
+    interfaz usa el nombre real de la carpeta.
+  - Comando nuevo `--subir-launcher-drive <carpeta>`: lo mismo que «Subir a Drive», sin la ventana.
+  - Para probar: «Publicar esta versión» en una carpeta de prueba deja `_parabellum` igual que antes, y
+    `cargo test` pasa `actualizacion_del_launcher_segun_el_sistema` (la de Mac no se ofrece en Windows).
 
 - [ ] **PR #11 (`.app` y `.dmg` de Mac): compilar en Windows.** `main.rs` atiende los eventos con un
   `match` y la rama de `RunEvent::Reopen` lleva `#[cfg(target_os = "macos")]` (en Windows no existe);

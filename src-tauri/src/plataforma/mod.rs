@@ -54,6 +54,9 @@
 //! Módulos
 //!   avisos    notificaciones del sistema (register, show, init_thread, history_count).
 //!   accesos   accesos directos (Place, Status, status, create, remove, supported).
+//!   lanzador  las versiones de Parabellum en el catálogo: ID (y su carpeta de Drive, «_» + ID), qué se
+//!             publica (published_files, readme), cómo se pone la nueva (install), cómo se reabre
+//!             (restart) y cómo se limpia la anterior (cleanup).
 
 #[cfg(target_os = "windows")]
 mod windows;

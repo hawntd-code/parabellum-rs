@@ -5939,7 +5939,10 @@ async function publishLauncher() {
     if (!folder) return;
     refreshAbout();
     if (!state.drivePublisher) {
-      toast(t(`Listo: sube la carpeta «_parabellum» (está en ${folder.replace(/[\\/]_parabellum$/, "")}) a tu Drive. Quien abra Parabellum se actualizará.`, `Done: upload the «_parabellum» folder (it is in ${folder.replace(/[\\/]_parabellum$/, "")}) to your Drive. Whoever opens Parabellum will update.`));
+      // _parabellum en Windows, _parabellum-mac en Mac.
+      const name = folder.split(/[\\/]/).pop();
+      const parent = folder.slice(0, folder.length - name.length - 1);
+      toast(t(`Listo: sube la carpeta «${name}» (está en ${parent}) a tu Drive. Quien abra Parabellum se actualizará.`, `Done: upload the «${name}» folder (it is in ${parent}) to your Drive. Whoever opens Parabellum will update.`));
       return;
     }
     state.driveUpload = "about";

@@ -1809,8 +1809,8 @@ fn cerrar_parabellum(app: AppHandle) {
 async fn aplicar_actualizacion(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let catalog = catalog_snapshot(&state, false).await;
     let entry = catalog::launcher_update(&catalog.entries).ok_or(t!("No hay una versión nueva.", "There is no new version."))?.clone();
-    let exe = catalog::apply_launcher_update(&entry, &state.paths, progress_emitter(&app, "actualizacion")).await?;
-    std::process::Command::new(&exe).arg("--reiniciar").spawn().map_err(|e| t!("Se actualizó, pero no se pudo reabrir: {e}", "It was updated, but could not be reopened: {e}"))?;
+    let installed = catalog::apply_launcher_update(&entry, &state.paths, progress_emitter(&app, "actualizacion")).await?;
+    plataforma::lanzador::restart(&installed).map_err(|e| t!("Se actualizó, pero no se pudo reabrir: {e}", "It was updated, but could not be reopened: {e}"))?;
     app.exit(0);
     Ok(())
 }
@@ -2062,10 +2062,11 @@ async fn salir_de_servidor(app: AppHandle, anfitrion: String, clave: String) -> 
     social.leave_server(&anfitrion, &clave).await
 }
 
-/// Prepara la carpeta _parabellum con esta versión para subirla a Drive. None si se canceló.
+/// Prepara la carpeta de las versiones de este sistema (_parabellum o _parabellum-mac) con esta versión
+/// para subirla a Drive. None si se canceló.
 #[tauri::command]
 async fn publicar_launcher(app: AppHandle, state: State<'_, AppState>, notas: String, elegir: bool) -> Result<Option<String>, String> {
-    let title = t!("Carpeta de tus paquetes para Drive (donde va la carpeta _parabellum)", "Your Drive packages folder (where the _parabellum folder goes)");
+    let title = t!("Carpeta de tus paquetes para Drive (donde va la carpeta de las versiones de Parabellum)", "Your Drive packages folder (where the Parabellum versions folder goes)");
     let Some(folder) = export_folder(&app, &state.paths, elegir, &title).await? else { return Ok(None) };
     let result = tauri::async_runtime::spawn_blocking(move || catalog::publish_launcher(&folder, &notas)).await.map_err(|e| e.to_string())??;
     Ok(Some(result.display().to_string()))
@@ -2150,7 +2151,7 @@ async fn subir_paquete_drive(app: AppHandle, state: State<'_, AppState>, modpack
     Ok(drive_result(uploaded, same))
 }
 
-/// Sube a Drive la carpeta _parabellum que dejó «Publicar esta versión» y quita de ahí las versiones
+/// Sube a Drive la carpeta que dejó «Publicar esta versión» (_parabellum o _parabellum-mac) y quita de ahí las versiones
 /// anteriores (a la papelera de Drive). Quien abra Parabellum se actualizará.
 #[tauri::command]
 async fn subir_launcher_drive(app: AppHandle, state: State<'_, AppState>, carpeta: String) -> Result<String, String> {
@@ -2234,7 +2235,8 @@ fn system_ram_gb() -> u32 {
 ///   --playit                                        estado de la cuenta y del túnel de playit.gg
 ///   --catalogo                                      modpacks y versiones de Drive y de la carpeta paquetes
 ///   --instalar-catalogo <id> [reparar]              instala, actualiza o repara (bajando solo lo que cambió)
-///   --publicar-launcher <carpeta> [notas]           prepara _parabellum para subirla a Drive
+///   --publicar-launcher <carpeta> [notas]           prepara _parabellum (en Mac, _parabellum-mac) para subirla a Drive
+///   --subir-launcher-drive <carpeta>                la sube a Drive (con el permiso de «Conectar Drive»)
 fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<String, String> {
     match args[0].as_str() {
         "--comprobar" => {
@@ -2984,6 +2986,24 @@ abierto {seconds} s"));
             let notes = args.get(2).cloned().unwrap_or_default();
             Ok(format!("{}", catalog::publish_launcher(&folder, &notes)?.display()))
         }
+        "--subir-launcher-drive" => {
+            // Lo mismo que «Subir a Drive» en Acerca de, sin la ventana: con el permiso de Drive que se dio
+            // ahí (Conectar Drive), sube la carpeta que dejó --publicar-launcher y manda a la papelera de
+            // Drive las versiones anteriores de esa carpeta.
+            let folder = PathBuf::from(args.get(1).ok_or("Falta la carpeta.")?);
+            let root = folder.parent().filter(|_| folder.is_dir()).ok_or("Esa carpeta no existe.")?.to_path_buf();
+            let name = folder.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let refresh = drive::load(paths).ok_or("Primero conecta Drive en Parabellum (Acerca de › Conectar Drive).")?;
+            let config = config::Config::load(paths);
+            tauri::async_runtime::block_on(async {
+                let publisher = drive::Publisher::resume(&config, refresh).await?;
+                let files = upload_order(drive::files_in(&folder));
+                let (uploaded, same) = publisher.publish(&root, &files, |_, _| {}).await?;
+                let keep: Vec<String> = files.iter().filter_map(|f| f.file_name()).map(|n| n.to_string_lossy().to_string()).collect();
+                let removed = publisher.remove_old_launchers(&name, &keep).await?;
+                Ok(format!("{} ({}): {}; {removed} versiones anteriores a la papelera", name, publisher.email(), drive_result(uploaded, same)))
+            })
+        }
         other => Err(format!("Comando desconocido: {other}")),
     }
 }
@@ -3048,7 +3068,7 @@ fn main() {
             return;
         }
     };
-    catalog::cleanup_previous_version();
+    plataforma::lanzador::cleanup();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         // Iconos de mods, resource packs y mundos (http://icono.localhost/…): se leen cuando se ven.
