@@ -3215,12 +3215,17 @@ fn main() {
         ])
         .build(tauri::generate_context!())
         .expect("no se pudo abrir Parabellum")
-        .run(|app, event| {
+        .run(|app, event| match event {
             // Al salir del todo: los amigos te ven desconectado al momento.
-            if let tauri::RunEvent::Exit = event {
+            tauri::RunEvent::Exit => {
                 // Los servidores guardan el mundo y se apagan antes de salir.
                 hosting::shutdown(app);
                 cuenta::shutdown(app);
             }
+            // Mac: clic en el ícono del Dock (o abrir la .app otra vez) con la ventana escondida en la barra
+            // de menús. macOS no abre otra copia: se lo dice a la que ya está abierta.
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => cuenta::show_window(app),
+            _ => {}
         });
 }
