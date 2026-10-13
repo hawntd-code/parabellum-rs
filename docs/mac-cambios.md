@@ -23,11 +23,27 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
-- Última revisión de los PR de Mac en Windows: 2026-10-12, PR #1 a #11 (todos mezclados).
-- Windows: la última publicada en Drive es la 0.25.0 (ver «Versiones publicadas en Drive»). En `main` va
-  la 0.27.1; Juan publica primero las reglas de Firebase y luego la versión.
-- Mac: hechas las tareas 1 a 10 de `mac.md`. Quedan la 11 (actualizarse solo) y la 12 (firma de Apple):
-  ver «Lo que sigue en Mac», abajo.
+- Última revisión de los PR de Mac en Windows: 2026-10-13, PR #1 a #12 (todos mezclados).
+- **Windows está en pausa en la 0.28.0 hasta que Mac llegue a la par** (decisión de Juan, 2026-10-13).
+  Mientras tanto no hay cambios nuevos de Windows en `main`. Ver «Para llegar a la 0.28.0», abajo.
+- Windows: la última publicada en Drive es la 0.25.0 (ver «Versiones publicadas en Drive»); la 0.28.0
+  está en `main` y en el PC de Juan. Las reglas de Firebase de la 0.27 ya están publicadas.
+- Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
+
+## Para llegar a la 0.28.0 (Mac)
+
+Lo que falta para que Mac esté a la par de Windows:
+
+1. Compilar `main` (0.28.0) en Mac y probar lo de «Pendientes para Mac», abajo, y lo de cada entrada de
+   «Cambios de Windows» desde la 0.26.0:
+   - 0.26: panel del juego en 26.3 (pestañas con el ratón, escribir) y abrir Parabellum dos veces.
+   - 0.27: página de Amigos, responder, reaccionar, grupos con foto y dueño, «Reportar problema».
+   - 0.27.1: la página de Servidores (Tus servidores, De tus amigos, Guardados).
+   - 0.28.0: vista previa al mandar una imagen (Cmd+V), punto de en línea en Mensajes y el panel del juego
+     nuevo (`python mod/vista/vista.py` lo dibuja sin Minecraft; dentro del juego, revisa los emojis).
+2. Publicar la primera versión de Mac (0.28.0) en `_parabellum-mac` (tarea 11) y avisarlo aquí, en
+   «Versiones publicadas en Drive».
+3. Contar en un PR o aquí qué no funcionó, para que Windows lo arregle antes de seguir.
 
 ## Versiones publicadas en Drive
 
@@ -141,7 +157,12 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Pendientes para Windows
 
-- [ ] **PR #12 (actualizarse solo en Mac): compilar, correr las pruebas y publicar una de prueba.** Lo que
+Nada por ahora.
+
+- [x] **PR #12 (actualizarse solo en Mac)** (2026-10-13, Juan lo mezcló): en Windows compila sin
+  advertencias, pasan las pruebas (con `actualizacion_del_launcher_segun_el_sistema`) y «Publicar esta
+  versión» deja `_parabellum` igual que antes: el mismo `LEEME.txt`, el zip con `Parabellum.exe` y el id
+  `parabellum` (lo comparé con lo que publicaba la 0.27.1). Lo que
   Windows hacía con su `.exe` se movió tal cual de `catalog.rs` a `plataforma/windows/lanzador.rs`
   (módulo nuevo del contrato: `ID`, `published_files`, `install`, `restart`, `cleanup`, `readme`; el
   `LEEME.txt` es idéntico). `catalog::LAUNCHER_ID` ya no existe: es `plataforma::lanzador::ID`, que en
@@ -154,11 +175,6 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
     «Un aviso de Windows cuando te escriben…» pasa a «Un aviso del sistema…» (también en `i18n.js`).
   - Para probar: «Publicar esta versión» en una carpeta de prueba deja `_parabellum` igual que antes, y
     `cargo test` pasa `actualizacion_del_launcher_segun_el_sistema` (la de Mac no se ofrece en Windows).
-
-- [ ] **PR #11 (`.app` y `.dmg` de Mac): compilar en Windows.** `main.rs` atiende los eventos con un
-  `match` y la rama de `RunEvent::Reopen` lleva `#[cfg(target_os = "macos")]` (en Windows no existe);
-  `RunEvent::Exit` hace lo mismo que antes. Lo demás es de Mac: `src-tauri/mac/` y el workflow de Mac.
-Nada por ahora.
 
 - [x] **PR #11 (`.app` y `.dmg` de Mac)** (2026-10-12): compila en Windows sin advertencias. `main.rs`
   atiende los eventos con un `match` y la rama de `RunEvent::Reopen` lleva `#[cfg(target_os = "macos")]`
@@ -211,8 +227,8 @@ Nada por ahora.
 
 ## Próximo en Windows
 
-- La 0.27.0 ya está en `main` (ver «Cambios de Windows»). Sigue: responder y reaccionar desde el panel
-  del juego, y la prueba con compañeros en sus casas.
+- En pausa hasta que Mac llegue a la 0.28.0 (ver «Estado»). Después: la prueba con compañeros en sus
+  casas y lo que salga de ella.
 
 ## Cambios de Windows
 
