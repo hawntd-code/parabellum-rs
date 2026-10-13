@@ -3,7 +3,6 @@ package mx.parabellum.juego;
 import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Font;
-import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.Shape;
@@ -36,6 +35,8 @@ final class Lienzo {
 
     private static Font regular;
     private static Font seminegrita;
+    /** Para lo que Inter no tiene (emojis, símbolos): una fuente del sistema que sí. */
+    private static Font respaldo;
 
     final Graphics2D g;
     final double u;
@@ -90,6 +91,55 @@ final class Lienzo {
         return fuente(negrita).deriveFont((float) (tamano * u));
     }
 
+    static synchronized Font respaldo() {
+        if (respaldo == null) {
+            for (String nombre : new String[] {"Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "Apple Symbols"}) {
+                Font f = new Font(nombre, Font.PLAIN, 12);
+                if (!f.getFamily().equals(Font.DIALOG) && f.canDisplay(0x1F600)) {
+                    respaldo = f;
+                    break;
+                }
+            }
+            if (respaldo == null) respaldo = new Font(Font.DIALOG, Font.PLAIN, 12);
+        }
+        return respaldo;
+    }
+
+    /** Selectores de variante y uniones de emojis: no se dibujan (el emoji solo se ve igual). */
+    private static boolean invisible(int c) {
+        return (c >= 0xFE00 && c <= 0xFE0F) || c == 0x200D;
+    }
+
+    /** El texto en partes, cada una con la fuente que la puede escribir: {texto, fuente}. */
+    private List<Object[]> partes(String texto, Font principal) {
+        List<Object[]> salida = new ArrayList<Object[]>();
+        Font otra = null;
+        StringBuilder actual = new StringBuilder();
+        Boolean conPrincipal = null;
+        for (int i = 0; i < texto.length(); ) {
+            int c = texto.codePointAt(i);
+            i += Character.charCount(c);
+            if (invisible(c)) continue;
+            boolean puede = c < 0x2000 || principal.canDisplay(c);
+            if (conPrincipal != null && puede != conPrincipal && actual.length() > 0) {
+                salida.add(new Object[] {actual.toString(), conPrincipal ? principal : otra});
+                actual.setLength(0);
+            }
+            if (!puede && otra == null) otra = respaldo().deriveFont(principal.getSize2D());
+            conPrincipal = puede;
+            actual.appendCodePoint(c);
+        }
+        if (actual.length() > 0) salida.add(new Object[] {actual.toString(), conPrincipal ? principal : otra});
+        return salida;
+    }
+
+    /** Ancho en píxeles reales, con la fuente de respaldo donde haga falta. */
+    private double medir(String texto, Font principal) {
+        double w = 0;
+        for (Object[] parte : partes(texto, principal)) w += g.getFontMetrics((Font) parte[1]).stringWidth((String) parte[0]);
+        return w;
+    }
+
     // ---------- Formas
 
     void rect(double x, double y, double w, double h, double radio, Color color) {
@@ -116,27 +166,37 @@ final class Lienzo {
 
     /** Escribe en (x, y) = esquina superior izquierda de la línea. Devuelve el ancho en u. */
     double texto(String texto, double x, double y, double tamano, boolean negrita, Color color) {
+        if (texto == null) return 0;
         Font f = fuente(tamano, negrita);
-        g.setFont(f);
         g.setColor(color);
-        FontMetrics m = g.getFontMetrics();
-        g.drawString(texto, (float) (x * u), (float) (y * u + m.getAscent()));
-        return m.stringWidth(texto) / u;
+        float base = (float) (y * u + g.getFontMetrics(f).getAscent());
+        double px = x * u;
+        for (Object[] parte : partes(texto, f)) {
+            Font fp = (Font) parte[1];
+            g.setFont(fp);
+            g.drawString((String) parte[0], (float) px, base);
+            px += g.getFontMetrics(fp).stringWidth((String) parte[0]);
+        }
+        return px / u - x;
     }
 
     /** Recorta con «…» para que quepa en el ancho. */
     String recortar(String texto, double ancho, double tamano, boolean negrita) {
         if (texto == null) return "";
-        FontMetrics m = g.getFontMetrics(fuente(tamano, negrita));
+        Font f = fuente(tamano, negrita);
         double max = ancho * u;
-        if (m.stringWidth(texto) <= max) return texto;
+        if (medir(texto, f) <= max) return texto;
         String corto = texto;
-        while (corto.length() > 0 && m.stringWidth(corto + "…") > max) corto = corto.substring(0, corto.length() - 1);
+        while (corto.length() > 0 && medir(corto + "…", f) > max) {
+            int fin = corto.length() - 1;
+            if (fin > 0 && Character.isLowSurrogate(corto.charAt(fin))) fin--;
+            corto = corto.substring(0, fin);
+        }
         return corto + "…";
     }
 
     double ancho(String texto, double tamano, boolean negrita) {
-        return g.getFontMetrics(fuente(tamano, negrita)).stringWidth(texto) / u;
+        return texto == null ? 0 : medir(texto, fuente(tamano, negrita)) / u;
     }
 
     double altoLinea(double tamano) {
@@ -146,13 +206,13 @@ final class Lienzo {
     /** Parte el texto en líneas que quepan en el ancho (respeta los saltos de línea). */
     List<String> lineas(String texto, double ancho, double tamano, boolean negrita) {
         List<String> salida = new ArrayList<String>();
-        FontMetrics m = g.getFontMetrics(fuente(tamano, negrita));
+        Font f = fuente(tamano, negrita);
         double max = ancho * u;
         for (String parrafo : (texto == null ? "" : texto).split("\n", -1)) {
             StringBuilder linea = new StringBuilder();
             for (String palabra : parrafo.split(" ", -1)) {
                 String prueba = linea.length() == 0 ? palabra : linea + " " + palabra;
-                if (m.stringWidth(prueba) <= max) {
+                if (medir(prueba, f) <= max) {
                     linea.setLength(0);
                     linea.append(prueba);
                     continue;
@@ -161,9 +221,10 @@ final class Lienzo {
                 linea.setLength(0);
                 // Una palabra más larga que el renglón se parte a la fuerza.
                 String resto = palabra;
-                while (m.stringWidth(resto) > max && resto.length() > 1) {
+                while (medir(resto, f) > max && resto.length() > 1) {
                     int corte = resto.length();
-                    while (corte > 1 && m.stringWidth(resto.substring(0, corte)) > max) corte--;
+                    while (corte > 1 && medir(resto.substring(0, corte), f) > max) corte--;
+                    if (corte > 1 && Character.isHighSurrogate(resto.charAt(corte - 1))) corte--;
                     salida.add(resto.substring(0, corte));
                     resto = resto.substring(corte);
                 }

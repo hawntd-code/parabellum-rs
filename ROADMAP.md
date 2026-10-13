@@ -135,6 +135,15 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Probado: la prueba P2P por internet ve al invitado (destino, directo, ping) y lo quita al salir; Grupos y Capturas capturados en Fabric 1.21.1 (clic en una captura → «Enviar a»); el panel de 26.3 abre (sus clics no se pueden simular: los revisa Juan)
 - [ ] *Prueba:* Juan: en 26.3 cambiar de pestaña, «Mensaje» y Capturas; ver los jugadores del servidor; con un amigo, la tarjeta P2P (directo o relevo y ping)
 
+### 0.28.0: el panel del juego con lo mismo que la ventana (pedido de Juan)
+- [x] **Imágenes:** al adjuntar, pegar o soltar una imagen sale una vista previa (ya reducida) y se confirma antes de mandarla
+- [x] **Mensajes:** el punto de en línea (verde) o jugando (morado) en las conversaciones directas y en la cabecera
+- [x] **Panel del juego (tecla O), rehecho para parecerse a la ventana:** mismos iconos y colores; Amigos con filtros, búsqueda, favoritos, ⋯ y grupos; Mensajes con favoritos, «Escribir a un amigo», punto de en línea, fotos de grupo, días, citas, reacciones (con quién reaccionó), herramientas al pasar el ratón, menú del clic derecho con reacciones, barra «Respondiendo a…», crear grupos, miembros (sacar, pasar el grupo) y cambiar el nombre; Capturas con «Abrir carpeta»
+- [x] Lo que Inter no tiene (emojis en los mensajes) ya no sale como cuadritos: se escribe con una fuente del sistema
+- [x] El puente le da al juego favoritos, miembros, dueño y foto de cada grupo, y las reacciones; operaciones nuevas: reaccionar, responder, favoritos, crear/editar/salir de grupos, sacar y pasar el grupo, foto del grupo y abrir la carpeta de capturas
+- [x] **Capturas «vacías» de un amigo:** el código buscaba bien la carpeta (`screenshots` del juego); lo más probable es que en su laptop F2 cambie el brillo y haga falta Fn + F2. Ahora el panel lo explica y tiene «Abrir carpeta»
+- [ ] *Prueba:* Juan con un amigo dentro del juego: responder, reaccionar, crear un grupo y sacar a alguien
+
 ### 0.27.1: Servidores y Hostear en una sola página (pedido de Juan)
 - [x] «Hostear partida» ya no es un botón aparte: es la sección «Tus servidores» de Servidores (con «Crear servidor», el aviso de tu mundo abierto y lo de playit.gg). El punto verde de «servidor encendido» pasó al botón de Servidores
 - [x] Tres secciones con su encabezado: Tus servidores, De tus amigos y Guardados. Cada una es una lista de filas compactas (unos 52 px: icono, nombre, de quién o qué instancia, estado, jugadores y su botón) en vez de tarjetas grandes

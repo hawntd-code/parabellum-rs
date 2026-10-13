@@ -117,6 +117,12 @@ struct Open {
     _reactions: Listener,
 }
 
+/// Lo que escucha el juego de una conversación (ver puente.rs): sus mensajes y sus reacciones.
+pub struct Watch {
+    _messages: Listener,
+    _reactions: Listener,
+}
+
 type Notify = Box<dyn Fn() + Send + Sync>;
 type Arrived = Box<dyn Fn(Summary) + Send + Sync>;
 type Messages = Box<dyn Fn(String, Vec<Message>) + Send + Sync>;
@@ -481,19 +487,39 @@ impl Chat {
         (self.messages)(id, list);
     }
 
-    /// Escucha una conversación aparte de la que se ve en la ventana (la del juego: ver puente.rs).
-    pub fn watch(self: &Arc<Self>, id: &str, on_messages: impl Fn(Vec<Message>) + Send + Sync + 'static) -> Result<Listener, String> {
+    /// Escucha una conversación aparte de la que se ve en la ventana (la del juego: ver puente.rs), con sus
+    /// reacciones. Avisa cada vez que cambia una de las dos, en cuanto llegaron los mensajes.
+    pub fn watch(self: &Arc<Self>, id: &str, on_messages: impl Fn(Vec<Message>) + Send + Sync + 'static) -> Result<Watch, String> {
         let id = safe(id)?.to_string();
-        let weak = Arc::downgrade(self);
-        Ok(self.db.listen(
-            format!("messages/{id}?orderBy=\"$key\"&limitToLast={HISTORY}"),
-            move |data| {
-                if let Some(chat) = weak.upgrade() {
-                    on_messages(chat.parse_messages(&data, &Value::Null, &HashMap::new()));
-                }
-            },
-            |_| {},
-        ))
+        // (mensajes, reacciones, ya llegaron los mensajes)
+        let data: Arc<Mutex<(Value, Value, bool)>> = Arc::default();
+        let on_messages: Arc<dyn Fn(Vec<Message>) + Send + Sync> = Arc::new(on_messages);
+        let listen = |path: &str, reactions: bool| {
+            let (weak, data, on_messages) = (Arc::downgrade(self), data.clone(), on_messages.clone());
+            self.db.listen(
+                format!("{path}/{id}?orderBy=\"$key\"&limitToLast={HISTORY}"),
+                move |value| {
+                    let Some(chat) = weak.upgrade() else { return };
+                    let (messages, reacted) = {
+                        let mut data = data.lock().unwrap();
+                        if reactions {
+                            data.1 = value;
+                        } else {
+                            data.0 = value;
+                            data.2 = true;
+                        }
+                        if !data.2 {
+                            return;
+                        }
+                        (data.0.clone(), data.1.clone())
+                    };
+                    let names = chat.inner.lock().unwrap().names.clone();
+                    on_messages(chat.parse_messages(&messages, &reacted, &names));
+                },
+                |_| {},
+            )
+        };
+        Ok(Watch { _messages: listen("messages", false), _reactions: listen("reactions", true) })
     }
 
     /// Marca la conversación como leída (hasta ahora).

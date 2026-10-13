@@ -149,13 +149,42 @@ public final class Juego {
     /** -Dparabellum.prueba=true: el panel se dibuja como conectado (para probar el diseño sin Parabellum). */
     private static final boolean PRUEBA = Boolean.getBoolean("parabellum.prueba");
 
-    /** Datos de ejemplo para el modo de prueba (un amigo y una conversación). */
+    /** Datos de ejemplo para el modo de prueba: amigos (en línea, jugando, desconectado, favorito), una
+     * solicitud y conversaciones (directa, favorita y un grupo con dueño). */
     @SuppressWarnings("deprecation")
-    private static JsonObject ejemplo() {
-        return new com.google.gson.JsonParser().parse("{\"ev\":\"estado\",\"sesion\":true,\"yo\":{\"nombre\":\"Prueba\"},\"puedoInvitar\":true,"
-            + "\"amigos\":[{\"uid\":\"a\",\"nombre\":\"Amigo\",\"enLinea\":true,\"jugando\":true,\"mundo\":true,\"pack\":\"Prueba\",\"unirse\":true}],"
-            + "\"solicitudes\":[],\"servidores\":[],\"chats\":[{\"id\":\"c\",\"nombre\":\"Amigo\",\"tipo\":\"directo\",\"ultimo\":\"Hola\",\"sinLeer\":true},"
-            + "{\"id\":\"g\",\"nombre\":\"Los panas\",\"tipo\":\"grupo\",\"ultimo\":\"¿Jugamos?\",\"ultimoNombre\":\"Amigo\",\"sinLeer\":false}]}").getAsJsonObject();
+    static JsonObject ejemplo() {
+        long ahora = System.currentTimeMillis();
+        return new com.google.gson.JsonParser().parse("{\"ev\":\"estado\",\"sesion\":true,\"yo\":{\"nombre\":\"Prueba\",\"uid\":\"yo\"},\"puedoInvitar\":true,"
+            + "\"amigos\":["
+            + "{\"uid\":\"a\",\"nombre\":\"Hawntd\",\"enLinea\":true,\"jugando\":true,\"mundo\":true,\"pack\":\"Better MC BMC4\",\"unirse\":true,\"favorito\":true},"
+            + "{\"uid\":\"b\",\"nombre\":\"Alex_mx\",\"enLinea\":true,\"jugando\":true,\"pack\":\"Fabulously Optimized\",\"servidor\":\"mc.universocraft.com\",\"unirse\":true},"
+            + "{\"uid\":\"c\",\"nombre\":\"Dani\",\"enLinea\":true},"
+            + "{\"uid\":\"d\",\"nombre\":\"Pepe_07\",\"enLinea\":false,\"visto\":" + (ahora - 86400000L) + "}],"
+            + "\"solicitudes\":[{\"uid\":\"r\",\"nombre\":\"Steve_22\"}],\"servidores\":[],"
+            + "\"chats\":["
+            + "{\"id\":\"d_a\",\"nombre\":\"Hawntd\",\"tipo\":\"directo\",\"ultimo\":\"¿Abres tu mundo? 😄\",\"hora\":" + (ahora - 120000L) + ",\"sinLeer\":true,\"favorito\":true,\"amigo\":\"a\",\"miembros\":[{\"uid\":\"yo\",\"nombre\":\"Prueba\",\"tu\":true},{\"uid\":\"a\",\"nombre\":\"Hawntd\",\"tu\":false}]},"
+            + "{\"id\":\"g\",\"nombre\":\"Los panas\",\"tipo\":\"grupo\",\"ultimo\":\"📷 Imagen\",\"ultimoNombre\":\"Dani\",\"hora\":" + (ahora - 3600000L) + ",\"sinLeer\":false,\"dueno\":\"yo\",\"puedoEditar\":true,"
+            + "\"miembros\":[{\"uid\":\"yo\",\"nombre\":\"Prueba\",\"tu\":true},{\"uid\":\"b\",\"nombre\":\"Alex_mx\",\"tu\":false},{\"uid\":\"c\",\"nombre\":\"Dani\",\"tu\":false}]},"
+            + "{\"id\":\"d_c\",\"nombre\":\"Dani\",\"tipo\":\"directo\",\"ultimo\":\"Va\",\"hora\":" + (ahora - 2 * 86400000L) + ",\"sinLeer\":false,\"amigo\":\"c\",\"miembros\":[{\"uid\":\"yo\",\"nombre\":\"Prueba\",\"tu\":true},{\"uid\":\"c\",\"nombre\":\"Dani\",\"tu\":false}]}"
+            + "]}").getAsJsonObject();
+    }
+
+    /** Mensajes de ejemplo para el modo de prueba: respuestas, reacciones, una invitación y uno editado. */
+    @SuppressWarnings("deprecation")
+    static JsonArray ejemploMensajes(String chat) {
+        long ahora = System.currentTimeMillis();
+        boolean grupo = "g".equals(chat);
+        String otro = grupo ? "Alex_mx" : "Hawntd";
+        return new com.google.gson.JsonParser().parse("["
+            + "{\"id\":\"0001\",\"from\":\"b\",\"name\":\"" + otro + "\",\"text\":\"¿Quién juega hoy en la tarde?\",\"at\":" + (ahora - 26 * 3600000L) + ",\"mine\":false,"
+            + "\"reactions\":[{\"emoji\":\"👍\",\"count\":2,\"mine\":true,\"names\":[\"Prueba\",\"Dani\"]}]},"
+            + "{\"id\":\"0002\",\"from\":\"yo\",\"name\":\"Prueba\",\"text\":\"Yo, a las 5 abro mi mundo de Better MC 🔥\",\"at\":" + (ahora - 25 * 3600000L) + ",\"mine\":true,"
+            + "\"reply\":{\"id\":\"0001\",\"name\":\"" + otro + "\",\"text\":\"¿Quién juega hoy en la tarde?\"},"
+            + "\"reactions\":[{\"emoji\":\"🔥\",\"count\":1,\"mine\":false,\"names\":[\"" + otro + "\"]},{\"emoji\":\"😂\",\"count\":1,\"mine\":false,\"names\":[\"Dani\"]}]},"
+            + (grupo ? "{\"id\":\"0003\",\"from\":\"c\",\"name\":\"Dani\",\"text\":\"Yo llego como a las 6, guárdenme algo de diamantes por favor que no tengo nada\",\"at\":" + (ahora - 7200000L) + ",\"mine\":false,\"reactions\":[{\"emoji\":\"😢\",\"count\":1,\"mine\":false,\"names\":[\"Alex_mx\"]},{\"emoji\":\"❤️\",\"count\":2,\"mine\":false,\"names\":[\"Alex_mx\",\"Prueba\"]},{\"emoji\":\"😮\",\"count\":1,\"mine\":false,\"names\":[\"Alex_mx\"]}]}," : "")
+            + "{\"id\":\"0004\",\"from\":\"b\",\"name\":\"" + otro + "\",\"text\":\"parabellum:invitacion:{\\\"t\\\":\\\"servidor\\\",\\\"n\\\":\\\"SESE\\\",\\\"p\\\":\\\"Better MC BMC4\\\",\\\"k\\\":\\\"s0123\\\"}\",\"at\":" + (ahora - 600000L) + ",\"mine\":false},"
+            + "{\"id\":\"0005\",\"from\":\"yo\",\"name\":\"Prueba\",\"text\":\"Va, ya voy\",\"at\":" + (ahora - 300000L) + ",\"mine\":true,\"edited\":true}"
+            + "]").getAsJsonArray();
     }
 
     boolean conectado() {
@@ -167,6 +196,10 @@ public final class Juego {
     }
 
     void puente(String op, JsonObject datos, Puente.Respuesta respuesta) {
+        if (PRUEBA && puente == null && "abrir_chat".equals(op) && datos != null) {
+            panel.mensajes(Panel.texto(datos, "chat"), ejemploMensajes(Panel.texto(datos, "chat")));
+            return;
+        }
         if (puente == null) {
             if (respuesta != null) respuesta.listo(null, T.t("Abre este juego desde Parabellum.", "Open this game from Parabellum."));
             return;

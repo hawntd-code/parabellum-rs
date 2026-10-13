@@ -198,21 +198,29 @@ fn panel_lateral(state: State<AppState>, oculto: bool) -> Result<(), String> {
 
 /// Marca o quita una conversación (o grupo) de favoritos. Devuelve la lista nueva.
 #[tauri::command]
-fn favorito_chat(app: AppHandle, state: State<AppState>, chat: String, activo: bool) -> Result<Vec<String>, String> {
+fn favorito_chat(app: AppHandle, chat: String, activo: bool) -> Result<Vec<String>, String> {
+    set_favorite_chat(&app, &chat, activo)
+}
+
+/// Lo de favorito_chat, también para el panel del juego (puente.rs): la ventana y el juego se enteran.
+pub(crate) fn set_favorite_chat(app: &AppHandle, chat: &str, active: bool) -> Result<Vec<String>, String> {
     if chat.is_empty() || chat.len() > 200 || !chat.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
         return Err(t!("Conversación no válida.", "Invalid conversation."));
     }
-    let list = {
+    let state = app.state::<AppState>();
+    let (list, settings) = {
         let mut settings = state.settings.lock().unwrap();
-        settings.favorite_chats.retain(|c| *c != chat);
-        if activo {
-            settings.favorite_chats.insert(0, chat.clone());
+        settings.favorite_chats.retain(|c| c != chat);
+        if active {
+            settings.favorite_chats.insert(0, chat.to_string());
         }
         settings.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
-        settings.favorite_chats.clone()
+        (settings.favorite_chats.clone(), settings.clone())
     };
     // Con la sesión de Google iniciada, también en la cuenta (te siguen a otro PC).
-    favoritos::push_chat(&app, &chat, activo);
+    favoritos::push_chat(app, chat, active);
+    let _ = app.emit("ajustes", settings);
+    puente::changed(app);
     Ok(list)
 }
 

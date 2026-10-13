@@ -159,6 +159,23 @@ Nada por ahora.
 
 ## Cambios de Windows
 
+### 2026-10-13 · 0.28.0: el panel del juego con lo mismo que la ventana
+
+- Qué cambió:
+  - Mod, núcleo (`mod/nucleo`): `Panel` rehecho (Amigos, Mensajes y Capturas como en la ventana), `Iconos`
+    (los trazos de `ui/index.html`), `Emojis` (las seis reacciones dibujadas), `Lienzo` escribe con una
+    fuente del sistema lo que Inter no tiene, y `Plataforma.teclaCaptura()` (método por defecto: «F2»).
+    Los 18 .jar se recompilaron.
+  - `puente.rs`: el estado trae favoritos, miembros, dueño y huella de la foto de cada grupo; operaciones
+    nuevas (`reaccionar`, `favorito_chat`, `favorito_amigo`, `crear_grupo`, `agregar_al_grupo`,
+    `editar_grupo`, `sacar_del_grupo`, `pasar_grupo`, `salir_chat`, `foto_grupo`, `abrir_carpeta`) y
+    `enviar` acepta `respuesta`.
+  - `chat.rs`: `watch` (el chat del juego) escucha también las reacciones y devuelve `chat::Watch`.
+  - `main.rs`: `set_favorite_chat` (lo usan la ventana y el juego; avisa a los dos).
+- Mac: nada de código. En Mac Java2D no tiene emojis de color: `Lienzo.respaldo` busca «Apple Symbols»
+  (si no, «Dialog»); revisa cómo se ve un emoji en un mensaje dentro del juego y dime si sale un
+  cuadrito. Prueba también «Abrir carpeta» en Capturas (abre Finder).
+
 ### 2026-10-13 · Vista previa de imágenes y quién está en línea en Mensajes
 
 - Qué cambió: solo `ui/`. Al adjuntar, pegar o soltar una imagen en el chat ya no se manda directo: sale
