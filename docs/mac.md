@@ -117,10 +117,12 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
   enlace, el SHA-256 y el tamaño. Probado: se baja, abre y, con una clave falsa, explica «InvalidSecret».
   Falta probar un túnel con una cuenta de playit.gg.
 - Conexión directa entre PCs (P2P, `p2p.rs` con iroh): es código compartido y iroh funciona en Mac,
-  así que no hay nada que hacer en `macos/` (falta probarla).
+  así que no hay nada que hacer en `macos/`. Probada con Juan (Mac ↔ Windows) el 2026-10-12: directa,
+  62–75 ms.
 - El panel dentro del juego (`mod/`): es Java y se dibuja con Java2D en modo «headless» (Minecraft lo
-  pone así en Mac), así que debería funcionar igual; falta probarlo. Los .jar se compilan en Windows o
-  Mac con `mod/compilar.py` (JDK en `~/.jdks`).
+  pone así en Mac). Probado en el PR #6 (Fabric 1.21.1, tecla O); falta el panel nuevo de la 0.28.0
+  (ver «Para llegar a la 0.28.0» en `mac-cambios.md`). Los .jar se compilan en Windows o Mac con
+  `mod/compilar.py` (JDK en `~/.jdks`).
 - El juego se abre en su propio grupo de procesos (sigue abierto si se cierra Parabellum).
 - El servidor y el agente de playit.gg se cierran solos si Parabellum se cae (`tie_to_launcher`). Un
   vigilante (`sh`) espera leyendo una tubería que solo Parabellum tiene abierta: cuando Parabellum

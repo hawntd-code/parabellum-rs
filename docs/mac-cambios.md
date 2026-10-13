@@ -37,19 +37,24 @@ Lo que falta para que Mac esté a la par de Windows:
 
 1. Compilar `main` (0.28.0) en Mac y probar lo de «Pendientes para Mac», abajo, y lo de cada entrada de
    «Cambios de Windows» desde la 0.26.0:
-   - 0.26: panel del juego en 26.3 (pestañas con el ratón, escribir) y abrir Parabellum dos veces.
+   - 0.26: panel del juego en 26.3 (pestañas con el ratón, escribir) y abrir Parabellum dos veces (esto
+     último probado el 2026-10-13: con la app abierta, abrirla otra vez muestra la misma, sin otra copia).
    - 0.27: página de Amigos, responder, reaccionar, grupos con foto y dueño, «Reportar problema».
    - 0.27.1: la página de Servidores (Tus servidores, De tus amigos, Guardados).
    - 0.28.0: vista previa al mandar una imagen (Cmd+V), punto de en línea en Mensajes y el panel del juego
      nuevo (`python mod/vista/vista.py` lo dibuja sin Minecraft; dentro del juego, revisa los emojis).
-2. Publicar la primera versión de Mac (0.28.0) en `_parabellum-mac` (tarea 11) y avisarlo aquí, en
-   «Versiones publicadas en Drive».
+2. ~~Publicar la primera versión de Mac (0.28.0) en `_parabellum-mac`~~ — hecho el 2026-10-13 (ver
+   «Versiones publicadas en Drive»). Compilada de `main` en `ee30e86`, publicada con
+   `--publicar-launcher` y `--subir-launcher-drive` desde la cuenta de Diego. El catálogo la ve como
+   `parabellum-mac 0.28.0 (Drive)` y el zip se baja sin iniciar sesión con el SHA-256 de su `.json`.
 3. Contar en un PR o aquí qué no funcionó, para que Windows lo arregle antes de seguir.
 
 ## Versiones publicadas en Drive
 
-Lo que ya tienen los compañeros con Windows. La más nueva, arriba.
+Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 
+- **Mac 0.28.0** · 2026-10-13 · la primera para Mac con chip Apple (macOS 13 o más nuevo), en
+  `_parabellum-mac`: todo lo de la 0.28.0 de Windows. Desde aquí se actualiza sola.
 - **0.28.0** · 2026-10-13 · trae todo lo de la 0.26.0 a la 0.28.0 (ninguna se publicó aparte):
   - Amigos: página propia en la barra (filtros, búsqueda, favoritos) y agregar también desde Mensajes.
   - Mensajes: responder, reaccionar, punto de en línea y vista previa antes de mandar una imagen.
