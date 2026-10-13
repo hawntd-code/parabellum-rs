@@ -3,8 +3,7 @@
 //!
 //! Lo que ya está hecho usa herramientas que trae macOS (open, sysctl, ps, kill, afplay, sips, dig,
 //! security, sh). Lo marcado con TODO(mac) falta: cada uno dice qué hacer. Mientras tanto devuelve
-//! algo seguro (por ejemplo, `PLAYIT_AGENT` es `None`: «Hostear partida» dice que playit.gg no está
-//! disponible en este sistema).
+//! algo seguro (por ejemplo, `SELF_UPDATE` es `false`: Parabellum nunca pide actualizarse).
 
 pub mod accesos;
 pub mod avisos;
@@ -28,11 +27,17 @@ pub const SELF_UPDATE: bool = false;
 pub const CLASSPATH_SEPARATOR: &str = ":";
 // El de Windows separa las rutas con «;» y aquí Java no encontraría la clase principal de Forge.
 pub const FORGE_SERVER_ARGS: &str = "unix_args.txt";
-// TODO(mac): playit.gg no publica su agente para Mac (v0.17.1 solo trae Windows y Linux). Es de
-// código abierto (github.com/playit-cloud/playit-agent): compilarlo para aarch64-apple-darwin,
-// subirlo a un release propio y poner aquí su enlace, SHA-256 y tamaño. Sin agente, «Hostear
-// partida» dice que playit.gg no está disponible en este sistema.
-pub const PLAYIT_AGENT: Option<AgentDownload> = None;
+// playit.gg dejó de publicar su agente para Mac después de la 0.15.13 (que lee PLAYIT_SECRET al
+// compilar, no al abrirse). Este es la misma 0.17.1 que en Windows, compilada para chip Apple por
+// GitHub Actions a partir de la etiqueta oficial, sin cambios, en el fork diegovc20/playit-agent
+// (rama parabellum-macos, .github/workflows/macos-arm64.yml). Para otra versión: una etiqueta
+// v<versión>-macos-arm64 sobre la oficial y poner aquí lo que diga su release.
+pub const PLAYIT_AGENT: Option<AgentDownload> = Some(AgentDownload {
+    url: "https://github.com/diegovc20/playit-agent/releases/download/v0.17.1-macos-arm64/playit-darwin-arm64",
+    sha256: "57fd00e8085097e439e8e141ca947620e179065848cd63d27b933db7a953d00e",
+    size: 5_390_736,
+    file_name: "playit-0.17.1",
+});
 
 /// Dónde viven instancias, base y datos. Dentro de Parabellum.app no se puede escribir (y macOS la
 /// mueve a una carpeta temporal si viene de Descargas), así que van en ~/Library/Application Support.

@@ -50,8 +50,11 @@ pub fn agent_path(paths: &Paths) -> PathBuf {
     paths.base.join("playit").join(name)
 }
 
+/// Está bajado y es exactamente el agente esperado: su SHA-256, no solo el tamaño. Lo que haya en esa
+/// ruta se ejecuta (en Mac, además, se marca como programa), y en base/ también escriben los paquetes
+/// que se importan. Si no coincide, se vuelve a bajar.
 pub fn agent_installed(paths: &Paths) -> bool {
-    agent().is_ok_and(|a| agent_path(paths).metadata().is_ok_and(|m| m.len() == a.size))
+    agent().is_ok_and(|a| std::fs::read(agent_path(paths)).is_ok_and(|bytes| bytes.len() as u64 == a.size && hex::encode(Sha256::digest(&bytes)) == a.sha256))
 }
 
 /// Baja el agente oficial y comprueba que sea exactamente el esperado.
@@ -89,6 +92,8 @@ impl Agent {
         if !agent_installed(paths) {
             return Err(t!("Falta el agente de playit.gg.", "The playit.gg agent is missing."));
         }
+        // En Mac lo descargado llega sin permiso de ejecución (en Windows no hace falta).
+        crate::plataforma::make_executable(&exe);
         // Carpeta propia: el agente busca un playit.toml en la carpeta actual y no debe encontrar otro.
         let folder = paths.data.join("playit");
         std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
@@ -144,7 +149,9 @@ impl Agent {
 
     /// Lo último que escribió (para explicar por qué se cerró).
     pub fn last_line(&self) -> Option<String> {
-        self.log.lock().unwrap().iter().rev().find(|l| l.contains("ERROR") || l.contains("WARN")).or(self.log.lock().unwrap().back()).cloned()
+        // Un solo candado: si se tomaba otra vez dentro de la misma expresión, esperaba para siempre.
+        let log = self.log.lock().unwrap();
+        log.iter().rev().find(|l| l.contains("ERROR") || l.contains("WARN")).or(log.back()).cloned()
     }
 
     pub fn running(&mut self) -> bool {
@@ -463,6 +470,35 @@ mod tests {
     #[test]
     fn colores_fuera() {
         assert_eq!(strip_ansi("\u{1b}[32m INFO\u{1b}[0m tunnel running"), " INFO tunnel running");
+    }
+
+    #[test]
+    fn otro_archivo_del_mismo_tamano_no_es_el_agente() {
+        let Ok(agent) = agent() else { return };
+        let paths = Paths::new(std::env::temp_dir().join(format!("parabellum-agente-{}", std::process::id())));
+        std::fs::create_dir_all(agent_path(&paths).parent().unwrap()).unwrap();
+        std::fs::write(agent_path(&paths), vec![0u8; agent.size as usize]).unwrap();
+        let installed = agent_installed(&paths);
+        let _ = std::fs::remove_dir_all(&paths.root);
+        assert!(!installed);
+    }
+
+    #[test]
+    fn ultima_linea_sin_trabarse() {
+        let last_line = |lines: &[&str]| {
+            // Cualquier proceso sirve de agente: aquí, esta misma prueba con --list (termina al momento).
+            let child = Command::new(std::env::current_exe().unwrap()).arg("--list").stdout(Stdio::null()).spawn().unwrap();
+            let agent = Agent { child, log: Arc::new(Mutex::new(lines.iter().map(|l| l.to_string()).collect())) };
+            let (sender, receiver) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = sender.send(agent.last_line());
+                agent.stop();
+            });
+            receiver.recv_timeout(Duration::from_secs(5)).expect("last_line se trabó")
+        };
+        assert_eq!(last_line(&["INFO checking if secret key is valid", "WARN algo raro", "INFO otra"]).as_deref(), Some("WARN algo raro"));
+        assert_eq!(last_line(&["INFO checking if secret key is valid", "Error: InvalidSecret"]).as_deref(), Some("Error: InvalidSecret"));
+        assert_eq!(last_line(&[]), None);
     }
 
     #[test]

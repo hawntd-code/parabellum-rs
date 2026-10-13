@@ -24,6 +24,8 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Pendientes para Mac
 
+- [ ] **Hostear con playit.gg de verdad** (PR #9): vincular una cuenta de playit.gg desde «Hostear
+  partida», encender un servidor y entrar desde otro PC por la dirección pública.
 - [ ] **Con un amigo de verdad** (Diego todavía no tiene amigos en Parabellum): lo único que queda de
   las pruebas de abajo.
   - Dentro del juego (Fabric 1.21.1, tecla O): clic en un amigo y escribirle un mensaje.
@@ -46,6 +48,16 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Pendientes para Windows
 
+- [ ] **PR #9 (playit en Mac): compilar, correr las pruebas y probar playit.gg en Windows.** Tres cambios
+  en `playit.rs` (compartido):
+  - `Agent::start` llama a `plataforma::make_executable` (en Windows no hace nada).
+  - `agent_installed` compara el SHA-256 y no solo el tamaño (revisión de seguridad): antes, cualquier
+    archivo del mismo tamaño en `base/playit` se ejecutaba. Si no coincide, se vuelve a bajar. Prueba
+    nueva: `otro_archivo_del_mismo_tamano_no_es_el_agente`.
+  - `Agent::last_line` ya no se traba. Tomaba dos veces el mismo candado y esperaba para siempre: si el
+    agente no se conectaba, «Hostear partida» se quedaba en «Conectando» sin mostrar el error, y si se
+    cerraba solo, se trababa todo lo de playit.gg, incluso salir de Parabellum. Prueba nueva:
+    `ultima_linea_sin_trabarse`.
 - [ ] **PR #7 (Forge y NeoForge): compilar y correr las pruebas en Windows.** El contrato tiene una
   constante nueva, `plataforma::FORGE_SERVER_ARGS`, que en Windows vale `"win_args.txt"` (lo mismo que
   antes), y `servidor::forge_launch` (compartido) la usa. Crear un servidor de Forge y ver que enciende.
