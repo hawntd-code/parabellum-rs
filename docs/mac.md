@@ -98,9 +98,10 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
 - Hostear con playit.gg: el agente 0.17.1 (el mismo que en Windows), compilado para chip Apple por
   GitHub Actions a partir de la etiqueta oficial, sin cambios, en el fork público
   [diegovc20/playit-agent](https://github.com/diegovc20/playit-agent) (rama `parabellum-macos`, release
-  `v0.17.1-macos-arm64`). Parabellum lo baja de ahí, comprueba su SHA-256 (`PLAYIT_AGENT`) y le da
-  permiso de ejecución al abrirlo. playit.gg dejó de publicar binarios para Mac después de la 0.15.13, y
-  esa no sirve: lee `PLAYIT_SECRET` al compilar, no al abrirse. Para otra versión, una etiqueta
+  `v0.17.1-macos-arm64`). La compilación es reproducible: dos ejecuciones del workflow dieron el mismo
+  binario. Parabellum lo baja de ahí, comprueba su SHA-256 (`PLAYIT_AGENT`) al bajarlo y antes de
+  abrirlo, y le da permiso de ejecución. playit.gg dejó de publicar binarios para Mac después de la
+  0.15.13, y esa no sirve: lee `PLAYIT_SECRET` al compilar, no al abrirse. Para otra versión, una etiqueta
   `v<versión>-macos-arm64` en el fork sobre la oficial compila y publica sola; luego se cambia aquí el
   enlace, el SHA-256 y el tamaño. Probado: se baja, abre y, con una clave falsa, explica «InvalidSecret».
   Falta probar un túnel con una cuenta de playit.gg.

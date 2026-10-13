@@ -50,8 +50,11 @@ pub fn agent_path(paths: &Paths) -> PathBuf {
     paths.base.join("playit").join(name)
 }
 
+/// Está bajado y es exactamente el agente esperado: su SHA-256, no solo el tamaño. Lo que haya en esa
+/// ruta se ejecuta (en Mac, además, se marca como programa), y en base/ también escriben los paquetes
+/// que se importan. Si no coincide, se vuelve a bajar.
 pub fn agent_installed(paths: &Paths) -> bool {
-    agent().is_ok_and(|a| agent_path(paths).metadata().is_ok_and(|m| m.len() == a.size))
+    agent().is_ok_and(|a| std::fs::read(agent_path(paths)).is_ok_and(|bytes| bytes.len() as u64 == a.size && hex::encode(Sha256::digest(&bytes)) == a.sha256))
 }
 
 /// Baja el agente oficial y comprueba que sea exactamente el esperado.
@@ -467,6 +470,17 @@ mod tests {
     #[test]
     fn colores_fuera() {
         assert_eq!(strip_ansi("\u{1b}[32m INFO\u{1b}[0m tunnel running"), " INFO tunnel running");
+    }
+
+    #[test]
+    fn otro_archivo_del_mismo_tamano_no_es_el_agente() {
+        let Ok(agent) = agent() else { return };
+        let paths = Paths::new(std::env::temp_dir().join(format!("parabellum-agente-{}", std::process::id())));
+        std::fs::create_dir_all(agent_path(&paths).parent().unwrap()).unwrap();
+        std::fs::write(agent_path(&paths), vec![0u8; agent.size as usize]).unwrap();
+        let installed = agent_installed(&paths);
+        let _ = std::fs::remove_dir_all(&paths.root);
+        assert!(!installed);
     }
 
     #[test]

@@ -48,9 +48,12 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Pendientes para Windows
 
-- [ ] **PR #9 (playit en Mac): compilar, correr las pruebas y probar playit.gg en Windows.** Dos cambios
+- [ ] **PR #9 (playit en Mac): compilar, correr las pruebas y probar playit.gg en Windows.** Tres cambios
   en `playit.rs` (compartido):
   - `Agent::start` llama a `plataforma::make_executable` (en Windows no hace nada).
+  - `agent_installed` compara el SHA-256 y no solo el tamaño (revisión de seguridad): antes, cualquier
+    archivo del mismo tamaño en `base/playit` se ejecutaba. Si no coincide, se vuelve a bajar. Prueba
+    nueva: `otro_archivo_del_mismo_tamano_no_es_el_agente`.
   - `Agent::last_line` ya no se traba. Tomaba dos veces el mismo candado y esperaba para siempre: si el
     agente no se conectaba, «Hostear partida» se quedaba en «Conectando» sin mostrar el error, y si se
     cerraba solo, se trababa todo lo de playit.gg, incluso salir de Parabellum. Prueba nueva:
