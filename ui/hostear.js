@@ -197,13 +197,24 @@ function connectionsHtml(s) {
   );
 }
 
+/** Debajo del TPS: cuánto tarda cada tick y, si en el último minuto hubo un trabón, de cuánto fue. */
+function tickLine(s, on) {
+  if (!on || s.mspt == null) return "";
+  const hitch = s.hitchMs != null ? ` · <span class="tps-warn">${t(`trabón de ${Math.round(s.hitchMs)} ms`, `${Math.round(s.hitchMs)} ms hitch`)}</span>` : "";
+  return `<span class="faint">${t(`${s.mspt.toFixed(1)} ms por tick`, `${s.mspt.toFixed(1)} ms per tick`)}${hitch}</span>`;
+}
+
 /** Quién está jugando por P2P ahora: directo entre las dos PCs o por el relevo, y su ping. */
 function p2pGuestsHtml(guests) {
   return `<div class="p2p-guests">${guests
     .map((g) => {
       const path = g.direct ? t("directo", "direct") : t("por relevo", "via relay");
       const ping = g.rttMs != null ? ` · ${g.rttMs} ms` : "";
-      return `<span class="p2p-guest ${g.direct ? "direct" : "relay"}"><b>${escapeHtml(g.name)}</b> · ${path}${ping}</span>`;
+      // Lo que se nota como saltos: picos de ping o paquetes perdidos en el último minuto.
+      const peak = g.peakMs != null && g.rttMs != null && g.peakMs > Math.max(g.rttMs * 2, g.rttMs + 40) ? ` · ${t(`picos de ${g.peakMs} ms`, `spikes of ${g.peakMs} ms`)}` : "";
+      const loss = g.lossPct >= 1 ? ` · ${t(`pierde ${g.lossPct.toFixed(0)} %`, `${g.lossPct.toFixed(0)} % loss`)}` : "";
+      const shaky = peak || loss ? " shaky" : "";
+      return `<span class="p2p-guest ${g.direct ? "direct" : "relay"}${shaky}"><b>${escapeHtml(g.name)}</b> · ${path}${ping}${peak}${loss}</span>`;
     })
     .join("")}</div>`;
 }
@@ -581,7 +592,7 @@ function renderHosted() {
   const tpsTitle = t("Ticks por segundo: 20 es lo normal. Si baja, el lag es del servidor; si está en 20 y hay lag, es la conexión.", "Ticks per second: 20 is normal. If it drops, the lag comes from the server; if it is at 20 and there is lag, it is the connection.");
   $("#hosted-stats").innerHTML = `
     <div class="stat"><span class="faint">${t("Jugadores", "Players")}</span><b>${on ? `${s.players.length} / ${s.maxPlayers}` : "—"}</b></div>
-    <div class="stat" title="${escapeHtml(tpsTitle)}"><span class="faint">TPS${s.behind ? ` · ${t("se atrasó", "fell behind")}` : ""}</span><b class="${paused ? "" : tpsClass}">${escapeHtml(tpsText)}</b></div>
+    <div class="stat" title="${escapeHtml(tpsTitle)}"><span class="faint">TPS${s.behind ? ` · ${t("se atrasó", "fell behind")}` : ""}</span><b class="${paused ? "" : tpsClass}">${escapeHtml(tpsText)}</b>${tickLine(s, on)}</div>
     <div class="stat"><span class="faint">${t("Encendido hace", "On for")}</span><b>${s.started && on ? uptime(s.started) : "—"}</b></div>
     <div class="stat"><span class="faint">${t("Procesador", "CPU")}</span><b>${on ? `${Math.round(s.cpu)}%` : "—"}</b></div>
     <div class="stat"><span class="faint">${t("Memoria", "Memory")}</span><b>${on ? `${gb(s.memoryMb)} / ${s.ramGb} GB` : `${s.ramGb} GB`}</b>

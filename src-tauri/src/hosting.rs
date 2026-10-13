@@ -56,6 +56,17 @@ struct Running {
     tps_query: Option<std::time::Instant>,
     /// La última vez que el servidor avisó «Can't keep up» (se atrasa).
     behind_at: Option<std::time::Instant>,
+    /// La versión tiene «tick query» (1.20.3+): cuánto tarda cada tick, con percentiles.
+    supports_tick: bool,
+    /// Se preguntó «tick query» (su respuesta no se muestra en la consola).
+    tick_query: Option<std::time::Instant>,
+    /// Milisegundos por tick: el promedio y el peor 1 % de los últimos 5 s.
+    mspt: Option<f32>,
+    p99: Option<f32>,
+    /// El último trabón (un tick de más de 50 ms: el juego se congeló un momento) y de cuánto fue.
+    hitch: Option<(std::time::Instant, f32)>,
+    /// .lanzador/rendimiento.csv: una línea cada 4 s, para revisar el lag después.
+    perf_log: std::path::PathBuf,
 }
 
 /// Cómo terminó la última vez (si fue mal): se muestra hasta el próximo arranque.
@@ -158,6 +169,10 @@ pub struct ServerView {
     behind: bool,
     /// Los amigos que están jugando aquí por P2P y por dónde va su conexión.
     p2p_guests: Vec<P2pGuest>,
+    /// Milisegundos por tick (promedio de los últimos 5 s); None en versiones sin «tick query».
+    mspt: Option<f32>,
+    /// El peor tick de un trabón en el último minuto (más de 50 ms), si lo hubo.
+    hitch_ms: Option<f32>,
 }
 
 #[derive(Serialize, Clone)]
@@ -169,13 +184,16 @@ pub struct WorldView {
     p2p_guests: Vec<P2pGuest>,
 }
 
-/// Un amigo jugando en este PC por P2P: directo o por el relevo, y su ping.
+/// Un amigo jugando en este PC por P2P: directo o por el relevo, su ping y cómo le fue en el
+/// último minuto (el ping más alto y los paquetes perdidos).
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct P2pGuest {
     name: String,
     direct: bool,
     rtt_ms: Option<u32>,
+    peak_ms: Option<u32>,
+    loss_pct: f32,
 }
 
 /// Quién está entrando por P2P a cada destino ("world" o la clave del servidor), con su nombre.
@@ -186,7 +204,7 @@ fn p2p_guests(app: &AppHandle) -> Vec<(String, P2pGuest)> {
         .into_iter()
         .map(|g| {
             let name = social.as_ref().and_then(|s| s.friend_by_p2p(&g.id)).map(|(_, name)| name).unwrap_or_else(|| "?".into());
-            (g.target, P2pGuest { name, direct: g.direct, rtt_ms: g.rtt_ms })
+            (g.target, P2pGuest { name, direct: g.direct, rtt_ms: g.rtt_ms, peak_ms: g.peak_ms, loss_pct: g.loss_pct })
         })
         .collect()
 }
@@ -249,6 +267,8 @@ pub fn view(app: &AppHandle) -> HostView {
                 tps: run.and_then(|r| r.tps),
                 behind: run.and_then(|r| r.behind_at).is_some_and(|at| at.elapsed() < Duration::from_secs(60)),
                 p2p_guests: guests_of(&config.id),
+                mspt: run.and_then(|r| r.mspt),
+                hitch_ms: run.and_then(|r| r.hitch).filter(|(at, _)| at.elapsed() < Duration::from_secs(60)).map(|(_, ms)| ms),
                 config,
             }
         })
@@ -312,6 +332,14 @@ pub fn init(app: &AppHandle) {
                     if let Some((memory, cpu)) = proceso::usage(run.pid) {
                         run.memory = memory;
                         run.cpu_percent = run.cpu.sample(cpu);
+                    }
+                    // Tiempo por tick con percentiles (1.20.3+): ve los trabones cortos que el TPS promedia.
+                    if tick % 2 == 0 && run.phase == Phase::Ready && run.supports_tick {
+                        if let Some(stdin) = run.stdin.as_mut() {
+                            if stdin.write_all(b"tick query\n").and_then(|_| stdin.flush()).is_ok() {
+                                run.tick_query = Some(std::time::Instant::now());
+                            }
+                        }
                     }
                     // TPS: cuántos ticks avanzó el juego entre dos preguntas (sirve en todas las versiones).
                     if tick % 3 == 0 && run.phase == Phase::Ready {
@@ -914,7 +942,7 @@ pub fn console(app: &AppHandle, id: &str) -> Vec<String> {
         servidor::find(&paths, id)
             .and_then(|c| std::fs::read(c.as_instance().state_dir().join("salida-java.log")).ok())
             // Las respuestas del TPS que guardaron las versiones anteriores, fuera.
-            .map(|bytes| String::from_utf8_lossy(&bytes).lines().rev().filter(|l| servidor::gametime(l).is_none()).take(CONSOLE_LINES).collect::<Vec<_>>().into_iter().rev().map(String::from).collect())
+            .map(|bytes| String::from_utf8_lossy(&bytes).lines().rev().filter(|l| servidor::gametime(l).is_none() && servidor::tick_report(l).is_none()).take(CONSOLE_LINES).collect::<Vec<_>>().into_iter().rev().map(String::from).collect())
             .unwrap_or_default()
     })
 }
@@ -987,6 +1015,12 @@ pub fn start_server(app: &AppHandle, id: &str) -> Result<(), String> {
             gametime: None,
             tps_query: None,
             behind_at: None,
+            supports_tick: servidor::has_tick_query(&config.minecraft),
+            tick_query: None,
+            mspt: None,
+            p99: None,
+            hitch: None,
+            perf_log: config.folder.join(".lanzador").join("rendimiento.csv"),
         },
     );
     let streams: Vec<Box<dyn std::io::Read + Send>> = [child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>), child.stderr.take().map(|s| Box::new(s) as _)]
@@ -1047,6 +1081,22 @@ pub fn start_server(app: &AppHandle, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Una línea más en rendimiento.csv (con encabezado la primera vez). Si pasa de 5 MB, la anterior
+/// queda como rendimiento.1.csv.
+fn write_perf(path: &std::path::Path, row: &str) {
+    use std::io::Write as _;
+    if std::fs::metadata(path).is_ok_and(|m| m.len() > 5_000_000) {
+        let _ = std::fs::rename(path, path.with_extension("1.csv"));
+    }
+    let new = !path.exists();
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        if new {
+            let _ = writeln!(file, "hora,jugadores,tps,ms_por_tick,p50_ms,p95_ms,p99_ms");
+        }
+        let _ = writeln!(file, "{row}");
+    }
+}
+
 fn on_line(app: &AppHandle, id: &str, line: String) {
     let event = servidor::parse_line(&line);
     let mut ready = false;
@@ -1056,6 +1106,32 @@ fn on_line(app: &AppHandle, id: &str, line: String) {
     {
         let mut running = hosting(app).running.lock().unwrap();
         let Some(run) = running.get_mut(id) else { return };
+        // La respuesta a «tick query» tampoco: se guarda en rendimiento.csv.
+        if run.tick_query.is_some_and(|at| at.elapsed() < Duration::from_secs(4)) {
+            if let Some(report) = servidor::tick_report(&line) {
+                match report {
+                    servidor::TickReport::Average(ms) => run.mspt = Some(ms),
+                    servidor::TickReport::Percentiles { p50, p95, p99 } => {
+                        run.tick_query = None;
+                        run.p99 = Some(p99);
+                        // Un trabón solo importa con alguien jugando (al arrancar siempre hay uno).
+                        if p99 > 50.0 && !run.players.is_empty() {
+                            run.hitch = Some((std::time::Instant::now(), p99));
+                        }
+                        let row = format!(
+                            "{},{},{},{},{p50},{p95},{p99}",
+                            chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                            run.players.len(),
+                            run.tps.map_or(String::new(), |t| format!("{t:.1}")),
+                            run.mspt.map_or(String::new(), |m| m.to_string()),
+                        );
+                        write_perf(&run.perf_log, &row);
+                    }
+                    servidor::TickReport::Other => {}
+                }
+                return;
+            }
+        }
         // La respuesta a la pregunta del TPS no se muestra ni se guarda (se pregunta cada pocos segundos).
         if let Some(ticks) = servidor::gametime(&line).filter(|_| run.tps_query.is_some_and(|at| at.elapsed() < Duration::from_secs(4))) {
             run.tps_query = None;

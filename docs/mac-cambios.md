@@ -61,6 +61,18 @@ Nada por ahora.
 
 ## Cambios de Windows
 
+### 2026-10-12 · 0.26.1: de dónde viene el lag
+
+- Qué cambió:
+  - `p2p.rs`: `monitor` mide cada segundo (anfitrión e invitado) ping, camino y pérdidas, en
+    `datos/logs/p2p-latencia.csv`, y avisa de picos en `p2p.log`.
+  - `servidor.rs` + `hosting.rs`: «tick query» cada 4 s (1.20.3+), `rendimiento.csv` en `.lanzador` del
+    servidor, y `mspt` / `hitchMs` en la vista.
+  - `firebase.rs`: los errores ya no llevan la dirección con `auth=` (la clave de la sesión) y el 402 se
+    explica.
+  - El proyecto de Firebase está en el plan Blaze: el límite de 100 conexiones a la vez se llenaba.
+- Mac: nada de código.
+
 ### 2026-10-12 · 0.26.0: lo que encontró Juan probando con sus amigos
 
 - Qué cambió:

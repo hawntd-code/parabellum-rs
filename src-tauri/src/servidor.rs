@@ -1130,6 +1130,46 @@ fn line_patterns() -> &'static (Regex, Regex) {
     })
 }
 
+/// Lo que responde «tick query» (desde la 1.20.3): el tiempo promedio por tick y sus percentiles
+/// en los últimos 100 ticks (5 s). Un trabón (un tick de más de 50 ms) se nota en el P99 aunque el
+/// promedio y los TPS sigan bien.
+#[derive(Debug, PartialEq)]
+pub enum TickReport {
+    Average(f32),
+    Percentiles { p50: f32, p95: f32, p99: f32 },
+    /// Las otras líneas de la respuesta (estado y ritmo): tampoco se muestran.
+    Other,
+}
+
+pub fn tick_report(line: &str) -> Option<TickReport> {
+    static PATTERNS: OnceLock<(Regex, Regex)> = OnceLock::new();
+    let (average, percentiles) = PATTERNS.get_or_init(|| {
+        (
+            Regex::new(r"Average time per tick: ([\d.,]+)ms").unwrap(),
+            Regex::new(r"P50: ([\d.,]+)ms P95: ([\d.,]+)ms P99: ([\d.,]+)ms").unwrap(),
+        )
+    });
+    let number = |text: &str| text.replace(',', ".").parse::<f32>().ok();
+    if let Some(c) = percentiles.captures(line) {
+        return Some(TickReport::Percentiles { p50: number(&c[1])?, p95: number(&c[2])?, p99: number(&c[3])? });
+    }
+    if let Some(c) = average.captures(line) {
+        return Some(TickReport::Average(number(&c[1])?));
+    }
+    const OTHERS: [&str; 5] = ["Target tick rate:", "The game is running normally", "can't keep up with the target tick rate", "The game is sprinting", "The game is frozen"];
+    OTHERS.iter().any(|o| line.contains(o)).then_some(TickReport::Other)
+}
+
+/// «tick query» existe desde la 1.20.3 (y en las 26.x).
+pub fn has_tick_query(minecraft: &str) -> bool {
+    let mut parts = minecraft.split('.').map(|p| p.parse::<u32>().ok());
+    match (parts.next().flatten(), parts.next().flatten(), parts.next().flatten()) {
+        (Some(1), Some(minor), patch) => minor > 20 || (minor == 20 && patch.unwrap_or(0) >= 3),
+        (Some(major), _, _) => major >= 26,
+        _ => false,
+    }
+}
+
 /// La respuesta de «time query gametime»: «… The time is 123456» o, desde 26.x,
 /// «… System chat: The game time is 123456 tick(s)».
 pub fn gametime(line: &str) -> Option<i64> {
@@ -1163,6 +1203,17 @@ mod tests {
         assert_eq!(gametime("[22:31:04] [Server thread/INFO]: The time is 123456"), Some(123456));
         assert_eq!(gametime("[22:31:04] [Server thread/INFO]: Done (3.9s)! For help"), None);
         assert_eq!(gametime("[16:45:13] [Server thread/INFO]: System chat: The game time is 98 tick(s)"), Some(98));
+        // «tick query» (la segunda línea llega sin hora: es un mensaje de dos renglones)
+        assert_eq!(tick_report("[18:00:00] [Server thread/INFO]: System chat: The game is running normally"), Some(TickReport::Other));
+        assert_eq!(tick_report("[18:00:00] [Server thread/INFO]: System chat: Target tick rate: 20.0 per second."), Some(TickReport::Other));
+        assert_eq!(tick_report("Average time per tick: 3.2ms (Target: 50.0ms)"), Some(TickReport::Average(3.2)));
+        assert_eq!(
+            tick_report("[18:00:00] [Server thread/INFO]: System chat: Percentiles: P50: 2.9ms P95: 4.1ms P99: 61.5ms. Sample: 100"),
+            Some(TickReport::Percentiles { p50: 2.9, p95: 4.1, p99: 61.5 })
+        );
+        assert_eq!(tick_report("[18:00:00] [Server thread/INFO]: Hawntd joined the game"), None);
+        assert!(has_tick_query("26.3") && has_tick_query("1.21.1") && has_tick_query("1.20.4") && has_tick_query("1.20.3"));
+        assert!(!has_tick_query("1.20.1") && !has_tick_query("1.16.5") && !has_tick_query("24w14a"));
     }
 
     #[test]

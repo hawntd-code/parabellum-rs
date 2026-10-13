@@ -179,6 +179,9 @@ impl Database {
         if status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(DbError::Permission(path.to_string()));
         }
+        if matches!(status.as_u16(), 402 | 429 | 500..=599) {
+            return Err(DbError::Other(status_message(status)));
+        }
         if !status.is_success() {
             let detail = serde_json::from_str::<Value>(&text).ok().and_then(|v| v["error"].as_str().map(String::from)).unwrap_or(text);
             return Err(DbError::Other(t!("La base de datos respondió {}: {detail}", "The database answered {}: {detail}", status.as_u16())));
@@ -251,7 +254,11 @@ impl Database {
         if response.status() == reqwest::StatusCode::UNAUTHORIZED {
             return Err(DbError::Permission(path.to_string()).to_string());
         }
-        let mut response = response.error_for_status().map_err(|e| e.to_string())?;
+        // Sin la dirección en el mensaje: lleva la clave de la sesión (se veía en pantalla).
+        if !response.status().is_success() {
+            return Err(status_message(response.status()));
+        }
+        let mut response = response;
         // Bytes y no texto: una letra con tilde o un emoji puede quedar partida entre dos trozos.
         let mut buffer: Vec<u8> = Vec::new();
         let mut event = String::new();
@@ -263,7 +270,7 @@ impl Database {
             let chunk = match tokio::time::timeout(IDLE.min(left), response.chunk()).await {
                 Ok(Ok(Some(chunk))) => chunk,
                 Ok(Ok(None)) | Err(_) => return Ok(()),
-                Ok(Err(e)) => return Err(e.to_string()),
+                Ok(Err(e)) => return Err(e.without_url().to_string()),
             };
             buffer.extend_from_slice(&chunk);
             while let Some(end) = buffer.iter().position(|b| *b == b'\n') {
@@ -286,6 +293,16 @@ impl Database {
                 }
             }
         }
+    }
+}
+
+/// Lo que se le dice al jugador cuando la base responde con un error (nunca la dirección: lleva la
+/// clave de la sesión). 402: el plan de Firebase llegó a su límite (p. ej. de conexiones a la vez).
+fn status_message(status: reqwest::StatusCode) -> String {
+    match status.as_u16() {
+        402 | 429 => t!("El servidor de amigos está lleno o llegó a su límite. Se reintentará solo.", "The friends server is full or reached its limit. It will retry on its own."),
+        code @ 500..=599 => t!("El servidor de amigos tiene problemas ({code}). Se reintentará solo.", "The friends server is having problems ({code}). It will retry on its own."),
+        code => t!("El servidor de amigos respondió {code}.", "The friends server answered {code}."),
     }
 }
 

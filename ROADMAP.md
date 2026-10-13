@@ -105,6 +105,14 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Probado en la ventana real (WebView2): la página anterior se va, la portada vuela y se suelta, al buscar en la Biblioteca las tarjetas que sobran se desvanecen (solo las que se ven), los avisos se cierran sin saltos, «Abriendo…» se llena, sin errores de JavaScript. En el juego: el panel a medio entrar (semitransparente) en las cinco formas de dibujar (1.16.5, 1.18.2, 1.21.1/NeoForge, 1.21.4, 1.21.8–26.3) y abierto en 15 versiones; dentro de un mundo (Fabric y NeoForge 1.21.1) sale la pista, el botón «Parabellum» del menú de pausa abre el panel y nuestro mod no impide entrar a servidores sin mods
 - [ ] *Prueba:* Juan: que se sienta bien en la ventana real (páginas, listas, chat, descargas)
 
+### 0.26.1: de dónde viene el lag (pedido de Juan: «a ratos se teletransporta el personaje»)
+- [x] **Telemetría P2P cada segundo** (los dos lados): ping, camino (directo o relevo) y paquetes perdidos en `datos/logs/p2p-latencia.csv`; en `p2p.log` se anotan los picos de ping (más de 2.5 veces lo normal), el paso al relevo y las pérdidas. Los primeros 10 s no cuentan (al conectar se prueban caminos). La tarjeta P2P muestra «picos de X ms» o «pierde X %» del último minuto
+- [x] **Tiempo por tick del servidor** (1.20.3+ y 26.x): «tick query» cada 4 s, promedio y percentiles en `servidores/<servidor>/.lanzador/rendimiento.csv`; debajo del TPS sale «X ms por tick» y «trabón de X ms» si con alguien jugando un tick tardó más de 50 ms (el TPS promedio de 6 s no los ve). Las preguntas no ensucian la consola
+- [x] **Firebase**: los errores ya no muestran la dirección con la clave de la sesión (se veía en pantalla) y el 402 (plan lleno) se explica. El proyecto pasó a Blaze (Juan): el límite de 100 conexiones a la vez del plan gratis se había llenado con 5 o 6 Parabellum abiertos
+- [x] Probado: la prueba P2P por internet escribe la telemetría de los dos lados; «Prueba vanilla» encendido desde Parabellum mide 1.8 ms por tick y guarda rendimiento.csv
+- [ ] *Prueba:* Juan con un amigo 15–20 min; cuando se teletransporte, anotar la hora para cruzarla con p2p-latencia.csv (de los dos) y rendimiento.csv
+- [ ] Después (opcional): una sola conexión a Firebase por persona (hoy 10–25), con el protocolo de WebSocket de la base
+
 ### 0.26.0: lo que encontró Juan probando con sus amigos (pedido de Juan)
 - [x] **Panel en 26.3**: no se podía cambiar de pestaña ni pulsar «Mensaje». Desde la 26.3 Minecraft numera los botones del ratón como SDL3 (izquierdo 1, derecho 3; antes 0 y 1) y el panel tomaba cada clic izquierdo como derecho. Ahora se traducen, como ya se hacía con el teclado
 - [x] **Servidores 26.x**: no salía quién estaba conectado ni los TPS. Desde 26.x la consola escribe «System chat: Juan joined the game» y «The game time is 98 tick(s)»; se leen los dos formatos (con pruebas)
