@@ -26,8 +26,9 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 - Última revisión de los PR de Mac en Windows: 2026-10-13, PR #1 a #12 (todos mezclados).
 - **Windows está en pausa en la 0.28.0 hasta que Mac llegue a la par** (decisión de Juan, 2026-10-13).
   Mientras tanto no hay cambios nuevos de Windows en `main`. Ver «Para llegar a la 0.28.0», abajo.
-- Windows: la última publicada en Drive es la 0.25.0 (ver «Versiones publicadas en Drive»); la 0.28.0
-  está en `main` y en el PC de Juan. Las reglas de Firebase de la 0.27 ya están publicadas.
+- Windows: la 0.28.0 está publicada en Drive desde el 2026-10-13 (ver «Versiones publicadas en Drive»):
+  los compañeros con Windows ya se actualizan a ella. Las reglas de Firebase de la 0.27 ya están
+  publicadas.
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
 
 ## Para llegar a la 0.28.0 (Mac)
@@ -49,6 +50,14 @@ Lo que falta para que Mac esté a la par de Windows:
 
 Lo que ya tienen los compañeros con Windows. La más nueva, arriba.
 
+- **0.28.0** · 2026-10-13 · trae todo lo de la 0.26.0 a la 0.28.0 (ninguna se publicó aparte):
+  - Amigos: página propia en la barra (filtros, búsqueda, favoritos) y agregar también desde Mensajes.
+  - Mensajes: responder, reaccionar, punto de en línea y vista previa antes de mandar una imagen.
+  - Grupos con foto y dueño, y «Reportar problema».
+  - Servidores y Hostear en una sola página, en filas.
+  - El panel del juego (tecla O) igual que la ventana.
+  - P2P más estable (un solo Parabellum abierto, se relee la presencia) y la telemetría de lag.
+  - En 26.3, el panel ya acepta clics y teclado.
 - **0.25.0** · 2026-10-12 · animaciones en toda la ventana; dentro del juego, panel animado, botón
   «Parabellum» en el menú de pausa, aviso «Pulsa O» al entrar a un mundo y avisos abajo a la derecha.
 - **0.24.1** · 2026-10-12 · el mod del juego gasta lo mínimo y se aparta solo si hace caer el juego.
