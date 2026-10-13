@@ -15,6 +15,8 @@
 //!   EXECUTABLE              nombre del programa al actualizarse ("Parabellum.exe").
 //!   SELF_UPDATE             si se actualiza solo con el catálogo (si no, nunca pide actualizarse).
 //!   CLASSPATH_SEPARATOR     separador de rutas del classpath de Java (";" o ":").
+//!   FORGE_SERVER_ARGS       archivo de argumentos de los servidores de Forge y NeoForge (1.17 en
+//!                           adelante): "win_args.txt" o "unix_args.txt" (cambia el separador).
 //!   PLAYIT_AGENT            el agente de playit.gg para este sistema (None si no hay).
 //!
 //! Funciones

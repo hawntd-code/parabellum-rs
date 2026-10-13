@@ -16,6 +16,7 @@ pub const JAVA_RUNTIME_PLATFORM: &str = if cfg!(target_arch = "aarch64") { "wind
 pub const EXECUTABLE: &str = "Parabellum.exe";
 pub const SELF_UPDATE: bool = true;
 pub const CLASSPATH_SEPARATOR: &str = ";";
+pub const FORGE_SERVER_ARGS: &str = "win_args.txt";
 pub const PLAYIT_AGENT: Option<AgentDownload> = Some(AgentDownload {
     url: "https://github.com/playit-cloud/playit-agent/releases/download/v0.17.1/playit-windows-x86_64-signed.exe",
     sha256: "9b00d6ff7d37d1052e5ae097e1348e11deae8617cd7a8ba39d1777f2006316a3",

@@ -112,7 +112,8 @@ pub struct ServerConfig {
     /// El jugador aceptó el EULA de Minecraft (sin eso el servidor no arranca).
     pub eula: bool,
     pub port: u16,
-    /// Lo que va después de los argumentos de Java: ["-jar", "server.jar", "nogui"] o ["@libraries/…/win_args.txt", "nogui"].
+    /// Lo que va después de los argumentos de Java: ["-jar", "server.jar", "nogui"] o ["@libraries/…/win_args.txt", "nogui"]
+    /// (unix_args.txt en Mac).
     pub launch: Vec<String>,
     pub guests: Vec<Guest>,
     pub created: i64,
@@ -877,13 +878,15 @@ async fn run_installer(java: &Path, args: &[String], folder: &Path, name: &str, 
 
 /// Cómo arrancar un servidor de Forge o NeoForge recién instalado.
 fn forge_launch(folder: &Path, loader_version: &str) -> Option<Vec<String>> {
-    // 1.17 en adelante: un archivo con los argumentos (lo que usa run.bat).
+    // 1.17 en adelante: un archivo con los argumentos (lo que usan run.bat y run.sh). El instalador
+    // deja los dos; solo cambia el separador de rutas.
+    let args_file = crate::plataforma::FORGE_SERVER_ARGS;
     for base in ["libraries/net/minecraftforge/forge", "libraries/net/neoforged/neoforge", "libraries/net/neoforged/forge"] {
         let Ok(entries) = std::fs::read_dir(folder.join(base)) else { continue };
-        let mut candidates: Vec<String> = entries.flatten().filter(|e| e.path().join("win_args.txt").exists()).map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        let mut candidates: Vec<String> = entries.flatten().filter(|e| e.path().join(args_file).exists()).map(|e| e.file_name().to_string_lossy().to_string()).collect();
         candidates.sort_by_key(|c| !c.contains(loader_version));
         if let Some(version) = candidates.first() {
-            return Some(vec![format!("@{base}/{version}/win_args.txt"), "nogui".into()]);
+            return Some(vec![format!("@{base}/{version}/{args_file}"), "nogui".into()]);
         }
     }
     // Hasta 1.16: forge-<versión>.jar en la carpeta.
@@ -1361,8 +1364,11 @@ mod tests {
         let folder = std::env::temp_dir().join(format!("parabellum-forge-{}", std::process::id()));
         let args = folder.join("libraries/net/minecraftforge/forge/1.20.1-47.4.0");
         std::fs::create_dir_all(&args).unwrap();
+        // El instalador deja los dos; se usa el del sistema.
         std::fs::write(args.join("win_args.txt"), "").unwrap();
-        assert_eq!(forge_launch(&folder, "47.4.0").unwrap(), vec!["@libraries/net/minecraftforge/forge/1.20.1-47.4.0/win_args.txt".to_string(), "nogui".into()]);
+        std::fs::write(args.join("unix_args.txt"), "").unwrap();
+        let expected = format!("@libraries/net/minecraftforge/forge/1.20.1-47.4.0/{}", crate::plataforma::FORGE_SERVER_ARGS);
+        assert_eq!(forge_launch(&folder, "47.4.0").unwrap(), vec![expected, "nogui".into()]);
         let _ = std::fs::remove_dir_all(&folder);
         let old = std::env::temp_dir().join(format!("parabellum-forge-viejo-{}", std::process::id()));
         std::fs::create_dir_all(&old).unwrap();
