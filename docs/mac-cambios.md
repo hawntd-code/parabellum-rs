@@ -19,11 +19,45 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
-- Última revisión de los PR de Mac en Windows: 2026-10-12, PR #1 a #6 (todos mezclados).
-- Windows: la 0.25.0 (animaciones) está publicada en Drive desde el 2026-10-12. Sigue la 0.26.0.
+- Última revisión de los PR de Mac en Windows: 2026-10-12, PR #1 a #9 (todos mezclados).
+- Windows: la 0.25.0 está publicada en Drive; la 0.26.3 está lista para publicarse. Sigue la 0.27.0
+  (ver «Próximo en Windows»).
+- Mac: hechas las tareas 1 a 8 de `mac.md`. Quedan la 9 a la 12; el orden que sugiere Juan está en
+  «Lo que sigue en Mac», abajo.
+
+## Lo que sigue en Mac
+
+En este orden (las dos primeras hacen que un compañero con Mac pueda usar Parabellum sin compilar):
+
+1. **Tarea 10, empaquetar como `.app` y `.dmg`.** Además del `.icns` y `bundle.active`:
+   - **Clic en el Dock con la ventana escondida.** Al cerrar la ventana, Parabellum se queda junto al
+     reloj (en Mac, en la barra de menús). Abrir la `.app` otra vez no abre otra copia: macOS le manda
+     al que ya está abierto `RunEvent::Reopen`, y hoy nadie lo atiende (en `main.rs` solo se atiende
+     `RunEvent::Exit`). Que llame a `cuenta::show_window`. Va en código compartido con
+     `#[cfg(target_os = "macos")]`: dilo en el PR.
+2. **Tarea 11, actualizarse solo.** Propuesta, para que la discutamos en el PR antes de hacerla:
+   - En Drive, un zip aparte para Mac con su propio id en el catálogo (p. ej. `parabellum-mac`, junto a
+     `LAUNCHER_ID`), así un Windows nunca baja la de Mac ni al revés. `launcher_update` filtra por el id
+     del sistema (constante nueva en el contrato).
+   - `apply_launcher_update` en Mac reemplaza la `.app` entera (mover la vieja a `.app.old`, poner la
+     nueva, abrirla con `open -n` y `--reiniciar`). Lo que hoy hace con el `.exe` va a
+     `plataforma::replace_launcher` (contrato nuevo; Windows mueve ahí lo que ya hace).
+   - `--publicar-launcher` lo corre Juan en Windows: hace falta poder pasarle el zip de Mac que le
+     mandes (o un `--publicar-launcher-mac <zip>`). Juan lo publica en Drive.
+   - Después, `SELF_UPDATE = true`.
+3. **Tarea 9, versiones 1.18 y anteriores** (LWJGL arm64). Las usan pocos modpacks; puede esperar.
+4. **Tarea 12, firma de Apple**: cuesta 99 USD al año, decisión de Juan. Mientras, la guía de
+   instalación dice lo del clic derecho › Abrir.
+
+Opcional y pequeño: los servidores de Forge 1.17+ creados en Mac **antes** del PR #7 guardaron
+`win_args.txt` en `parabellum-servidor.json` (`launch`) y siguen sin arrancar. Si tienes alguno,
+bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese archivo).
 
 ## Pendientes para Mac
 
+- [ ] **0.26.0 a 0.26.3 en Mac** (ver «Cambios de Windows»): en 26.3, cambiar de pestaña con el ratón y
+  escribir en el panel del juego (SDL3 también en Mac); abrir Parabellum dos veces y que se muestre el
+  primero.
 - [ ] **Hostear con playit.gg de verdad** (PR #9): vincular una cuenta de playit.gg desde «Hostear
   partida», encender un servidor y entrar desde otro PC por la dirección pública.
 - [ ] **Con un amigo de verdad** (Diego todavía no tiene amigos en Parabellum): lo único que queda de
@@ -48,8 +82,12 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Pendientes para Windows
 
-- [ ] **PR #9 (playit en Mac): compilar, correr las pruebas y probar playit.gg en Windows.** Tres cambios
-  en `playit.rs` (compartido):
+Nada por ahora.
+
+- [x] **PR #9 (playit en Mac)** (2026-10-12): en Windows pasan las 85 pruebas (incluidas
+  `otro_archivo_del_mismo_tamano_no_es_el_agente` y `ultima_linea_sin_trabarse`) y compila sin
+  advertencias. El agente que ya tiene Juan coincide con el SHA-256 nuevo, así que no se vuelve a bajar.
+  Buen hallazgo lo de `last_line`: también trababa Windows. Tres cambios en `playit.rs` (compartido):
   - `Agent::start` llama a `plataforma::make_executable` (en Windows no hace nada).
   - `agent_installed` compara el SHA-256 y no solo el tamaño (revisión de seguridad): antes, cualquier
     archivo del mismo tamaño en `base/playit` se ejecutaba. Si no coincide, se vuelve a bajar. Prueba
@@ -58,9 +96,11 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
     agente no se conectaba, «Hostear partida» se quedaba en «Conectando» sin mostrar el error, y si se
     cerraba solo, se trababa todo lo de playit.gg, incluso salir de Parabellum. Prueba nueva:
     `ultima_linea_sin_trabarse`.
-- [ ] **PR #7 (Forge y NeoForge): compilar y correr las pruebas en Windows.** El contrato tiene una
-  constante nueva, `plataforma::FORGE_SERVER_ARGS`, que en Windows vale `"win_args.txt"` (lo mismo que
-  antes), y `servidor::forge_launch` (compartido) la usa. Crear un servidor de Forge y ver que enciende.
+- [x] **PR #7 (Forge y NeoForge)** (2026-10-12): un servidor de Forge 1.18.2 creado desde cero en
+  Windows guarda `@libraries/net/minecraftforge/forge/1.18.2-40.3.12/win_args.txt` y llega a «Done» en
+  63 s. El contrato tiene una constante nueva, `plataforma::FORGE_SERVER_ARGS`, que en Windows vale
+  `"win_args.txt"` (lo mismo que antes), y `servidor::forge_launch` (compartido) la usa.
+- [x] **PR #8 (procesos atados)**: solo toca `macos/`; en Windows compila igual.
 
 - [x] **PR #6: compilar y correr las pruebas en Windows** (2026-10-12): pasan las 83 pruebas (incluida
   `encuentra_el_java_de_mojang`), compila, y Vanilla 1.21.1 llega al menú en 66 s con el Java que encuentra
@@ -71,7 +111,15 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Próximo en Windows
 
-- **0.26.0:** «Reportar problema» (manda un resumen por chat a Juan) y la prueba con compañeros.
+**0.27.0** (lo que pidió Juan tras probar con sus amigos). Casi todo es `ui/` y `amigos.rs`, compartido:
+cuando llegue, cada entrada de «Cambios de Windows» dirá qué revisar en Mac.
+
+- Mensajes: responder a un mensaje (la cita va arriba de la burbuja) y reaccionar con emojis.
+- Página «Amigos» propia en la barra (agregar, solicitudes, lista, grupos) y otra forma de agregar
+  desde Mensajes. Inicio sin las tarjetas «Tu servidor», «Amigos» y «Novedades».
+- Grupos con foto y con dueño (quien lo crea): solo el dueño cambia nombre, foto y miembros. Cambia
+  `firebase-reglas.json`; Juan publica las reglas.
+- «Reportar problema»: manda un resumen por chat a Juan.
 
 ## Cambios de Windows
 
