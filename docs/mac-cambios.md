@@ -132,6 +132,9 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   - El título del diálogo de «Publicar esta versión» ya no nombra `_parabellum`, y el aviso de la
     interfaz usa el nombre real de la carpeta.
   - Comando nuevo `--subir-launcher-drive <carpeta>`: lo mismo que «Subir a Drive», sin la ventana.
+  - `ui/`: abajo a la izquierda, junto a la versión, decía «Windows» fijo también en Mac; ahora pone el
+    sistema que manda Parabellum (`platform`: «Windows» o «macOS»). Y en Ajustes › Comportamiento,
+    «Un aviso de Windows cuando te escriben…» pasa a «Un aviso del sistema…» (también en `i18n.js`).
   - Para probar: «Publicar esta versión» en una carpeta de prueba deja `_parabellum` igual que antes, y
     `cargo test` pasa `actualizacion_del_launcher_segun_el_sistema` (la de Mac no se ofrece en Windows).
 

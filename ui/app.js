@@ -4506,6 +4506,7 @@ async function init() {
   setCreator(initial.creator);
   // Lo que depende del sistema (Windows o macOS): por ejemplo, en Mac no hay accesos directos.
   document.body.dataset.platform = initial.platform ?? "Windows";
+  $("#platform-text").textContent = document.body.dataset.platform;
   document.body.classList.toggle("no-shortcuts", initial.shortcuts === false);
   // Al abrir se busca una versión nueva (y cada media hora, por si se queda junto al reloj): si la
   // hay, hay que actualizar para seguir.
