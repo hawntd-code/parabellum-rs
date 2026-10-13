@@ -77,7 +77,7 @@ Con el JSON de una instancia (`extraJvmArgs`) o en la línea de comandos de Java
 - `-Dparabellum.prueba.abrir=1`: abre el panel solo en el menú principal (y deja
   `parabellum-prueba.txt` en la carpeta del juego).
 - `-Dparabellum.prueba=true`: el panel se dibuja como conectado, con un amigo y un chat de ejemplo.
-- `-Dparabellum.prueba.pestana=1`: abre la primera conversación.
+- `-Dparabellum.prueba.pestana=1`: abre la primera conversación; `=capturas`: abre Capturas.
 - `-Dparabellum.prueba.conectar=<dirección>`: entra a ese servidor como lo haría «Unirse».
 - `-Dparabellum.prueba.lento=<N>`: el panel tarda N veces más en entrar (para verlo en una captura).
 

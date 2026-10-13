@@ -43,6 +43,24 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// None: no se deja pasar (no es amigo, o ese servidor no está encendido).
 pub type Gate = Arc<dyn Fn(&str, &str) -> Option<u16> + Send + Sync>;
 
+/// Alguien que está jugando ahora en este PC por P2P.
+#[derive(Clone, Debug)]
+pub struct Guest {
+    /// Su identidad P2P (la que publica en su presencia).
+    pub id: String,
+    /// "world" o la clave del servidor.
+    pub target: String,
+    /// Directo entre las dos PCs (si no, por el relevo).
+    pub direct: bool,
+    pub rtt_ms: Option<u32>,
+}
+
+/// Una conexión entrante y cuántas conexiones del juego lleva abiertas a cada destino.
+struct Visit {
+    connection: Connection,
+    streams: HashMap<String, usize>,
+}
+
 /// Un túnel abierto hacia la partida de un amigo.
 #[derive(Clone, Debug)]
 pub struct Link {
@@ -62,6 +80,8 @@ pub struct P2p {
     addresses: Mutex<HashMap<EndpointId, EndpointAddr>>,
     /// (amigo, destino) -> puerto local ya abierto.
     tunnels: Mutex<HashMap<(EndpointId, String), u16>>,
+    /// Anfitrión: quién está conectado a este PC ahora (por su identidad P2P).
+    visits: Mutex<HashMap<String, Visit>>,
 }
 
 impl P2p {
@@ -78,6 +98,7 @@ impl P2p {
             connections: Default::default(),
             addresses: Default::default(),
             tunnels: Default::default(),
+            visits: Default::default(),
         });
         tokio::spawn(p2p.clone().serve());
         note(format!("listo ({})", p2p.endpoint.id().fmt_short()));
@@ -108,13 +129,20 @@ impl P2p {
             tokio::spawn(async move {
                 let Ok(connection) = incoming.await else { return };
                 let remote = connection.remote_id().to_string();
-                note(format!("{} se conectó", short(&remote)));
+                let stable = connection.stable_id();
+                p2p.visits.lock().unwrap().insert(remote.clone(), Visit { connection: connection.clone(), streams: HashMap::new() });
+                tokio::spawn(note_path(connection.clone(), remote.clone()));
                 // Los flujos de cada conexión del juego (y los pings de la lista de servidores).
                 while let Ok((send, recv)) = connection.accept_bi().await {
                     let (p2p, remote) = (p2p.clone(), remote.clone());
                     tokio::spawn(async move {
                         let _ = p2p.serve_stream(&remote, send, recv).await;
                     });
+                }
+                // Se fue (si no volvió a entrar con otra conexión mientras tanto).
+                let mut visits = p2p.visits.lock().unwrap();
+                if visits.get(&remote).is_some_and(|v| v.connection.stable_id() == stable) {
+                    visits.remove(&remote);
                 }
             });
         }
@@ -131,9 +159,43 @@ impl P2p {
             note(format!("rechazado {} -> {target}", short(remote)));
             return Ok(());
         };
-        let tcp = TcpStream::connect(("127.0.0.1", port)).await?;
-        pipe(tcp, send, recv).await;
-        Ok(())
+        self.count(remote, &target, true);
+        let result = async {
+            let tcp = TcpStream::connect(("127.0.0.1", port)).await?;
+            pipe(tcp, send, recv).await;
+            Ok(())
+        }
+        .await;
+        self.count(remote, &target, false);
+        result
+    }
+
+    /// Una conexión del juego más (o menos) de ese amigo hacia ese destino.
+    fn count(&self, remote: &str, target: &str, add: bool) {
+        if let Some(visit) = self.visits.lock().unwrap().get_mut(remote) {
+            let streams = visit.streams.entry(target.to_string()).or_default();
+            if add {
+                *streams += 1;
+            } else {
+                *streams = streams.saturating_sub(1);
+            }
+            if *streams == 0 {
+                visit.streams.remove(target);
+            }
+        }
+    }
+
+    /// Quienes están jugando ahora en este PC por P2P: a qué destino y por dónde va su conexión.
+    pub fn guests(&self) -> Vec<Guest> {
+        self.visits
+            .lock()
+            .unwrap()
+            .iter()
+            .flat_map(|(id, visit)| {
+                let (direct, rtt_ms) = path_info(&visit.connection);
+                visit.streams.keys().map(move |target| Guest { id: id.clone(), target: target.clone(), direct, rtt_ms })
+            })
+            .collect()
     }
 
     // ================= Quien se une
@@ -223,6 +285,17 @@ async fn pipe(tcp: TcpStream, mut send: SendStream, mut recv: RecvStream) {
     tokio::join!(up, down);
 }
 
+/// Anfitrión: anota por dónde quedó la conexión de quien entra. Espera unos segundos a que pase a
+/// directa (al principio casi siempre va por el relevo), como hace quien se une.
+async fn note_path(connection: Connection, remote: String) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !path_info(&connection).0 && Instant::now() < deadline && connection.close_reason().is_none() {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    }
+    let (direct, rtt_ms) = path_info(&connection);
+    note(format!("{} se conectó: {} ({} ms)", short(&remote), if direct { "directo" } else { "relevo" }, rtt_ms.map_or("?".into(), |ms| ms.to_string())));
+}
+
 /// (directo, tiempo de ida y vuelta) del camino que usa ahora la conexión.
 fn path_info(connection: &Connection) -> (bool, Option<u32>) {
     let paths = connection.paths();
@@ -277,6 +350,16 @@ mod tests {
         tcp.read_exact(&mut buf).await.unwrap();
         assert_eq!(&buf, b"hola p2p");
         println!("directo: {} rtt: {:?}", link.direct, link.rtt_ms);
+        // El anfitrión ve quién está entrando, a qué destino y por dónde (el rechazado no cuenta).
+        let guests = host.guests();
+        assert_eq!(guests.len(), 1, "{guests:?}");
+        assert_eq!(guests[0].target, "world");
+        assert!(address.starts_with(&host.endpoint.id().to_string()));
+        println!("anfitrión ve: {guests:?}");
+        // Al salir del juego (se cierra la conexión del juego) ya no aparece.
+        drop(tcp);
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert!(host.guests().is_empty(), "{:?}", host.guests());
         guest.close().await;
         host.close().await;
     }

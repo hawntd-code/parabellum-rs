@@ -69,8 +69,8 @@ final class Panel {
     private int pestana = AMIGOS;
     private final Campo agregar = new Campo(T.t("Agregar por nombre", "Add by name"), 16);
     private final Campo escribir = new Campo(T.t("Escribe un mensaje…", "Write a message…"), 2000);
-    private double scrollAmigos, scrollChats, scrollMensajes, scrollCapturas;
-    private double maxAmigos, maxChats, maxMensajes, maxCapturas;
+    private double scrollAmigos, scrollChats, scrollMensajes, scrollCapturas, scrollEnviar;
+    private double maxAmigos, maxChats, maxMensajes, maxCapturas, maxEnviar;
     private String quitar;
     private String chatAbierto;
     private JsonArray mensajes;
@@ -178,6 +178,7 @@ final class Panel {
         if (pestana == AMIGOS) scrollAmigos = limitar(scrollAmigos - paso, maxAmigos);
         else if (pestana == MENSAJES && ratonX < LATERAL + LISTA_CHATS) scrollChats = limitar(scrollChats - paso, maxChats);
         else if (pestana == MENSAJES) scrollMensajes = limitar(scrollMensajes + paso, maxMensajes);
+        else if (captura != null) scrollEnviar = limitar(scrollEnviar - paso, maxEnviar);
         else scrollCapturas = limitar(scrollCapturas - paso, maxCapturas);
         sucio = true;
         return true;
@@ -251,6 +252,10 @@ final class Panel {
                     juego.plataforma.conectar(direccion);
                 });
             }
+        }
+        if (!pruebaHecha && "capturas".equals(System.getProperty("parabellum.prueba.pestana"))) {
+            pruebaHecha = true;
+            pestana = CAPTURAS;
         }
         if (!pruebaHecha && "1".equals(System.getProperty("parabellum.prueba.pestana"))) {
             JsonArray chats = lista(juego.estado, "chats");
@@ -501,6 +506,32 @@ final class Panel {
                 if (booleano(a, "unirse")) botonDerecha(l, T.t("Unirse", "Join"), bx3 - 6, ty + 12, 32, PRIMARIO, () -> unirse(uid, null));
             }
             ty += 62;
+        }
+
+        // Grupos, debajo de los amigos (como en el panel derecho de Parabellum): uno abre su conversación.
+        java.util.List<JsonObject> grupos = new java.util.ArrayList<JsonObject>();
+        for (JsonElement e : lista(juego.estado, "chats")) if ("grupo".equals(texto(e.getAsJsonObject(), "tipo"))) grupos.add(e.getAsJsonObject());
+        if (!grupos.isEmpty()) {
+            ty += 10;
+            l.texto(T.t("GRUPOS · " + grupos.size(), "GROUPS · " + grupos.size()), LATERAL + 24, ty + 4, 11, true, Lienzo.TENUE);
+            ty += 26;
+            for (final JsonObject g : grupos) {
+                final String id = texto(g, "id");
+                String nombre = texto(g, "nombre");
+                boolean sobre = zona(LATERAL + 16, ty, W - LATERAL - 32, 52, () -> irAChat(id), null);
+                l.rect(LATERAL + 16, ty, W - LATERAL - 32, 52, 10, sobre ? Lienzo.TARJETA : new Color(0x2a, 0x28, 0x32, 110));
+                l.rect(LATERAL + 28, ty + 10, 32, 32, 8, Lienzo.ACENTO_SUAVE);
+                String inicial = nombre == null || nombre.isEmpty() ? "#" : nombre.substring(0, 1).toUpperCase();
+                l.texto(inicial, LATERAL + 44 - l.ancho(inicial, 14, true) / 2, ty + 17, 14, true, Lienzo.ACENTO_TEXTO);
+                boolean nuevo = booleano(g, "sinLeer");
+                l.texto(l.recortar(nombre, 300, 14, true), LATERAL + 74, ty + 8, 14, true, Lienzo.TEXTO);
+                String ultimo = vistaPrevia(texto(g, "ultimo"));
+                if (texto(g, "ultimoNombre") != null && !ultimo.isEmpty()) ultimo = texto(g, "ultimoNombre") + ": " + ultimo;
+                if (ultimo.isEmpty()) ultimo = T.t("Grupo", "Group");
+                l.texto(l.recortar(ultimo, W - LATERAL - 160, 12, false), LATERAL + 74, ty + 28, 12, false, nuevo ? Lienzo.TEXTO : Lienzo.APAGADO);
+                if (nuevo) l.circulo(W - 46, ty + 21, 10, Lienzo.ACENTO);
+                ty += 58;
+            }
         }
         maxAmigos = Math.max(0, ty + scrollAmigos - abajo + 10);
         scrollAmigos = limitar(scrollAmigos, maxAmigos);
@@ -763,11 +794,25 @@ final class Panel {
             final File f = lista.get(i);
             double cx = LATERAL + 24 + (i % 3) * (cw + gap);
             double cy = ty + (i / 3) * (ch + gap);
-            boolean sobre = zona(cx, cy, cw, ch, () -> captura = f, null);
+            boolean sobre = zona(cx, cy, cw, ch, () -> {
+                captura = f;
+                scrollEnviar = 0;
+            }, null);
             BufferedImage mini = juego.capturas.miniatura(f, this::marcarLuego);
             if (mini != null) l.imagen(mini, cx, cy, cw, ch, 8);
             else l.rect(cx, cy, cw, ch, 8, Lienzo.TARJETA);
-            if (sobre) l.borde(cx, cy, cw, ch, 8, Lienzo.ACENTO);
+            // Cuándo se sacó, en una etiqueta sobre la imagen.
+            String cuando = haceCuanto(f.lastModified());
+            double ew = l.ancho(cuando, 11, true) + 14;
+            l.rect(cx + 8, cy + ch - 28, ew, 20, 6, new Color(0x14, 0x13, 0x18, 200));
+            l.texto(cuando, cx + 15, cy + ch - 25, 11, true, Lienzo.TEXTO);
+            if (sobre) {
+                l.borde(cx, cy, cw, ch, 8, Lienzo.ACENTO);
+                String mandar = T.t("Mandar", "Send");
+                double mw = l.ancho(mandar, 12, true) + 20;
+                l.rect(cx + cw - mw - 8, cy + ch - 32, mw, 24, 7, Lienzo.ACENTO);
+                l.texto(mandar, cx + cw - mw + 2, cy + ch - 28, 12, true, Color.WHITE);
+            }
         }
         double filas = Math.ceil(lista.size() / columnas);
         maxCapturas = Math.max(0, filas * (ch + gap) - (abajo - arriba) + 10);
@@ -781,18 +826,56 @@ final class Panel {
         boton(l, T.t("Volver", "Back"), px, py + ph + 30, 32, NORMAL, () -> captura = null);
         double lx = px + pw + 24, lw = W - lx - 20;
         l.texto(enviando ? T.t("Enviando…", "Sending…") : T.t("Enviar a", "Send to"), lx, py, 13, true, Lienzo.APAGADO);
-        recortar(l, lx, py + 24, lw, H - py - 40);
-        double ty = py + 24;
+        double arriba = py + 24, abajo = H - 16;
+        recortar(l, lx, arriba, lw, abajo - arriba);
+        double ty = arriba - scrollEnviar;
+        // Primero las conversaciones (chats y grupos); después los amigos con los que todavía no hay una.
+        java.util.Set<String> conChat = new java.util.HashSet<String>();
         for (JsonElement e : lista(juego.estado, "chats")) {
             final JsonObject c = e.getAsJsonObject();
             final String id = texto(c, "id");
-            boolean sobre = zona(lx, ty, lw, 40, () -> enviarCaptura(id, texto(c, "nombre")), null);
-            l.rect(lx, ty, lw, 40, 8, sobre ? Lienzo.TARJETA_ENCIMA : Lienzo.TARJETA);
-            if ("grupo".equals(texto(c, "tipo"))) l.rect(lx + 8, ty + 8, 24, 24, 6, Lienzo.ACENTO_SUAVE);
-            else l.cabeza(texto(c, "nombre"), lx + 8, ty + 8, 24);
-            l.texto(l.recortar(texto(c, "nombre"), lw - 50, 13, true), lx + 40, ty + 11, 13, true, Lienzo.TEXTO);
+            final String nombre = texto(c, "nombre");
+            boolean grupo = "grupo".equals(texto(c, "tipo"));
+            if (!grupo && nombre != null) conChat.add(nombre.toLowerCase());
+            filaEnviar(l, lx, ty, lw, nombre, grupo, () -> enviarCaptura(id, nombre));
             ty += 46;
         }
+        for (JsonElement e : lista(juego.estado, "amigos")) {
+            final JsonObject a = e.getAsJsonObject();
+            final String uid = texto(a, "uid");
+            final String nombre = texto(a, "nombre");
+            if (nombre == null || conChat.contains(nombre.toLowerCase())) continue;
+            filaEnviar(l, lx, ty, lw, nombre, false, () -> enviarCapturaAmigo(uid, nombre));
+            ty += 46;
+        }
+        if (ty == arriba - scrollEnviar) l.texto(T.t("Agrega amigos para mandarles capturas.", "Add friends to send them screenshots."), lx, ty + 8, 12, false, Lienzo.APAGADO);
+        maxEnviar = Math.max(0, ty + scrollEnviar - abajo + 6);
+        scrollEnviar = limitar(scrollEnviar, maxEnviar);
+        sinRecorte(l);
+    }
+
+    /** Una fila de «Enviar a»: el grupo con su inicial o la cabeza del amigo. */
+    private void filaEnviar(Lienzo l, double x, double y, double w, String nombre, boolean grupo, Accion accion) {
+        boolean sobre = zona(x, y, w, 40, enviando ? null : accion, null);
+        l.rect(x, y, w, 40, 8, sobre && !enviando ? Lienzo.TARJETA_ENCIMA : Lienzo.TARJETA);
+        if (grupo) {
+            l.rect(x + 8, y + 8, 24, 24, 6, Lienzo.ACENTO_SUAVE);
+            String inicial = nombre == null || nombre.isEmpty() ? "#" : nombre.substring(0, 1).toUpperCase();
+            l.texto(inicial, x + 20 - l.ancho(inicial, 12, true) / 2, y + 12, 12, true, Lienzo.ACENTO_TEXTO);
+        } else {
+            l.cabeza(nombre, x + 8, y + 8, 24);
+        }
+        l.texto(l.recortar(nombre, w - 50, 13, true), x + 40, y + 11, 13, true, enviando ? Lienzo.APAGADO : Lienzo.TEXTO);
+    }
+
+    /** Hace cuánto (para las capturas): «Ahora», «Hace 5 min», «Hace 3 h», «Ayer», «Hace 2 días». */
+    private static String haceCuanto(long ms) {
+        long s = Math.max(0, (System.currentTimeMillis() - ms) / 1000);
+        if (s < 60) return T.t("Ahora", "Now");
+        if (s < 3600) return T.t("Hace " + s / 60 + " min", s / 60 + " min ago");
+        if (s < 86400) return T.t("Hace " + s / 3600 + " h", s / 3600 + " h ago");
+        long d = s / 86400;
+        return d == 1 ? T.t("Ayer", "Yesterday") : T.t("Hace " + d + " días", d + " days ago");
     }
 
     // ================= Acciones
@@ -923,6 +1006,16 @@ final class Panel {
         datos.addProperty("mensaje", id);
         juego.puente("borrar", datos, (r, error) -> {
             if (error != null) juego.aviso(T.t("No se pudo borrar", "Could not delete"), error);
+        });
+    }
+
+    /** Con un amigo sin conversación: Parabellum la abre (o la crea) y ahí va la captura. */
+    private void enviarCapturaAmigo(String uid, final String nombre) {
+        JsonObject datos = new JsonObject();
+        datos.addProperty("uid", uid);
+        juego.puente("chat_amigo", datos, (r, error) -> {
+            if (error != null) juego.aviso(T.t("No se pudo enviar", "Could not send"), error);
+            else enviarCaptura(texto(r.getAsJsonObject(), "chat"), nombre);
         });
     }
 

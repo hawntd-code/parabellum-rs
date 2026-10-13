@@ -179,7 +179,9 @@ function connectionsHtml(s) {
       ? connNote(t("Inicia sesión con Google para que tus amigos entren directo.", "Sign in with Google so your friends can join directly."))
       : !host.view.p2p
         ? connNote(t("Esperando internet…", "Waiting for the internet…"))
-        : connNote(t("Tus amigos de Parabellum entran directo con «Unirse».", "Your Parabellum friends join directly with «Join»."));
+        : s.p2pGuests?.length
+          ? p2pGuestsHtml(s.p2pGuests)
+          : connNote(t("Tus amigos de Parabellum entran directo con «Unirse».", "Your Parabellum friends join directly with «Join»."));
   const lan = !c.lan
     ? off
     : host.firewall === false
@@ -193,6 +195,17 @@ function connectionsHtml(s) {
     connCard("lan", "server", t("Red local", "Local network"), c.lan, lan) +
     connCard("playit", "globe", "playit.gg", c.playit, c.playit ? playitBody(s) : connNote(t("Dirección pública para quien no usa Parabellum.", "Public address for people without Parabellum.")), menu)
   );
+}
+
+/** Quién está jugando por P2P ahora: directo entre las dos PCs o por el relevo, y su ping. */
+function p2pGuestsHtml(guests) {
+  return `<div class="p2p-guests">${guests
+    .map((g) => {
+      const path = g.direct ? t("directo", "direct") : t("por relevo", "via relay");
+      const ping = g.rttMs != null ? ` · ${g.rttMs} ms` : "";
+      return `<span class="p2p-guest ${g.direct ? "direct" : "relay"}"><b>${escapeHtml(g.name)}</b> · ${path}${ping}</span>`;
+    })
+    .join("")}</div>`;
 }
 
 /** playit.gg activado en este servidor: vincular, abrir la dirección o lo que falte. */
@@ -323,7 +336,9 @@ function renderHost() {
   if (world) {
     const name = escapeHtml(state.instances.find((i) => i.id === world.instance)?.name ?? world.instance);
     const address = world.address ? `<button class="btn small" data-copy-address="${escapeHtml(world.address)}" title="playit.gg">${icon("copy")}${escapeHtml(world.address)}</button>` : "";
-    status.innerHTML = `${icon("check-circle")}<span class="grow">${t(`Tu mundo de ${name} está abierto: tus amigos pulsan «Unirse» en tu nombre.`, `Your ${name} world is open: your friends press «Join» on your name.`)}</span>${address}`;
+    // Si alguien ya entró por P2P, se ve quién y por dónde (en vez de la explicación).
+    const guests = world.p2pGuests?.length ? `<span class="grow">${p2pGuestsHtml(world.p2pGuests)}</span>` : "";
+    status.innerHTML = `${icon("check-circle")}${guests || `<span class="grow">${t(`Tu mundo de ${name} está abierto: tus amigos pulsan «Unirse» en tu nombre.`, `Your ${name} world is open: your friends press «Join» on your name.`)}</span>`}${address}`;
     status.classList.remove("hidden");
   } else {
     status.classList.add("hidden");

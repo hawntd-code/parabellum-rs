@@ -61,6 +61,18 @@ Nada por ahora.
 
 ## Cambios de Windows
 
+### 2026-10-12 · 0.26.0: lo que encontró Juan probando con sus amigos
+
+- Qué cambió:
+  - Mod, Fabric 26.3: los botones del ratón llegan con números de SDL3 (izquierdo 1, derecho 3) y
+    `PantallaPanel` los traduce a los de GLFW para el núcleo. Antes no se podía cambiar de pestaña.
+  - Mod, núcleo: sección «Grupos» en Amigos y pestaña Capturas pulida. Los 18 .jar se recompilaron.
+  - `servidor.rs`: lee «System chat: X joined the game» y «The game time is N tick(s)» de 26.x.
+  - `p2p.rs` + `hosting.rs` + `ui/hostear.js`: el anfitrión ve quién entra por P2P, si va directo o por
+    relevo y su ping (`P2p::guests`, `p2pGuests` en la vista del servidor y del mundo abierto).
+- Mac: nada de código. Si juegas 26.3 en Mac, revisa que en el panel se pueda cambiar de pestaña (en Mac
+  también es SDL3).
+
 ### 2026-10-12 · Reglas de Firebase: nadie puede inventarse una solicitud de amistad
 
 - Qué cambió: en `firebase-reglas.json`, quien recibe una solicitud ya solo puede borrarla (aceptar o

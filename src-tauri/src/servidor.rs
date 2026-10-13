@@ -1122,13 +1122,18 @@ pub enum LineEvent {
 fn line_patterns() -> &'static (Regex, Regex) {
     static PATTERNS: OnceLock<(Regex, Regex)> = OnceLock::new();
     PATTERNS.get_or_init(|| {
-        (Regex::new(r"\]: ([A-Za-z0-9_]{1,16}) joined the game\s*$").unwrap(), Regex::new(r"\]: ([A-Za-z0-9_]{1,16}) left the game\s*$").unwrap())
+        // Desde 26.x los mensajes del servidor llevan «System chat: » delante.
+        (
+            Regex::new(r"\]: (?:System chat: )?([A-Za-z0-9_]{1,16}) joined the game\s*$").unwrap(),
+            Regex::new(r"\]: (?:System chat: )?([A-Za-z0-9_]{1,16}) left the game\s*$").unwrap(),
+        )
     })
 }
 
-/// La respuesta de «time query gametime»: «… The time is 123456».
+/// La respuesta de «time query gametime»: «… The time is 123456» o, desde 26.x,
+/// «… System chat: The game time is 123456 tick(s)».
 pub fn gametime(line: &str) -> Option<i64> {
-    let (_, rest) = line.split_once("The time is ")?;
+    let (_, rest) = line.split_once("The time is ").or_else(|| line.split_once("The game time is "))?;
     rest.trim().split_whitespace().next()?.parse().ok()
 }
 
@@ -1157,6 +1162,7 @@ mod tests {
     fn tiempo_del_juego_para_el_tps() {
         assert_eq!(gametime("[22:31:04] [Server thread/INFO]: The time is 123456"), Some(123456));
         assert_eq!(gametime("[22:31:04] [Server thread/INFO]: Done (3.9s)! For help"), None);
+        assert_eq!(gametime("[16:45:13] [Server thread/INFO]: System chat: The game time is 98 tick(s)"), Some(98));
     }
 
     #[test]
@@ -1179,6 +1185,10 @@ mod tests {
         assert_eq!(parse_line("[12:01:00] [Server thread/INFO]: Hawntd left the game"), Some(LineEvent::Left("Hawntd".into())));
         // Un mensaje de chat no cuenta como entrar.
         assert_eq!(parse_line("[12:01:00] [Server thread/INFO]: <Bob> Alice joined the game"), None);
+        // 26.x
+        assert_eq!(parse_line("[16:45:43] [Server thread/INFO]: System chat: Hawntd joined the game"), Some(LineEvent::Joined("Hawntd".into())));
+        assert_eq!(parse_line("[16:50:02] [Server thread/INFO]: System chat: Hawntd left the game"), Some(LineEvent::Left("Hawntd".into())));
+        assert_eq!(parse_line("[16:50:02] [Server thread/INFO]: <Bob> System chat: Alice joined the game"), None);
         assert_eq!(parse_line("[12:00:00] [Server thread/WARN]: **** FAILED TO BIND TO PORT!"), Some(LineEvent::BindFailed));
     }
 

@@ -46,8 +46,17 @@ public final class PantallaPanel extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent evento, boolean doble) {
-        Juego.actual().clic(evento.x() * s(), evento.y() * s(), evento.button());
+        Juego.actual().clic(evento.x() * s(), evento.y() * s(), boton(evento.button()));
         return true;
+    }
+
+    /** Desde la 26.3 los botones del ratón también son de SDL3 (izquierdo 1, derecho 3): al núcleo van
+     * con los números de GLFW (izquierdo 0, derecho 1, central 2). */
+    private static int boton(int b) {
+        if (b == InputConstants.MOUSE_BUTTON_LEFT) return 0;
+        if (b == InputConstants.MOUSE_BUTTON_RIGHT) return 1;
+        if (b == InputConstants.MOUSE_BUTTON_MIDDLE) return 2;
+        return b;
     }
 
     @Override

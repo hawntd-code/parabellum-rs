@@ -1454,3 +1454,10 @@ body.no-shortcuts .needs-shortcuts { display: none !important; }
 .chat-new-below svg { width: 15px; height: 15px; color: var(--accent-fg); }
 .chat-new-below:hover { background: var(--card-hover); }
 @keyframes pill-in { from { opacity: 0; transform: translate(-50%, 8px) scale(.94); } to { opacity: 1; transform: translateX(-50%); } }
+
+/* 0.26: quién juega por P2P en este servidor (directo o por relevo, y su ping). */
+.p2p-guests { display: flex; flex-direction: column; gap: 4px; flex: 1 1 auto; min-width: 0; }
+.p2p-guest { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.p2p-guest::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--success); flex: none; }
+.p2p-guest.relay::before { background: var(--warning, #f5b544); }
+.p2p-guest b { color: var(--text); }

@@ -156,6 +156,8 @@ pub struct ServerView {
     tps: Option<f32>,
     /// Avisó que se atrasa (Can't keep up) en el último minuto.
     behind: bool,
+    /// Los amigos que están jugando aquí por P2P y por dónde va su conexión.
+    p2p_guests: Vec<P2pGuest>,
 }
 
 #[derive(Serialize, Clone)]
@@ -164,6 +166,29 @@ pub struct WorldView {
     port: u16,
     instance: String,
     address: Option<String>,
+    p2p_guests: Vec<P2pGuest>,
+}
+
+/// Un amigo jugando en este PC por P2P: directo o por el relevo, y su ping.
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct P2pGuest {
+    name: String,
+    direct: bool,
+    rtt_ms: Option<u32>,
+}
+
+/// Quién está entrando por P2P a cada destino ("world" o la clave del servidor), con su nombre.
+fn p2p_guests(app: &AppHandle) -> Vec<(String, P2pGuest)> {
+    let Some(p2p) = app.state::<AppState>().p2p.lock().unwrap().clone() else { return Vec::new() };
+    let social = cuenta::social_handle(app);
+    p2p.guests()
+        .into_iter()
+        .map(|g| {
+            let name = social.as_ref().and_then(|s| s.friend_by_p2p(&g.id)).map(|(_, name)| name).unwrap_or_else(|| "?".into());
+            (g.target, P2pGuest { name, direct: g.direct, rtt_ms: g.rtt_ms })
+        })
+        .collect()
 }
 
 #[derive(Serialize, Clone)]
@@ -184,6 +209,8 @@ fn hosting(app: &AppHandle) -> &Hosting {
 }
 
 pub fn view(app: &AppHandle) -> HostView {
+    let guests = p2p_guests(app);
+    let guests_of = |target: &str| guests.iter().filter(|(t, _)| t == target).map(|(_, g)| g.clone()).collect::<Vec<_>>();
     let state = app.state::<AppState>();
     let hosting = &state.hosting;
     let playit = hosting.playit.lock().unwrap().clone();
@@ -221,6 +248,7 @@ pub fn view(app: &AppHandle) -> HostView {
                     .map(|png| format!("data:image/png;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, png))),
                 tps: run.and_then(|r| r.tps),
                 behind: run.and_then(|r| r.behind_at).is_some_and(|at| at.elapsed() < Duration::from_secs(60)),
+                p2p_guests: guests_of(&config.id),
                 config,
             }
         })
@@ -231,7 +259,7 @@ pub fn view(app: &AppHandle) -> HostView {
     let world_playit = hosting.saved.lock().unwrap().world_playit;
     let world = hosting.world.lock().unwrap().clone();
     let view = HostView {
-        world: world.map(|w| WorldView { port: w.port, instance: w.instance, address: public("world") }),
+        world: world.map(|w| WorldView { port: w.port, instance: w.instance, address: public("world"), p2p_guests: guests_of("world") }),
         playit,
         world_playit,
         p2p: cuenta::p2p_address(app).is_some(),
@@ -296,6 +324,11 @@ pub fn init(app: &AppHandle) {
                 }
                 running.keys().cloned().collect()
             };
+            // Con el mundo abierto (sin servidores) también, más despacio: así se ve quién entra por P2P.
+            let world_open = hosting(&app).world.lock().unwrap().is_some();
+            if ids.is_empty() && world_open && tick % 2 == 0 {
+                emit(&app);
+            }
             if !ids.is_empty() {
                 emit(&app);
                 // Los invitados ven el servidor encendido mientras llegue una señal por minuto.

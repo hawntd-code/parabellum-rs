@@ -105,7 +105,16 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Probado en la ventana real (WebView2): la página anterior se va, la portada vuela y se suelta, al buscar en la Biblioteca las tarjetas que sobran se desvanecen (solo las que se ven), los avisos se cierran sin saltos, «Abriendo…» se llena, sin errores de JavaScript. En el juego: el panel a medio entrar (semitransparente) en las cinco formas de dibujar (1.16.5, 1.18.2, 1.21.1/NeoForge, 1.21.4, 1.21.8–26.3) y abierto en 15 versiones; dentro de un mundo (Fabric y NeoForge 1.21.1) sale la pista, el botón «Parabellum» del menú de pausa abre el panel y nuestro mod no impide entrar a servidores sin mods
 - [ ] *Prueba:* Juan: que se sienta bien en la ventana real (páginas, listas, chat, descargas)
 
-### 0.26.0: reportar problemas y prueba con compañeros
+### 0.26.0: lo que encontró Juan probando con sus amigos (pedido de Juan)
+- [x] **Panel en 26.3**: no se podía cambiar de pestaña ni pulsar «Mensaje». Desde la 26.3 Minecraft numera los botones del ratón como SDL3 (izquierdo 1, derecho 3; antes 0 y 1) y el panel tomaba cada clic izquierdo como derecho. Ahora se traducen, como ya se hacía con el teclado
+- [x] **Servidores 26.x**: no salía quién estaba conectado ni los TPS. Desde 26.x la consola escribe «System chat: Juan joined the game» y «The game time is 98 tick(s)»; se leen los dos formatos (con pruebas)
+- [x] **Grupos en el panel del juego**: sección «Grupos» debajo de los amigos (como en el panel derecho de Parabellum); al pulsar uno se abre su conversación
+- [x] **Capturas en el panel**: cuándo se sacó cada una, «Mandar» al pasar el ratón, «Enviar a» también a amigos sin conversación (se crea), los grupos con su inicial y la lista se desplaza
+- [x] **P2P visto desde el anfitrión**: el registro anota «se conectó: directo (N ms)» o «relevo», y la tarjeta P2P del servidor (y la línea del mundo abierto) muestra quién está jugando por P2P, si va directo o por relevo y su ping, en vivo. Para comparar con playit.gg
+- [x] Probado: la prueba P2P por internet ve al invitado (destino, directo, ping) y lo quita al salir; Grupos y Capturas capturados en Fabric 1.21.1 (clic en una captura → «Enviar a»); el panel de 26.3 abre (sus clics no se pueden simular: los revisa Juan)
+- [ ] *Prueba:* Juan: en 26.3 cambiar de pestaña, «Mensaje» y Capturas; ver los jugadores del servidor; con un amigo, la tarjeta P2P (directo o relevo y ping)
+
+### 0.27.0: reportar problemas y prueba con compañeros
 - [ ] **«Reportar problema»**: un resumen (versión, instancia, ruta usada, P2P directo o por relevo y ping, últimas líneas del error) que se manda por chat a Juan
 - [ ] *Prueba:* con compañeros en sus casas: P2P, mensajes, invitar y «Unirse» desde el juego, y el teclado del panel en 26.3
 

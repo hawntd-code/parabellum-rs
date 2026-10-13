@@ -154,7 +154,8 @@ public final class Juego {
     private static JsonObject ejemplo() {
         return new com.google.gson.JsonParser().parse("{\"ev\":\"estado\",\"sesion\":true,\"yo\":{\"nombre\":\"Prueba\"},\"puedoInvitar\":true,"
             + "\"amigos\":[{\"uid\":\"a\",\"nombre\":\"Amigo\",\"enLinea\":true,\"jugando\":true,\"mundo\":true,\"pack\":\"Prueba\",\"unirse\":true}],"
-            + "\"solicitudes\":[],\"servidores\":[],\"chats\":[{\"id\":\"c\",\"nombre\":\"Amigo\",\"tipo\":\"directo\",\"ultimo\":\"Hola\",\"sinLeer\":true}]}").getAsJsonObject();
+            + "\"solicitudes\":[],\"servidores\":[],\"chats\":[{\"id\":\"c\",\"nombre\":\"Amigo\",\"tipo\":\"directo\",\"ultimo\":\"Hola\",\"sinLeer\":true},"
+            + "{\"id\":\"g\",\"nombre\":\"Los panas\",\"tipo\":\"grupo\",\"ultimo\":\"¿Jugamos?\",\"ultimoNombre\":\"Amigo\",\"sinLeer\":false}]}").getAsJsonObject();
     }
 
     boolean conectado() {
