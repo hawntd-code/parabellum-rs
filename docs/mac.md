@@ -95,6 +95,15 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
   encontraba la clase principal. Probado: un servidor de Forge 1.20.1 llega a «Done» y uno de NeoForge
   1.21.1 arranca hasta que pide el EULA.
 - Carpeta de datos en `~/Library/Application Support/Parabellum` cuando corre desde una `.app`.
+- Hostear con playit.gg: el agente 0.17.1 (el mismo que en Windows), compilado para chip Apple por
+  GitHub Actions a partir de la etiqueta oficial, sin cambios, en el fork público
+  [diegovc20/playit-agent](https://github.com/diegovc20/playit-agent) (rama `parabellum-macos`, release
+  `v0.17.1-macos-arm64`). Parabellum lo baja de ahí, comprueba su SHA-256 (`PLAYIT_AGENT`) y le da
+  permiso de ejecución al abrirlo. playit.gg dejó de publicar binarios para Mac después de la 0.15.13, y
+  esa no sirve: lee `PLAYIT_SECRET` al compilar, no al abrirse. Para otra versión, una etiqueta
+  `v<versión>-macos-arm64` en el fork sobre la oficial compila y publica sola; luego se cambia aquí el
+  enlace, el SHA-256 y el tamaño. Probado: se baja, abre y, con una clave falsa, explica «InvalidSecret».
+  Falta probar un túnel con una cuenta de playit.gg.
 - Conexión directa entre PCs (P2P, `p2p.rs` con iroh): es código compartido y iroh funciona en Mac,
   así que no hay nada que hacer en `macos/` (falta probarla).
 - El panel dentro del juego (`mod/`): es Java y se dibuja con Java2D en modo «headless» (Minecraft lo
@@ -137,9 +146,8 @@ Ordenadas por prioridad:
 6. ~~**Forge y NeoForge**~~ — hecho: el juego y los modpacks funcionan igual; los servidores
    necesitaban `unix_args.txt` (ver «Qué ya está hecho»).
 7. ~~**Procesos atados a Parabellum**~~ — hecho, con un vigilante y kqueue (ver «Qué ya está hecho»).
-8. **Hostear servidores** — `PLAYIT_AGENT` es `None` porque playit.gg no publica su agente para Mac.
-   Es de código abierto (github.com/playit-cloud/playit-agent): compilarlo para
-   `aarch64-apple-darwin`, publicarlo en un release propio y poner aquí su enlace, SHA-256 y tamaño.
+8. ~~**Hostear servidores**~~ — hecho, con el agente de playit.gg compilado en el fork
+   diegovc20/playit-agent (ver «Qué ya está hecho»). Falta probar un túnel con una cuenta de playit.gg.
 9. **Versiones viejas (1.18 y anteriores)**: no traen nativos para chip Apple. Hay que sustituir LWJGL
    por versiones arm64 (como hacen Prism y otros launchers) o correrlas con Rosetta y un Java x86_64.
 10. **Empaquetar como `.app`** (y `.dmg`): `tauri.conf.json` tiene `bundle.active = false` y solo un
