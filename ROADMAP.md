@@ -135,6 +135,25 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Probado: la prueba P2P por internet ve al invitado (destino, directo, ping) y lo quita al salir; Grupos y Capturas capturados en Fabric 1.21.1 (clic en una captura → «Enviar a»); el panel de 26.3 abre (sus clics no se pueden simular: los revisa Juan)
 - [ ] *Prueba:* Juan: en 26.3 cambiar de pestaña, «Mensaje» y Capturas; ver los jugadores del servidor; con un amigo, la tarjeta P2P (directo o relevo y ping)
 
+### 0.29.0: gestor de descargas, imágenes al chat, descargas más rápidas y Minecraft desde Drive (pedido de Juan)
+- [x] **Gestor de descargas** (`descargas.rs`): cada instalación es una tarea (crear instancia, modpacks de Modrinth o de un archivo, mods y sus actualizaciones, el catálogo de Drive, instancias compartidas, importar de otro launcher, verificar y lo que falta al jugar). La flecha de arriba dice cuánto va y cuántas hay, y abre el panel: progreso, velocidad, cuánto falta, Cancelar, Reintentar (aprovecha lo ya bajado), Abrir la instancia y Limpiar terminadas
+- [x] **Cola**: los modpacks, versiones y paquetes de Drive esperan su turno (1 a la vez por defecto; 2 o 3 en las opciones del panel). Ya no sale «Espera a que termine…»: en el catálogo se pueden pedir varios y quedan «En cola». Los mods y lo que falta al jugar no esperan
+- [x] **Límite de velocidad** (opciones del panel: 1 a 20 MB/s) para todas las descargas juntas, para no dejar sin internet la casa
+- [x] Cancelar es seguro: las descargas lo notan entre pedazos y fallan como si se cayera la conexión, así cada instalación limpia lo suyo como siempre (un modpack a medias no deja instancia)
+- [x] Si cierras la ventana de crear o subir un modpack, sigue en Descargas y al terminar no te saca de donde estás; soltar otro .mrpack mientras tanto lo pone en la cola
+- [x] **Pegar una imagen** en cualquier parte de Mensajes (no solo en el cuadro de texto). Lo que la ventana no sabe pegar (un archivo copiado en el Explorador, un .heic, un dibujo de Paint) lo lee Parabellum del portapapeles
+- [x] **Arrastrar una imagen** al chat también desde el navegador, Discord o un gestor del portapapeles (en Windows llegaban sin archivo y se perdían: `plataforma/windows/arrastre.rs`), con el aviso «Suelta para mandarla a…»; como siempre, sale la vista previa antes de mandarla
+- [x] **Descargas más rápidas** (pedido de Juan: «a veces está muy lenta, en algunos dispositivos»). Medido en su red: Drive da 23 MB/s con una conexión (partirla no ayudó), pero los miles de archivos chicos de Mojang esperan ~100 ms cada uno: con 8 a la vez salían ~80 por segundo y con 32, ~180. Ahora van **32 a la vez y los grandes primero**; la lista de sonidos y la de Java se piden a la vez
+- [x] **Las descargas largas ya no se cortan**: el cliente cortaba cualquier descarga que pasara de 300 s (un modpack de Drive de 1 GB en una red lenta se cortaba y podía fallar); ahora solo si deja de llegar algo 60 s
+- [x] **Menos trabajo para la ventana**: el progreso llegaba una vez por archivo (miles por instalación) y en una PC lenta trababa la interfaz; ahora como mucho ~10 por segundo (una etapa nueva y el final, siempre)
+- [x] **Minecraft desde Google Drive** (pedido de Juan): al crear una instancia (o completar una versión), si su base está en el catálogo se baja de Drive, solo lo que falte en el PC (por partes con el zip remoto; si falta casi todo, el zip completo). Si Drive falla, de Mojang. En «Crear instancia» las versiones de Drive salen con «En Drive», también donde Mojang está bloqueado
+- [x] **Drive por partes, 6 a la vez**: completar una versión o actualizar un modpack de Drive pedía cada pedazo del zip de uno en uno (Drive tarda ~0.3 s en responder cada petición): faltando 200 archivos sueltos de 26.3 tardaba 58 s; ahora 12 s
+- [x] Probado en la ventana real con una carpeta vacía: 26.3 desde Drive (679 MB a ~42 MB/s, lista en 40 s); borrando 200 sonidos, la siguiente instancia bajó solo lo que faltaba (26 MB) y quedó completa (5147 de 5147); 1.20.4 de Mojang con Java 17 (785 MB) en 29 s
+- [x] Subir un modpack a Drive ya subía su base (`base-minecraft-<versión>`): en Drive están 1.20.1, 26.1.2, 26.2 y 26.3
+- [x] **«Subir versiones de Minecraft»** (catálogo de Drive, solo quien publica): elegir versiones (botón «Las más jugadas»), ver el espacio libre del Drive y cuánto ocupan (~650 MB cada una); cada una se baja de Mojang, se empaqueta, se sube y se borra de este PC. Es una tarea de Descargas
+- [x] Probado en la ventana real (carpeta de prueba): con 1 MB/s la segunda instalación esperó en cola, al cancelar la primera no quedó carpeta y la segunda terminó (111 MB, con «Abrir»); con 2 MB/s el promedio fue 1.99 MB/s; pegar con Ctrl+V una imagen copiada y un archivo copiado abre la vista previa
+- [ ] *Prueba:* Juan: instalar dos modpacks seguidos (el segundo en cola), cancelar uno y reintentarlo; arrastrar una imagen desde el navegador al chat; subir unas versiones a Drive y crear una instancia de una de ellas en la escuela
+
 ### 0.28.0: el panel del juego con lo mismo que la ventana (pedido de Juan)
 - [x] **Imágenes:** al adjuntar, pegar o soltar una imagen sale una vista previa (ya reducida) y se confirma antes de mandarla
 - [x] **Mensajes:** el punto de en línea (verde) o jugando (morado) en las conversaciones directas y en la cabecera
@@ -158,8 +177,8 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] **Invitaciones del juego en la ventana**: antes se veía el texto crudo; ahora una tarjeta con «Unirse»
 - [x] **«Reportar problema»** (Ajustes › Acerca de, menú ⋯ de la instancia y el doctor): versión, sistema, instancia, error, lo que dice el doctor y lo último del P2P, con lo que escribe el jugador arriba. Va por chat a quien da soporte (`supportName` en config-integrada.json: Juan) o a quien elijas; sin sesión, se copia
 - [x] Reglas de Firebase (`firebase-reglas.json`): `reply` en los mensajes, `reactions/`, `owner` y `photo` en los grupos, y solo el dueño cambia el grupo. Probadas con el emulador oficial de Firebase (`docs/probar-reglas.py`): 50 casos (crear como la 0.26 y la 0.27, editar, sacar, pasar el grupo, responder, reaccionar, borrar). De paso se cerró un hueco: cualquier miembro podía esconderle una conversación a otro
-- [ ] **Juan: publicar las reglas ANTES de publicar la 0.27** (si no, responder, reaccionar y crear grupos fallan)
-- [ ] Después: responder y reaccionar también desde el panel del juego
+- [x] **Juan: publicar las reglas ANTES de publicar la 0.27** (publicadas el 2026-10-13)
+- [x] Después: responder y reaccionar también desde el panel del juego (0.28.0)
 - [ ] *Prueba:* con compañeros en sus casas: P2P, mensajes, invitar y «Unirse» desde el juego, y el teclado del panel en 26.3
 
 ### Después

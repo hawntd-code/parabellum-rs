@@ -44,6 +44,10 @@ pub struct Settings {
     pub favorite_mods: Vec<FavoriteMod>,
     /// Cuenta de Google con la que se sincronizaron los favoritos (ver favoritos.rs).
     pub favorites_owner: Option<String>,
+    /// Instalaciones grandes (modpacks, versiones, el catálogo) a la vez: 1 a 3 (ver descargas.rs).
+    pub download_parallel: u32,
+    /// Límite de velocidad de las descargas en MB/s (0 = sin límite).
+    pub download_limit_mb: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
@@ -95,6 +99,8 @@ impl Default for Settings {
             favorite_chats: Vec::new(),
             favorite_mods: Vec::new(),
             favorites_owner: None,
+            download_parallel: 1,
+            download_limit_mb: 0.0,
         }
     }
 }
@@ -164,6 +170,8 @@ impl Settings {
             seen.push(key);
             keep
         });
+        self.download_parallel = self.download_parallel.clamp(1, 3);
+        self.download_limit_mb = if self.download_limit_mb.is_finite() { self.download_limit_mb.clamp(0.0, 1000.0) } else { 0.0 };
         Ok(())
     }
 

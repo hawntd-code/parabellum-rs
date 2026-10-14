@@ -116,8 +116,10 @@ pub async fn install(release: &Release, paths: &Paths, progress: impl Fn(String,
         }
     }
 
-    // Assets: primero el índice, que dice qué archivos hacen falta
-    if let Some(index) = version.get("assetIndex") {
+    // Assets (primero el índice, que dice qué archivos hacen falta) y la lista de archivos de Java: las
+    // dos a la vez (una después de otra se iban unos segundos esperando respuestas).
+    let assets = async {
+        let Some(index) = version.get("assetIndex") else { return Ok(Vec::new()) };
         progress(t!("Leyendo la lista de sonidos y texturas…", "Reading the list of sounds and textures…"), 0.01);
         let id = index["id"].as_str().ok_or(t!("Índice de assets sin id.", "Asset index without id."))?;
         let index_file = paths.assets.join("indexes").join(format!("{id}.json"));
@@ -125,25 +127,30 @@ pub async fn install(release: &Release, paths: &Paths, progress: impl Fn(String,
         download::download_all(vec![index_download], |_, _, _, _| {}).await?;
         let index_json: Value = serde_json::from_str(&std::fs::read_to_string(&index_file).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
+        let mut objects = Vec::new();
         for object in index_json["objects"].as_object().into_iter().flatten().map(|(_, o)| o) {
             let Some(hash) = object["hash"].as_str().filter(|h| h.len() > 2) else { continue };
-            files.push(FileDownload {
+            objects.push(FileDownload {
                 url: format!("{ASSETS_URL}{}/{hash}", &hash[..2]),
                 path: paths.assets.join("objects").join(&hash[..2]).join(hash),
                 sha1: Some(hash.into()),
                 size: object["size"].as_u64(),
             });
         }
-    }
-
-    let runtimes = java::discover(paths);
-    let mut java_programs = Vec::new();
-    if !java::select(&runtimes, Some(&component), major).is_some_and(|r| r.major == major) {
+        Ok::<_, String>(objects)
+    };
+    let runtime = async {
+        let runtimes = java::discover(paths);
+        if java::select(&runtimes, Some(&component), major).is_some_and(|r| r.major == major) {
+            return Ok((Vec::new(), Vec::new()));
+        }
         progress(t!("Preparando Java {major}…", "Preparing Java {major}…"), 0.015);
-        let (java, programs) = java_files(&component, major, paths).await?;
-        files.extend(java);
-        java_programs = programs;
-    }
+        java_files(&component, major, paths).await
+    };
+    let (assets, runtime) = futures::join!(assets, runtime);
+    files.extend(assets?);
+    let (java, java_programs) = runtime?;
+    files.extend(java);
 
     let id = release.id.clone();
     let stage_progress = progress.clone();

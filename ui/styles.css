@@ -1613,3 +1613,66 @@ body.no-shortcuts .needs-shortcuts { display: none !important; }
 .p2p-guest::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--success); flex: none; }
 .p2p-guest.relay::before { background: var(--warning, #f5b544); }
 .p2p-guest b { color: var(--text); }
+
+/* ================= 0.29: gestor de descargas ================= */
+/* La flecha de arriba: abre el panel; con descargas en marcha dice cuánto va. */
+.download-indicator {
+  position: relative; height: 34px; padding: 0 10px; border: 1px solid transparent; border-radius: 999px; background: transparent;
+  transition: background var(--dur-fast), border-color var(--dur-fast);
+}
+.download-indicator:hover, .download-indicator[aria-expanded="true"] { background: var(--card); border-color: var(--border); }
+.download-indicator.idle { color: var(--muted); }
+.download-indicator.idle svg { animation: none; }
+.download-indicator #download-percent:empty { display: none; }
+.download-dot { position: absolute; top: 5px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 2px var(--chrome); }
+.download-dot.error { background: var(--danger); }
+
+.downloads-panel {
+  position: fixed; z-index: 29; top: 52px; right: 12px; width: min(400px, calc(100vw - 24px)); max-height: calc(100vh - 70px);
+  display: flex; flex-direction: column; border-radius: var(--r-lg); background: var(--raised); border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow); animation: menu-in var(--dur-fast) var(--ease) both; transform-origin: top right;
+}
+.dlp-head { display: flex; align-items: center; gap: 6px; padding: 12px 12px 10px 16px; border-bottom: 1px solid var(--border); }
+.dlp-heading { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.dlp-heading b { font-size: 15px; }
+.dlp-summary { color: var(--muted); font-size: 12px; }
+.dlp-options { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--card); }
+.dlp-option { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; font-weight: 600; }
+.dlp-option select { width: auto; min-width: 130px; height: 32px; padding: 0 10px; font-size: 13px; }
+.dlp-options .hint { margin: 0; font-size: 12px; }
+.segmented.small { padding: 3px; gap: 2px; }
+.segmented.small button { height: 26px; padding: 0 12px; font-size: 13px; }
+.dlp-list { overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+.dlp-empty { padding: 26px 16px; text-align: center; color: var(--muted); font-size: 13px; }
+.dlp-foot { display: flex; justify-content: flex-end; padding: 8px 10px; border-top: 1px solid var(--border); }
+.dlp-foot .btn svg { width: 15px; height: 15px; }
+
+.dl-row { display: flex; gap: 10px; align-items: flex-start; padding: 9px 8px; border-radius: var(--r); transition: background var(--dur-fast); }
+.dl-row:hover { background: var(--card); }
+.dl-icon { width: 36px; height: 36px; flex: none; border-radius: 9px; background: var(--card); display: grid; place-items: center; overflow: hidden; color: var(--accent-fg); }
+.dl-icon img { width: 100%; height: 100%; object-fit: cover; }
+.dl-icon svg { width: 18px; height: 18px; }
+.dl-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.dl-title { font-weight: 650; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dl-title small { color: var(--muted); font-weight: 500; }
+.dl-sub { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dl-row.error .dl-sub { color: var(--danger); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.dl-row.lista .dl-sub { color: var(--success); }
+.dl-bar { height: 4px; border-radius: 4px; background: var(--card-hover); overflow: hidden; margin-top: 2px; }
+.dl-bar div { height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, var(--accent-press), var(--accent-fg)); transition: width var(--dur-slow) var(--ease-out); }
+.dl-row.cola .dl-bar div { width: 100% !important; background: repeating-linear-gradient(-45deg, var(--card-hover) 0 6px, var(--border) 6px 12px); }
+.dl-meta { color: var(--faint); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.dl-actions { display: flex; gap: 4px; align-items: center; flex: none; }
+.dl-actions .circle-btn { width: 28px; height: 28px; }
+.dl-actions .circle-btn svg { width: 15px; height: 15px; }
+.dl-actions .btn.small { height: 28px; padding: 0 10px; font-size: 12.5px; }
+
+/* Crear instancia: la versión se baja de Google Drive (también donde Mojang está bloqueado). */
+.version .badge.drive { background: var(--card-hover); color: var(--muted); }
+
+/* Subir versiones de Minecraft a Drive */
+.vd-storage { margin: 10px 0 8px; font-size: 13px; font-weight: 600; }
+.vd-picks { display: flex; gap: 6px; margin-bottom: 10px; }
+.vd-picks .btn svg { width: 14px; height: 14px; }
+#vd-list .fav-row { cursor: pointer; }
+#vd-status.error { color: var(--danger); }

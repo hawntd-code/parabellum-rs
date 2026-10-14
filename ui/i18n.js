@@ -106,7 +106,7 @@ const HTML_EN = {
   "Todavía no tienes servidores guardados.": "You have no saved servers yet.",
   "Nuevo grupo": "New group",
   "Más": "More",
-  "Enviar una imagen": "Send an image",
+  "Enviar una imagen (también puedes pegarla o arrastrarla aquí)": "Send an image (you can also paste it or drag it here)",
   "Escribe un mensaje…": "Write a message…",
   "Enviar (Enter)": "Send (Enter)",
   "Jugar": "Play",
@@ -344,6 +344,17 @@ const HTML_EN = {
   "Enviar a": "Send to",
   "Reportar": "Report",
   "Manda por chat lo que hace falta para ayudarte: la versión, tu PC y el último error.": "Sends by chat what is needed to help you: the version, your PC and the last error.",
+  "Descargas": "Downloads",
+  "Opciones de descarga": "Download options",
+  "Modpacks a la vez": "Modpacks at once",
+  "Límite de velocidad": "Speed limit",
+  "Sin límite": "No limit",
+  "Los modpacks, versiones y paquetes de Drive esperan su turno; los mods y lo que falta al jugar no esperan.": "Modpacks, versions and Drive packages wait their turn; mods and what is missing when you play do not wait.",
+  "Limpiar terminadas": "Clear finished",
+  "Subir versiones de Minecraft": "Upload Minecraft versions",
+  "Así se bajan de Google Drive en cualquier red, también donde Mojang está bloqueado. Cada una pesa unos 650 MB (el juego, sus sonidos e idiomas y Java).": "This way they download from Google Drive on any network, also where Mojang is blocked. Each one weighs about 650 MB (the game, its sounds and languages, and Java).",
+  "Las más jugadas": "Most played",
+  "Ninguna": "None",
 };
 
 /** Traduce los textos fijos de la página (y sus title, placeholder y aria-label). */

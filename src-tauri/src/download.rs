@@ -1,5 +1,9 @@
 //! Descargas en paralelo con verificación SHA-1, reintentos y reanudación
 //! (un archivo que ya existe con el tamaño correcto no se vuelve a bajar).
+//!
+//! Minecraft son miles de archivos chicos (sonidos, idiomas, texturas) y cada uno espera la respuesta
+//! del servidor (~100 ms medidos en casa de Juan): con 8 a la vez salían ~80 archivos por segundo y con
+//! 32, ~180. Por eso van PARALLEL a la vez, y los grandes primero (que no quede uno grande al final).
 
 use futures::{stream, StreamExt};
 use sha1::{Digest, Sha1};
@@ -8,6 +12,9 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
+
+/// Descargas a la vez (ver arriba). Con el límite de velocidad de descargas.rs se reparten el límite.
+const PARALLEL: usize = 32;
 
 #[derive(Clone, Debug)]
 pub struct FileDownload {
@@ -41,7 +48,9 @@ pub fn client() -> &'static reqwest::Client {
         reqwest::Client::builder()
             .user_agent(concat!("Parabellum/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(15))
-            .timeout(Duration::from_secs(300))
+            // Sin límite total: un modpack de Drive de 1 GB en una red lenta tarda más de 5 minutos y se
+            // cortaba a la mitad (antes: 300 s en total). Se corta solo si deja de llegar algo 60 s.
+            .read_timeout(Duration::from_secs(60))
             .pool_max_idle_per_host(16)
             .build()
             .expect("cliente HTTP")
@@ -54,11 +63,13 @@ pub async fn download_all(
     on_progress: impl Fn(usize, usize, u64, u64) + Send + Sync + 'static,
 ) -> Result<(), String> {
     let mut seen = std::collections::HashSet::new();
-    let pending: Vec<FileDownload> = files
+    let mut pending: Vec<FileDownload> = files
         .into_iter()
         .filter(|f| seen.insert(f.path.to_string_lossy().to_lowercase()))
         .filter(|f| !f.already_present())
         .collect();
+    // Los grandes primero: uno grande que empieza al final deja todo esperándolo.
+    pending.sort_by_key(|f| std::cmp::Reverse(f.size.unwrap_or(0)));
     let total_files = pending.len();
     let total_bytes: u64 = pending.iter().filter_map(|f| f.size).sum::<u64>().max(1);
     let done_files = Arc::new(AtomicUsize::new(0));
@@ -72,6 +83,9 @@ pub async fn download_all(
             async move {
                 let mut last_error = String::new();
                 for attempt in 1..=3u64 {
+                    if crate::descargas::is_cancelled() {
+                        return Some(crate::descargas::cancelled_error());
+                    }
                     match download_file(&file).await {
                         Ok(()) => {
                             let bytes = done_bytes.fetch_add(file.size.unwrap_or(0), Ordering::Relaxed) + file.size.unwrap_or(0);
@@ -80,6 +94,9 @@ pub async fn download_all(
                             return None;
                         }
                         Err(error) => {
+                            if crate::descargas::is_cancelled() {
+                                return Some(error);
+                            }
                             last_error = error;
                             tokio::time::sleep(Duration::from_millis(800 * attempt)).await;
                         }
@@ -88,11 +105,12 @@ pub async fn download_all(
                 Some(format!("{}: {last_error}", file.path.file_name().unwrap_or_default().to_string_lossy()))
             }
         })
-        .buffer_unordered(8)
+        .buffer_unordered(PARALLEL)
         .filter_map(|r| async move { r })
         .collect()
         .await;
 
+    crate::descargas::check()?;
     if errors.is_empty() {
         Ok(())
     } else {
@@ -119,8 +137,10 @@ async fn download_file(file: &FileDownload) -> Result<(), String> {
     let mut output = tokio::fs::File::create(&temp).await.map_err(|e| e.to_string())?;
     let mut hasher = Sha1::new();
     while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+        crate::descargas::check()?;
         hasher.update(&chunk);
         output.write_all(&chunk).await.map_err(|e| e.to_string())?;
+        crate::descargas::received(chunk.len()).await;
     }
     output.flush().await.map_err(|e| e.to_string())?;
     drop(output);

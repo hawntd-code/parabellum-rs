@@ -59,6 +59,7 @@ impl RemoteZip {
 
     /// Bytes [start, end] (ambos incluidos).
     fn range(&self, start: u64, end: u64) -> Result<Vec<u8>, String> {
+        crate::descargas::check()?;
         let response = self
             .client
             .get(&self.url)
@@ -72,6 +73,7 @@ impl RemoteZip {
         if bytes.len() as u64 != end - start + 1 {
             return Err(damaged());
         }
+        crate::descargas::received_blocking(bytes.len());
         Ok(bytes.to_vec())
     }
 
@@ -154,12 +156,18 @@ impl RemoteZip {
     }
 
     /// Descarga varios archivos del zip. Los que están seguidos se piden juntos (una petición por
-    /// bloque en lugar de una por archivo). `on_file` recibe el índice y el contenido de cada uno.
+    /// bloque en lugar de una por archivo) y los bloques van de WORKERS a la vez: Drive tarda ~0.3 s en
+    /// empezar a responder cada petición y, de uno en uno, 200 archivos sueltos tardaban un minuto.
+    /// `on_file` recibe (en este hilo) el índice y el contenido de cada uno.
     pub fn read_many(&self, entries: &[&RemoteEntry], mut on_file: impl FnMut(usize, Vec<u8>) -> Result<(), String>) -> Result<(), String> {
         const GAP: u64 = 512 * 1024;
-        const MAX_BLOCK: u64 = 48 * 1024 * 1024;
+        // Más chicos que antes (48 MB): ahora hay varios en memoria a la vez.
+        const MAX_BLOCK: u64 = 16 * 1024 * 1024;
+        const WORKERS: usize = 6;
         let mut order: Vec<usize> = (0..entries.len()).collect();
         order.sort_by_key(|&i| entries[i].offset);
+        // (inicio, fin, archivos del bloque)
+        let mut blocks: Vec<(u64, u64, Vec<usize>)> = Vec::new();
         let mut index = 0;
         while index < order.len() {
             let start = entries[order[index]].offset;
@@ -174,20 +182,57 @@ impl RemoteZip {
                 end = end.max(next_end);
                 last += 1;
             }
-            let block = self.range(start, end - 1)?;
-            for &i in &order[index..=last] {
-                let entry = entries[i];
-                let local = &block[(entry.offset - start) as usize..];
-                let bytes = match Self::decode(entry, local)? {
-                    Some(bytes) => bytes,
-                    // El encabezado era más largo de lo calculado: se pide aparte.
-                    None => self.read(entry)?,
-                };
-                on_file(i, bytes)?;
-            }
+            blocks.push((start, end, order[index..=last].to_vec()));
             index = last + 1;
         }
-        Ok(())
+        let read_block = |(start, end, files): &(u64, u64, Vec<usize>)| -> Result<Vec<(usize, Vec<u8>)>, String> {
+            let block = self.range(*start, end - 1)?;
+            files
+                .iter()
+                .map(|&i| {
+                    let entry = entries[i];
+                    let bytes = match Self::decode(entry, &block[(entry.offset - start) as usize..])? {
+                        Some(bytes) => bytes,
+                        // El encabezado era más largo de lo calculado: se pide aparte.
+                        None => self.read(entry)?,
+                    };
+                    Ok((i, bytes))
+                })
+                .collect()
+        };
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        let stop = || next.store(usize::MAX / 2, std::sync::atomic::Ordering::Relaxed);
+        let (sender, receiver) = std::sync::mpsc::sync_channel::<Result<Vec<(usize, Vec<u8>)>, String>>(WORKERS);
+        let job = crate::descargas::current();
+        std::thread::scope(|threads| {
+            for _ in 0..WORKERS.min(blocks.len()) {
+                let (sender, job, blocks, next, read_block) = (sender.clone(), job.clone(), &blocks, &next, &read_block);
+                // Cada hilo cuenta para la misma tarea de Descargas (velocidad, límite, cancelar).
+                threads.spawn(move || {
+                    crate::descargas::enter(job, || loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(block) = blocks.get(i) else { return };
+                        let result = read_block(block);
+                        let failed = result.is_err();
+                        if sender.send(result).is_err() || failed {
+                            return;
+                        }
+                    })
+                });
+            }
+            drop(sender);
+            let mut outcome = Ok(());
+            for result in receiver {
+                if outcome.is_err() {
+                    continue;
+                }
+                outcome = result.and_then(|files| files.into_iter().try_for_each(|(i, bytes)| on_file(i, bytes)));
+                if outcome.is_err() {
+                    stop();
+                }
+            }
+            outcome
+        })
     }
 
     /// Descarga y descomprime un archivo del zip, comprobando su CRC32.
