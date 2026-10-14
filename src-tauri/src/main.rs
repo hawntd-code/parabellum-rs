@@ -2284,6 +2284,17 @@ async fn subir_paquete_drive(app: AppHandle, state: State<'_, AppState>, modpack
     Ok(drive_result(uploaded, same))
 }
 
+/// Pregenera el mundo del servidor con Chunky (ver hosting::pregenerate).
+#[tauri::command]
+async fn pregenerar_mundo(app: AppHandle, id: String, radio: u32) -> Result<(), String> {
+    hosting::pregenerate(&app, &id, radio).await
+}
+
+#[tauri::command]
+fn pausar_pregeneracion(app: AppHandle, id: String) {
+    hosting::pause_pregeneration(&app, &id);
+}
+
 /// Para «Subir versiones de Minecraft»: las versiones estables de Mojang, cuáles ya están en Drive y el
 /// espacio del Drive con el que se publica.
 #[derive(Serialize)]
@@ -3444,6 +3455,8 @@ fn main() {
             cuenta::leer_imagen,
             activar_arrastre,
             versiones_en_drive,
+            pregenerar_mundo,
+            pausar_pregeneracion,
             subir_versiones_drive,
             arrastre_imagenes,
             imagen_portapapeles,

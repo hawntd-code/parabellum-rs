@@ -110,7 +110,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Ahora hay un candado por carpeta (`datos/parabellum.lock`, con el bloqueo de archivos de Rust: igual en Windows y Mac). El segundo que se abre deja `datos/mostrar-ventana`, el primero se muestra y el segundo se cierra. Tras actualizar (`--reiniciar`), la versión nueva espera hasta 20 s a que la anterior se cierre
 - [x] Probado: el segundo se cierra en 1 s y el primero se muestra; con `--reiniciar` espera al viejo y luego abre
 - [x] Telemetría de la sesión real con David (19:38–19:49, anfitrión Juan): P2P directo todo el tiempo, ping mediana 36 ms (p95 42, máx 78), 0 paquetes perdidos de 43 617. Servidor: 6 ms por tick, pero 10 trabones de 50–126 ms con TPS en 20: esos son los «teletransportes»
-- [ ] Después: menos trabones del servidor cuando el anfitrión también juega (prioridad del proceso, pregenerar el mundo, distancia de simulación)
+- [x] Después: menos trabones del servidor cuando el anfitrión también juega (0.29.0: guardado sin forzar el disco y pregenerar el mundo)
 
 ### 0.26.2: lo que vieron los amigos de Juan con la 0.26.1
 - [x] **P2P rechazado**: un amigo llegaba por P2P directo (32 ms) pero el anfitrión rechazaba cada intento porque no reconocía su dirección P2P (cambia cada vez que abre Parabellum y se reconoce por su presencia en Firebase). Ahora, si no lo reconoce, vuelve a leer la presencia de todos (como mucho cada 10 s) y el siguiente intento entra; `p2p.log` anota el motivo de cada rechazo y, al releer, quién no tiene dirección P2P o no se deja leer
@@ -152,7 +152,9 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Subir un modpack a Drive ya subía su base (`base-minecraft-<versión>`): en Drive están 1.20.1, 26.1.2, 26.2 y 26.3
 - [x] **«Subir versiones de Minecraft»** (catálogo de Drive, solo quien publica): elegir versiones (botón «Las más jugadas»), ver el espacio libre del Drive y cuánto ocupan (~650 MB cada una); cada una se baja de Mojang, se empaqueta, se sube y se borra de este PC. Es una tarea de Descargas
 - [x] Probado en la ventana real (carpeta de prueba): con 1 MB/s la segunda instalación esperó en cola, al cancelar la primera no quedó carpeta y la segunda terminó (111 MB, con «Abrir»); con 2 MB/s el promedio fue 1.99 MB/s; pegar con Ctrl+V una imagen copiada y un archivo copiado abre la vista previa
-- [ ] *Prueba:* Juan: instalar dos modpacks seguidos (el segundo en cola), cancelar uno y reintentarlo; arrastrar una imagen desde el navegador al chat; subir unas versiones a Drive y crear una instancia de una de ellas en la escuela
+- [x] **Menos trabones del servidor** (los «teletransportes»): en la telemetría de Juan, buena parte de los trabones de 50–125 ms caían **cada 300 s exactos** (el autoguardado escribía cada chunk esperando al disco) y el resto al entrar o ir a zonas nuevas (generar terreno). Ahora los servidores van con `sync-chunk-writes=false` (los nuevos y, una vez, los que ya había: `servidor::apply_tuning`)
+- [x] **Pregenerar el mundo** (Ajustes del servidor, solo con mods): agrega Chunky de Modrinth para su loader y versión, enciende o reinicia el servidor y genera 500, 1000 o 2000 bloques alrededor del spawn, con el avance en vivo (porcentaje, cuánto falta, chunks por segundo) y «Pausar». Probado: «Prueba fabric» generó 4225 chunks en 100 s y quedó anotado
+- [ ] *Prueba:* Juan: instalar dos modpacks seguidos (el segundo en cola), cancelar uno y reintentarlo; arrastrar una imagen desde el navegador al chat; subir unas versiones a Drive y crear una instancia de una de ellas en la escuela; pregenerar SESE y jugar con un amigo para ver si siguen los trabones
 
 ### 0.28.0: el panel del juego con lo mismo que la ventana (pedido de Juan)
 - [x] **Imágenes:** al adjuntar, pegar o soltar una imagen sale una vista previa (ya reducida) y se confirma antes de mandarla

@@ -1676,3 +1676,18 @@ body.no-shortcuts .needs-shortcuts { display: none !important; }
 .vd-picks .btn svg { width: 14px; height: 14px; }
 #vd-list .fav-row { cursor: pointer; }
 #vd-status.error { color: var(--danger); }
+
+/* Pregenerar el mundo (Chunky) */
+.pregen-card { margin-bottom: 16px; }
+.pregen-card h3 { margin-bottom: 6px; }
+.pregen-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.pregen-row .faint { font-size: 13px; }
+.pregen-done { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--success); font-size: 13px; font-weight: 600; }
+.pregen-done svg { width: 16px; height: 16px; }
+.pregen-live { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-top: 10px; border-radius: var(--r-lg); background: var(--card); }
+.pregen-live > svg { width: 20px; height: 20px; color: var(--accent-fg); flex: none; }
+.pregen-live .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pregen-live b { font-size: 13.5px; }
+.pregen-live .faint { font-size: 12.5px; }
+.pregen-live .progress { margin-top: 6px; }
+#hosted-pregen .pregen-live { margin: 0 0 14px; }

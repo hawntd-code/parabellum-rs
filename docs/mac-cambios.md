@@ -264,6 +264,9 @@ Nada por ahora.
     Descargas con `descargas::enter`; `descargas::Scope` ahora es Clone). Sirve también en Mac.
   - Minecraft desde Drive: `install_vanilla` (main.rs) usa primero la base del catálogo
     (`catalog::install_base`, por partes) y si no, Mojang. `listar_versiones` trae `drive`.
+  - Servidores: `servidor::apply_tuning` (`sync-chunk-writes=false`, campo `tuning`) y pregenerar con
+    Chunky (`hosting::pregenerate`, `servidor::chunky_line`, comandos `pregenerar_mundo` y
+    `pausar_pregeneracion`, campo `pregenerated`). Mac: nada distinto; pruébalo con un servidor Fabric.
   - Subir versiones a Drive (quien publica): `packs::export_base`, `drive::Publisher::storage`, comandos
     `versiones_en_drive` y `subir_versiones_drive`.
 - Mac:
