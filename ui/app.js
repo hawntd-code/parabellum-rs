@@ -941,7 +941,7 @@ async function toggleShortcut(place, input) {
 async function openDoctor(id, mode, { diagnosis = null, reason = null, server = null } = {}) {
   const instance = state.instances.find((i) => i.id === id);
   if (!instance) return;
-  state.doctor = { id, mode, server, diagnosis, applied: [], busy: false, reason, steps: [], result: null, loading: !diagnosis, error: null };
+  state.doctor = { id, mode, server, diagnosis, applied: [], busy: false, reason, steps: [], result: null, loading: !diagnosis, error: null, culprit: null, bisecting: false };
   $("#doctor-art").innerHTML = art(instance, "doc");
   $("#doctor-title").textContent = instance.name;
   state.doctor.meta = [instance.loader === "Vanilla" ? null : `${instance.loader} ${instance.loaderVersion ?? ""}`.trim(), `Minecraft ${instance.minecraftVersion}`].filter(Boolean);
@@ -1012,7 +1012,8 @@ function noteRow(kind, title, detail = "", extra = "") {
 /** [tono, texto] de la línea de estado de arriba. */
 function doctorState(doctor, findings) {
   const blocking = findings.filter((f) => f.severity === "error").length;
-  if (doctor.busy) return ["work", doctor.auto ? t("Probando el juego…", "Testing the game…") : t("Arreglando…", "Fixing…")];
+  if (doctor.busy) return ["work", doctor.bisecting ? t("Buscando el mod culpable…", "Looking for the culprit mod…") : doctor.auto ? t("Probando el juego…", "Testing the game…") : t("Arreglando…", "Fixing…")];
+  if (doctor.culprit?.file) return [doctor.culprit.disabled ? "ok" : "bad", doctor.culprit.disabled ? t("Culpable desactivado", "Culprit disabled") : t("Encontré al culpable", "I found the culprit")];
   if (doctor.loading) return ["work", t("Revisando…", "Checking…")];
   if (doctor.result?.ok) return ["ok", t("Ya abre", "It opens now")];
   if (doctor.result)
@@ -1044,7 +1045,8 @@ function renderDoctor() {
   $("#doctor-meta").textContent = [...doctor.meta, checked ? t(`${plural(checked, "mod revisado", "mods revisados")}`, `${plural(checked, "mod checked", "mods checked")}`) : null].filter(Boolean).join(" · ");
 
   let rows;
-  if (doctor.error) rows = noteRow("error", t("No se pudo revisar", "Could not check"), doctor.error);
+  if (doctor.culprit && !doctor.busy) rows = culpritRows(doctor.culprit);
+  else if (doctor.error) rows = noteRow("error", t("No se pudo revisar", "Could not check"), doctor.error);
   else if (doctor.loading) rows = noteRow("loading", t("Leyendo los mods y el último registro…", "Reading the mods and the last log…"));
   else if (doctor.result?.ok) {
     const applied = doctor.result.applied.map((a) => `<span class="fix-done">${icon("check")}${escapeHtml(a)}</span>`).join("");
@@ -1094,6 +1096,88 @@ function renderDoctor() {
   auto.classList.toggle("primary", !recommended.length);
   $("#doctor-logs").classList.toggle("hidden", doctor.mode === "prelaunch" && !doctor.result);
   for (const button of [fixAll, auto, anyway]) button.disabled = doctor.busy || doctor.loading;
+  // Cuando ya se probó y el error no dice qué mod es: buscarlo por mitades (o detener la búsqueda).
+  const instance = state.instances.find((i) => i.id === doctor.id);
+  const bisect = $("#doctor-bisect");
+  const stuck = (doctor.result && !doctor.result.ok) || (doctor.mode === "crash" && !recommended.length);
+  bisect.classList.toggle("hidden", !(doctor.bisecting || (stuck && !done && !doctor.culprit && instance?.loader !== "Vanilla")));
+  bisect.disabled = (doctor.busy && !doctor.bisecting) || doctor.loading;
+  bisect.querySelector("span").textContent = doctor.bisecting ? t("Detener la búsqueda", "Stop the search") : t("Buscar el mod culpable", "Find the culprit mod");
+  bisect.title = doctor.bisecting
+    ? t("Se detiene al terminar la prueba en curso", "It stops when the current test ends")
+    : t("Abre el juego varias veces desactivando la mitad de los mods cada vez (con 150 mods, unas 8). Al final todo queda como estaba.", "Opens the game several times disabling half of the mods each time (with 150 mods, about 8). In the end everything is left as it was.");
+}
+
+/** El resultado de «Buscar el mod culpable». */
+function culpritRows(c) {
+  const tests = t(`${plural(c.launches, "prueba", "pruebas")}`, `${plural(c.launches, "test", "tests")}`);
+  if (c.notAMod) {
+    return noteRow(
+      "info",
+      t("Sin mods tampoco llega al menú", "It does not reach the menu without mods either"),
+      t(`El problema no es un mod: puede ser Java, la memoria o el loader. Mira el registro o usa «Reportar» (${tests}).`, `The problem is not a mod: it may be Java, memory or the loader. Check the log or use «Report» (${tests}).`),
+    );
+  }
+  if (c.file) {
+    const deps = c.dependents.length ? t(` Sin él tampoco cargan: ${c.dependents.join(", ")}.`, ` Without it these do not load either: ${c.dependents.join(", ")}.`) : "";
+    const more = c.dependents.length ? t(` y ${c.dependents.length} más`, ` and ${c.dependents.length} more`) : "";
+    const action = c.disabled
+      ? `<span class="fix-done">${icon("check")}${t("Desactivado: lo puedes volver a activar en Contenido.", "Disabled: you can enable it again in Content.")}</span>`
+      : `<button class="btn primary small" data-doctor-culprit>${icon("check")}${escapeHtml(t(`Desactivar ${c.name}${more}`, `Disable ${c.name}${more}`))}</button>`;
+    return noteRow(
+      c.disabled ? "ok" : "error",
+      t(`El culpable es ${c.name}`, `The culprit is ${c.name}`),
+      t(`Con él desactivado el juego llega al menú (${tests}).${deps}`, `With it disabled the game reaches the menu (${tests}).${deps}`),
+      `<div class="finding-actions">${action}</div>`,
+    );
+  }
+  return noteRow(
+    "aviso",
+    t("No pude separarlos", "I could not tell them apart"),
+    t(`Quedaron como sospechosos: ${c.suspects.join(", ")} (dependen unos de otros o se detuvo antes; ${tests}).`, `Still suspects: ${c.suspects.join(", ")} (they depend on each other or it stopped early; ${tests}).`),
+  );
+}
+
+/** «Buscar el mod culpable» (ver culpable.rs). Pulsado otra vez, la detiene. */
+async function doctorBisect() {
+  const doctor = state.doctor;
+  if (doctor.bisecting) {
+    invoke("detener_busqueda", { id: doctor.id });
+    toast(t("Se detiene al terminar la prueba en curso.", "It stops when the current test ends."));
+    return;
+  }
+  doctor.steps = [];
+  doctor.culprit = null;
+  doctor.auto = true;
+  doctor.bisecting = true;
+  doctorBusy(true, t("Buscando el mod culpable…", "Looking for the culprit mod…"));
+  try {
+    doctor.culprit = await invoke("buscar_culpable", { id: doctor.id });
+  } catch (error) {
+    toast(String(error), "error");
+  } finally {
+    doctor.bisecting = false;
+    doctor.auto = false;
+    doctorBusy(false);
+  }
+}
+
+/** Desactiva al culpable y a los que dependen de él. */
+async function disableCulprit() {
+  const doctor = state.doctor;
+  const c = doctor.culprit;
+  if (!c?.file || doctor.busy) return;
+  doctorBusy(true, t(`Desactivando ${c.name}…`, `Disabling ${c.name}…`));
+  try {
+    for (const file of [c.file, ...c.dependentFiles]) await invoke("aplicar_arreglo", { id: doctor.id, arreglo: { type: "disableMod", file } });
+    c.disabled = true;
+    doctor.result = null;
+    await reloadInstances();
+  } catch (error) {
+    toast(String(error), "error");
+  } finally {
+    doctorBusy(false);
+  }
 }
 
 /** Los pasos de «Probar y arreglar solo» (y de cada arreglo), como una línea de tiempo. */
@@ -1106,7 +1190,7 @@ function renderDoctorSteps() {
   list.innerHTML = shown
     .map((step, i) => {
       const last = i === shown.length - 1;
-      const status = last && doctor.busy ? "run" : last && doctor.result && !doctor.result.ok ? "fail" : "done";
+      const status = last && doctor.busy ? "run" : last && doctor.result && !doctor.result.ok && !doctor.culprit?.file ? "fail" : "done";
       const mark = status === "run" ? `<span class="spinner tiny"></span>` : icon(status === "fail" ? "close" : "check");
       const text = status === "run" ? step.text : step.text.replace(/…$/, "");
       return `<li class="doc-step ${status}"><span class="doc-step-mark">${mark}</span><span>${escapeHtml(text)}${step.detail && status === "run" ? `<small>${escapeHtml(step.detail)}</small>` : ""}</span></li>`;
@@ -1120,7 +1204,7 @@ function doctorStep(text) {
   if (!doctor?.busy || !text) return;
   const last = doctor.steps.at(-1);
   if (last?.text === text) return;
-  if (/^(Revisando los mods|Arreglando|Abriendo el juego|Llega al menú|Checking the mods|Fixing|Opening the game|It reaches)/.test(text) || !last) doctor.steps.push({ text });
+  if (/^(Revisando los mods|Arreglando|Abriendo el juego|Llega al menú|Desactivando|Checking the mods|Fixing|Opening the game|It reaches|Disabling)/.test(text) || !last) doctor.steps.push({ text });
   else last.detail = text;
   renderDoctorSteps();
 }
@@ -4200,6 +4284,7 @@ function wireEvents() {
     if (!state.doctor?.busy) closeModal("#doctor-dialog");
   };
   $("#doctor-findings").onclick = (event) => {
+    if (event.target.closest("[data-doctor-culprit]")) return void disableCulprit();
     const button = event.target.closest("[data-doctor-fix], [data-doctor-warning]");
     if (!button || state.doctor?.busy) return;
     const warning = !!button.dataset.doctorWarning;
@@ -4213,6 +4298,7 @@ function wireEvents() {
   };
   $("#doctor-fix-all").onclick = () => doctorFixAll();
   $("#doctor-auto").onclick = () => doctorAuto();
+  $("#doctor-bisect").onclick = () => doctorBisect();
   $("#doctor-anyway").onclick = () => {
     const { id, server } = state.doctor;
     closeModal("#doctor-dialog");
@@ -6760,6 +6846,8 @@ function demoInvoke(command, args = {}) {
   if (["cancelar_descarga", "quitar_descarga", "activar_arrastre", "arrastre_imagenes", "imagen_portapapeles"].includes(command)) return Promise.resolve(null);
   if (command === "listar_versiones" && demo.listar_versiones) demo.listar_versiones.drive ??= ["26.3", "26.2", "26.1.2", "1.20.1"];
   if (command === "versiones_en_drive") return later({ releases: ["26.3", "26.2", "26.1.2", "1.21.11", "1.21.4", "1.21.1", "1.20.4", "1.20.1", "1.19.2", "1.18.2", "1.16.5", "1.12.2", "1.8.9"], inDrive: ["26.3", "26.2", "26.1.2", "1.20.1"], email: "hawntd@gmail.com", used: 6.2e9, limit: 16.1e9 }, 500);
+  if (command === "buscar_culpable") return later({ file: "entityculling-fabric-1.6.2.jar", name: "Entity Culling", dependents: [], dependentFiles: [], launches: 6, notAMod: false, suspects: [] }, 2500);
+  if (command === "detener_busqueda") return Promise.resolve(null);
   if (command === "ajustes_descargas") return Promise.resolve(Object.assign(settings, { downloadParallel: args.simultaneas, downloadLimitMb: args.limite }));
   if (["duplicar_instancia", "eliminar_instancia", "activar_contenido", "eliminar_contenido", "detener", "agregar_contenido", "elegir_contenido", "cambiar_loader"].includes(command))
     return Promise.reject("Modo demostración: esta acción solo funciona en Parabellum.exe.");

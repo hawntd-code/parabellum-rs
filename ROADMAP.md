@@ -154,6 +154,9 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Probado en la ventana real (carpeta de prueba): con 1 MB/s la segunda instalación esperó en cola, al cancelar la primera no quedó carpeta y la segunda terminó (111 MB, con «Abrir»); con 2 MB/s el promedio fue 1.99 MB/s; pegar con Ctrl+V una imagen copiada y un archivo copiado abre la vista previa
 - [x] **Menos trabones del servidor** (los «teletransportes»): en la telemetría de Juan, buena parte de los trabones de 50–125 ms caían **cada 300 s exactos** (el autoguardado escribía cada chunk esperando al disco) y el resto al entrar o ir a zonas nuevas (generar terreno). Ahora los servidores van con `sync-chunk-writes=false` (los nuevos y, una vez, los que ya había: `servidor::apply_tuning`)
 - [x] **Pregenerar el mundo** (Ajustes del servidor, solo con mods): agrega Chunky de Modrinth para su loader y versión, enciende o reinicia el servidor y genera 500, 1000 o 2000 bloques alrededor del spawn, con el avance en vivo (porcentaje, cuánto falta, chunks por segundo) y «Pausar». Probado: «Prueba fabric» generó 4225 chunks en 100 s y quedó anotado
+- [x] **Doctor: «Buscar el mod culpable»** (`culpable.rs`), cuando ya se probó y el error no dice qué mod es: primero sin ningún mod (si tampoco abre, no es un mod) y después por mitades, desactivando junto con cada mitad los mods que dependen de ella (para no fallar por una dependencia que falta); con 150 mods, unas 8 pruebas. Al final todo queda como estaba (un registro deshace lo desactivado aunque se cierre Parabellum a la mitad: al jugar o volver a buscar). «Desactivar» quita al culpable y a los que lo necesitan; se puede detener
+- [x] El doctor ya no espera 8 minutos cuando Fabric o Quilt no arrancan por mods incompatibles (dejan su ventana de error abierta): reconoce «Incompatible mods found!» en el registro. Y antes de cada prueba aparta el latest.log anterior (`set_aside_log`): al probar seguido leía el de la prueba anterior y se equivocaba
+- [x] Probado: en «Fabric 1.21.1» con 7 mods (uno que depende de otro y «Roto», que pide Minecraft 1.19.2) encontró a «Roto» en 4 pruebas y 3 minutos; una búsqueda cortada a la mitad dejó 4 mods desactivados y la siguiente los restauró
 - [ ] *Prueba:* Juan: instalar dos modpacks seguidos (el segundo en cola), cancelar uno y reintentarlo; arrastrar una imagen desde el navegador al chat; subir unas versiones a Drive y crear una instancia de una de ellas en la escuela; pregenerar SESE y jugar con un amigo para ver si siguen los trabones
 
 ### 0.28.0: el panel del juego con lo mismo que la ventana (pedido de Juan)
@@ -184,7 +187,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [ ] *Prueba:* con compañeros en sus casas: P2P, mensajes, invitar y «Unirse» desde el juego, y el teclado del panel en 26.3
 
 ### Después
-- [ ] Doctor: buscar el mod culpable por mitades cuando el error no lo dice
+- [x] Doctor: buscar el mod culpable por mitades cuando el error no lo dice (0.29.0)
 - [ ] Resto del pulido: esqueletos de carga en Explorar, telemetría del servidor viva (números suaves y minigráficas), botones que se hunden, cambio de tema con un círculo
 - [ ] Mod: pulsar O justo después de F2 abre esa captura lista para mandar
 - [ ] Mac (Diego): `docs/mac.md` y `docs/mac-cambios.md`

@@ -267,6 +267,11 @@ Nada por ahora.
   - Servidores: `servidor::apply_tuning` (`sync-chunk-writes=false`, campo `tuning`) y pregenerar con
     Chunky (`hosting::pregenerate`, `servidor::chunky_line`, comandos `pregenerar_mundo` y
     `pausar_pregeneracion`, campo `pregenerated`). Mac: nada distinto; pruébalo con un servidor Fabric.
+  - Doctor: `culpable.rs` (buscar el mod culpable por mitades), comandos `buscar_culpable` y
+    `detener_busqueda`; `probe_launch` (main.rs) es la prueba de abrir que usan los dos;
+    `diagnostico::wait_for_menu` reconoce el error de Fabric/Quilt de mods incompatibles y
+    `diagnostico::set_aside_log` aparta el latest.log anterior antes de cada prueba. Mac: nada
+    distinto (renombra `.jar` a `.jar.disabled`, igual que Contenido).
   - Subir versiones a Drive (quien publica): `packs::export_base`, `drive::Publisher::storage`, comandos
     `versiones_en_drive` y `subir_versiones_drive`.
 - Mac:

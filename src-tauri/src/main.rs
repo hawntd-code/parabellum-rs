@@ -15,6 +15,7 @@ mod config;
 mod content;
 mod diagnostico;
 mod cuenta;
+mod culpable;
 mod descargas;
 mod download;
 mod favoritos;
@@ -563,6 +564,8 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
     if state.games.lock().unwrap().contains_key(&id) {
         return Err(t!("Este juego ya está abierto.", "This game is already open."));
     }
+    // Si «Buscar el mod culpable» quedó a medias (se cerró Parabellum), los mods vuelven a como estaban.
+    culpable::restore(&instance);
     // Que el modpack esté completo: lo que falte se baja (o se repone) antes de abrir el juego.
     let cached = state.catalog.lock().unwrap().clone();
     // En el gestor de descargas solo sale si de verdad falta algo (`quiet`).
@@ -1511,6 +1514,140 @@ async fn probar_y_arreglar(app: AppHandle, state: State<'_, AppState>, id: Strin
     auto_fix(&id, &state.paths, &state.config, cached, &settings, session, on_start, progress_emitter(&app, "doctor")).await
 }
 
+/// Abre el juego, espera al menú principal (8 minutos como mucho) y lo cierra. Devuelve (cómo le fue:
+/// segundos hasta el menú o el código con que se cerró, cuándo empezó).
+async fn probe_launch(
+    instance: &Instance,
+    settings: &Settings,
+    paths: &Paths,
+    session: &[String],
+    on_start: impl Fn(Option<u32>) + Send + Sync + 'static,
+) -> Result<(Result<u64, Option<i32>>, i64), String> {
+    let (launched, settings, paths, session) = (instance.clone(), settings.clone(), paths.clone(), session.to_vec());
+    tauri::async_runtime::spawn_blocking(move || -> Result<(Result<u64, Option<i32>>, i64), String> {
+        let mut plan = launch::plan(&launched, &settings, &paths)?;
+        plan.add_jvm_arguments(session);
+        diagnostico::set_aside_log(&launched);
+        let started = chrono::Utc::now().timestamp_millis();
+        let mut child = launch::start(&plan, &launched)?;
+        on_start(Some(child.id()));
+        let outcome = diagnostico::wait_for_menu(&mut child, &launched, started, 480);
+        launch::close_helpers(&launched);
+        launch::forget_pid(&launched);
+        on_start(None);
+        Ok((outcome, started))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Resultado de «Buscar el mod culpable».
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Culprit {
+    /// El archivo del mod culpable (en la carpeta mods) y su nombre.
+    file: Option<String>,
+    name: Option<String>,
+    /// Los que dependen de él (sin él tampoco cargan): nombres y archivos.
+    dependents: Vec<String>,
+    dependent_files: Vec<String>,
+    /// Veces que se abrió el juego.
+    launches: u32,
+    /// Sin ningún mod tampoco llega al menú: el problema no es un mod.
+    not_a_mod: bool,
+    /// Quedaron varios sospechosos (dependen unos de otros) o se detuvo antes.
+    suspects: Vec<String>,
+}
+
+/// Búsquedas en marcha que se pidió detener (por id de instancia).
+static STOP_SEARCH: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// «Buscar el mod culpable» (ver culpable.rs): abre el juego varias veces desactivando mods por mitades.
+#[tauri::command]
+async fn buscar_culpable(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<Culprit, String> {
+    if state.games.lock().unwrap().contains_key(&id) {
+        return Err(t!("Cierra el juego antes de probarlo.", "Close the game before testing it."));
+    }
+    let instance = instance_or_error(&state, &id)?;
+    culpable::restore(&instance);
+    STOP_SEARCH.lock().unwrap().retain(|i| i != &id);
+    let mods = {
+        let instance = instance.clone();
+        culpable::Mods::new(tauri::async_runtime::spawn_blocking(move || diagnostico::enabled_mods(&instance)).await.map_err(|e| e.to_string())?)
+    };
+    if mods.files.is_empty() {
+        return Err(t!("Esta instancia no tiene mods activos: el problema no es un mod.", "This instance has no active mods: the problem is not a mod."));
+    }
+    let settings = state.settings.lock().unwrap().clone();
+    let session = cuenta::session_arguments(&app);
+    let progress = progress_emitter(&app, "doctor");
+    let (running, key) = (app.clone(), id.clone());
+    let on_start = move |pid: Option<u32>| {
+        let state = running.state::<AppState>();
+        match pid {
+            Some(pid) => state.games.lock().unwrap().insert(key.clone(), pid),
+            None => state.games.lock().unwrap().remove(&key),
+        };
+    };
+    let all: std::collections::BTreeSet<String> = mods.files.iter().map(|(f, _)| f.clone()).collect();
+    // Abre con esos mods desactivados y deja todo como estaba. true: llegó al menú.
+    let test = |disabled: std::collections::BTreeSet<String>| {
+        let (instance, settings, paths, session, on_start) = (instance.clone(), settings.clone(), state.paths.clone(), session.clone(), on_start.clone());
+        async move {
+            culpable::disable(&instance, &disabled)?;
+            let outcome = probe_launch(&instance, &settings, &paths, &session, on_start).await;
+            culpable::restore(&instance);
+            outcome.map(|(result, _)| result.is_ok())
+        }
+    };
+    let estimate = (all.len() as f64).log2().ceil() as u32 + 1;
+    let mut result = Culprit { file: None, name: None, dependents: Vec::new(), dependent_files: Vec::new(), launches: 1, not_a_mod: false, suspects: Vec::new() };
+    progress(t!("Abriendo el juego sin ningún mod (prueba 1 de ~{estimate})…", "Opening the game without any mods (test 1 of ~{estimate})…"), 0.05);
+    if !test(all.clone()).await? {
+        result.not_a_mod = true;
+        return Ok(result);
+    }
+    let mut candidates = all.clone();
+    while let Some(disabled) = mods.split(&candidates) {
+        if STOP_SEARCH.lock().unwrap().contains(&id) || result.launches >= 20 {
+            break;
+        }
+        result.launches += 1;
+        let launch = result.launches;
+        progress(
+            t!(
+                "Abriendo el juego con la mitad de los sospechosos (prueba {launch} de ~{estimate}; quedan {})…",
+                "Opening the game with half of the suspects (test {launch} of ~{estimate}; {} left)…",
+                candidates.len()
+            ),
+            launch as f64 / estimate.max(launch) as f64,
+        );
+        let opens = test(disabled.clone()).await?;
+        candidates = if opens { candidates.intersection(&disabled).cloned().collect() } else { candidates.difference(&disabled).cloned().collect() };
+        if candidates.is_empty() {
+            break;
+        }
+    }
+    if candidates.len() == 1 {
+        let file = candidates.iter().next().unwrap().clone();
+        let dependents = mods.closure(&std::collections::BTreeSet::from([file.clone()]));
+        result.dependent_files = dependents.iter().filter(|f| **f != file).cloned().collect();
+        result.dependents = result.dependent_files.iter().map(|f| mods.name(f)).collect();
+        result.name = Some(mods.name(&file));
+        result.file = Some(file);
+    } else {
+        result.suspects = candidates.iter().map(|f| mods.name(f)).collect();
+    }
+    progress(t!("Listo", "Done"), 1.0);
+    Ok(result)
+}
+
+/// Detiene «Buscar el mod culpable» al terminar la prueba en curso.
+#[tauri::command]
+fn detener_busqueda(id: String) {
+    STOP_SEARCH.lock().unwrap().push(id);
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn auto_fix(
     id: &str,
@@ -1551,21 +1688,7 @@ async fn auto_fix(
         let launch = report.attempts;
         progress(t!("Abriendo el juego para probar (intento {launch})…", "Opening the game to test (attempt {launch})…"), 0.3);
         let ram_gb = instance.ram_gb.unwrap_or(settings.ram_gb);
-        let (launched, settings_copy, paths_copy, session_copy, started_hook) = (instance.clone(), settings.clone(), paths.clone(), session.clone(), on_start.clone());
-        let probe = tauri::async_runtime::spawn_blocking(move || -> Result<(Result<u64, Option<i32>>, i64), String> {
-            let mut plan = launch::plan(&launched, &settings_copy, &paths_copy)?;
-            plan.add_jvm_arguments(session_copy);
-            let started = chrono::Utc::now().timestamp_millis();
-            let mut child = launch::start(&plan, &launched)?;
-            started_hook(Some(child.id()));
-            let outcome = diagnostico::wait_for_menu(&mut child, &launched, started, 480);
-            launch::close_helpers(&launched);
-            launch::forget_pid(&launched);
-            started_hook(None);
-            Ok((outcome, started))
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+        let probe = probe_launch(&instance, settings, paths, &session, on_start.clone()).await?;
         match probe {
             (Ok(_), started) => {
                 report.ok = true;
@@ -2566,6 +2689,7 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             juego::write_fonts(paths);
             plan.add_jvm_arguments([format!("-Dparabellum.fuentes={}", paths.data.join("fuentes").display())]);
             juego::install(&instance, settings.game_panel);
+            diagnostico::set_aside_log(&instance);
             let started_ms = chrono::Utc::now().timestamp_millis();
             let started = std::time::Instant::now();
             let mut child = launch::start(&plan, &instance)?;
@@ -3456,6 +3580,8 @@ fn main() {
             activar_arrastre,
             versiones_en_drive,
             pregenerar_mundo,
+            buscar_culpable,
+            detener_busqueda,
             pausar_pregeneracion,
             subir_versiones_drive,
             arrastre_imagenes,

@@ -112,6 +112,11 @@ fn all_mods(instance: &Instance) -> Vec<(String, Vec<ModMeta>)> {
 /// Cada .jar de la carpeta mods con lo que declara y para qué loaders es. Lo leído se guarda
 /// (archivo, tamaño y fecha) para que revisar antes de jugar sea instantáneo; la primera vez se
 /// leen en paralelo.
+/// Los mods activos de la carpeta mods, con sus metadatos (para «Buscar el mod culpable»).
+pub fn enabled_mods(instance: &Instance) -> Vec<(String, Vec<ModMeta>)> {
+    all_jars(instance).into_iter().filter(|(file, _)| !file.to_lowercase().ends_with(".disabled")).map(|(file, jar)| (file, jar.metas)).collect()
+}
+
 fn all_jars(instance: &Instance) -> Vec<(String, CachedJar)> {
     let folder = instance.game_dir.join("mods");
     let cache_path = instance.state_dir().join(CACHE_FILE);
@@ -758,6 +763,17 @@ pub fn recommended(diagnosis: &Diagnosis, tried: &[Fix]) -> Vec<(String, Fix)> {
 /// 16 s después de arrancar el sonido, al preparar un shader de Twilight Forest).
 const SETTLE_SECONDS: u64 = 45;
 
+/// Antes de abrir el juego para probarlo, el latest.log de la vez anterior se aparta (a
+/// latest-anterior.log): si no, `wait_for_menu` lo leía mientras Minecraft todavía no lo reemplaza y
+/// tomaba lo de la prueba anterior (un «Incompatible mods found!» o un «Sound engine started») como
+/// de esta. Pasaba al probar varias veces seguidas (Buscar el mod culpable).
+pub fn set_aside_log(instance: &Instance) {
+    let logs = instance.game_dir.join("logs");
+    if logs.join("latest.log").is_file() {
+        let _ = std::fs::rename(logs.join("latest.log"), logs.join("latest-anterior.log"));
+    }
+}
+
 pub fn wait_for_menu(child: &mut std::process::Child, instance: &Instance, started_ms: i64, limit_seconds: u64) -> Result<u64, Option<i32>> {
     let log = instance.game_dir.join("logs").join("latest.log");
     let started = std::time::Instant::now();
@@ -804,8 +820,11 @@ pub fn wait_for_menu(child: &mut std::process::Child, instance: &Instance, start
                     finish(child);
                     return Ok(started.elapsed().as_secs());
                 }
-                // Forge: los errores al cargar mods se muestran en una pantalla dentro del juego.
-                if tail.contains("Mod loading has failed") || tail.contains("Mod Loading has failed") {
+                // Forge: los errores al cargar mods se muestran en una pantalla dentro del juego. Fabric y
+                // Quilt (mods incompatibles o que faltan) abren su propia ventana de error y se quedan
+                // abiertos: sin esto se esperaba hasta el límite (8 minutos) para darlo por fallido.
+                let failed = ["Mod loading has failed", "Mod Loading has failed", "Incompatible mods found!", "loader.impl.FormattedException"];
+                if failed.iter().any(|marker| tail.contains(marker)) {
                     finish(child);
                     return Err(Some(1));
                 }

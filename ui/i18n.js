@@ -280,6 +280,7 @@ const HTML_EN = {
   "Lo que dice el registro": "What the log says",
   "Arreglar lo recomendado": "Fix the recommended",
   "Probar y arreglar solo": "Test and fix on its own",
+  "Buscar el mod culpable": "Find the culprit mod",
   "Hostear partida": "Host a game",
   "Juega con tus amigos desde tu PC sin abrir puertos del router. Parabellum usa playit.gg (gratis) para darte una dirección pública que no cambia.": "Play with your friends from your PC without opening router ports. Parabellum uses playit.gg (free) to give you a public address that does not change.",
   "Crear un servidor": "Create a server",
