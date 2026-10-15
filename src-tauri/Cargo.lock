@@ -3389,7 +3389,7 @@ dependencies = [
 
 [[package]]
 name = "parabellum"
-version = "0.28.0"
+version = "0.29.0"
 dependencies = [
  "base64 0.22.1",
  "block2",
@@ -3420,6 +3420,7 @@ dependencies = [
  "toml 0.8.2",
  "trash",
  "windows",
+ "windows-core",
  "windows-sys 0.61.2",
  "zip",
 ]

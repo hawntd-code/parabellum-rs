@@ -64,7 +64,8 @@ const state = {
   /** Actualizaciones que se dejaron fuera por romper algo: id de versión -> motivo. */
   heldBack: new Map(),
   /** Catálogo de Drive y de la carpeta paquetes. */
-  drive: { data: null, loading: false, installing: null },
+  /** Instalando desde el catálogo: id del paquete -> id de su descarga. */
+  drive: { data: null, loading: false, installing: new Map() },
   launcherUpdate: null,
   version: "",
   driveUrl: null,
@@ -246,6 +247,8 @@ function drawHead(canvas, name) {
 }
 
 function toast(message, kind = "info") {
+  // Lo que cancelaste en Descargas no es un error que haya que avisar.
+  if (kind === "error" && isCancelled(message)) return;
   const element = document.createElement("div");
   element.className = `toast ${kind}`;
   // Los errores se anuncian de inmediato al lector de pantalla; lo demás, cuando termine de hablar.
@@ -367,6 +370,8 @@ function navigate(page, param = null, record = true) {
   } else {
     state.current = null;
   }
+  // Arrastrar una imagen sin archivo (del navegador) solo sirve en Mensajes (ver plataforma::arrastre).
+  if ((page === "chat") !== (state.page === "chat")) invoke("arrastre_imagenes", { activo: page === "chat" }).catch(() => {});
   state.page = page;
   if (page === "project") {
     if (state.projectId !== param || !state.projectData) loadProject(param);
@@ -871,8 +876,6 @@ async function verifyInstance(id) {
   if (state.verifying) return toast(t("Espera a que termine la verificación que está en curso.", "Wait for the current check to finish."), "error");
   state.verifying = id;
   toast(t(`Verificando los archivos de ${instance.name}…`, `Checking the files of ${instance.name}…`));
-  $("#download-indicator").classList.remove("hidden");
-  $("#download-percent").textContent = "…";
   try {
     const report = await invoke("verificar_instancia", { id });
     const names = `${report.repaired.slice(0, 3).join(", ")}${report.repaired.length > 3 ? t(` y ${report.repaired.length - 3} más`, ` and ${report.repaired.length - 3} more`) : ""}`;
@@ -896,7 +899,6 @@ async function verifyInstance(id) {
     toast(String(error), "error");
   } finally {
     state.verifying = null;
-    $("#download-indicator").classList.add("hidden");
   }
 }
 
@@ -939,7 +941,7 @@ async function toggleShortcut(place, input) {
 async function openDoctor(id, mode, { diagnosis = null, reason = null, server = null } = {}) {
   const instance = state.instances.find((i) => i.id === id);
   if (!instance) return;
-  state.doctor = { id, mode, server, diagnosis, applied: [], busy: false, reason, steps: [], result: null, loading: !diagnosis, error: null };
+  state.doctor = { id, mode, server, diagnosis, applied: [], busy: false, reason, steps: [], result: null, loading: !diagnosis, error: null, culprit: null, bisecting: false };
   $("#doctor-art").innerHTML = art(instance, "doc");
   $("#doctor-title").textContent = instance.name;
   state.doctor.meta = [instance.loader === "Vanilla" ? null : `${instance.loader} ${instance.loaderVersion ?? ""}`.trim(), `Minecraft ${instance.minecraftVersion}`].filter(Boolean);
@@ -1010,7 +1012,8 @@ function noteRow(kind, title, detail = "", extra = "") {
 /** [tono, texto] de la línea de estado de arriba. */
 function doctorState(doctor, findings) {
   const blocking = findings.filter((f) => f.severity === "error").length;
-  if (doctor.busy) return ["work", doctor.auto ? t("Probando el juego…", "Testing the game…") : t("Arreglando…", "Fixing…")];
+  if (doctor.busy) return ["work", doctor.bisecting ? t("Buscando el mod culpable…", "Looking for the culprit mod…") : doctor.auto ? t("Probando el juego…", "Testing the game…") : t("Arreglando…", "Fixing…")];
+  if (doctor.culprit?.file) return [doctor.culprit.disabled ? "ok" : "bad", doctor.culprit.disabled ? t("Culpable desactivado", "Culprit disabled") : t("Encontré al culpable", "I found the culprit")];
   if (doctor.loading) return ["work", t("Revisando…", "Checking…")];
   if (doctor.result?.ok) return ["ok", t("Ya abre", "It opens now")];
   if (doctor.result)
@@ -1042,7 +1045,8 @@ function renderDoctor() {
   $("#doctor-meta").textContent = [...doctor.meta, checked ? t(`${plural(checked, "mod revisado", "mods revisados")}`, `${plural(checked, "mod checked", "mods checked")}`) : null].filter(Boolean).join(" · ");
 
   let rows;
-  if (doctor.error) rows = noteRow("error", t("No se pudo revisar", "Could not check"), doctor.error);
+  if (doctor.culprit && !doctor.busy) rows = culpritRows(doctor.culprit);
+  else if (doctor.error) rows = noteRow("error", t("No se pudo revisar", "Could not check"), doctor.error);
   else if (doctor.loading) rows = noteRow("loading", t("Leyendo los mods y el último registro…", "Reading the mods and the last log…"));
   else if (doctor.result?.ok) {
     const applied = doctor.result.applied.map((a) => `<span class="fix-done">${icon("check")}${escapeHtml(a)}</span>`).join("");
@@ -1092,6 +1096,88 @@ function renderDoctor() {
   auto.classList.toggle("primary", !recommended.length);
   $("#doctor-logs").classList.toggle("hidden", doctor.mode === "prelaunch" && !doctor.result);
   for (const button of [fixAll, auto, anyway]) button.disabled = doctor.busy || doctor.loading;
+  // Cuando ya se probó y el error no dice qué mod es: buscarlo por mitades (o detener la búsqueda).
+  const instance = state.instances.find((i) => i.id === doctor.id);
+  const bisect = $("#doctor-bisect");
+  const stuck = (doctor.result && !doctor.result.ok) || (doctor.mode === "crash" && !recommended.length);
+  bisect.classList.toggle("hidden", !(doctor.bisecting || (stuck && !done && !doctor.culprit && instance?.loader !== "Vanilla")));
+  bisect.disabled = (doctor.busy && !doctor.bisecting) || doctor.loading;
+  bisect.querySelector("span").textContent = doctor.bisecting ? t("Detener la búsqueda", "Stop the search") : t("Buscar el mod culpable", "Find the culprit mod");
+  bisect.title = doctor.bisecting
+    ? t("Se detiene al terminar la prueba en curso", "It stops when the current test ends")
+    : t("Abre el juego varias veces desactivando la mitad de los mods cada vez (con 150 mods, unas 8). Al final todo queda como estaba.", "Opens the game several times disabling half of the mods each time (with 150 mods, about 8). In the end everything is left as it was.");
+}
+
+/** El resultado de «Buscar el mod culpable». */
+function culpritRows(c) {
+  const tests = t(`${plural(c.launches, "prueba", "pruebas")}`, `${plural(c.launches, "test", "tests")}`);
+  if (c.notAMod) {
+    return noteRow(
+      "info",
+      t("Sin mods tampoco llega al menú", "It does not reach the menu without mods either"),
+      t(`El problema no es un mod: puede ser Java, la memoria o el loader. Mira el registro o usa «Reportar» (${tests}).`, `The problem is not a mod: it may be Java, memory or the loader. Check the log or use «Report» (${tests}).`),
+    );
+  }
+  if (c.file) {
+    const deps = c.dependents.length ? t(` Sin él tampoco cargan: ${c.dependents.join(", ")}.`, ` Without it these do not load either: ${c.dependents.join(", ")}.`) : "";
+    const more = c.dependents.length ? t(` y ${c.dependents.length} más`, ` and ${c.dependents.length} more`) : "";
+    const action = c.disabled
+      ? `<span class="fix-done">${icon("check")}${t("Desactivado: lo puedes volver a activar en Contenido.", "Disabled: you can enable it again in Content.")}</span>`
+      : `<button class="btn primary small" data-doctor-culprit>${icon("check")}${escapeHtml(t(`Desactivar ${c.name}${more}`, `Disable ${c.name}${more}`))}</button>`;
+    return noteRow(
+      c.disabled ? "ok" : "error",
+      t(`El culpable es ${c.name}`, `The culprit is ${c.name}`),
+      t(`Con él desactivado el juego llega al menú (${tests}).${deps}`, `With it disabled the game reaches the menu (${tests}).${deps}`),
+      `<div class="finding-actions">${action}</div>`,
+    );
+  }
+  return noteRow(
+    "aviso",
+    t("No pude separarlos", "I could not tell them apart"),
+    t(`Quedaron como sospechosos: ${c.suspects.join(", ")} (dependen unos de otros o se detuvo antes; ${tests}).`, `Still suspects: ${c.suspects.join(", ")} (they depend on each other or it stopped early; ${tests}).`),
+  );
+}
+
+/** «Buscar el mod culpable» (ver culpable.rs). Pulsado otra vez, la detiene. */
+async function doctorBisect() {
+  const doctor = state.doctor;
+  if (doctor.bisecting) {
+    invoke("detener_busqueda", { id: doctor.id });
+    toast(t("Se detiene al terminar la prueba en curso.", "It stops when the current test ends."));
+    return;
+  }
+  doctor.steps = [];
+  doctor.culprit = null;
+  doctor.auto = true;
+  doctor.bisecting = true;
+  doctorBusy(true, t("Buscando el mod culpable…", "Looking for the culprit mod…"));
+  try {
+    doctor.culprit = await invoke("buscar_culpable", { id: doctor.id });
+  } catch (error) {
+    toast(String(error), "error");
+  } finally {
+    doctor.bisecting = false;
+    doctor.auto = false;
+    doctorBusy(false);
+  }
+}
+
+/** Desactiva al culpable y a los que dependen de él. */
+async function disableCulprit() {
+  const doctor = state.doctor;
+  const c = doctor.culprit;
+  if (!c?.file || doctor.busy) return;
+  doctorBusy(true, t(`Desactivando ${c.name}…`, `Disabling ${c.name}…`));
+  try {
+    for (const file of [c.file, ...c.dependentFiles]) await invoke("aplicar_arreglo", { id: doctor.id, arreglo: { type: "disableMod", file } });
+    c.disabled = true;
+    doctor.result = null;
+    await reloadInstances();
+  } catch (error) {
+    toast(String(error), "error");
+  } finally {
+    doctorBusy(false);
+  }
 }
 
 /** Los pasos de «Probar y arreglar solo» (y de cada arreglo), como una línea de tiempo. */
@@ -1104,7 +1190,7 @@ function renderDoctorSteps() {
   list.innerHTML = shown
     .map((step, i) => {
       const last = i === shown.length - 1;
-      const status = last && doctor.busy ? "run" : last && doctor.result && !doctor.result.ok ? "fail" : "done";
+      const status = last && doctor.busy ? "run" : last && doctor.result && !doctor.result.ok && !doctor.culprit?.file ? "fail" : "done";
       const mark = status === "run" ? `<span class="spinner tiny"></span>` : icon(status === "fail" ? "close" : "check");
       const text = status === "run" ? step.text : step.text.replace(/…$/, "");
       return `<li class="doc-step ${status}"><span class="doc-step-mark">${mark}</span><span>${escapeHtml(text)}${step.detail && status === "run" ? `<small>${escapeHtml(step.detail)}</small>` : ""}</span></li>`;
@@ -1118,7 +1204,7 @@ function doctorStep(text) {
   if (!doctor?.busy || !text) return;
   const last = doctor.steps.at(-1);
   if (last?.text === text) return;
-  if (/^(Revisando los mods|Arreglando|Abriendo el juego|Llega al menú|Checking the mods|Fixing|Opening the game|It reaches)/.test(text) || !last) doctor.steps.push({ text });
+  if (/^(Revisando los mods|Arreglando|Abriendo el juego|Llega al menú|Desactivando|Checking the mods|Fixing|Opening the game|It reaches|Disabling)/.test(text) || !last) doctor.steps.push({ text });
   else last.detail = text;
   renderDoctorSteps();
 }
@@ -1426,11 +1512,6 @@ async function launch(instance, id, server, skipCheck) {
   } catch (error) {
     toast(String(error), "error");
   } finally {
-    // Si antes de abrir se bajó algo que le faltaba al modpack, se quita el aviso de descarga.
-    if (state.completingShown) {
-      state.completingShown = false;
-      $("#download-indicator").classList.add("hidden");
-    }
     refreshRunning();
   }
 }
@@ -2790,6 +2871,17 @@ async function confirmChatImage() {
   }
 }
 
+/** La imagen del portapapeles leída por Parabellum (ver plataforma::arrastre::clipboard_image). */
+async function pasteClipboardImage() {
+  try {
+    const image = await invoke("imagen_portapapeles");
+    if (image) sendChatImage(image);
+    else toast(t("No hay una imagen copiada. Copia una (o haz una captura) y vuelve a pegar.", "There is no copied image. Copy one (or take a screenshot) and paste again."), "error");
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
 function cancelChatImage() {
   state.imageToSend = null;
   closeModal("#image-dialog");
@@ -2904,7 +2996,6 @@ async function installFavoritesHere() {
   const picked = (state.settings.favoriteMods ?? []).filter((m) => m.kind === kind && dialog.selected.has(m.projectId));
   dialog.busy = true;
   renderFavoritesDialog();
-  $("#download-indicator").classList.remove("hidden");
   try {
     const result = await installFavorites(instance.id, picked, (step) => ($("#fav-status").textContent = step));
     closeModal("#fav-dialog");
@@ -2915,7 +3006,6 @@ async function installFavoritesHere() {
     $("#fav-status").classList.add("error");
   } finally {
     dialog.busy = false;
-    $("#download-indicator").classList.add("hidden");
     renderFavoritesDialog();
   }
 }
@@ -3012,12 +3102,11 @@ async function installShared(messageId) {
   const recipe = message && parseShare(message.text);
   if (!recipe || state.shareInstalling) return;
   state.shareInstalling = messageId;
+  state.shareJob = newJob();
   state.shareProgress = null;
   renderMessages();
-  $("#download-indicator").classList.remove("hidden");
-  $("#download-percent").textContent = "…";
   try {
-    const id = await invoke("instalar_compartida", { texto: message.text });
+    const id = await invoke("instalar_compartida", { texto: message.text, tarea: state.shareJob });
     await reloadInstances();
     toast(t(`Lista: ${recipe.n}. Ya puedes jugarla.`, `Ready: ${recipe.n}. You can play it now.`));
     navigate("instance", id);
@@ -3025,7 +3114,7 @@ async function installShared(messageId) {
     toast(String(error), "error");
   } finally {
     state.shareInstalling = null;
-    $("#download-indicator").classList.add("hidden");
+    state.shareJob = null;
     if (state.page === "chat") renderMessages();
   }
 }
@@ -3274,12 +3363,25 @@ function wireChatEvents() {
     }
   });
   $("#chat-input").addEventListener("input", (event) => autoGrow(event.target));
-  // Pegar una imagen (por ejemplo una captura) la envía.
-  $("#chat-input").addEventListener("paste", (event) => {
-    const file = [...(event.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"))?.getAsFile();
-    if (!file) return;
-    event.preventDefault();
-    sendChatImage(file);
+  // Pegar una imagen (una captura, «Copiar imagen» del navegador, un archivo copiado en el Explorador)
+  // en cualquier parte de Mensajes: sale la vista previa para confirmarla.
+  document.addEventListener("paste", (event) => {
+    if (state.page !== "chat" || !state.chatOpen) return;
+    // En otro campo (buscar, editar un mensaje) se pega texto como siempre.
+    const field = event.target.closest?.("input, textarea, [contenteditable]");
+    if (field && field.id !== "chat-input") return;
+    const data = event.clipboardData;
+    const file = [...(data?.items ?? [])].find((i) => i.kind === "file" && i.type.startsWith("image/"))?.getAsFile();
+    if (file) {
+      event.preventDefault();
+      return void sendChatImage(file);
+    }
+    // Lo que la ventana no sabe pegar sola (un .heic copiado, un dibujo de Paint…) lo lee Parabellum.
+    const types = [...(data?.types ?? [])];
+    if (types.includes("Files") || !types.some((type) => type.startsWith("text/"))) {
+      event.preventDefault();
+      pasteClipboardImage();
+    }
   });
   $("#chat-attach").onclick = () => $("#chat-file").click();
   $("#image-send").onclick = confirmChatImage;
@@ -3636,7 +3738,13 @@ async function showCustomStep() {
   updateCreateArt();
   $("#new-versions").innerHTML = `<div class="version-empty">${t("Cargando versiones…", "Loading versions…")}</div>`;
   state.versions = await invoke("listar_versiones");
-  if (!state.versions.mojang) $("#new-status").textContent = `${state.versions.message} ${t("Puedes usar las versiones ya descargadas en este PC.", "You can use the versions already downloaded on this PC.")}`;
+  if (!state.versions.mojang) {
+    $("#new-status").textContent = `${state.versions.message} ${
+      state.versions.drive?.length
+        ? t("Puedes usar las versiones ya descargadas en este PC y las que están en Google Drive.", "You can use the versions already downloaded on this PC and the ones on Google Drive.")
+        : t("Puedes usar las versiones ya descargadas en este PC.", "You can use the versions already downloaded on this PC.")
+    }`;
+  }
   renderVersions();
 }
 
@@ -3673,9 +3781,13 @@ function versionOptions() {
   const v = state.versions;
   if (!v) return [];
   const installed = new Set(v.installed);
+  // Las que están en el catálogo de Drive se bajan de ahí (también donde Mojang está bloqueado).
+  const drive = new Set(v.drive ?? []);
   let options = v.mojang
-    ? v.releases.map((r) => ({ ...r, installed: installed.has(r.id) }))
-    : v.installed.map((id) => ({ id, type: "release", releaseTime: null, installed: true }));
+    ? v.releases.map((r) => ({ ...r, installed: installed.has(r.id), drive: drive.has(r.id) }))
+    : [...new Set([...v.installed, ...drive])]
+        .sort((a, b) => b.localeCompare(a, "en", { numeric: true }))
+        .map((id) => ({ id, type: "release", releaseTime: null, installed: installed.has(id), drive: drive.has(id) }));
   if (state.loader !== "vanilla") {
     const games = state.loaderGames[state.loader];
     // Sin conexión con el loader solo sirven las versiones donde ya está descargado.
@@ -3690,7 +3802,7 @@ function versionOptions() {
 function emptyVersionsText() {
   const games = state.loaderGames[state.loader];
   if (state.loader !== "vanilla" && games && !games.online) return `${games.message} ${t(`No hay ${loaderNames[state.loader]} descargado en este PC.`, `There is no ${loaderNames[state.loader]} downloaded on this PC.`)}`;
-  if (state.versions?.mojang === false && !state.versions.installed.length) return t("No hay versiones descargadas en este PC.", "There are no versions downloaded on this PC.");
+  if (state.versions?.mojang === false && !state.versions.installed.length && !state.versions.drive?.length) return t("No hay versiones descargadas en este PC.", "There are no versions downloaded on this PC.");
   return t("Ninguna versión coincide.", "No version matches.");
 }
 
@@ -3706,7 +3818,7 @@ function renderVersions() {
           const date = o.releaseTime ? new Date(o.releaseTime).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" }) : "";
           return `<div class="version ${o.id === state.selectedVersion ? "selected" : ""}" data-version="${escapeHtml(o.id)}">
             <div><div class="v-name">Minecraft ${escapeHtml(o.id)}</div><div class="v-sub">${o.type === "release" ? t("Versión estable", "Stable version") : "Snapshot"}${date ? " · " + date : ""}</div></div>
-            ${o.installed ? `<span class="badge">${t("Descargada", "Downloaded")}</span>` : ""}
+            ${o.installed ? `<span class="badge">${t("Descargada", "Downloaded")}</span>` : o.drive ? `<span class="badge drive" title="${t("Se baja de Google Drive", "It downloads from Google Drive")}">${t("En Drive", "On Drive")}</span>` : ""}
           </div>`;
         })
         .join("")
@@ -3731,7 +3843,11 @@ function updateCreateStatus() {
   const option = versionOptions().find((o) => o.id === state.selectedVersion);
   if (!option) return;
   if (state.loader === "vanilla") {
-    $("#new-status").textContent = option.installed ? t("Ya está descargada: la instancia se crea al momento.", "It is already downloaded: the instance is created right away.") : t("Se descargará de los servidores de Mojang, con su Java.", "It will be downloaded from Mojang's servers, with its Java.");
+    $("#new-status").textContent = option.installed
+      ? t("Ya está descargada: la instancia se crea al momento.", "It is already downloaded: the instance is created right away.")
+      : option.drive
+        ? t("Se descargará de Google Drive, con su Java (funciona en cualquier red).", "It will be downloaded from Google Drive, with its Java (it works on any network).")
+        : t("Se descargará de los servidores de Mojang, con su Java.", "It will be downloaded from Mojang's servers, with its Java.");
     return;
   }
   const name = loaderNames[state.loader];
@@ -3743,7 +3859,7 @@ function updateCreateStatus() {
       ? t("Ya está descargada: la instancia se crea al momento.", "It is already downloaded: the instance is created right away.")
       : option.installed
         ? t(`Se descargará ${name} ${chosen} (tarda unos segundos).`, `${name} ${chosen} will be downloaded (it takes a few seconds).`)
-        : t(`Se descargará Minecraft ${option.id} con su Java y ${name} ${chosen}.`, `Minecraft ${option.id} will be downloaded with its Java and ${name} ${chosen}.`);
+        : t(`Se descargará Minecraft ${option.id} con su Java${option.drive ? " (de Google Drive)" : ""} y ${name} ${chosen}.`, `Minecraft ${option.id} will be downloaded with its Java${option.drive ? " (from Google Drive)" : ""} and ${name} ${chosen}.`);
 }
 
 async function loadLoaderVersions(minecraft) {
@@ -3811,9 +3927,9 @@ async function createInstance() {
   $("#loader-version").disabled = true;
   $("#new-progress").classList.remove("hidden");
   $("#new-progress div").style.width = "2%";
-  $("#download-indicator").classList.remove("hidden");
+  state.createJob = newJob();
   try {
-    const instance = await invoke("crear_instancia", { nombre: name, version: state.selectedVersion, loader, versionLoader });
+    const instance = await invoke("crear_instancia", { nombre: name, version: state.selectedVersion, loader, versionLoader, tarea: state.createJob });
     // Con tus favoritos (los que sean compatibles con esta versión y loader).
     const favorites = createFavorites(loader);
     let summary = null;
@@ -3821,10 +3937,12 @@ async function createInstance() {
       summary = await installFavorites(instance.id, favorites, (step) => ($("#new-status").textContent = step));
     }
     state.creating = false;
+    // Si cerraste la ventana mientras se creaba, siguió en Descargas: no te saca de donde estás.
+    const watching = !$("#create-dialog").classList.contains("hidden");
     closeModal("#create-dialog");
     await reloadInstances();
     toast(summary ? `${t(`${instance.name} está lista para jugar.`, `${instance.name} is ready to play.`)} ${favoritesSummary(instance.name, summary)}` : t(`${instance.name} está lista para jugar.`, `${instance.name} is ready to play.`));
-    navigate("instance", instance.id);
+    if (watching) navigate("instance", instance.id);
   } catch (error) {
     $("#new-status").textContent = String(error);
   } finally {
@@ -3833,7 +3951,7 @@ async function createInstance() {
     $("#new-create").disabled = false;
     $("#loader-version").disabled = false;
     $("#new-progress").classList.add("hidden");
-    $("#download-indicator").classList.add("hidden");
+    state.createJob = null;
   }
 }
 
@@ -4166,6 +4284,7 @@ function wireEvents() {
     if (!state.doctor?.busy) closeModal("#doctor-dialog");
   };
   $("#doctor-findings").onclick = (event) => {
+    if (event.target.closest("[data-doctor-culprit]")) return void disableCulprit();
     const button = event.target.closest("[data-doctor-fix], [data-doctor-warning]");
     if (!button || state.doctor?.busy) return;
     const warning = !!button.dataset.doctorWarning;
@@ -4179,6 +4298,7 @@ function wireEvents() {
   };
   $("#doctor-fix-all").onclick = () => doctorFixAll();
   $("#doctor-auto").onclick = () => doctorAuto();
+  $("#doctor-bisect").onclick = () => doctorBisect();
   $("#doctor-anyway").onclick = () => {
     const { id, server } = state.doctor;
     closeModal("#doctor-dialog");
@@ -4421,19 +4541,33 @@ function wireEvents() {
   wireFriendsEvents();
   wireChatEvents();
   wireReportEvents();
+  wireDownloadsEvents();
   listen("juego-cerrado", ({ payload }) => onGameClosed(payload));
   // Arrastrar archivos a la ventana: se agregan a la instancia abierta.
   // Fuera de una instancia (o con un .mrpack) lo que se suelta se instala como modpack.
   const dropsModpack = (paths) => !(state.page === "instance" && state.current) || (paths ?? []).some((p) => /\.mrpack$/i.test(p));
-  tauri?.webview?.getCurrentWebview().onDragDropEvent(({ payload }) => {
+  const onDrag = (payload) => {
     if (state.page === "chat") {
-      if (payload.type === "drop" && payload.paths?.length && state.chatOpen) {
-        invoke("leer_imagen", { ruta: payload.paths[0] }).then(sendChatImage, (error) => toast(String(error), "error"));
+      // Una imagen al chat: del Explorador, del navegador o de Discord (en Windows llega como archivo
+      // aunque no lo sea: ver plataforma::arrastre). Antes de mandarla se ve y se confirma.
+      if (payload.type === "enter" && state.chatOpen) {
+        const name = currentChat()?.name;
+        $("#drop-overlay use").setAttribute("href", "#i-image");
+        $("#drop-title").textContent = name ? t(`Suelta para mandarla a ${name}`, `Drop to send it to ${name}`) : t("Suelta para mandarla", "Drop to send it");
+        $("#drop-text").textContent = t("Una imagen: antes de enviarla la ves y la confirmas.", "An image: you see it and confirm it before it is sent.");
+        $("#drop-overlay").classList.remove("hidden");
+      } else if (payload.type === "drop" || payload.type === "leave") {
+        $("#drop-overlay").classList.add("hidden");
+        if (payload.type === "drop" && payload.paths?.length && state.chatOpen) {
+          invoke("leer_imagen", { ruta: payload.paths[0] }).then(sendChatImage, (error) => toast(String(error), "error"));
+        }
       }
       return;
     }
     if (payload.type === "enter") {
+      if (!payload.paths?.length) return;
       const modpack = dropsModpack(payload.paths);
+      $("#drop-overlay use").setAttribute("href", "#i-upload");
       $("#drop-title").textContent = modpack ? t("Suelta para instalar el modpack", "Drop to install the modpack") : t(`Suelta para agregar a ${state.current.name}`, `Drop to add to ${state.current.name}`);
       $("#drop-text").textContent = modpack
         ? t("Un .mrpack o un paquete .zip de Parabellum (de Drive o una USB).", "A .mrpack or a Parabellum .zip package (from Drive or a USB drive).")
@@ -4445,16 +4579,25 @@ function wireEvents() {
       if (dropsModpack(payload.paths)) importModpack(payload.paths[0]);
       else addContentFiles(payload.paths);
     }
-  });
+  };
+  tauri?.webview?.getCurrentWebview().onDragDropEvent(({ payload }) => onDrag(payload));
+  listen("arrastre", ({ payload }) => onDrag(payload));
+  invoke("activar_arrastre").catch(() => {});
 
   listen("progreso", ({ payload }) => {
-    // El porcentaje de arriba también dice cuánto falta, cuando ya se puede calcular.
+    // Instalar una instancia compartida por el chat (puede ser un modpack o un paquete de Drive).
+    if (state.shareJob && payload.job === state.shareJob) {
+      const percent = Math.round(payload.fraction * 100);
+      state.shareProgress = `${percent}%`;
+      const button = $(`[data-share-install="${CSS.escape(state.shareInstalling ?? "")}"]`);
+      if (button) button.innerHTML = `<span class="spinner tiny"></span>${percent}%`;
+      return;
+    }
     const left = timeLeft(payload.task, payload.fraction);
-    const percentText = (fraction) => `${Math.round(fraction * 100)}%${left ? ` · ${left}` : ""}`;
     if (payload.task === "catalogo") {
-      const line = state.drive.installing && $(`[data-progress-for="${CSS.escape(state.drive.installing)}"]`);
+      const entry = [...state.drive.installing].find(([, job]) => job === payload.job)?.[0];
+      const line = entry && $(`[data-progress-for="${CSS.escape(entry)}"]`);
       if (line) line.textContent = payload.stage;
-      $("#download-percent").textContent = percentText(payload.fraction);
       return;
     }
     if (payload.task === "actualizacion") {
@@ -4475,24 +4618,12 @@ function wireEvents() {
       return;
     }
     if (payload.task === "importar") {
+      if (payload.job !== state.importJob) return;
       $("#import-progress div").style.width = `${Math.max(2, payload.fraction * 100)}%`;
       $("#import-status").textContent = payload.stage;
-      $("#download-percent").textContent = percentText(payload.fraction);
       return;
     }
-    if (payload.task === "compartida" || (state.shareInstalling && (payload.task === "importar" || payload.task === "catalogo"))) {
-      const percent = Math.round(payload.fraction * 100);
-      state.shareProgress = `${percent}%`;
-      $("#download-percent").textContent = `${percent}%`;
-      const button = $(`[data-share-install="${CSS.escape(state.shareInstalling ?? "")}"]`);
-      if (button) button.innerHTML = `<span class="spinner tiny"></span>${percent}%`;
-      if (payload.task !== "compartida") return void (payload.task === "importar" && ($("#import-status").textContent = payload.stage));
-      return;
-    }
-    if (payload.task === "instalar") {
-      $("#download-percent").textContent = percentText(payload.fraction);
-      return;
-    }
+    if (payload.task === "instalar" || payload.task === "compartida" || payload.task === "verificar") return;
     if (payload.task === "loader") {
       $("#edit-loader-hint").textContent = payload.stage;
       return;
@@ -4500,9 +4631,6 @@ function wireEvents() {
     if (payload.task === "jugar") {
       // Antes de abrir el juego se baja lo que le falte al modpack.
       if (payload.fraction >= 1) return;
-      state.completingShown = true;
-      $("#download-indicator").classList.remove("hidden");
-      $("#download-percent").textContent = percentText(payload.fraction);
       $("#status-text").textContent = payload.stage;
       // «Abriendo…» se va llenando con lo que se baja.
       if (state.current && state.launching.has(state.current.id)) $("#detail-play").style.setProperty("--p", payload.fraction);
@@ -4522,15 +4650,10 @@ function wireEvents() {
       if (state.page === "servers") renderHost();
       return;
     }
-    if (payload.task === "verificar") {
-      $("#download-percent").textContent = percentText(payload.fraction);
-      $("#download-indicator").title = payload.stage;
-      return;
-    }
+    // Crear instancia: la ventana muestra la suya.
+    if (payload.task !== "crear" || payload.job !== state.createJob) return;
     $("#new-status").textContent = payload.stage;
-    const percent = Math.max(2, payload.fraction * 100);
-    $("#new-progress div").style.width = `${percent}%`;
-    $("#download-percent").textContent = percentText(percent / 100);
+    $("#new-progress div").style.width = `${Math.max(2, payload.fraction * 100)}%`;
   });
 }
 
@@ -4560,6 +4683,7 @@ async function init() {
   if (adoptLanguage(initial.settings.language)) return location.reload();
   state.settings = initial.settings;
   state.instances = initial.instances;
+  invoke("lista_descargas").then(onDownloads, () => onDownloads([]));
   state.systemRam = initial.systemRamGb;
   state.version = initial.version;
   state.driveUrl = initial.driveUrl;
@@ -4767,7 +4891,7 @@ async function loadExploreVersions() {
   try {
     const versions = state.versions ?? (await invoke("listar_versiones"));
     state.versions ??= versions;
-    const releases = versions.mojang ? versions.releases.filter((r) => r.type === "release").map((r) => r.id) : versions.installed;
+    const releases = versions.mojang ? versions.releases.filter((r) => r.type === "release").map((r) => r.id) : [...new Set([...versions.installed, ...(versions.drive ?? [])])];
     $("#explore-version").innerHTML = `<option value="">${t("Todas", "All")}</option>` + releases.map((v) => `<option>${escapeHtml(v)}</option>`).join("");
   } catch {
     state.explore.versionsLoaded = false;
@@ -4903,8 +5027,6 @@ async function installProject(projectId, versionId = null) {
   if (e.installing.has(projectId)) return;
   e.installing.add(projectId);
   refreshInstallButtons();
-  $("#download-indicator").classList.remove("hidden");
-  $("#download-percent").textContent = "…";
   try {
     const plan = await invoke("preparar_instalacion", { id: instance.id, proyecto: projectId, version: versionId });
     if (plan.installed) {
@@ -4929,7 +5051,6 @@ async function installProject(projectId, versionId = null) {
     toast(String(error), "error");
   } finally {
     e.installing.delete(projectId);
-    $("#download-indicator").classList.add("hidden");
     refreshInstallButtons();
     if (state.page === "project" && state.projectVersions) renderProjectVersions();
   }
@@ -5174,8 +5295,6 @@ async function applyUpdates(files) {
   if (!id || !files.length) return;
   const button = $("#content-update-all");
   button.disabled = true;
-  $("#download-indicator").classList.remove("hidden");
-  $("#download-percent").textContent = "…";
   try {
     const heldBack = await invoke("actualizar_contenido", { id, archivos: files });
     for (const held of heldBack) state.heldBack.set(held.versionId, held.reason);
@@ -5192,7 +5311,6 @@ async function applyUpdates(files) {
     toast(String(error), "error");
   } finally {
     button.disabled = false;
-    $("#download-indicator").classList.add("hidden");
   }
 }
 
@@ -5344,6 +5462,284 @@ function wireExploreEvents() {
 }
 
 // ======================================================================
+// Gestor de descargas (ver descargas.rs): la flecha de arriba abre el panel
+// ======================================================================
+const DOWNLOAD_ACTIVE = new Set(["cola", "activa"]);
+const downloadKindIcons = { modpack: "cubes", contenido: "puzzle", version: "cubes", catalogo: "cloud", compartida: "chat", importar: "import", verificar: "check-circle", jugar: "play" };
+let downloadCounter = 0;
+
+/** Lo que devuelve una descarga que cancelaste (no es un error que haya que avisar). */
+function isCancelled(error) {
+  return String(error?.message ?? error) === t("Descarga cancelada.", "Download cancelled.");
+}
+
+/** Un id para seguir una descarga desde que se pide: sus avisos de progreso lo traen. */
+function newJob() {
+  return `w${Date.now().toString(36)}${(downloadCounter++).toString(36)}`;
+}
+
+const downloadsOpen = () => !$("#downloads-panel").classList.contains("hidden");
+
+/** Título e icono de un proyecto de Modrinth que está a la vista (para la fila de Descargas). */
+function projectInfo(projectId) {
+  const hit = state.explore.hits.find((h) => h.id === projectId);
+  if (hit) return { title: hit.title, icon: hit.iconUrl };
+  const data = state.projectId === projectId ? state.projectData : null;
+  return data ? { title: data.title, icon: data.iconUrl } : {};
+}
+
+function onDownloads(list) {
+  const before = new Map((state.downloads ?? []).map((d) => [d.id, d.status]));
+  state.downloads = list;
+  // Lo que terminó con el panel cerrado: un punto en la flecha hasta que lo abras.
+  if (!downloadsOpen()) {
+    for (const d of list) {
+      if (!DOWNLOAD_ACTIVE.has(before.get(d.id)) || DOWNLOAD_ACTIVE.has(d.status) || d.status === "cancelada") continue;
+      state.downloadsUnseen = d.status === "error" || state.downloadsUnseen === "error" ? "error" : "ok";
+    }
+  }
+  renderDownloadIndicator();
+  if (downloadsOpen()) renderDownloads();
+  // En el catálogo de Drive, «En cola…» pasa a «Instalando…».
+  if (state.drive.installing.size && state.explore.kind === "drive" && state.drive.data) {
+    for (const [entryId, job] of state.drive.installing) {
+      if (before.get(job) === list.find((d) => d.id === job)?.status) continue;
+      const entry = state.drive.data.entries.find((e) => e.id === entryId);
+      const slot = entry && $(`[data-drive="${CSS.escape(entryId)}"] .r-action`);
+      if (slot) slot.innerHTML = driveAction(entry);
+    }
+  }
+}
+
+function renderDownloadIndicator() {
+  const list = state.downloads ?? [];
+  const active = list.filter((d) => DOWNLOAD_ACTIVE.has(d.status));
+  const running = active.filter((d) => d.status === "activa");
+  const button = $("#download-indicator");
+  button.classList.remove("hidden");
+  button.classList.toggle("idle", !active.length);
+  let text = running.length ? `${Math.round((running.reduce((sum, d) => sum + d.fraction, 0) / running.length) * 100)}%` : "";
+  if (active.length > 1) text += `${text ? " · " : ""}${active.length}`;
+  $("#download-percent").textContent = text;
+  const dot = $("#download-dot");
+  dot.classList.toggle("hidden", !state.downloadsUnseen || active.length > 0);
+  dot.classList.toggle("error", state.downloadsUnseen === "error");
+  button.title = active.length
+    ? t(`Descargas: ${active.length} en curso`, `Downloads: ${active.length} in progress`)
+    : t("Descargas", "Downloads");
+}
+
+function downloadIcon(d) {
+  const instance = d.instance && state.instances.find((i) => i.id === d.instance);
+  const entry = d.kind === "catalogo" && state.drive.data?.entries.find((e) => e.id === d.retry?.args?.id);
+  const image = d.icon ?? entry?.icon ?? (d.kind !== "contenido" ? instance?.icon : null);
+  return image ? `<img src="${escapeHtml(image)}" alt="">` : icon(downloadKindIcons[d.kind] ?? "download");
+}
+
+function downloadSub(d, queue) {
+  if (d.status === "cola") {
+    const position = queue.indexOf(d.id) + 1;
+    if (position === 1) return t("En cola · es la siguiente", "Queued · next up");
+    return position > 1 ? t(`En cola · faltan ${position - 1} antes`, `Queued · ${position - 1} ahead`) : t("En espera…", "Waiting…");
+  }
+  if (d.status === "activa") return d.detail || t("Empezando…", "Starting…");
+  if (d.status === "error") return d.error ?? t("No se pudo terminar.", "It could not finish.");
+  if (d.status === "cancelada") return t("Cancelada", "Cancelled");
+  const size = d.bytes ? ` · ${formatSize(d.bytes)}` : "";
+  return `${t("Listo", "Done")}${size} · ${ago(d.ended ?? d.started).replace(/^./, (c) => c.toLowerCase())}`;
+}
+
+function downloadMeta(d) {
+  if (d.status !== "activa") return "";
+  const parts = [`${Math.round(d.fraction * 100)}%`];
+  if (d.speed) parts.push(`${formatSize(d.speed)}/s`);
+  const left = timeLeft(`descarga-${d.id}`, d.fraction);
+  if (left) parts.push(t(`faltan ${left}`, `${left} left`));
+  return parts.join(" · ");
+}
+
+function downloadRowHtml(d) {
+  const instance = d.instance && state.instances.find((i) => i.id === d.instance);
+  const where = instance && d.kind === "contenido" ? ` <small>· ${escapeHtml(instance.name)}</small>` : "";
+  const id = escapeHtml(d.id);
+  const remove = `<button class="circle-btn" data-dl-remove="${id}" title="${t("Quitar de la lista", "Remove from the list")}">${icon("close")}</button>`;
+  let actions = "";
+  if (DOWNLOAD_ACTIVE.has(d.status)) actions = `<button class="circle-btn" data-dl-cancel="${id}" title="${t("Cancelar", "Cancel")}">${icon("stop")}</button>`;
+  else if (d.status === "lista") actions = `${instance && d.kind !== "jugar" ? `<button class="btn small" data-dl-open="${id}">${t("Abrir", "Open")}</button>` : ""}${remove}`;
+  else actions = `${d.retry ? `<button class="btn small" data-dl-retry="${id}">${icon("refresh")}${t("Reintentar", "Retry")}</button>` : ""}${remove}`;
+  const active = DOWNLOAD_ACTIVE.has(d.status);
+  return `<div class="dl-row ${d.status}" data-dl="${id}">
+    <div class="dl-icon">${downloadIcon(d)}</div>
+    <div class="dl-main">
+      <div class="dl-title" title="${escapeHtml(d.title)}">${escapeHtml(d.title)}${where}</div>
+      <div class="dl-sub"></div>
+      ${active ? `<div class="dl-bar"><div></div></div><div class="dl-meta"></div>` : ""}
+    </div>
+    <div class="dl-actions">${actions}</div>
+  </div>`;
+}
+
+/** El panel se actualiza fila por fila (con descargas en marcha llega un aviso cada 0,3 s): así no se
+ * pierde un clic en un botón que se volvió a pintar. */
+function renderDownloads() {
+  const list = state.downloads ?? [];
+  const active = list.filter((d) => DOWNLOAD_ACTIVE.has(d.status));
+  const speed = active.reduce((sum, d) => sum + (d.speed ?? 0), 0);
+  $("#downloads-summary").textContent = active.length
+    ? `${t(`${active.length} en curso`, `${active.length} in progress`)}${speed ? ` · ${formatSize(speed)}/s` : ""}`
+    : list.length
+      ? t("Nada descargándose", "Nothing downloading")
+      : "";
+  $("#downloads-clear").disabled = !list.some((d) => !DOWNLOAD_ACTIVE.has(d.status));
+  const box = $("#downloads-list");
+  if (!list.length) {
+    box.innerHTML = `<div class="dlp-empty">${t("No hay descargas. Lo que instales (modpacks, mods, versiones) sale aquí, y puedes instalar varias cosas a la vez: esperan su turno.", "There are no downloads. What you install (modpacks, mods, versions) shows up here, and you can install several things at once: they wait their turn.")}</div>`;
+    return;
+  }
+  box.querySelector(".dlp-empty")?.remove();
+  // La lista viene de la más nueva a la más vieja; la cola avanza de la más vieja a la más nueva.
+  const queue = list.filter((d) => d.status === "cola").map((d) => d.id).reverse();
+  const rows = new Map([...box.querySelectorAll(".dl-row")].map((row) => [row.dataset.dl, row]));
+  let previous = null;
+  for (const d of list) {
+    const signature = [d.status, d.title, d.icon, d.instance, d.error, !!d.retry].join("|");
+    let row = rows.get(d.id);
+    rows.delete(d.id);
+    if (!row || row.dataset.signature !== signature) {
+      const template = document.createElement("template");
+      template.innerHTML = downloadRowHtml(d).trim();
+      const fresh = template.content.firstElementChild;
+      fresh.dataset.signature = signature;
+      if (row) row.replaceWith(fresh);
+      row = fresh;
+    }
+    $(".dl-sub", row).textContent = downloadSub(d, queue);
+    const bar = $(".dl-bar div", row);
+    if (bar) bar.style.width = `${Math.max(2, d.fraction * 100)}%`;
+    const meta = $(".dl-meta", row);
+    if (meta) meta.textContent = downloadMeta(d);
+    if ((previous ? previous.nextElementSibling : box.firstElementChild) !== row) {
+      if (previous) previous.after(row);
+      else box.prepend(row);
+    }
+    previous = row;
+  }
+  for (const row of rows.values()) row.remove();
+}
+
+function renderDownloadOptions() {
+  const parallel = state.settings.downloadParallel ?? 1;
+  for (const button of $$("#downloads-parallel button")) button.classList.toggle("active", Number(button.dataset.parallel) === parallel);
+  const limit = String(state.settings.downloadLimitMb ?? 0);
+  const select = $("#downloads-limit");
+  // Un límite que no está en la lista (puesto a mano en ajustes.json) también se ve.
+  if (![...select.options].some((o) => o.value === limit)) select.add(new Option(`${limit} MB/s`, limit));
+  select.value = limit;
+}
+
+async function saveDownloadOptions(changes) {
+  try {
+    const settings = await invoke("ajustes_descargas", {
+      simultaneas: changes.parallel ?? state.settings.downloadParallel ?? 1,
+      limite: changes.limit ?? state.settings.downloadLimitMb ?? 0,
+    });
+    state.settings = settings;
+  } catch (error) {
+    toast(String(error), "error");
+  }
+  renderDownloadOptions();
+}
+
+function toggleDownloads(open = !downloadsOpen()) {
+  const panel = $("#downloads-panel");
+  const button = $("#download-indicator");
+  panel.classList.toggle("hidden", !open);
+  button.setAttribute("aria-expanded", String(open));
+  if (!open) return;
+  state.downloadsUnseen = null;
+  $$(".menu").forEach((m) => m.remove());
+  const rect = button.getBoundingClientRect();
+  panel.style.top = `${Math.round(rect.bottom + 6)}px`;
+  panel.style.right = `${Math.max(12, Math.round(innerWidth - rect.right))}px`;
+  renderDownloadOptions();
+  renderDownloads();
+  renderDownloadIndicator();
+}
+
+/** «Reintentar»: el mismo comando con lo mismo; lo que ya se bajó se aprovecha. */
+async function retryDownload(job) {
+  const { command, args } = job.retry;
+  await invoke("quitar_descarga", { id: job.id }).catch(() => {});
+  try {
+    await invoke(command, { ...args, tarea: job.id });
+    await reloadInstances();
+    if (job.kind === "contenido" && state.contentFor === job.instance) {
+      state.content = null;
+      state.updates = { for: null, list: [] };
+      if (state.page === "instance" && state.current?.id === job.instance) renderInstance();
+    }
+    if (job.kind === "catalogo") loadDriveCatalog(false);
+    toast(t(`Listo: ${job.title}.`, `Done: ${job.title}.`));
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+function wireDownloadsEvents() {
+  $("#download-indicator").onclick = () => toggleDownloads();
+  $("#downloads-close").onclick = () => toggleDownloads(false);
+  $("#downloads-options").onclick = () => {
+    const box = $("#downloads-options-box");
+    box.classList.toggle("hidden");
+    $("#downloads-options").setAttribute("aria-expanded", String(!box.classList.contains("hidden")));
+  };
+  $("#downloads-parallel").onclick = (event) => {
+    const button = event.target.closest("[data-parallel]");
+    if (button) saveDownloadOptions({ parallel: Number(button.dataset.parallel) });
+  };
+  $("#downloads-limit").onchange = (event) => saveDownloadOptions({ limit: Number(event.target.value) });
+  $("#downloads-clear").onclick = () => invoke("quitar_descarga", { id: null }).catch((error) => toast(String(error), "error"));
+  // Un icono que no carga (sin internet) deja el del tipo de descarga.
+  $("#downloads-list").addEventListener(
+    "error",
+    (event) => {
+      if (event.target.tagName !== "IMG") return;
+      const d = (state.downloads ?? []).find((job) => job.id === event.target.closest("[data-dl]")?.dataset.dl);
+      event.target.outerHTML = icon(downloadKindIcons[d?.kind] ?? "download");
+    },
+    true,
+  );
+  $("#downloads-list").onclick = (event) => {
+    const find = (attribute) => {
+      const button = event.target.closest(`[${attribute}]`);
+      return button && (state.downloads ?? []).find((d) => d.id === button.getAttribute(attribute));
+    };
+    const cancel = find("data-dl-cancel");
+    if (cancel) return void invoke("cancelar_descarga", { id: cancel.id });
+    const remove = find("data-dl-remove");
+    if (remove) return void invoke("quitar_descarga", { id: remove.id });
+    const retry = find("data-dl-retry");
+    if (retry) return void retryDownload(retry);
+    const open = find("data-dl-open");
+    if (open) {
+      toggleDownloads(false);
+      navigate("instance", open.instance);
+    }
+  };
+  // Se cierra al hacer clic fuera o con Esc.
+  document.addEventListener("mousedown", (event) => {
+    if (downloadsOpen() && !event.target.closest("#downloads-panel, #download-indicator")) toggleDownloads(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && downloadsOpen()) {
+      toggleDownloads(false);
+      $("#download-indicator").focus();
+    }
+  });
+  listen("descargas", ({ payload }) => onDownloads(payload));
+}
+
+// ======================================================================
 // Modpacks y data packs: instalar, subir y exportar
 // ======================================================================
 
@@ -5357,8 +5753,6 @@ function installAny(kind, projectId, versionId = null) {
 function setBusy(projectId, busy) {
   if (busy) state.explore.installing.add(projectId);
   else state.explore.installing.delete(projectId);
-  $("#download-indicator").classList.toggle("hidden", !busy);
-  $("#download-percent").textContent = "…";
   refreshInstallButtons();
   if (state.page === "project" && state.projectVersions) renderProjectVersions();
 }
@@ -5367,7 +5761,8 @@ async function installModpack(projectId, versionId = null) {
   if (state.explore.installing.has(projectId)) return;
   setBusy(projectId, true);
   try {
-    const result = await invoke("instalar_modpack", { proyecto: projectId, version: versionId });
+    const info = projectInfo(projectId);
+    const result = await invoke("instalar_modpack", { proyecto: projectId, version: versionId, titulo: info.title ?? null, icono: info.icon ?? null });
     await reloadInstances();
     toast(t(`${result.name} está lista para jugar. La encuentras en tu biblioteca.`, `${result.name} is ready to play. You will find it in your library.`));
     if (result.warning) toast(result.warning, "error");
@@ -5466,30 +5861,31 @@ async function importExternal(external) {
   $("#import-title").textContent = external.name;
   $("#import-status").textContent = t("Preparando…", "Preparing…");
   $("#import-progress div").style.width = "2%";
-  $("#download-indicator").classList.remove("hidden");
-  $("#download-percent").textContent = "…";
+  state.importJob = newJob();
   try {
-    const result = await invoke("importar_externa", { carpeta: external.folder });
+    const result = await invoke("importar_externa", { carpeta: external.folder, tarea: state.importJob });
     state.importing = false;
+    const watching = !$("#create-dialog").classList.contains("hidden");
     closeModal("#create-dialog");
     await reloadInstances();
     toast(t(`${result.name} está lista para jugar.`, `${result.name} is ready to play.`));
     if (result.warning) toast(result.warning, "error");
     if (result.notes?.length) toast(result.notes.join(" "));
-    navigate("instance", result.id);
+    if (watching) navigate("instance", result.id);
   } catch (error) {
-    $("#import-title").textContent = t("No se pudo importar", "Could not import");
+    $("#import-title").textContent = isCancelled(error) ? t("Cancelada", "Cancelled") : t("No se pudo importar", "Could not import");
     $("#import-status").textContent = String(error);
     $("#create-back").classList.remove("hidden");
   } finally {
     state.importing = false;
-    $("#download-indicator").classList.add("hidden");
+    state.importJob = null;
   }
 }
 
 /** Subir un modpack: .mrpack o paquete de Parabellum. Sin ruta, abre la ventana para elegirlo. */
 async function importModpack(path = null) {
-  if (state.importing) return toast(t("Ya se está instalando un modpack; espera a que termine.", "A modpack is already being installed; wait for it to finish."), "error");
+  // Con otro instalándose en la ventana, este va directo a Descargas (espera su turno).
+  if (state.importing) return importModpackInBackground(path);
   state.importing = true;
   $("#create-step-type").classList.add("hidden");
   $("#create-step-custom").classList.add("hidden");
@@ -5500,12 +5896,12 @@ async function importModpack(path = null) {
   $("#import-status").textContent = path ? t("Preparando…", "Preparing…") : t("Se abrió una ventana para elegirlo.", "A window opened to choose it.");
   $("#import-progress div").style.width = "2%";
   openModal("#create-dialog");
-  $("#download-indicator").classList.remove("hidden");
-  $("#download-percent").textContent = "…";
+  state.importJob = newJob();
   try {
-    const result = await invoke("importar_modpack", { ruta: path });
+    const result = await invoke("importar_modpack", { ruta: path, tarea: state.importJob });
     state.importing = false;
     if (!result) return openCreate();
+    const watching = !$("#create-dialog").classList.contains("hidden");
     closeModal("#create-dialog");
     await reloadInstances();
     if (result.kind === "base") {
@@ -5513,16 +5909,30 @@ async function importModpack(path = null) {
     } else {
       toast(result.updated ? t(`${result.name} se actualizó: tus mundos y opciones se conservaron.`, `${result.name} was updated: your worlds and options were kept.`) : t(`${result.name} está lista para jugar.`, `${result.name} is ready to play.`));
       if (result.warning) toast(result.warning, "error");
-    if (result.notes?.length) toast(result.notes.join(" "));
-      navigate("instance", result.id);
+      if (result.notes?.length) toast(result.notes.join(" "));
+      if (watching) navigate("instance", result.id);
     }
   } catch (error) {
-    $("#import-title").textContent = t("No se pudo instalar", "Could not install");
+    $("#import-title").textContent = isCancelled(error) ? t("Cancelada", "Cancelled") : t("No se pudo instalar", "Could not install");
     $("#import-status").textContent = String(error);
     $("#create-back").classList.remove("hidden");
   } finally {
     state.importing = false;
-    $("#download-indicator").classList.add("hidden");
+    state.importJob = null;
+  }
+}
+
+/** Un modpack más mientras otro se instala en la ventana: va a Descargas y avisa cuando termina. */
+async function importModpackInBackground(path) {
+  if (path) toast(t("Lo agregué a Descargas: se instala cuando termine el que está en curso.", "I added it to Downloads: it installs when the current one finishes."));
+  try {
+    const result = await invoke("importar_modpack", { ruta: path, tarea: newJob() });
+    if (!result) return;
+    await reloadInstances();
+    toast(result.kind === "base" ? t(`Se instaló ${result.name}.`, `${result.name} was installed.`) : t(`${result.name} está lista para jugar.`, `${result.name} is ready to play.`));
+    if (result.warning) toast(result.warning, "error");
+  } catch (error) {
+    toast(String(error), "error");
   }
 }
 
@@ -5698,23 +6108,25 @@ async function loadDriveCatalog(reload = false) {
 
 function driveAction(entry) {
   const drive = state.drive;
-  if (drive.installing === entry.id) return `<button class="btn" disabled><span class="spinner tiny"></span>${t("Instalando…", "Installing…")}</button>`;
-  const busy = drive.installing ? "disabled" : "";
+  if (drive.installing.has(entry.id)) {
+    const queued = (state.downloads ?? []).find((d) => d.id === drive.installing.get(entry.id))?.status === "cola";
+    return `<button class="btn" disabled><span class="spinner tiny"></span>${queued ? t("En cola…", "Queued…") : t("Instalando…", "Installing…")}</button>`;
+  }
   if (entry.kind === "base") {
     return entry.status === "instalado"
       ? `<button class="btn installed" disabled><svg><use href="#i-check"/></svg>${t("Instalada", "Installed")}</button>`
-      : `<button class="btn primary" data-drive-install="${escapeHtml(entry.id)}" ${busy}><svg><use href="#i-download"/></svg>${t("Instalar", "Install")}</button>`;
+      : `<button class="btn primary" data-drive-install="${escapeHtml(entry.id)}"><svg><use href="#i-download"/></svg>${t("Instalar", "Install")}</button>`;
   }
   if (entry.status === "actualizar") {
-    return `<button class="btn primary" data-drive-install="${escapeHtml(entry.id)}" ${busy}><svg><use href="#i-update"/></svg>${t("Actualizar", "Update")}</button>`;
+    return `<button class="btn primary" data-drive-install="${escapeHtml(entry.id)}"><svg><use href="#i-update"/></svg>${t("Actualizar", "Update")}</button>`;
   }
   if (entry.status === "instalado") {
     const repair = entry.source === "drive"
-      ? `<button class="circle-btn" data-drive-repair="${escapeHtml(entry.id)}" ${busy} title="${t("Reparar: vuelve a bajar solo lo que falte o esté dañado", "Repair: downloads again only what is missing or damaged")}">${icon("refresh")}</button>`
+      ? `<button class="circle-btn" data-drive-repair="${escapeHtml(entry.id)}" title="${t("Reparar: vuelve a bajar solo lo que falte o esté dañado", "Repair: downloads again only what is missing or damaged")}">${icon("refresh")}</button>`
       : "";
     return `${repair}<button class="btn" data-drive-open="${escapeHtml(entry.instance ?? "")}"><svg><use href="#i-play"/></svg>${t("Abrir", "Open")}</button>`;
   }
-  return `<button class="btn primary" data-drive-install="${escapeHtml(entry.id)}" ${busy}><svg><use href="#i-download"/></svg>${t("Instalar", "Install")}</button>`;
+  return `<button class="btn primary" data-drive-install="${escapeHtml(entry.id)}"><svg><use href="#i-download"/></svg>${t("Instalar", "Install")}</button>`;
 }
 
 function driveCard(entry, index) {
@@ -5751,6 +6163,7 @@ function renderDrive() {
       : `<span class="muted">${t("No hay carpeta de Drive configurada.", "No Drive folder is configured.")}</span>`,
   );
   sources.push(`<button class="link-btn" data-open-packages>${icon("folder")}${t("Carpeta «paquetes» de este PC", "This PC's «paquetes» folder")}</button>`);
+  if (state.creator && data.configured) sources.push(`<button class="link-btn" data-upload-versions>${icon("upload")}${t("Subir versiones de Minecraft", "Upload Minecraft versions")}</button>`);
   if (data.warnings.length) {
     sources.push(`<details class="drive-warnings"><summary>${plural(data.warnings.length, t("aviso", "warning"), t("avisos", "warnings"))}</summary>${data.warnings.map((w) => `<p>${escapeHtml(w)}</p>`).join("")}</details>`);
   }
@@ -5787,15 +6200,82 @@ function renderDrive() {
   $("#explore-more").classList.add("hidden");
 }
 
+// ---------- Subir versiones de Minecraft a Drive (quien publica; ver subir_versiones_drive) ----------
+const POPULAR_VERSIONS = ["1.8.9", "1.12.2", "1.16.5", "1.18.2", "1.19.2", "1.20.1", "1.20.4", "1.21.1", "1.21.4"];
+// Lo que pesa más o menos cada versión en Drive (Minecraft, sus sonidos e idiomas y Java).
+const BASE_SIZE = 650 * 1048576;
+
+async function openVersionsDrive() {
+  state.versionsDrive = { data: null, picked: new Set() };
+  $("#vd-list").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
+  $("#vd-storage").textContent = "";
+  $("#vd-status").textContent = "";
+  $("#vd-upload").disabled = true;
+  openModal("#versions-drive-dialog");
+  try {
+    state.versionsDrive.data = await invoke("versiones_en_drive");
+    renderVersionsDrive();
+  } catch (error) {
+    $("#vd-list").innerHTML = `<div class="content-empty">${escapeHtml(String(error))}</div>`;
+  }
+}
+
+function renderVersionsDrive() {
+  const { data, picked } = state.versionsDrive ?? {};
+  if (!data) return;
+  const inDrive = new Set(data.inDrive);
+  $("#vd-list").innerHTML = data.releases
+    .map((version) =>
+      inDrive.has(version)
+        ? `<div class="fav-row"><b class="grow">Minecraft ${escapeHtml(version)}</b><span class="tag accent">${t("Ya está en Drive", "Already on Drive")}</span></div>`
+        : `<label class="fav-row"><b class="grow">Minecraft ${escapeHtml(version)}</b><span class="toggle"><input type="checkbox" data-vd="${escapeHtml(version)}" ${picked.has(version) ? "checked" : ""}><span></span></span></label>`,
+    )
+    .join("");
+  renderVersionsDriveStatus();
+}
+
+function renderVersionsDriveStatus() {
+  const { data, picked } = state.versionsDrive;
+  const free = data.limit != null ? Math.max(0, data.limit - data.used) : null;
+  const need = picked.size * BASE_SIZE;
+  $("#vd-storage").textContent = !data.email
+    ? t("Primero conecta Drive (Ajustes › Acerca de › Conectar Drive).", "Connect Drive first (Settings › About › Connect Drive).")
+    : free != null
+      ? t(`Drive de ${data.email}: ${formatSize(free)} libres de ${formatSize(data.limit)}.`, `${data.email}'s Drive: ${formatSize(free)} free of ${formatSize(data.limit)}.`)
+      : t(`Drive de ${data.email}: sin límite de espacio.`, `${data.email}'s Drive: no storage limit.`);
+  const fits = free == null || need <= free;
+  $("#vd-status").textContent = picked.size
+    ? `${t(`${picked.size} ${picked.size === 1 ? "versión" : "versiones"} · unos ${formatSize(need)}`, `${picked.size} ${picked.size === 1 ? "version" : "versions"} · about ${formatSize(need)}`)}${fits ? "" : t(" · no caben en tu Drive", " · they do not fit in your Drive")}`
+    : "";
+  $("#vd-status").classList.toggle("error", !fits);
+  $("#vd-upload").disabled = !picked.size || !data.email || !fits;
+  $("#vd-upload span").textContent = picked.size ? t(`Subir (${picked.size})`, `Upload (${picked.size})`) : t("Subir", "Upload");
+}
+
+async function uploadVersionsDrive() {
+  const { data, picked } = state.versionsDrive ?? {};
+  if (!data || !picked.size) return;
+  // De la más nueva a la más vieja, como en la lista.
+  const versions = data.releases.filter((v) => picked.has(v));
+  closeModal("#versions-drive-dialog");
+  toast(t("Subiendo a Drive: el avance está en Descargas (la flecha de arriba).", "Uploading to Drive: the progress is in Downloads (the arrow at the top)."));
+  try {
+    toast(await invoke("subir_versiones_drive", { versiones: versions, tarea: newJob() }));
+    if (state.explore.kind === "drive") loadDriveCatalog(true);
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
 async function installFromDrive(id, repair = false) {
   const drive = state.drive;
-  if (drive.installing) return toast(t("Espera a que termine la instalación que está en curso.", "Wait for the current installation to finish."), "error");
-  drive.installing = id;
+  if (drive.installing.has(id)) return;
+  // Se pueden pedir varios: esperan su turno en Descargas.
+  const job = newJob();
+  drive.installing.set(id, job);
   renderDrive();
-  $("#download-indicator").classList.remove("hidden");
-  $("#download-percent").textContent = "…";
   try {
-    const result = await invoke("instalar_de_catalogo", { id, reparar: repair });
+    const result = await invoke("instalar_de_catalogo", { id, reparar: repair, tarea: job });
     await reloadInstances();
     if (result.kind === "base") {
       toast(t(`${result.name} quedó instalado: ya puedes crear instancias de esa versión.`, `${result.name} is installed: you can now create instances of that version.`));
@@ -5810,8 +6290,7 @@ async function installFromDrive(id, repair = false) {
   } catch (error) {
     toast(String(error), "error");
   } finally {
-    drive.installing = null;
-    $("#download-indicator").classList.add("hidden");
+    drive.installing.delete(id);
     await loadDriveCatalog(false);
   }
 }
@@ -6052,7 +6531,31 @@ function wireDriveEvents() {
   $("#drive-reload").onclick = () => loadDriveCatalog(true);
   $("#drive-sources").onclick = (event) => {
     if (event.target.closest("[data-open-packages]")) invoke("abrir_carpeta_paquetes").catch((error) => toast(String(error), "error"));
+    if (event.target.closest("[data-upload-versions]")) openVersionsDrive();
   };
+  $("#vd-close").onclick = () => closeModal("#versions-drive-dialog");
+  $("#vd-cancel").onclick = () => closeModal("#versions-drive-dialog");
+  $("#vd-list").onchange = (event) => {
+    const box = event.target.closest("[data-vd]");
+    if (!box || !state.versionsDrive) return;
+    if (box.checked) state.versionsDrive.picked.add(box.dataset.vd);
+    else state.versionsDrive.picked.delete(box.dataset.vd);
+    renderVersionsDriveStatus();
+  };
+  $("#vd-popular").onclick = () => {
+    const data = state.versionsDrive?.data;
+    if (!data) return;
+    // Las más jugadas y la más nueva (las que ya están en Drive no hacen falta).
+    for (const version of [...POPULAR_VERSIONS, data.releases[0]]) {
+      if (data.releases.includes(version) && !data.inDrive.includes(version)) state.versionsDrive.picked.add(version);
+    }
+    renderVersionsDrive();
+  };
+  $("#vd-none").onclick = () => {
+    state.versionsDrive?.picked.clear();
+    renderVersionsDrive();
+  };
+  $("#vd-upload").onclick = uploadVersionsDrive;
   $("#update-pill").onclick = () => showUpdateDialog();
   $("#update-now").onclick = () => applyLauncherUpdate();
   $("#update-quit").onclick = () => invoke("cerrar_parabellum").catch(() => window.close());
@@ -6329,6 +6832,23 @@ function demoInvoke(command, args = {}) {
     const instance = instances.find((i) => i.id === args.id);
     return Promise.resolve(Object.assign(instance, args.nombre ? { name: args.nombre, ramGb: args.ramGb, jvmArgs: args.jvmArgs } : { icon: args.png }));
   }
+  // Gestor de descargas: una en marcha, una en cola, una lista, una con error y una cancelada.
+  if (command === "lista_descargas") {
+    const job = (fields) => ({ detail: "", fraction: 0, error: null, speed: 0, bytes: 0, instance: null, icon: null, started: now - 60e3, ended: null, retry: null, ...fields });
+    return Promise.resolve([
+      job({ id: "w5", kind: "catalogo", title: "Better MC BMC4", status: "cola", detail: "En espera…" }),
+      job({ id: "w4", kind: "modpack", title: "Fabulously Optimized", status: "activa", detail: "Descargando mods… 48 de 112", fraction: 0.43, speed: 3_400_000, bytes: 92_000_000, icon: "https://cdn.modrinth.com/data/1KVo5zza/icon.png" }),
+      job({ id: "w3", kind: "contenido", title: "Sodium", status: "lista", fraction: 1, bytes: 1_250_000, instance: "Minecraft++", ended: now - 120e3 }),
+      job({ id: "w2", kind: "version", title: "Skyblock 1.21", status: "error", error: "No se pudieron descargar 3 archivos. Vuelve a intentarlo: se continúa donde quedó.", ended: now - 600e3, retry: { command: "crear_instancia", args: {} } }),
+      job({ id: "w1", kind: "modpack", title: "Cobblemon Official", status: "cancelada", ended: now - 3600e3, retry: { command: "instalar_modpack", args: {} } }),
+    ]);
+  }
+  if (["cancelar_descarga", "quitar_descarga", "activar_arrastre", "arrastre_imagenes", "imagen_portapapeles"].includes(command)) return Promise.resolve(null);
+  if (command === "listar_versiones" && demo.listar_versiones) demo.listar_versiones.drive ??= ["26.3", "26.2", "26.1.2", "1.20.1"];
+  if (command === "versiones_en_drive") return later({ releases: ["26.3", "26.2", "26.1.2", "1.21.11", "1.21.4", "1.21.1", "1.20.4", "1.20.1", "1.19.2", "1.18.2", "1.16.5", "1.12.2", "1.8.9"], inDrive: ["26.3", "26.2", "26.1.2", "1.20.1"], email: "hawntd@gmail.com", used: 6.2e9, limit: 16.1e9 }, 500);
+  if (command === "buscar_culpable") return later({ file: "entityculling-fabric-1.6.2.jar", name: "Entity Culling", dependents: [], dependentFiles: [], launches: 6, notAMod: false, suspects: [] }, 2500);
+  if (command === "detener_busqueda") return Promise.resolve(null);
+  if (command === "ajustes_descargas") return Promise.resolve(Object.assign(settings, { downloadParallel: args.simultaneas, downloadLimitMb: args.limite }));
   if (["duplicar_instancia", "eliminar_instancia", "activar_contenido", "eliminar_contenido", "detener", "agregar_contenido", "elegir_contenido", "cambiar_loader"].includes(command))
     return Promise.reject("Modo demostración: esta acción solo funciona en Parabellum.exe.");
   if (command === "guardar_ajustes") return Promise.resolve(Object.assign(settings, args.ajustes));

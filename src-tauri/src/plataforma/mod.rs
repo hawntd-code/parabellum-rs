@@ -54,6 +54,9 @@
 //! Módulos
 //!   avisos    notificaciones del sistema (register, show, init_thread, history_count).
 //!   accesos   accesos directos (Place, Status, status, create, remove, supported).
+//!   arrastre  imágenes al chat: install (el receptor de arrastre propio de la ventana: emite
+//!             "arrastre" con las rutas, y con accept_images también imágenes sin archivo, guardadas
+//!             en datos/temporal) y clipboard_image (la imagen del portapapeles como archivo).
 //!   lanzador  las versiones de Parabellum en el catálogo: ID (y su carpeta de Drive, «_» + ID), qué se
 //!             publica (published_files, readme), cómo se pone la nueva (install), cómo se reabre
 //!             (restart) y cómo se limpia la anterior (cleanup).

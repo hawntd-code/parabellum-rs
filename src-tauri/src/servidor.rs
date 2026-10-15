@@ -138,6 +138,10 @@ pub struct ServerConfig {
     pub pending_rules: std::collections::BTreeMap<String, String>,
     /// Por dónde pueden entrar los amigos (ver hosting.rs).
     pub connections: Connections,
+    /// Ajustes de rendimiento ya aplicados a server.properties (ver `apply_tuning`).
+    pub tuning: u32,
+    /// Radio en bloques del mundo ya pregenerado con Chunky (None: no se pregeneró).
+    pub pregenerated: Option<u32>,
     #[serde(skip)]
     pub folder: PathBuf,
 }
@@ -717,6 +721,8 @@ async fn build(
             ("pvp", new.pvp.to_string()),
             ("view-distance", if small_pc { "8" } else { "10" }.into()),
             ("simulation-distance", if small_pc { "6" } else { "8" }.into()),
+            // Ver `apply_tuning`.
+            ("sync-chunk-writes", "false".into()),
             // Los modpacks con mochilas cohete, alas, etc. echarían al jugador por "volar".
             ("allow-flight", "true".into()),
             ("spawn-protection", "0".into()),
@@ -1090,6 +1096,66 @@ pub fn mod_count(folder: &Path) -> usize {
     std::fs::read_dir(folder.join("mods")).into_iter().flatten().flatten().filter(|e| is_mod_file(&e.file_name().to_string_lossy())).count()
 }
 
+// ================= Rendimiento
+
+/// La última versión de los ajustes de rendimiento.
+const TUNING: u32 = 1;
+
+/// Ajustes de rendimiento para los servidores que ya existían (una vez; si después se cambian a mano
+/// en server.properties, se respetan):
+/// 1. `sync-chunk-writes=false`: el autoguardado de cada 5 minutos escribía cada chunk esperando al
+///    disco y congelaba el servidor (en la telemetría de Juan, trabones de 50–125 ms cada 300 s
+///    exactos). Es lo que trae Paper por defecto; el riesgo es perder lo último si se va la luz.
+pub fn apply_tuning(config: &mut ServerConfig) -> Result<(), String> {
+    if config.tuning < 1 {
+        set_properties(&config.folder, &[("sync-chunk-writes", "false".into())])?;
+    }
+    config.tuning = TUNING;
+    Ok(())
+}
+
+// ================= Pregenerar el mundo (Chunky)
+
+/// Chunky en Modrinth: genera el terreno por adelantado. Así, al explorar, el servidor no tiene que
+/// generarlo mientras juegan (el otro origen de los trabones: al entrar y al ir a zonas nuevas).
+pub const CHUNKY_PROJECT: &str = "fALzjamp";
+
+/// ¿Ya tiene Chunky en sus mods?
+pub fn chunky_installed(folder: &Path) -> bool {
+    std::fs::read_dir(folder.join("mods")).into_iter().flatten().flatten().any(|entry| {
+        let name = entry.file_name().to_string_lossy().to_lowercase();
+        name.starts_with("chunky") && name.ends_with(".jar")
+    })
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Chunky {
+    /// Porcentaje, cuánto falta («0:05:12») y chunks por segundo.
+    Progress { percent: f32, eta: Option<String>, rate: Option<f32> },
+    Finished,
+    Stopped,
+}
+
+/// Lo que dice Chunky en la consola, p. ej. «[Chunky] Task running for minecraft:overworld. Processed:
+/// 156 chunks (35.37%), ETA: 0:00:07, Rate: 40.5 cps, Current: 9, -5».
+pub fn chunky_line(line: &str) -> Option<Chunky> {
+    static PROGRESS: OnceLock<Regex> = OnceLock::new();
+    let rest = &line[line.find("[Chunky] ")? + 9..];
+    if rest.starts_with("Task finished for ") {
+        return Some(Chunky::Finished);
+    }
+    if ["Task paused for ", "Task stopped for ", "Task cancelled for "].iter().any(|p| rest.starts_with(p)) {
+        return Some(Chunky::Stopped);
+    }
+    let progress = PROGRESS.get_or_init(|| Regex::new(r"^Task running for \S+\. Processed: \d+ chunks \(([\d.]+)%\)(?:, ETA: ([\d:]+))?(?:, Rate: ([\d.]+) cps)?").unwrap());
+    let found = progress.captures(rest)?;
+    Some(Chunky::Progress {
+        percent: found[1].parse().ok()?,
+        eta: found.get(2).map(|m| m.as_str().to_string()),
+        rate: found.get(3).and_then(|m| m.as_str().parse().ok()),
+    })
+}
+
 // ================= Arrancar
 
 pub fn command(config: &ServerConfig, paths: &Paths) -> Result<Command, String> {
@@ -1208,6 +1274,17 @@ pub fn parse_line(line: &str) -> Option<LineEvent> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lineas_de_chunky() {
+        let running = "[05:47:36] [Server thread/INFO]: [Chunky] Task running for minecraft:overworld. Processed: 156 chunks (35.37%), ETA: 0:00:07, Rate: 40.5 cps, Current: 9, -5";
+        assert_eq!(chunky_line(running), Some(Chunky::Progress { percent: 35.37, eta: Some("0:00:07".into()), rate: Some(40.5) }));
+        let finished = "[05:47:43] [Server thread/INFO]: [Chunky] Task finished for minecraft:overworld. Processed: 441 chunks (100.00%), Total time: 0:00:10";
+        assert_eq!(chunky_line(finished), Some(Chunky::Finished));
+        assert_eq!(chunky_line("[Server thread/INFO]: [Chunky] Task paused for minecraft:overworld."), Some(Chunky::Stopped));
+        assert_eq!(chunky_line("[Server thread/INFO]: [Chunky] Radius changed to 160."), None);
+        assert_eq!(chunky_line("[Server thread/INFO]: <Juan> Task running for nada"), None);
+    }
 
     #[test]
     fn tiempo_del_juego_para_el_tps() {

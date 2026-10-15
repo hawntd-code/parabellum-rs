@@ -67,6 +67,9 @@ struct Running {
     hitch: Option<(std::time::Instant, f32)>,
     /// .lanzador/rendimiento.csv: una línea cada 4 s, para revisar el lag después.
     perf_log: std::path::PathBuf,
+    /// Pregenerando con Chunky: el radio pedido y el último avance.
+    pregen_radius: Option<u32>,
+    pregen: Option<servidor::Chunky>,
 }
 
 /// Cómo terminó la última vez (si fue mal): se muestra hasta el próximo arranque.
@@ -173,6 +176,17 @@ pub struct ServerView {
     mspt: Option<f32>,
     /// El peor tick de un trabón en el último minuto (más de 50 ms), si lo hubo.
     hitch_ms: Option<f32>,
+    /// Pregenerando el mundo: avance (porcentaje), cuánto falta y chunks por segundo.
+    pregen: Option<PregenView>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PregenView {
+    radius: u32,
+    percent: f32,
+    eta: Option<String>,
+    rate: Option<f32>,
 }
 
 #[derive(Serialize, Clone)]
@@ -269,6 +283,13 @@ pub fn view(app: &AppHandle) -> HostView {
                 p2p_guests: guests_of(&config.id),
                 mspt: run.and_then(|r| r.mspt),
                 hitch_ms: run.and_then(|r| r.hitch).filter(|(at, _)| at.elapsed() < Duration::from_secs(60)).map(|(_, ms)| ms),
+                pregen: run.and_then(|r| {
+                    let radius = r.pregen_radius?;
+                    Some(match &r.pregen {
+                        Some(servidor::Chunky::Progress { percent, eta, rate }) => PregenView { radius, percent: *percent, eta: eta.clone(), rate: *rate },
+                        _ => PregenView { radius, percent: 0.0, eta: None, rate: None },
+                    })
+                }),
                 config,
             }
         })
@@ -983,6 +1004,7 @@ pub fn start_server(app: &AppHandle, id: &str) -> Result<(), String> {
     }
     servidor::write_eula(&config.folder, true)?;
     servidor::write_access_lists(&config, &host)?;
+    servidor::apply_tuning(&mut config)?;
     config.last_started = Some(chrono::Utc::now().timestamp_millis());
     servidor::save(&config)?;
 
@@ -1030,6 +1052,8 @@ pub fn start_server(app: &AppHandle, id: &str) -> Result<(), String> {
             p99: None,
             hitch: None,
             perf_log: config.folder.join(".lanzador").join("rendimiento.csv"),
+            pregen_radius: None,
+            pregen: None,
         },
     );
     let streams: Vec<Box<dyn std::io::Read + Send>> = [child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>), child.stderr.take().map(|s| Box::new(s) as _)]
@@ -1108,6 +1132,8 @@ fn write_perf(path: &std::path::Path, row: &str) {
 
 fn on_line(app: &AppHandle, id: &str, line: String) {
     let event = servidor::parse_line(&line);
+    let chunky = servidor::chunky_line(&line);
+    let mut pregenerated = None;
     let mut ready = false;
     let mut players_changed = false;
     let mut joined = None;
@@ -1161,6 +1187,21 @@ fn on_line(app: &AppHandle, id: &str, line: String) {
         if line.contains("Can't keep up!") {
             run.behind_at = Some(std::time::Instant::now());
         }
+        if let Some(radius) = run.pregen_radius {
+            match &chunky {
+                Some(servidor::Chunky::Finished) => {
+                    pregenerated = Some(radius);
+                    run.pregen_radius = None;
+                    run.pregen = None;
+                }
+                Some(servidor::Chunky::Stopped) => {
+                    run.pregen_radius = None;
+                    run.pregen = None;
+                }
+                Some(progress) => run.pregen = Some(progress.clone()),
+                None => {}
+            }
+        }
         match &event {
             Some(servidor::LineEvent::Ready) if run.phase == Phase::Starting => {
                 run.phase = Phase::Ready;
@@ -1198,6 +1239,18 @@ fn on_line(app: &AppHandle, id: &str, line: String) {
     if let Some(name) = joined {
         let (app, id) = (app.clone(), id.to_string());
         std::thread::spawn(move || verify_player(&app, &id, &name));
+    }
+    if let Some(radius) = pregenerated {
+        let paths = app.state::<AppState>().paths.clone();
+        if let Some(mut config) = servidor::find(&paths, id) {
+            config.pregenerated = Some(radius);
+            let _ = servidor::save(&config);
+        }
+        note(app, id, t!(
+            "[Parabellum] Listo: el mundo quedó generado {radius} bloques alrededor del spawn. Al explorar ahí, el servidor ya no tiene que generarlo.",
+            "[Parabellum] Done: the world is generated {radius} blocks around spawn. When exploring there, the server no longer has to generate it."
+        ));
+        emit(app);
     }
     if left {
         retry_moves(app, id);
@@ -1516,6 +1569,96 @@ fn verify_player(app: &AppHandle, id: &str, name: &str) {
             "{name} was kicked: they are not playing from Parabellum with {name}'s account. If it is your friend, have them join from Parabellum (or turn off the check in Settings)."
         ),
     );
+}
+
+/// Una línea de Parabellum en la consola del servidor.
+fn note(app: &AppHandle, id: &str, text: String) {
+    if let Some(run) = hosting(app).running.lock().unwrap().get_mut(id) {
+        run.console.push_back(text.clone());
+        run.pending.push(text);
+    }
+}
+
+/// Pregenera el mundo con Chunky: lo pone en el servidor si falta (de Modrinth, para su loader y
+/// versión), lo enciende (o lo reinicia, si Chunky es nuevo) y le pide generar `radius` bloques
+/// alrededor del spawn. El avance llega por la consola (`servidor::chunky_line`).
+pub async fn pregenerate(app: &AppHandle, id: &str, radius: u32) -> Result<(), String> {
+    let paths = app.state::<AppState>().paths.clone();
+    let config = servidor::find(&paths, id).ok_or(missing())?;
+    let loaders: &[&str] = match config.loader.to_lowercase().as_str() {
+        "fabric" => &["fabric"],
+        "quilt" => &["quilt", "fabric"],
+        "forge" => &["forge"],
+        "neoforge" => &["neoforge"],
+        _ => {
+            return Err(t!(
+                "Pregenerar necesita un servidor con mods (Fabric, Forge o NeoForge): el de Minecraft sin mods no deja agregar Chunky.",
+                "Pregenerating needs a server with mods (Fabric, Forge or NeoForge): plain Minecraft does not allow adding Chunky."
+            ))
+        }
+    };
+    let radius = radius.clamp(250, 5000);
+    let mut added = false;
+    if !servidor::chunky_installed(&config.folder) {
+        let versions = crate::modrinth::project_versions(servidor::CHUNKY_PROJECT, loaders, &[config.minecraft.as_str()]).await?;
+        let version = versions.first().ok_or(t!(
+            "Chunky (el mod que pregenera) todavía no tiene versión para {} {}.",
+            "Chunky (the mod that pregenerates) has no version for {} {} yet.",
+            config.loader,
+            config.minecraft
+        ))?;
+        let file = crate::download::FileDownload {
+            url: version.url.clone(),
+            path: config.folder.join("mods").join(&version.filename),
+            sha1: Some(version.sha1.clone()).filter(|s| !s.is_empty()),
+            size: Some(version.size).filter(|s| *s > 0),
+        };
+        crate::download::download_all(vec![file], |_, _, _, _| {}).await?;
+        added = true;
+    }
+    // Chunky se carga al arrancar: si es nuevo y el servidor está encendido, se reinicia.
+    if is_running(app, id) && added {
+        note(app, id, t!("[Parabellum] Se agregó Chunky: reiniciando para pregenerar…", "[Parabellum] Chunky was added: restarting to pregenerate…"));
+        restart_server(app, id);
+        for _ in 0..120 {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            if !is_running(app, id) {
+                break;
+            }
+        }
+    }
+    if !is_running(app, id) {
+        start_server(app, id)?;
+        emit(app);
+    }
+    // Hasta 10 minutos para que arranque (los modpacks grandes tardan).
+    for _ in 0..600 {
+        if is_ready(app, id) {
+            break;
+        }
+        if !is_running(app, id) {
+            return Err(t!("El servidor se apagó antes de pregenerar. Revisa la consola.", "The server stopped before pregenerating. Check the console."));
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    if !is_ready(app, id) {
+        return Err(t!("El servidor tardó demasiado en encender.", "The server took too long to start."));
+    }
+    if let Some(run) = hosting(app).running.lock().unwrap().get_mut(id) {
+        run.pregen_radius = Some(radius);
+        run.pregen = None;
+    }
+    for command in ["chunky spawn".to_string(), format!("chunky radius {radius}"), "chunky quiet 3".into(), "chunky start".into()] {
+        send_command(app, id, &command);
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+    emit(app);
+    Ok(())
+}
+
+/// Pausa la pregeneración (Chunky guarda dónde iba; «Pregenerar» otra vez sigue sin repetir lo hecho).
+pub fn pause_pregeneration(app: &AppHandle, id: &str) {
+    send_command(app, id, "chunky pause");
 }
 
 pub fn is_running(app: &AppHandle, id: &str) -> bool {

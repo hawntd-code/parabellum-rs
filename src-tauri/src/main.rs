@@ -15,6 +15,8 @@ mod config;
 mod content;
 mod diagnostico;
 mod cuenta;
+mod culpable;
+mod descargas;
 mod download;
 mod favoritos;
 mod drive;
@@ -119,6 +121,8 @@ struct Versions {
     mojang: bool,
     releases: Vec<mojang::Release>,
     installed: Vec<String>,
+    /// Versiones que están en el catálogo de Drive (se bajan de ahí aunque Mojang esté bloqueado).
+    drive: Vec<String>,
     /// Loaders ya instalados (para crear instancias sin conexión).
     loaders: Vec<loaders::Installed>,
     message: Option<String>,
@@ -179,6 +183,7 @@ fn guardar_ajustes(app: AppHandle, state: State<AppState>, mut ajustes: Settings
     }
     ajustes.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
     *state.settings.lock().unwrap() = ajustes.clone();
+    descargas::configure(ajustes.download_parallel, ajustes.download_limit_mb);
     if language_changed {
         idioma::set(&ajustes.language);
         // El menú del icono junto al reloj se vuelve a crear con los textos nuevos.
@@ -251,6 +256,33 @@ fn favorito_mod(app: AppHandle, state: State<AppState>, proyecto: settings::Favo
     Ok(list)
 }
 
+/// Pone el receptor de arrastre propio en la ventana (ver plataforma::arrastre): la interfaz lo pide al
+/// arrancar. Los archivos llegan igual que antes y, en Mensajes, también imágenes sin archivo.
+#[tauri::command]
+fn activar_arrastre(app: AppHandle, state: State<AppState>) {
+    if let Some(window) = app.get_webview_window("main") {
+        plataforma::arrastre::install(&window, state.paths.data.join("temporal"));
+    }
+}
+
+/// Con Mensajes abierto se aceptan imágenes arrastradas sin archivo (desde el navegador, Discord…).
+#[tauri::command]
+fn arrastre_imagenes(activo: bool) {
+    plataforma::arrastre::accept_images(activo);
+}
+
+/// La imagen del portapapeles como data URL (lo que la ventana no sabe pegar sola: un archivo copiado en
+/// el Explorador, un HEIC, un mapa de bits de Paint…). None si no hay imagen.
+#[tauri::command]
+async fn imagen_portapapeles(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let temp = state.paths.data.join("temporal");
+    let file = tauri::async_runtime::spawn_blocking(move || plataforma::arrastre::clipboard_image(&temp)).await.map_err(|e| e.to_string())??;
+    match file {
+        Some(file) => tauri::async_runtime::spawn_blocking(move || cuenta::leer_imagen(file.to_string_lossy().to_string())).await.map_err(|e| e.to_string())?.map(Some),
+        None => Ok(None),
+    }
+}
+
 /// Una imagen que la ventana no sabe abrir (HEIC, TIFF…), convertida por Windows a PNG. `datos`: el
 /// archivo en base64. Devuelve un data URL.
 #[tauri::command]
@@ -311,9 +343,11 @@ fn listar_instancias(state: State<AppState>) -> Vec<Instance> {
 async fn listar_versiones(state: State<'_, AppState>) -> Result<Versions, String> {
     let installed = mojang::installed_versions(&state.paths);
     let loaders = loaders::installed(&state.paths);
-    Ok(match mojang::list().await {
-        Ok(releases) => Versions { mojang: true, releases, installed, loaders, message: None },
-        Err(message) => Versions { mojang: false, releases: Vec::new(), installed, loaders, message: Some(message) },
+    let (releases, catalog) = futures::join!(mojang::list(), catalog::current(&state.paths));
+    let drive = catalog.entries.iter().filter(|e| e.manifest.is_base()).map(|e| e.manifest.minecraft_version.clone()).collect();
+    Ok(match releases {
+        Ok(releases) => Versions { mojang: true, releases, installed, drive, loaders, message: None },
+        Err(message) => Versions { mojang: false, releases: Vec::new(), installed, drive, loaders, message: Some(message) },
     })
 }
 
@@ -375,16 +409,31 @@ async fn versiones_loader(state: State<'_, AppState>, loader: String, minecraft:
     })
 }
 
-/// Descarga (o completa) una versión vanilla. Sin conexión sirve si ya estaba descargada.
+/// Descarga (o completa) una versión vanilla. Primero del catálogo de Google Drive, si tiene esa versión
+/// (pedido de Juan: así sirve en cualquier red, también donde Mojang está bloqueado, y solo baja lo que
+/// falte); si no, de Mojang. Sin conexión sirve si ya estaba descargada.
 async fn install_vanilla(version: &str, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<(), String> {
     let installed = mojang::installed_versions(paths).iter().any(|v| v == version);
+    let catalog = catalog::current(paths).await;
+    let mut drive_error = None;
+    if let Some(base) = catalog::base_for(&catalog.entries, version).filter(|b| b.source == catalog::Source::Drive || !installed) {
+        match catalog::install_base(base, paths, progress.clone()).await {
+            Ok(()) => return Ok(()),
+            Err(error) if error == descargas::cancelled_error() => return Err(error),
+            // Si Drive falla (por ejemplo, limitó las descargas de hoy), se intenta con Mojang.
+            Err(error) => drive_error = Some(error),
+        }
+    }
     match mojang::list().await {
         Ok(releases) => {
             let release = releases.into_iter().find(|r| r.id == version).ok_or(t!("Mojang no tiene la versión {version}.", "Mojang does not have version {version}."))?;
             // Se ejecuta siempre: si ya estaba descargada termina al momento y completa lo que faltara.
             mojang::install(&release, paths, progress).await
         }
-        Err(message) if !installed => Err(message),
+        Err(message) if !installed => Err(match drive_error {
+            Some(drive) => t!("No se pudo bajar Minecraft {version} de Google Drive ({drive}) ni de Mojang: {message}", "Minecraft {version} could not be downloaded from Google Drive ({drive}) or from Mojang: {message}"),
+            None => message,
+        }),
         Err(_) => Ok(()),
     }
 }
@@ -442,46 +491,48 @@ async fn install_game(
 
 #[tauri::command]
 async fn crear_instancia(
-    app: AppHandle,
     state: State<'_, AppState>,
     nombre: String,
     version: String,
     loader: Option<String>,
     version_loader: Option<String>,
+    tarea: Option<String>,
 ) -> Result<Instance, String> {
     let paths = state.paths.clone();
     instances::folder_for(&nombre, &paths).and_then(|folder| {
         if folder.exists() { Err(t!("Ya tienes una instancia llamada \"{}\".", "You already have an instance named \"{}\".", nombre.trim())) } else { Ok(()) }
     })?;
+    let retry = serde_json::json!({ "nombre": nombre, "version": version, "loader": loader, "versionLoader": version_loader });
     let loader = loader.as_deref().filter(|l| !l.eq_ignore_ascii_case("vanilla")).map(parse_loader).transpose()?;
-    let emitter = app.clone();
-    let (version_id, loader_version) = install_game(&version, loader, version_loader.as_deref(), &paths, move |stage, fraction| {
-        let _ = emitter.emit("progreso", Progress { task: "crear".into(), stage, fraction });
-    })
-    .await?;
-    let game = GameVersion {
-        version_id: &version_id,
-        minecraft: &version,
-        loader: loader.map(|l| l.name()).zip(loader_version.as_deref()),
-    };
-    instances::create(&nombre, &game, &paths)
+    let job = descargas::start(tarea, "version", nombre.trim()).queued().retry("crear_instancia", retry);
+    let instance = job
+        .run(async {
+            let (version_id, loader_version) = install_game(&version, loader, version_loader.as_deref(), &paths, job.progress("crear")).await?;
+            let game = GameVersion {
+                version_id: &version_id,
+                minecraft: &version,
+                loader: loader.map(|l| l.name()).zip(loader_version.as_deref()),
+            };
+            instances::create(&nombre, &game, &paths)
+        })
+        .await?;
+    job.instance(Some(instance.id.clone()));
+    Ok(instance)
 }
 
 /// Cambia la versión del loader de una instancia (la descarga si hace falta).
 #[tauri::command]
-async fn cambiar_loader(app: AppHandle, state: State<'_, AppState>, id: String, version_loader: String) -> Result<Instance, String> {
+async fn cambiar_loader(state: State<'_, AppState>, id: String, version_loader: String) -> Result<Instance, String> {
     let instance = instance_or_error(&state, &id)?;
     if state.games.lock().unwrap().contains_key(&id) {
         return Err(t!("Cierra el juego antes de cambiar la versión.", "Close the game before changing the version."));
     }
     let loader = parse_loader(&instance.loader).map_err(|_| t!("Esta instancia es vanilla: no tiene loader.", "This instance is vanilla: it has no loader."))?;
     let paths = state.paths.clone();
-    let emitter = app.clone();
+    let job = descargas::start(None, "version", format!("{} · {} {version_loader}", instance.name, loader.name()));
+    job.instance(Some(id.clone()));
     let (version_id, loader_version) =
-        install_game(&instance.minecraft_version, Some(loader), Some(&version_loader), &paths, move |stage, fraction| {
-            let _ = emitter.emit("progreso", Progress { task: "loader".into(), stage, fraction });
-        })
-        .await?;
+        job.run(install_game(&instance.minecraft_version, Some(loader), Some(&version_loader), &paths, job.progress("loader"))).await?;
     let game = GameVersion {
         version_id: &version_id,
         minecraft: &instance.minecraft_version,
@@ -513,9 +564,15 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
     if state.games.lock().unwrap().contains_key(&id) {
         return Err(t!("Este juego ya está abierto.", "This game is already open."));
     }
+    // Si «Buscar el mod culpable» quedó a medias (se cerró Parabellum), los mods vuelven a como estaban.
+    culpable::restore(&instance);
     // Que el modpack esté completo: lo que falte se baja (o se repone) antes de abrir el juego.
     let cached = state.catalog.lock().unwrap().clone();
-    let completed = ensure_complete(&instance, &paths, &state.config, cached, false, progress_emitter(&app, "jugar")).await;
+    // En el gestor de descargas solo sale si de verdad falta algo (`quiet`).
+    let job = descargas::start(None, "jugar", instance.name.clone()).quiet();
+    job.instance(Some(id.clone()));
+    let completed = job.run(async { Ok(ensure_complete(&instance, &paths, &state.config, cached, false, job.progress("jugar")).await) }).await?;
+    drop(job);
     let missing_mods = &completed.missing_mods;
     if !missing_mods.is_empty() {
         let shown: Vec<&str> = missing_mods.iter().take(4).map(String::as_str).collect();
@@ -550,7 +607,14 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
     let (checked, check_settings, check_paths) = (instance.clone(), settings.clone(), paths.clone());
     let incomplete = tauri::async_runtime::spawn_blocking(move || launch::plan(&checked, &check_settings, &check_paths).is_ok_and(|p| !p.missing.is_empty())).await.unwrap_or(false);
     if incomplete {
-        let _ = install_vanilla(&instance.minecraft_version, &paths, progress_emitter(&app, "jugar")).await;
+        let job = descargas::start(None, "jugar", instance.name.clone()).quiet();
+        job.instance(Some(id.clone()));
+        // Si falla se intenta abrir igual (como antes); si lo cancelaste, no.
+        if let Err(error) = job.run(install_vanilla(&instance.minecraft_version, &paths, job.progress("jugar"))).await {
+            if error == descargas::cancelled_error() {
+                return Err(error);
+            }
+        }
     }
     let launched = instance.clone();
     let session = cuenta::session_arguments(&app);
@@ -840,28 +904,25 @@ async fn preparar_instalacion(
 }
 
 #[tauri::command]
-async fn instalar_contenido(app: AppHandle, state: State<'_, AppState>, id: String, archivos: Vec<modrinth::PlannedFile>) -> Result<(), String> {
+async fn instalar_contenido(state: State<'_, AppState>, id: String, archivos: Vec<modrinth::PlannedFile>, tarea: Option<String>) -> Result<(), String> {
     let instance = instance_or_error(&state, &id)?;
     // Con el juego abierto Windows no deja quitar los archivos viejos y quedarían duplicados.
     if archivos.iter().any(|f| f.replaces.is_some()) && state.games.lock().unwrap().contains_key(&id) {
         return Err(t!("Cierra el juego antes de actualizar o cambiar versiones.", "Close the game before updating or changing versions."));
     }
-    let name = match archivos.as_slice() {
+    let (name, title) = match archivos.as_slice() {
         [] => return Ok(()),
-        [only] => only.title.clone(),
-        many => format!("{} archivos", many.len()),
+        [only] => (only.title.clone(), only.title.clone()),
+        [first, rest @ ..] => (t!("{} archivos", "{} files", rest.len() + 1), t!("{} y {} más", "{} and {} more", first.title, rest.len())),
     };
-    let emitter = app.clone();
-    modrinth::install(&instance, &archivos, move |count, total, bytes, total_bytes| {
-        let _ = emitter.emit(
-            "progreso",
-            Progress {
-                task: "instalar".into(),
-                stage: t!("Descargando {name}… {count} de {total}", "Downloading {name}… {count} of {total}"),
-                fraction: bytes as f64 / total_bytes.max(1) as f64,
-            },
-        );
-    })
+    let job = descargas::start(tarea, "contenido", title)
+        .icon(archivos.iter().find(|f| !f.dependency).and_then(|f| f.icon_url.clone()))
+        .retry("instalar_contenido", serde_json::json!({ "id": id, "archivos": archivos }));
+    job.instance(Some(id.clone()));
+    let progress = job.progress("instalar");
+    job.run(modrinth::install(&instance, &archivos, move |count, total, bytes, total_bytes| {
+        progress(t!("Descargando {name}… {count} de {total}", "Downloading {name}… {count} of {total}"), bytes as f64 / total_bytes.max(1) as f64);
+    }))
     .await
 }
 
@@ -873,27 +934,18 @@ async fn buscar_actualizaciones(state: State<'_, AppState>, id: String) -> Resul
 
 /// Aplica actualizaciones; devuelve las que se dejaron fuera por no ser compatibles (con el motivo).
 #[tauri::command]
-async fn actualizar_contenido(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    archivos: Vec<modrinth::PlannedFile>,
-) -> Result<Vec<modrinth::HeldBack>, String> {
+async fn actualizar_contenido(state: State<'_, AppState>, id: String, archivos: Vec<modrinth::PlannedFile>) -> Result<Vec<modrinth::HeldBack>, String> {
     let instance = instance_or_error(&state, &id)?;
     if state.games.lock().unwrap().contains_key(&id) {
         return Err(t!("Cierra el juego antes de actualizar.", "Close the game before updating."));
     }
-    let emitter = app.clone();
-    modrinth::apply_updates(&instance, archivos, move |count, total, bytes, total_bytes| {
-        let _ = emitter.emit(
-            "progreso",
-            Progress {
-                task: "instalar".into(),
-                stage: t!("Actualizando… {count} de {total}", "Updating… {count} of {total}"),
-                fraction: bytes as f64 / total_bytes.max(1) as f64,
-            },
-        );
-    })
+    let job = descargas::start(None, "contenido", t!("Actualizaciones de {}", "Updates for {}", instance.name))
+        .retry("actualizar_contenido", serde_json::json!({ "id": id, "archivos": archivos }));
+    job.instance(Some(id.clone()));
+    let progress = job.progress("instalar");
+    job.run(modrinth::apply_updates(&instance, archivos, move |count, total, bytes, total_bytes| {
+        progress(t!("Actualizando… {count} de {total}", "Updating… {count} of {total}"), bytes as f64 / total_bytes.max(1) as f64);
+    }))
     .await
 }
 
@@ -1204,7 +1256,7 @@ async fn exportar_modpack(
 
 /// Instala un modpack desde un archivo (sin ruta, abre la ventana para elegirlo). None si se canceló.
 #[tauri::command]
-async fn importar_modpack(app: AppHandle, state: State<'_, AppState>, ruta: Option<String>) -> Result<Option<Imported>, String> {
+async fn importar_modpack(app: AppHandle, state: State<'_, AppState>, ruta: Option<String>, tarea: Option<String>) -> Result<Option<Imported>, String> {
     let file = match ruta {
         Some(path) => PathBuf::from(path),
         None => {
@@ -1221,9 +1273,13 @@ async fn importar_modpack(app: AppHandle, state: State<'_, AppState>, ruta: Opti
         }
     };
     let running: HashSet<String> = state.games.lock().unwrap().keys().cloned().collect();
-    let progress = progress_emitter(&app, "importar");
+    let title = file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let job = descargas::start(tarea, "modpack", title).queued().retry("importar_modpack", serde_json::json!({ "ruta": file }));
     let ram = state.settings.lock().unwrap().ram_gb;
-    import_modpack(&file, &state.paths, None, None, serde_json::json!({ "source": "archivo" }), &running, ram, progress).await.map(Some)
+    let imported = job.run(import_modpack(&file, &state.paths, None, None, serde_json::json!({ "source": "archivo" }), &running, ram, job.progress("importar"))).await?;
+    job.title(imported.name.clone());
+    job.instance(imported.id.clone());
+    Ok(Some(imported))
 }
 
 /// Instancias de CurseForge, Prism y MultiMC encontradas en este PC.
@@ -1279,17 +1335,41 @@ async fn import_external(folder: &Path, paths: &Paths, progress: impl Fn(String,
 }
 
 #[tauri::command]
-async fn importar_externa(app: AppHandle, state: State<'_, AppState>, carpeta: String) -> Result<Imported, String> {
-    import_external(Path::new(&carpeta), &state.paths, progress_emitter(&app, "importar")).await
+async fn importar_externa(state: State<'_, AppState>, carpeta: String, tarea: Option<String>) -> Result<Imported, String> {
+    let title = Path::new(&carpeta).file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let job = descargas::start(tarea, "importar", title).queued().retry("importar_externa", serde_json::json!({ "carpeta": carpeta }));
+    let imported = job.run(import_external(Path::new(&carpeta), &state.paths, job.progress("importar"))).await?;
+    job.title(imported.name.clone());
+    job.instance(imported.id.clone());
+    Ok(imported)
 }
 
 /// Instala un modpack de Modrinth como instancia nueva.
 #[tauri::command]
-async fn instalar_modpack(app: AppHandle, state: State<'_, AppState>, proyecto: String, version: Option<String>) -> Result<Imported, String> {
+async fn instalar_modpack(
+    state: State<'_, AppState>,
+    proyecto: String,
+    version: Option<String>,
+    titulo: Option<String>,
+    icono: Option<String>,
+    tarea: Option<String>,
+) -> Result<Imported, String> {
+    let retry = serde_json::json!({ "proyecto": proyecto, "version": version, "titulo": titulo, "icono": icono });
+    let job = descargas::start(tarea, "modpack", titulo.clone().unwrap_or_else(|| t!("Modpack de Modrinth", "Modrinth modpack")))
+        .queued()
+        .icon(icono.filter(|url| url.starts_with("https://")))
+        .retry("instalar_modpack", retry);
+    let imported = job.run(install_modrinth_modpack(&state, &proyecto, version.as_deref(), &job)).await?;
+    job.instance(imported.id.clone());
+    Ok(imported)
+}
+
+async fn install_modrinth_modpack(state: &AppState, proyecto: &str, version: Option<&str>, job: &descargas::Job) -> Result<Imported, String> {
     let paths = state.paths.clone();
-    let progress = progress_emitter(&app, "importar");
+    let progress = job.progress("importar");
     progress(t!("Descargando el modpack…", "Downloading the modpack…"), 0.0);
-    let download = modrinth::download_modpack(&proyecto, version.as_deref(), &paths.data.join("temporal")).await?;
+    let download = modrinth::download_modpack(proyecto, version, &paths.data.join("temporal")).await?;
+    job.title(download.title.clone());
     let icon = match &download.icon_url {
         Some(url) => modrinth::download_icon(url).await,
         None => None,
@@ -1309,27 +1389,29 @@ async fn instalar_modpack(app: AppHandle, state: State<'_, AppState>, proyecto: 
 
 /// Arma en este PC una instancia que compartió un amigo por el chat. Devuelve su id.
 #[tauri::command]
-async fn instalar_compartida(app: AppHandle, state: State<'_, AppState>, texto: String) -> Result<String, String> {
+async fn instalar_compartida(state: State<'_, AppState>, texto: String, tarea: Option<String>) -> Result<String, String> {
     let recipe = compartir::decode(&texto).ok_or(t!("Esa instancia compartida no se puede leer.", "That shared instance cannot be read."))?;
     match recipe.source.as_str() {
         "modrinth" => {
             let project = recipe.project.clone().unwrap_or_default();
-            let imported = instalar_modpack(app, state, project, recipe.version.clone()).await?;
+            let imported = instalar_modpack(state, project, recipe.version.clone(), Some(recipe.name.clone()), None, tarea).await?;
             imported.id.ok_or(t!("No se creó la instancia.", "The instance was not created."))
         }
         "catalogo" => {
             let id = recipe.catalog.clone().unwrap_or_default();
-            let installed = instalar_de_catalogo(app, state, id, None).await.map_err(|error| {
+            let installed = instalar_de_catalogo(state, id, None, tarea).await.map_err(|error| {
+                if error == descargas::cancelled_error() {
+                    return error;
+                }
                 t!("{error} Pídele a quien la compartió que la suba al catálogo de Drive, o que te pase el paquete por USB.", "{error} Ask whoever shared it to upload it to the Drive catalog, or to give you the package on a USB drive.")
             })?;
             installed.id.ok_or(t!("No se creó la instancia.", "The instance was not created."))
         }
         _ => {
-            let emitter = app.clone();
-            let progress = move |stage: String, fraction: f64| {
-                let _ = emitter.emit("progreso", Progress { task: "compartida".into(), stage, fraction });
-            };
-            install_recipe_mods(&recipe, &state.paths, progress).await.map(|instance| instance.id)
+            let job = descargas::start(tarea, "compartida", recipe.name.clone()).queued().retry("instalar_compartida", serde_json::json!({ "texto": texto }));
+            let instance = job.run(install_recipe_mods(&recipe, &state.paths, job.progress("compartida"))).await?;
+            job.instance(Some(instance.id.clone()));
+            Ok(instance.id)
         }
     }
 }
@@ -1432,6 +1514,140 @@ async fn probar_y_arreglar(app: AppHandle, state: State<'_, AppState>, id: Strin
     auto_fix(&id, &state.paths, &state.config, cached, &settings, session, on_start, progress_emitter(&app, "doctor")).await
 }
 
+/// Abre el juego, espera al menú principal (8 minutos como mucho) y lo cierra. Devuelve (cómo le fue:
+/// segundos hasta el menú o el código con que se cerró, cuándo empezó).
+async fn probe_launch(
+    instance: &Instance,
+    settings: &Settings,
+    paths: &Paths,
+    session: &[String],
+    on_start: impl Fn(Option<u32>) + Send + Sync + 'static,
+) -> Result<(Result<u64, Option<i32>>, i64), String> {
+    let (launched, settings, paths, session) = (instance.clone(), settings.clone(), paths.clone(), session.to_vec());
+    tauri::async_runtime::spawn_blocking(move || -> Result<(Result<u64, Option<i32>>, i64), String> {
+        let mut plan = launch::plan(&launched, &settings, &paths)?;
+        plan.add_jvm_arguments(session);
+        diagnostico::set_aside_log(&launched);
+        let started = chrono::Utc::now().timestamp_millis();
+        let mut child = launch::start(&plan, &launched)?;
+        on_start(Some(child.id()));
+        let outcome = diagnostico::wait_for_menu(&mut child, &launched, started, 480);
+        launch::close_helpers(&launched);
+        launch::forget_pid(&launched);
+        on_start(None);
+        Ok((outcome, started))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Resultado de «Buscar el mod culpable».
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Culprit {
+    /// El archivo del mod culpable (en la carpeta mods) y su nombre.
+    file: Option<String>,
+    name: Option<String>,
+    /// Los que dependen de él (sin él tampoco cargan): nombres y archivos.
+    dependents: Vec<String>,
+    dependent_files: Vec<String>,
+    /// Veces que se abrió el juego.
+    launches: u32,
+    /// Sin ningún mod tampoco llega al menú: el problema no es un mod.
+    not_a_mod: bool,
+    /// Quedaron varios sospechosos (dependen unos de otros) o se detuvo antes.
+    suspects: Vec<String>,
+}
+
+/// Búsquedas en marcha que se pidió detener (por id de instancia).
+static STOP_SEARCH: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// «Buscar el mod culpable» (ver culpable.rs): abre el juego varias veces desactivando mods por mitades.
+#[tauri::command]
+async fn buscar_culpable(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<Culprit, String> {
+    if state.games.lock().unwrap().contains_key(&id) {
+        return Err(t!("Cierra el juego antes de probarlo.", "Close the game before testing it."));
+    }
+    let instance = instance_or_error(&state, &id)?;
+    culpable::restore(&instance);
+    STOP_SEARCH.lock().unwrap().retain(|i| i != &id);
+    let mods = {
+        let instance = instance.clone();
+        culpable::Mods::new(tauri::async_runtime::spawn_blocking(move || diagnostico::enabled_mods(&instance)).await.map_err(|e| e.to_string())?)
+    };
+    if mods.files.is_empty() {
+        return Err(t!("Esta instancia no tiene mods activos: el problema no es un mod.", "This instance has no active mods: the problem is not a mod."));
+    }
+    let settings = state.settings.lock().unwrap().clone();
+    let session = cuenta::session_arguments(&app);
+    let progress = progress_emitter(&app, "doctor");
+    let (running, key) = (app.clone(), id.clone());
+    let on_start = move |pid: Option<u32>| {
+        let state = running.state::<AppState>();
+        match pid {
+            Some(pid) => state.games.lock().unwrap().insert(key.clone(), pid),
+            None => state.games.lock().unwrap().remove(&key),
+        };
+    };
+    let all: std::collections::BTreeSet<String> = mods.files.iter().map(|(f, _)| f.clone()).collect();
+    // Abre con esos mods desactivados y deja todo como estaba. true: llegó al menú.
+    let test = |disabled: std::collections::BTreeSet<String>| {
+        let (instance, settings, paths, session, on_start) = (instance.clone(), settings.clone(), state.paths.clone(), session.clone(), on_start.clone());
+        async move {
+            culpable::disable(&instance, &disabled)?;
+            let outcome = probe_launch(&instance, &settings, &paths, &session, on_start).await;
+            culpable::restore(&instance);
+            outcome.map(|(result, _)| result.is_ok())
+        }
+    };
+    let estimate = (all.len() as f64).log2().ceil() as u32 + 1;
+    let mut result = Culprit { file: None, name: None, dependents: Vec::new(), dependent_files: Vec::new(), launches: 1, not_a_mod: false, suspects: Vec::new() };
+    progress(t!("Abriendo el juego sin ningún mod (prueba 1 de ~{estimate})…", "Opening the game without any mods (test 1 of ~{estimate})…"), 0.05);
+    if !test(all.clone()).await? {
+        result.not_a_mod = true;
+        return Ok(result);
+    }
+    let mut candidates = all.clone();
+    while let Some(disabled) = mods.split(&candidates) {
+        if STOP_SEARCH.lock().unwrap().contains(&id) || result.launches >= 20 {
+            break;
+        }
+        result.launches += 1;
+        let launch = result.launches;
+        progress(
+            t!(
+                "Abriendo el juego con la mitad de los sospechosos (prueba {launch} de ~{estimate}; quedan {})…",
+                "Opening the game with half of the suspects (test {launch} of ~{estimate}; {} left)…",
+                candidates.len()
+            ),
+            launch as f64 / estimate.max(launch) as f64,
+        );
+        let opens = test(disabled.clone()).await?;
+        candidates = if opens { candidates.intersection(&disabled).cloned().collect() } else { candidates.difference(&disabled).cloned().collect() };
+        if candidates.is_empty() {
+            break;
+        }
+    }
+    if candidates.len() == 1 {
+        let file = candidates.iter().next().unwrap().clone();
+        let dependents = mods.closure(&std::collections::BTreeSet::from([file.clone()]));
+        result.dependent_files = dependents.iter().filter(|f| **f != file).cloned().collect();
+        result.dependents = result.dependent_files.iter().map(|f| mods.name(f)).collect();
+        result.name = Some(mods.name(&file));
+        result.file = Some(file);
+    } else {
+        result.suspects = candidates.iter().map(|f| mods.name(f)).collect();
+    }
+    progress(t!("Listo", "Done"), 1.0);
+    Ok(result)
+}
+
+/// Detiene «Buscar el mod culpable» al terminar la prueba en curso.
+#[tauri::command]
+fn detener_busqueda(id: String) {
+    STOP_SEARCH.lock().unwrap().push(id);
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn auto_fix(
     id: &str,
@@ -1472,21 +1688,7 @@ async fn auto_fix(
         let launch = report.attempts;
         progress(t!("Abriendo el juego para probar (intento {launch})…", "Opening the game to test (attempt {launch})…"), 0.3);
         let ram_gb = instance.ram_gb.unwrap_or(settings.ram_gb);
-        let (launched, settings_copy, paths_copy, session_copy, started_hook) = (instance.clone(), settings.clone(), paths.clone(), session.clone(), on_start.clone());
-        let probe = tauri::async_runtime::spawn_blocking(move || -> Result<(Result<u64, Option<i32>>, i64), String> {
-            let mut plan = launch::plan(&launched, &settings_copy, &paths_copy)?;
-            plan.add_jvm_arguments(session_copy);
-            let started = chrono::Utc::now().timestamp_millis();
-            let mut child = launch::start(&plan, &launched)?;
-            started_hook(Some(child.id()));
-            let outcome = diagnostico::wait_for_menu(&mut child, &launched, started, 480);
-            launch::close_helpers(&launched);
-            launch::forget_pid(&launched);
-            started_hook(None);
-            Ok((outcome, started))
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+        let probe = probe_launch(&instance, settings, paths, &session, on_start.clone()).await?;
         match probe {
             (Ok(_), started) => {
                 report.ok = true;
@@ -1714,13 +1916,48 @@ async fn apply_known_fixes(instance: &Instance, default_ram: u32, progress: impl
 
 /// Comprueba la huella de cada archivo del modpack y repone lo que falte o esté dañado.
 #[tauri::command]
-async fn verificar_instancia(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<integridad::Report, String> {
+async fn verificar_instancia(state: State<'_, AppState>, id: String) -> Result<integridad::Report, String> {
     let instance = instance_or_error(&state, &id)?;
     if state.games.lock().unwrap().contains_key(&id) {
         return Err(t!("Cierra el juego antes de verificar sus archivos.", "Close the game before checking its files."));
     }
     let cached = state.catalog.lock().unwrap().clone();
-    Ok(ensure_complete(&instance, &state.paths, &state.config, cached, true, progress_emitter(&app, "verificar")).await)
+    let job = descargas::start(None, "verificar", instance.name.clone()).retry("verificar_instancia", serde_json::json!({ "id": id }));
+    job.instance(Some(id.clone()));
+    job.run(async { Ok(ensure_complete(&instance, &state.paths, &state.config, cached, true, job.progress("verificar")).await) }).await
+}
+
+/// Las tareas del gestor de descargas (ver descargas.rs), las más nuevas primero.
+#[tauri::command]
+fn lista_descargas() -> Vec<descargas::Task> {
+    descargas::list()
+}
+
+#[tauri::command]
+fn cancelar_descarga(id: String) -> bool {
+    descargas::cancel(&id)
+}
+
+/// Quita del panel una descarga terminada; sin id, todas las terminadas.
+#[tauri::command]
+fn quitar_descarga(id: Option<String>) {
+    descargas::remove(id.as_deref());
+}
+
+/// Descargas simultáneas (1 a 3) y límite de velocidad en MB/s (0 = sin límite), desde el panel.
+#[tauri::command]
+fn ajustes_descargas(app: AppHandle, state: State<AppState>, simultaneas: u32, limite: f64) -> Result<Settings, String> {
+    let settings = {
+        let mut settings = state.settings.lock().unwrap();
+        settings.download_parallel = simultaneas;
+        settings.download_limit_mb = limite;
+        settings.normalize()?;
+        settings.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
+        settings.clone()
+    };
+    descargas::configure(settings.download_parallel, settings.download_limit_mb);
+    let _ = app.emit("ajustes", settings.clone());
+    Ok(settings)
 }
 
 /// Instala un data pack de Modrinth dentro de un mundo de la instancia.
@@ -1771,7 +2008,7 @@ async fn catalogo(state: State<'_, AppState>, recargar: bool) -> Result<CatalogV
 
 /// Instala (o actualiza, o repara bajando solo lo dañado) un paquete del catálogo.
 #[tauri::command]
-async fn instalar_de_catalogo(app: AppHandle, state: State<'_, AppState>, id: String, reparar: Option<bool>) -> Result<catalog::CatalogInstall, String> {
+async fn instalar_de_catalogo(state: State<'_, AppState>, id: String, reparar: Option<bool>, tarea: Option<String>) -> Result<catalog::CatalogInstall, String> {
     let catalog = catalog_snapshot(&state, false).await;
     let entry = catalog
         .entries
@@ -1784,7 +2021,18 @@ async fn instalar_de_catalogo(app: AppHandle, state: State<'_, AppState>, id: St
             return Err(t!("Cierra el juego antes de actualizar este modpack.", "Close the game before updating this modpack."));
         }
     }
-    catalog::install(entry, &catalog.entries, &state.paths, &list, reparar.unwrap_or(false), progress_emitter(&app, "catalogo")).await
+    let job = descargas::start(tarea, "catalogo", entry.manifest.name.clone())
+        .queued()
+        .retry("instalar_de_catalogo", serde_json::json!({ "id": id, "reparar": reparar }));
+    let installed = job
+        .run(async {
+            // Después de esperar su turno: otra de la cola pudo instalar algo.
+            let list = instances::list(&state.paths);
+            catalog::install(entry, &catalog.entries, &state.paths, &list, reparar.unwrap_or(false), job.progress("catalogo")).await
+        })
+        .await?;
+    job.instance(installed.id.clone());
+    Ok(installed)
 }
 
 #[derive(Serialize)]
@@ -2159,6 +2407,108 @@ async fn subir_paquete_drive(app: AppHandle, state: State<'_, AppState>, modpack
     Ok(drive_result(uploaded, same))
 }
 
+/// Pregenera el mundo del servidor con Chunky (ver hosting::pregenerate).
+#[tauri::command]
+async fn pregenerar_mundo(app: AppHandle, id: String, radio: u32) -> Result<(), String> {
+    hosting::pregenerate(&app, &id, radio).await
+}
+
+#[tauri::command]
+fn pausar_pregeneracion(app: AppHandle, id: String) {
+    hosting::pause_pregeneration(&app, &id);
+}
+
+/// Para «Subir versiones de Minecraft»: las versiones estables de Mojang, cuáles ya están en Drive y el
+/// espacio del Drive con el que se publica.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DriveVersions {
+    releases: Vec<String>,
+    in_drive: Vec<String>,
+    email: Option<String>,
+    used: Option<u64>,
+    limit: Option<u64>,
+}
+
+#[tauri::command]
+async fn versiones_en_drive(state: State<'_, AppState>) -> Result<DriveVersions, String> {
+    if !is_creator(&state.paths) {
+        return Err(t!("Solo quien publica puede subir versiones.", "Only the publisher can upload versions."));
+    }
+    let releases = mojang::list().await?.into_iter().filter(|r| r.kind == "release").map(|r| r.id).collect();
+    let catalog = catalog_snapshot(&state, true).await;
+    let in_drive = catalog.entries.iter().filter(|e| e.manifest.is_base() && e.source == catalog::Source::Drive).map(|e| e.manifest.minecraft_version.clone()).collect();
+    let publisher = drive_publisher(&state).await?;
+    let storage = match &publisher {
+        Some(p) => p.storage().await.ok(),
+        None => None,
+    };
+    Ok(DriveVersions { releases, in_drive, email: publisher.map(|p| p.email().to_string()), used: storage.map(|s| s.0), limit: storage.and_then(|s| s.1) })
+}
+
+/// Sube a Drive Minecraft de esas versiones (paquetes base), para que se bajen de ahí en cualquier red,
+/// también donde Mojang está bloqueado (pedido de Juan). Las que ya están en Drive se saltan. Cada una
+/// se baja de Mojang si falta, se empaqueta, se sube y se borra el zip de este PC. Es una tarea del
+/// gestor de descargas (se ve su avance; cancelar la para entre versiones o mientras baja de Mojang).
+#[tauri::command]
+async fn subir_versiones_drive(state: State<'_, AppState>, versiones: Vec<String>, tarea: Option<String>) -> Result<String, String> {
+    if !is_creator(&state.paths) {
+        return Err(t!("Solo quien publica puede subir versiones.", "Only the publisher can upload versions."));
+    }
+    let publisher = drive_publisher(&state).await?.ok_or(t!("Primero conecta Drive.", "Connect Drive first."))?;
+    let count = versiones.len();
+    let job = descargas::start(tarea, "drive", t!("Subir {count} versiones de Minecraft a Drive", "Upload {count} Minecraft versions to Drive"));
+    let progress = job.progress("drive");
+    let paths = state.paths.clone();
+    let out = paths.data.join("temporal").join("versiones-drive");
+    let summary = job
+        .run(async {
+            let releases = mojang::list().await?;
+            let catalog = catalog_snapshot(&state, true).await;
+            let (mut uploaded, mut skipped) = (Vec::new(), Vec::new());
+            for (index, version) in versiones.iter().enumerate() {
+                descargas::check()?;
+                // Avance total: cada versión es una parte igual (bajar 40 %, empaquetar 20 %, subir 40 %).
+                let (part, parts) = (index as f64, count.max(1) as f64);
+                if catalog::base_for(&catalog.entries, version).is_some_and(|e| e.source == catalog::Source::Drive) {
+                    skipped.push(version.clone());
+                    continue;
+                }
+                let release = releases.iter().find(|r| &r.id == version).ok_or(t!("Mojang no tiene la versión {version}.", "Mojang does not have version {version}."))?;
+                // De Mojang (no de Drive: es lo que se va a subir).
+                let report = progress.clone();
+                let step = format!("{version} ({} / {count})", index + 1);
+                let label = step.clone();
+                mojang::install(release, &paths, move |stage, fraction| report(format!("{label}: {stage}"), (part + fraction * 0.4) / parts)).await?;
+                let (report, label, minecraft, from, to) = (progress.clone(), step.clone(), version.clone(), paths.clone(), out.clone());
+                let (zip, json) = tauri::async_runtime::spawn_blocking(move || {
+                    packs::export_base(&minecraft, &from, &to, |stage, fraction| report(format!("{label}: {stage}"), (part + 0.4 + fraction * 0.2) / parts))
+                })
+                .await
+                .map_err(|e| e.to_string())??;
+                let report = progress.clone();
+                publisher.publish(&out, &upload_order(vec![zip.clone(), json.clone()]), |stage, fraction| report(format!("{step}: {stage}"), (part + 0.6 + fraction * 0.4) / parts)).await?;
+                let _ = std::fs::remove_file(&zip);
+                let _ = std::fs::remove_file(&json);
+                uploaded.push(version.clone());
+            }
+            *state.catalog.lock().unwrap() = None;
+            Ok(match (uploaded.len(), skipped.len()) {
+                (0, _) => t!("Ya estaban en Drive: no hubo que subir nada.", "They were already on Drive: nothing had to be uploaded."),
+                (_, 0) => t!("Listo: se subieron a Drive {}. Ya se bajan de ahí en cualquier red.", "Done: {} were uploaded to Drive. They now download from there on any network.", uploaded.join(", ")),
+                _ => t!(
+                    "Listo: se subieron a Drive {} ({} ya estaban). Ya se bajan de ahí en cualquier red.",
+                    "Done: {} were uploaded to Drive ({} were already there). They now download from there on any network.",
+                    uploaded.join(", "),
+                    skipped.join(", ")
+                ),
+            })
+        })
+        .await;
+    let _ = std::fs::remove_dir_all(&out);
+    summary
+}
+
 /// Sube a Drive la carpeta que dejó «Publicar esta versión» (_parabellum o _parabellum-mac) y quita de ahí las versiones
 /// anteriores (a la papelera de Drive). Quien abra Parabellum se actualizará.
 #[tauri::command]
@@ -2339,6 +2689,7 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             juego::write_fonts(paths);
             plan.add_jvm_arguments([format!("-Dparabellum.fuentes={}", paths.data.join("fuentes").display())]);
             juego::install(&instance, settings.game_panel);
+            diagnostico::set_aside_log(&instance);
             let started_ms = chrono::Utc::now().timestamp_millis();
             let started = std::time::Instant::now();
             let mut child = launch::start(&plan, &instance)?;
@@ -3117,6 +3468,10 @@ fn main() {
             }
             adopt_running_games(app.handle());
             {
+                let settings = app.state::<AppState>().settings.lock().unwrap().clone();
+                descargas::init(app.handle(), settings.download_parallel, settings.download_limit_mb);
+            }
+            {
                 let state = app.state::<AppState>();
                 juego::write_fonts(&state.paths);
                 let running: Vec<String> = state.games.lock().unwrap().keys().cloned().collect();
@@ -3143,6 +3498,10 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             estado_inicial,
             guardar_ajustes,
+            lista_descargas,
+            cancelar_descarga,
+            quitar_descarga,
+            ajustes_descargas,
             panel_lateral,
             sonido_mensaje,
             convertir_imagen,
@@ -3218,6 +3577,15 @@ fn main() {
             reporte_problema,
             cuenta::salir_del_chat,
             cuenta::leer_imagen,
+            activar_arrastre,
+            versiones_en_drive,
+            pregenerar_mundo,
+            buscar_culpable,
+            detener_busqueda,
+            pausar_pregeneracion,
+            subir_versiones_drive,
+            arrastre_imagenes,
+            imagen_portapapeles,
             instalar_modpack,
             instalar_datapack,
             mostrar_archivo,

@@ -23,10 +23,11 @@
         <span id="crumb-text" data-tauri-drag-region>Inicio</span>
       </div>
       <div class="topbar-right" data-tauri-drag-region>
-        <div class="download-indicator hidden" id="download-indicator" title="Descargando">
+        <button class="download-indicator hidden" id="download-indicator" title="Descargas" aria-haspopup="dialog" aria-expanded="false">
           <svg><use href="#i-download"/></svg>
-          <span id="download-percent">0%</span>
-        </div>
+          <span id="download-percent"></span>
+          <i class="download-dot hidden" id="download-dot"></i>
+        </button>
         <button class="update-pill hidden" id="update-pill" title="Hay una versión nueva de Parabellum">
           <svg><use href="#i-update"/></svg><span id="update-text">Actualizar</span>
         </button>
@@ -257,6 +258,7 @@
             <div class="hosted-stats" id="hosted-stats"></div>
             <div class="conn-grid" id="hosted-connections"></div>
             <div id="hosted-problem"></div>
+            <div id="hosted-pregen"></div>
             <div class="tabs" id="hosted-tabs">
               <button class="tab active" data-hosted-tab="console"><svg><use href="#i-terminal"/></svg>Consola</button>
               <button class="tab" data-hosted-tab="players"><svg><use href="#i-user-plus"/></svg>Jugadores</button>
@@ -316,6 +318,7 @@
                   <button class="btn primary" id="hs-motd-save"><svg><use href="#i-check"/></svg>Guardar</button>
                 </div>
               </div>
+              <div class="card-panel pregen-card" id="hs-pregen"></div>
               <div id="hs-options"></div>
               <div class="card-panel host-left-out hidden" id="hs-left-box">
                 <h3 id="hs-left-title"></h3>
@@ -397,7 +400,7 @@
                 <button class="chat-new-below hidden" id="chat-new-below"></button>
                 <div class="chat-reply hidden" id="chat-reply"></div>
                 <div class="chat-composer">
-                  <button class="circle-btn" id="chat-attach" title="Enviar una imagen"><svg><use href="#i-image"/></svg></button>
+                  <button class="circle-btn" id="chat-attach" title="Enviar una imagen (también puedes pegarla o arrastrarla aquí)"><svg><use href="#i-image"/></svg></button>
                   <button class="circle-btn" id="chat-share" title="Compartir una instancia"><svg><use href="#i-cubes"/></svg></button>
                   <input type="file" id="chat-file" accept="image/*,.heic,.heif,.tif,.tiff,.ico,.avif,.jfif" class="hidden">
                   <textarea id="chat-input" rows="1" maxlength="2000" placeholder="Escribe un mensaje…" spellcheck="true"></textarea>
@@ -1140,6 +1143,30 @@
     </div>
   </div>
 
+  <!-- Subir versiones de Minecraft a Drive (solo quien publica) -->
+  <div class="overlay hidden" id="versions-drive-dialog">
+    <div class="modal small">
+      <div class="modal-head">
+        <h2>Subir versiones de Minecraft</h2>
+        <button class="circle-btn" id="vd-close" title="Cerrar"><svg><use href="#i-close"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <p class="muted small-text">Así se bajan de Google Drive en cualquier red, también donde Mojang está bloqueado. Cada una pesa unos 650 MB (el juego, sus sonidos e idiomas y Java).</p>
+        <p class="vd-storage" id="vd-storage"></p>
+        <div class="vd-picks">
+          <button class="btn small" id="vd-popular"><svg><use href="#i-star"/></svg>Las más jugadas</button>
+          <button class="btn small ghost" id="vd-none">Ninguna</button>
+        </div>
+        <div class="fav-list" id="vd-list"></div>
+        <p class="muted small-text" id="vd-status"></p>
+        <div class="modal-actions">
+          <button class="btn" id="vd-cancel">Cancelar</button>
+          <button class="btn primary" id="vd-upload" disabled><svg><use href="#i-upload"/></svg><span>Subir</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Icono del servidor: recortar y ajustar cualquier imagen a 64×64 -->
   <div class="overlay hidden" id="icon-dialog">
     <div class="modal small">
@@ -1227,9 +1254,46 @@
         <button class="btn ghost" id="doctor-report"><svg><use href="#i-flag"/></svg>Reportar</button>
         <span class="grow"></span>
         <button class="btn ghost" id="doctor-anyway">Jugar de todos modos</button>
+        <button class="btn hidden" id="doctor-bisect"><svg><use href="#i-search"/></svg><span>Buscar el mod culpable</span></button>
         <button class="btn" id="doctor-auto"><svg><use href="#i-play-outline"/></svg>Probar y arreglar solo</button>
         <button class="btn primary" id="doctor-fix-all"><svg><use href="#i-check"/></svg><span>Arreglar lo recomendado</span></button>
       </footer>
+    </div>
+  </div>
+
+  <!-- Gestor de descargas: se abre con la flecha de arriba (ver descargas.rs) -->
+  <div class="downloads-panel hidden" id="downloads-panel" role="dialog" aria-labelledby="downloads-title">
+    <div class="dlp-head">
+      <div class="dlp-heading">
+        <b id="downloads-title">Descargas</b>
+        <span class="dlp-summary" id="downloads-summary"></span>
+      </div>
+      <button class="circle-btn small" id="downloads-options" title="Opciones de descarga" aria-expanded="false"><svg><use href="#i-sliders"/></svg></button>
+      <button class="circle-btn small" id="downloads-close" title="Cerrar"><svg><use href="#i-close"/></svg></button>
+    </div>
+    <div class="dlp-options hidden" id="downloads-options-box">
+      <div class="dlp-option">
+        <span>Modpacks a la vez</span>
+        <div class="segmented small" id="downloads-parallel">
+          <button data-parallel="1">1</button><button data-parallel="2">2</button><button data-parallel="3">3</button>
+        </div>
+      </div>
+      <div class="dlp-option">
+        <label for="downloads-limit">Límite de velocidad</label>
+        <select id="downloads-limit">
+          <option value="0">Sin límite</option>
+          <option value="1">1 MB/s</option>
+          <option value="2">2 MB/s</option>
+          <option value="5">5 MB/s</option>
+          <option value="10">10 MB/s</option>
+          <option value="20">20 MB/s</option>
+        </select>
+      </div>
+      <p class="hint">Los modpacks, versiones y paquetes de Drive esperan su turno; los mods y lo que falta al jugar no esperan.</p>
+    </div>
+    <div class="dlp-list" id="downloads-list"></div>
+    <div class="dlp-foot">
+      <button class="btn ghost small" id="downloads-clear"><svg><use href="#i-trash"/></svg>Limpiar terminadas</button>
     </div>
   </div>
 

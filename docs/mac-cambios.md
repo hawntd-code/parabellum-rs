@@ -24,8 +24,9 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 ## Estado
 
 - Última revisión de los PR de Mac en Windows: 2026-10-13, PR #1 a #12 (todos mezclados).
-- **Windows está en pausa en la 0.28.0 hasta que Mac llegue a la par** (decisión de Juan, 2026-10-13).
-  Mientras tanto no hay cambios nuevos de Windows en `main`. Ver «Para llegar a la 0.28.0», abajo.
+- Windows estuvo en pausa en la 0.28.0 para que Mac llegara a la par; Juan pidió seguir con la
+  **0.29.0** (gestor de descargas e imágenes al chat, 2026-10-13: ver «Cambios de Windows»). La meta de
+  Mac sigue siendo la 0.28.0 («Para llegar a la 0.28.0», abajo); la 0.29.0 viene después.
 - Windows: la 0.28.0 está publicada en Drive desde el 2026-10-13 (ver «Versiones publicadas en Drive»):
   los compañeros con Windows ya se actualizan a ella. Las reglas de Firebase de la 0.27 ya están
   publicadas.
@@ -261,6 +262,43 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   casas y lo que salga de ella.
 
 ## Cambios de Windows
+
+### 2026-10-14 · 0.29.0: gestor de descargas, imágenes al chat, descargas más rápidas y Minecraft desde Drive
+
+- Qué cambió:
+  - `descargas.rs` (nuevo): el gestor. Cada comando que baja algo corre como una tarea
+    (`descargas::start(...).queued().retry(...)` y `job.run(...)`): cola, cancelar, velocidad y límite.
+    `download.rs`, `catalog.rs` y `remote_zip.rs` llaman a `descargas::check`/`received` en cada pedazo.
+  - `main.rs`: comandos nuevos `lista_descargas`, `cancelar_descarga`, `quitar_descarga`,
+    `ajustes_descargas`, `activar_arrastre`, `arrastre_imagenes`, `imagen_portapapeles`. Los de instalar
+    aceptan `tarea` (un id que elige la interfaz) y `instalar_modpack` también `titulo` e `icono`.
+  - `settings.rs`: `downloadParallel` y `downloadLimitMb`.
+  - **Contrato de `plataforma`**: módulo nuevo `arrastre` (`install`, `accept_images`,
+    `clipboard_image`). En Windows es un IDropTarget propio que reemplaza al de Tauri (acepta imágenes
+    sin archivo del navegador) y lee el portapapeles con OLE. En Mac ya está `plataforma/macos/arrastre.rs`
+    sin hacer nada: el arrastre de Tauri sigue igual y la interfaz escucha sus eventos.
+  - `ui/`: el panel de Descargas (la flecha de arriba), pegar en cualquier parte de Mensajes.
+  - Velocidad: `download.rs` baja 32 a la vez (antes 8), los grandes primero, y corta solo si no llega
+    nada en 60 s (antes cortaba toda descarga de más de 300 s). `mojang.rs` pide la lista de sonidos y la
+    de Java a la vez. `descargas.rs` manda a la ventana como mucho ~10 avisos de progreso por segundo.
+  - `remote_zip::read_many` pide los bloques de 6 en 6 (hilos, cada uno dentro de la tarea de
+    Descargas con `descargas::enter`; `descargas::Scope` ahora es Clone). Sirve también en Mac.
+  - Minecraft desde Drive: `install_vanilla` (main.rs) usa primero la base del catálogo
+    (`catalog::install_base`, por partes) y si no, Mojang. `listar_versiones` trae `drive`.
+  - Servidores: `servidor::apply_tuning` (`sync-chunk-writes=false`, campo `tuning`) y pregenerar con
+    Chunky (`hosting::pregenerate`, `servidor::chunky_line`, comandos `pregenerar_mundo` y
+    `pausar_pregeneracion`, campo `pregenerated`). Mac: nada distinto; pruébalo con un servidor Fabric.
+  - Doctor: `culpable.rs` (buscar el mod culpable por mitades), comandos `buscar_culpable` y
+    `detener_busqueda`; `probe_launch` (main.rs) es la prueba de abrir que usan los dos;
+    `diagnostico::wait_for_menu` reconoce el error de Fabric/Quilt de mods incompatibles y
+    `diagnostico::set_aside_log` aparta el latest.log anterior antes de cada prueba. Mac: nada
+    distinto (renombra `.jar` a `.jar.disabled`, igual que Contenido).
+  - Subir versiones a Drive (quien publica): `packs::export_base`, `drive::Publisher::storage`, comandos
+    `versiones_en_drive` y `subir_versiones_drive`.
+- Mac:
+  - Compila y prueba el panel de Descargas (instalar dos modpacks seguidos, cancelar, reintentar).
+  - TODO(mac) en `plataforma/macos/arrastre.rs`: `clipboard_image` con NSPasteboard (public.png,
+    public.tiff o un archivo copiado en el Finder) y, si se puede, imágenes arrastradas desde Safari.
 
 ### 2026-10-13 · 0.28.0: el panel del juego con lo mismo que la ventana
 

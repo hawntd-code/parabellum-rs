@@ -6,6 +6,7 @@
 //! algo seguro (por ejemplo, `firewall_open` dice que sí: no revisa el firewall de macOS).
 
 pub mod accesos;
+pub mod arrastre;
 pub mod avisos;
 pub mod lanzador;
 

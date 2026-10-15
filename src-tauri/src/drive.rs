@@ -130,6 +130,21 @@ impl Publisher {
         }
     }
 
+    /// Espacio del Drive de la cuenta: (usado, total en bytes; None si no tiene límite).
+    pub async fn storage(&self) -> Result<(u64, Option<u64>), String> {
+        let token = self.account.access_token().await?;
+        let response = http()
+            .get("https://www.googleapis.com/drive/v3/about")
+            .bearer_auth(token)
+            .query(&[("fields", "storageQuota")])
+            .send()
+            .await
+            .map_err(|_| unavailable())?;
+        let body = self.checked(response).await?;
+        let number = |key: &str| body.pointer(&format!("/storageQuota/{key}")).and_then(|v| v.as_str()).and_then(|v| v.parse::<u64>().ok());
+        Ok((number("usage").unwrap_or(0), number("limit")))
+    }
+
     /// El archivo o carpeta con ese nombre dentro de `parent` (el más nuevo si hay varios).
     async fn find(&self, parent: &str, name: &str, folder: bool) -> Result<Option<Value>, String> {
         let token = self.account.access_token().await?;

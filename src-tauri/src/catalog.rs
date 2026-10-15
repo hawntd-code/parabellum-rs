@@ -65,6 +65,17 @@ pub struct Catalog {
     pub warnings: Vec<String>,
 }
 
+/// El último catálogo leído: lo usa `current` (instalar Minecraft desde Drive sin volver a leerlo).
+static LAST: std::sync::Mutex<Option<std::sync::Arc<Catalog>>> = std::sync::Mutex::new(None);
+
+/// El catálogo ya leído (por la ventana o antes) o, si no, se lee ahora.
+pub async fn current(paths: &Paths) -> std::sync::Arc<Catalog> {
+    if let Some(cached) = LAST.lock().unwrap().clone() {
+        return cached;
+    }
+    std::sync::Arc::new(load(paths, &Config::load(paths)).await)
+}
+
 pub fn download_url(file_id: &str) -> String {
     format!("https://drive.usercontent.google.com/download?id={file_id}&export=download&confirm=t")
 }
@@ -93,6 +104,7 @@ pub async fn load(paths: &Paths, config: &Config) -> Catalog {
         }
     }
     catalog.entries = merge(std::mem::take(&mut catalog.entries));
+    *LAST.lock().unwrap() = Some(std::sync::Arc::new(catalog.clone()));
     catalog
 }
 
@@ -396,7 +408,7 @@ pub async fn fetch(entry: &Entry, paths: &Paths, progress: impl Fn(String, f64) 
     loop {
         match download_part(entry, &partial, &progress).await {
             Ok(()) => break,
-            Err((error, retry)) if retry && attempt < 4 => {
+            Err((error, retry)) if retry && attempt < 4 && !crate::descargas::is_cancelled() => {
                 progress(t!("Se cortó la conexión, reintentando ({attempt}/3)…", "The connection dropped, retrying ({attempt}/3)…"), 0.0);
                 tokio::time::sleep(std::time::Duration::from_secs(3 * attempt)).await;
                 attempt += 1;
@@ -433,8 +445,10 @@ async fn download_part(entry: &Entry, partial: &Path, progress: &(impl Fn(String
     let mut done = existing;
     let mut last = std::time::Instant::now() - std::time::Duration::from_secs(1);
     while let Some(chunk) = response.chunk().await.map_err(|e| (t!("La descarga se cortó: {e}", "The download was interrupted: {e}"), true))? {
+        crate::descargas::check().map_err(|e| (e, false))?;
         file.write_all(&chunk).await.map_err(|e| (e.to_string(), false))?;
         done += chunk.len() as u64;
+        crate::descargas::received(chunk.len()).await;
         if last.elapsed().as_millis() >= 250 {
             last = std::time::Instant::now();
             let speed = (done - existing) as f64 / started.elapsed().as_secs_f64().max(0.5) / 1048576.0;
@@ -484,6 +498,95 @@ async fn install_full(entry: &Entry, paths: &Paths, progress: impl Fn(String, f6
     result
 }
 
+// ================= Minecraft desde el catálogo (pedido de Juan: que todo baje de Google Drive)
+
+/// El paquete base de Minecraft `version` en el catálogo, si lo hay.
+pub fn base_for<'a>(entries: &'a [Entry], version: &str) -> Option<&'a Entry> {
+    entries.iter().find(|e| e.manifest.is_base() && e.manifest.minecraft_version == version)
+}
+
+/// Instala o completa Minecraft desde su paquete base del catálogo. De Drive baja solo lo que falte en
+/// este PC (por partes: los sonidos, las bibliotecas y el Java que ya están no se vuelven a bajar); si
+/// falta casi todo, el zip completo de una vez (es más rápido). Sirve aunque Mojang esté bloqueado.
+pub async fn install_base(entry: &Entry, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<(), String> {
+    if entry.source == Source::Drive {
+        let (url, size, manifest, paths_copy, report) = (entry.url().unwrap(), entry.size, entry.manifest.clone(), paths.clone(), progress.clone());
+        let scope = crate::descargas::current();
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            crate::descargas::enter(scope, || base_delta(&RemoteZip::new(&url, size), &manifest, &paths_copy, &report))
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        match result {
+            Ok(()) => return Ok(()),
+            Err(error) if error == remote_zip::NO_RANGES || error == remote_zip::PREFER_FULL => {}
+            Err(error) => return Err(error),
+        }
+    }
+    install_full(entry, paths, progress).await.map(|_| ())
+}
+
+/// Lo que le falta a este PC de una base de Drive, leído del zip remoto por partes. El JSON de la
+/// versión se escribe al final: si se corta, la versión no parece instalada.
+fn base_delta(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress: &(dyn Fn(String, f64) + Send + Sync)) -> Result<(), String> {
+    progress(t!("Comparando con Minecraft {} en Google Drive…", "Comparing with Minecraft {} on Google Drive…", manifest.minecraft_version), 0.0);
+    let entries = remote.entries()?;
+    if !entries.iter().any(|e| e.name == packs::MANIFEST_IN_ARCHIVE) {
+        return Err(t!("El zip no es un paquete de Parabellum.", "The zip is not a Parabellum package."));
+    }
+    let wanted: Vec<(&remote_zip::RemoteEntry, PathBuf)> = entries
+        .iter()
+        .filter(|e| !e.name.ends_with('/'))
+        .filter_map(|e| {
+            let relative = crate::mrpack::safe_relative(e.name.strip_prefix("base/")?)?;
+            let target = paths.base.join(relative);
+            (!target.metadata().is_ok_and(|m| m.len() == e.size)).then_some((e, target))
+        })
+        .collect();
+    let compressed: u64 = wanted.iter().map(|(e, _)| e.compressed).sum();
+    if compressed * 10 > remote.size() * 7 {
+        return Err(remote_zip::PREFER_FULL.into());
+    }
+    let total: u64 = wanted.iter().map(|(e, _)| e.size).sum::<u64>().max(1);
+    let (mut done, mut count) = (0u64, 0);
+    let version_json = paths.version_json(&manifest.minecraft_version);
+    let mut last = None;
+    let entries_only: Vec<&remote_zip::RemoteEntry> = wanted.iter().map(|(e, _)| *e).collect();
+    let write = |target: &Path, bytes: &[u8]| -> Result<(), String> {
+        std::fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
+        let temp = PathBuf::from(format!("{}.parte", target.display()));
+        std::fs::write(&temp, bytes).map_err(|e| e.to_string())?;
+        std::fs::rename(&temp, target).map_err(|e| e.to_string())
+    };
+    remote.read_many(&entries_only, |index, bytes| {
+        let target = &wanted[index].1;
+        done += bytes.len() as u64;
+        count += 1;
+        if path_key(target) == path_key(&version_json) {
+            last = Some(bytes);
+        } else {
+            write(target, &bytes)?;
+        }
+        progress(
+            t!(
+                "Descargando Minecraft {} de Google Drive… {count} de {} archivos ({:.0} de {:.0} MB)",
+                "Downloading Minecraft {} from Google Drive… {count} of {} files ({:.0} of {:.0} MB)",
+                manifest.minecraft_version,
+                wanted.len(),
+                done as f64 / 1048576.0,
+                total as f64 / 1048576.0
+            ),
+            done as f64 / total as f64,
+        );
+        Ok(())
+    })?;
+    if let Some(bytes) = last {
+        write(&version_json, &bytes)?;
+    }
+    packs::register(paths, &manifest.id, &manifest.version);
+    Ok(())
+}
+
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CatalogInstall {
@@ -525,9 +628,12 @@ pub async fn install(
     let wants_delta = !manifest.is_base() && entry.source == Source::Drive && previous.is_some_and(|p| repair || manifest.version > p.version);
     if wants_delta {
         let (url, size, manifest_copy, paths_copy, report) = (entry.url().unwrap(), entry.size, manifest.clone(), paths.clone(), progress.clone());
-        let result = tauri::async_runtime::spawn_blocking(move || delta_update(&RemoteZip::new(&url, size), &manifest_copy, &paths_copy, &report))
-            .await
-            .map_err(|e| e.to_string())?;
+        let scope = crate::descargas::current();
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            crate::descargas::enter(scope, || delta_update(&RemoteZip::new(&url, size), &manifest_copy, &paths_copy, &report))
+        })
+        .await
+        .map_err(|e| e.to_string())?;
         match result {
             Ok(stats) => {
                 return Ok(CatalogInstall {

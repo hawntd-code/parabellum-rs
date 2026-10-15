@@ -1,6 +1,7 @@
 //! Windows: lo que Parabellum necesita del sistema (ver el contrato en plataforma/mod.rs).
 
 pub mod accesos;
+pub mod arrastre;
 pub mod avisos;
 pub mod lanzador;
 

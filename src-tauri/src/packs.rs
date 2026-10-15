@@ -300,21 +300,7 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
     };
 
     if !base_reused {
-        let manifest = Manifest {
-            format: 1,
-            kind: "base".into(),
-            id: base_id.clone(),
-            name: format!("Minecraft {} (base)", version.root_id),
-            description: format!("Minecraft {}, sus bibliotecas, sonidos e idiomas y Java {}.", version.root_id, java.major),
-            version: version_stamp.clone(),
-            minecraft_version: version.root_id.clone(),
-            loader: "Vanilla".into(),
-            version_id: version.root_id.clone(),
-            archive: format!("{base_name}.zip"),
-            installed_size: total_size(&base_files),
-            exported_at: exported_at.clone(),
-            ..Default::default()
-        };
+        let manifest = base_manifest(&version.root_id, java.major, total_size(&base_files), &version_stamp, &exported_at);
         let entries: Vec<(PathBuf, String)> =
             base_files.iter().filter_map(|f| Some((f.clone(), format!("base/{}", relative(&paths.base, f)?)))).collect();
         write_archive(&base_zip, &manifest, &entries, |bytes| report(&t!("Empaquetando Minecraft", "Packing Minecraft"), bytes))?;
@@ -370,6 +356,56 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
         base_reused,
         size: std::fs::metadata(&pack_zip).map(|m| m.len()).unwrap_or(0),
     })
+}
+
+fn base_manifest(minecraft: &str, java_major: u32, installed_size: u64, version_stamp: &str, exported_at: &str) -> Manifest {
+    let id = base_id(minecraft);
+    Manifest {
+        format: 1,
+        kind: "base".into(),
+        id: id.clone(),
+        name: format!("Minecraft {minecraft} (base)"),
+        description: format!("Minecraft {minecraft}, sus bibliotecas, sonidos e idiomas y Java {java_major}."),
+        version: version_stamp.to_string(),
+        minecraft_version: minecraft.to_string(),
+        loader: "Vanilla".into(),
+        version_id: minecraft.to_string(),
+        archive: format!("base-{id}.zip"),
+        installed_size,
+        exported_at: exported_at.to_string(),
+        ..Default::default()
+    }
+}
+
+/// Solo Minecraft `minecraft` (lo que baja de Mojang y su Java) como paquete base, en
+/// `<salida>/<versión>/base-minecraft-<versión>.zip` y `.json`: para subirlo al catálogo de Drive sin un
+/// modpack. Si ya estaba ahí, no se vuelve a crear. Devuelve (zip, json).
+pub fn export_base(minecraft: &str, paths: &Paths, out_dir: &Path, progress: impl Fn(String, f64)) -> Result<(PathBuf, PathBuf), String> {
+    let vanilla = launch::version_files(minecraft, paths)?;
+    let java = vanilla.java.as_ref().ok_or(t!("No hay Java para esta versión.", "There is no Java for this version."))?;
+    let mut files: Vec<PathBuf> = vanilla.files.iter().filter(|f| f.is_file()).cloned().collect();
+    files.extend(walk(&java.home));
+    let dir = out_dir.join(safe_file_name(minecraft));
+    let name = format!("base-{}", base_id(minecraft));
+    let (zip, json) = (dir.join(format!("{name}.zip")), dir.join(format!("{name}.json")));
+    if zip.exists() && json.exists() {
+        return Ok((zip, json));
+    }
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let stamp = chrono::Local::now();
+    let total = total_size(&files).max(1);
+    let manifest = base_manifest(minecraft, java.major, total, &stamp.format("%Y%m%d%H%M").to_string(), &stamp.to_rfc3339_opts(chrono::SecondsFormat::Secs, false));
+    let entries: Vec<(PathBuf, String)> = files.iter().filter_map(|f| Some((f.clone(), format!("base/{}", relative(&paths.base, f)?)))).collect();
+    let mut done = 0u64;
+    write_archive(&zip, &manifest, &entries, |bytes| {
+        done += bytes;
+        progress(
+            t!("Empaquetando Minecraft {minecraft}… {:.0} de {:.0} MB", "Packing Minecraft {minecraft}… {:.0} of {:.0} MB", done as f64 / 1048576.0, total as f64 / 1048576.0),
+            done as f64 / total as f64,
+        );
+    })?;
+    write_sidecar(&zip, &json, manifest)?;
+    Ok((zip, json))
 }
 
 fn write_archive(zip_path: &Path, manifest: &Manifest, entries: &[(PathBuf, String)], mut on_file: impl FnMut(u64)) -> Result<(), String> {
@@ -431,7 +467,7 @@ fn registry(paths: &Paths) -> HashMap<String, String> {
     std::fs::read_to_string(paths.base.join(REGISTRY)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
-fn register(paths: &Paths, id: &str, version: &str) {
+pub(crate) fn register(paths: &Paths, id: &str, version: &str) {
     let mut list = registry(paths);
     list.insert(id.to_string(), version.to_string());
     let _ = std::fs::write(paths.base.join(REGISTRY), serde_json::to_vec_pretty(&list).unwrap());

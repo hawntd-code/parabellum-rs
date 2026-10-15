@@ -611,6 +611,75 @@ function renderHosted() {
   }
   if (host.tab === "players") renderGuests();
   $("#hs-restart").classList.toggle("hidden", !s.restartNeeded);
+  renderPregen(s);
+}
+
+// ---------- Pregenerar el mundo (Chunky; ver hosting::pregenerate) ----------
+const pregenRadii = () => [
+  [500, t("500 bloques (unos 2 min)", "500 blocks (about 2 min)")],
+  [1000, t("1000 bloques (unos 7 min)", "1000 blocks (about 7 min)")],
+  [2000, t("2000 bloques (unos 25 min)", "2000 blocks (about 25 min)")],
+];
+const pregenModded = (s) => ["fabric", "quilt", "forge", "neoforge"].includes((s.loader ?? "").toLowerCase());
+
+function pregenLiveHtml(s) {
+  const p = s.pregen;
+  const parts = [`${Math.round(p.percent)} %`];
+  if (p.eta) parts.push(t(`faltan ${p.eta}`, `${p.eta} left`));
+  if (p.rate) parts.push(t(`${Math.round(p.rate)} chunks por segundo`, `${Math.round(p.rate)} chunks per second`));
+  return `<div class="pregen-live">${icon("globe")}<div class="grow">
+      <b>${t(`Pregenerando el mundo: ${p.radius} bloques alrededor del spawn`, `Pregenerating the world: ${p.radius} blocks around spawn`)}</b>
+      <span class="faint">${escapeHtml(parts.join(" · "))}</span>
+      <div class="progress"><div style="width:${Math.max(2, p.percent).toFixed(1)}%"></div></div>
+    </div><button class="btn small" data-pregen-pause>${t("Pausar", "Pause")}</button></div>`;
+}
+
+/** Solo se repinta si cambió (el estado del servidor llega cada pocos segundos y la lista se cerraba). */
+function paint(element, html) {
+  if (element._html === html) return;
+  element._html = html;
+  element.innerHTML = html;
+}
+
+function renderPregen(s) {
+  paint($("#hosted-pregen"), s.pregen ? pregenLiveHtml(s) : "");
+  const title = `<h3>${t("Pregenerar el mundo", "Pregenerate the world")}</h3>`;
+  if (s.pregen) return paint($("#hs-pregen"), title + pregenLiveHtml(s));
+  const radius = host.pregenRadius ?? (s.pregenerated ? Math.min(2000, s.pregenerated * 2) : 1000);
+  const options = pregenRadii().map(([value, label]) => `<option value="${value}" ${value === radius ? "selected" : ""}>${escapeHtml(label)}</option>`).join("");
+  const action = !pregenModded(s)
+    ? `<p class="faint small-text">${t("Solo en servidores con mods (Fabric, Forge o NeoForge): el de Minecraft sin mods no deja agregar Chunky, el mod que lo hace.", "Only on servers with mods (Fabric, Forge or NeoForge): plain Minecraft does not allow adding Chunky, the mod that does it.")}</p>`
+    : host.pregenStarting === s.id
+      ? `<div class="pregen-row"><span class="spinner small"></span><span class="faint">${t("Preparando: si hace falta se agrega Chunky y se enciende (o reinicia) el servidor…", "Preparing: Chunky is added if needed and the server is started (or restarted)…")}</span></div>`
+      : `<div class="pregen-row"><select id="hs-pregen-radius" class="compact">${options}</select><button class="btn primary" data-pregen-start>${icon("globe")}${s.pregenerated ? t("Generar más", "Generate more") : t("Pregenerar", "Pregenerate")}</button></div>`;
+  const done = s.pregenerated
+    ? `<p class="pregen-done">${icon("check")}${t(`Ya está generado ${s.pregenerated} bloques alrededor del spawn.`, `Already generated ${s.pregenerated} blocks around spawn.`)}</p>`
+    : "";
+  paint(
+    $("#hs-pregen"),
+    `${title}<p class="muted small-text">${t(
+      "Genera el terreno por adelantado: al explorar, el servidor ya no se traba generándolo (los saltos o «teletransportes» al ir a zonas nuevas). Hazlo antes de jugar: mientras pregenera, va más lento.",
+      "Generates the terrain in advance: when exploring, the server no longer stutters generating it (the jumps or «teleports» when going to new areas). Do it before playing: while it pregenerates, it is slower.",
+    )}</p>${done}${action}`,
+  );
+}
+
+async function startPregen() {
+  const s = hostServer(host.id);
+  if (!s || host.pregenStarting) return;
+  const radius = Number($("#hs-pregen-radius")?.value ?? 1000);
+  host.pregenRadius = radius;
+  host.pregenStarting = s.id;
+  renderPregen(s);
+  try {
+    await invoke("pregenerar_mundo", { id: s.id, radio: radius });
+  } catch (error) {
+    toast(String(error), "error");
+  } finally {
+    host.pregenStarting = null;
+    const fresh = hostServer(s.id);
+    if (fresh) renderPregen(fresh);
+  }
 }
 
 function selectHostedTab(tab) {
@@ -1737,6 +1806,13 @@ function friendServerMenu(anchor, item) {
 
 // ---------- Eventos ----------
 function wireHostEvents() {
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-pregen-start]")) startPregen();
+    if (event.target.closest("[data-pregen-pause]") && host.id) invoke("pausar_pregeneracion", { id: host.id }).catch((error) => toast(String(error), "error"));
+  });
+  document.addEventListener("change", (event) => {
+    if (event.target.id === "hs-pregen-radius") host.pregenRadius = Number(event.target.value);
+  });
   wireServerDetail();
   $("#host-new-server").onclick = () => openHostCreate();
   $("#world-playit").onchange = async (event) => {
