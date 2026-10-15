@@ -18,6 +18,9 @@ const JAVA_RUNTIMES_URL: &str =
 const ASSETS_URL: &str = "https://resources.download.minecraft.net/";
 /// Antes de 1.7.10 los assets usan un formato antiguo ("legacy") que no preparamos.
 const OLDEST_SUPPORTED: &str = "2014-06-01";
+/// Marca en la carpeta de un Java mientras se baja: si la descarga se corta (se cerró Parabellum, se fue
+/// el internet), queda ahí, java::discover no cuenta ese Java y la próxima vez se completa.
+pub const DOWNLOADING: &str = ".descargando";
 
 pub fn unavailable() -> String {
     t!(
@@ -138,11 +141,13 @@ pub async fn install(release: &Release, paths: &Paths, progress: impl Fn(String,
 
     let runtimes = java::discover(paths);
     let mut java_programs = Vec::new();
+    let mut java_home = None;
     if !java::select(&runtimes, Some(&component), major).is_some_and(|r| r.major == major) {
         progress(t!("Preparando Java {major}…", "Preparing Java {major}…"), 0.015);
-        let (java, programs) = java_files(&component, major, paths).await?;
+        let (java, programs, home) = java_files(&component, major, paths).await?;
         files.extend(java);
         java_programs = programs;
+        java_home = Some(home);
     }
 
     let id = release.id.clone();
@@ -156,6 +161,9 @@ pub async fn install(release: &Release, paths: &Paths, progress: impl Fn(String,
     })
     .await?;
     java_programs.iter().for_each(|program| crate::plataforma::make_executable(program));
+    if let Some(home) = java_home {
+        let _ = std::fs::remove_file(home.join(DOWNLOADING));
+    }
 
     // El JSON va al final: si la descarga se corta, la versión no parece instalada.
     let json_file = paths.version_json(&release.id);
@@ -180,20 +188,22 @@ pub async fn ensure_java(major: u32, paths: &Paths, progress: impl Fn(String, f6
         .map(|(name, _)| name.clone())
         .ok_or(t!("Mojang no ofrece Java {major}.", "Mojang does not offer Java {major}."))?;
     progress(t!("Preparando Java {major}…", "Preparing Java {major}…"), 0.0);
-    let (files, programs) = java_files(&component, major, paths).await?;
+    let (files, programs, home) = java_files(&component, major, paths).await?;
     download::download_all(files, move |count, total, _, _| {
         progress(t!("Descargando Java {major}… {count} de {total} archivos", "Downloading Java {major}… {count} of {total} files"), count as f64 / total.max(1) as f64)
     })
     .await?;
     programs.iter().for_each(|program| crate::plataforma::make_executable(program));
+    let _ = std::fs::remove_file(home.join(DOWNLOADING));
     Ok(())
 }
 
-/// Archivos del Java de Mojang para este sistema (el mismo que usa el launcher oficial) y cuáles son
-/// programas (java, jspawnhelper…): después de bajarlos hay que marcarlos como ejecutables. Si Mojang
+/// Archivos del Java de Mojang para este sistema (el mismo que usa el launcher oficial), cuáles son
+/// programas (java, jspawnhelper…: después de bajarlos hay que marcarlos como ejecutables) y su carpeta,
+/// que queda con la marca DOWNLOADING hasta que quien lo baja la quita al terminar. Si Mojang
 /// no tiene ese componente para este sistema, sirve otro con la misma versión mayor (en Mac con chip
 /// Apple, 1.18 pide «java-runtime-beta», que no hay, y «java-runtime-gamma» también es Java 17).
-async fn java_files(component: &str, major: u32, paths: &Paths) -> Result<(Vec<FileDownload>, Vec<PathBuf>), String> {
+async fn java_files(component: &str, major: u32, paths: &Paths) -> Result<(Vec<FileDownload>, Vec<PathBuf>, PathBuf), String> {
     let platform = crate::plataforma::java_runtime_platform(major);
     let all: Value = serde_json::from_str(&download::get_text(JAVA_RUNTIMES_URL).await.map_err(|_| unavailable())?)
         .map_err(|e| e.to_string())?;
@@ -234,7 +244,9 @@ async fn java_files(component: &str, major: u32, paths: &Paths) -> Result<(Vec<F
         }
         downloads.push(download);
     }
-    Ok((downloads, programs))
+    std::fs::create_dir_all(&home).map_err(|e| e.to_string())?;
+    std::fs::write(home.join(DOWNLOADING), b"").map_err(|e| e.to_string())?;
+    Ok((downloads, programs, home))
 }
 
 /// Versiones vanilla completas que ya están en la carpeta base (sin heredar de otra y con su .jar).
