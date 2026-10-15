@@ -418,7 +418,10 @@ async fn install_vanilla(version: &str, paths: &Paths, progress: impl Fn(String,
     let mut drive_error = None;
     if let Some(base) = catalog::base_for(&catalog.entries, version).filter(|b| b.source == catalog::Source::Drive || !installed) {
         match catalog::install_base(base, paths, progress.clone()).await {
-            Ok(()) => return Ok(()),
+            // La base de Drive se arma en Windows: en Mac le faltan el Java y los nativos de Mac, y eso se
+            // completa con Mojang (abajo). Si ya sirve en este sistema, Mojang no hace falta.
+            Ok(()) if base_complete(version, paths) => return Ok(()),
+            Ok(()) => {}
             Err(error) if error == descargas::cancelled_error() => return Err(error),
             // Si Drive falla (por ejemplo, limitó las descargas de hoy), se intenta con Mojang.
             Err(error) => drive_error = Some(error),
@@ -436,6 +439,12 @@ async fn install_vanilla(version: &str, paths: &Paths, progress: impl Fn(String,
         }),
         Err(_) => Ok(()),
     }
+}
+
+/// Si Minecraft `version` tiene aquí todo para jugarse: sus archivos (los de este sistema) y un Java de
+/// su versión. Lo mismo que se revisa para armar un paquete (launch::version_files).
+fn base_complete(version: &str, paths: &Paths) -> bool {
+    launch::version_files(version, paths).is_ok_and(|v| v.java.is_some() && v.files.iter().all(|f| f.exists()))
 }
 
 /// Instala el loader (la versión pedida o la recomendada). Devuelve (id de la versión, versión del loader).
