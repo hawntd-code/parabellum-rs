@@ -226,8 +226,12 @@ mod tests {
         replace(&app, &zip, &folder.join("actualizacion")).unwrap();
         assert_eq!(version_of(&app), "2.0.0");
         assert_eq!(version_of(&PathBuf::from(format!("{}.old", app.display()))), "1.0.0");
-        // El programa quedó ejecutable y la firma sigue valiendo.
-        assert!(Command::new(app.join("Contents").join("MacOS").join("Parabellum")).status().unwrap().success());
+        // El programa quedó con permiso de ejecución (el zip no lo guarda) y la firma sigue valiendo. No se
+        // ejecuta: es una copia de /usr/bin/true firmada ad hoc, y la Mac de GitHub (macOS 14) no la deja
+        // correr, aunque esta Mac sí.
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(app.join("Contents").join("MacOS").join("Parabellum")).unwrap().permissions().mode();
+        assert_eq!(mode & 0o111, 0o111);
         check(&app).unwrap();
 
         // Un zip alterado no se instala y la app queda como estaba.

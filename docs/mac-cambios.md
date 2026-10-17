@@ -38,19 +38,31 @@ Lo que falta para que Mac esté a la par de Windows:
 
 1. Compilar `main` (0.28.0) en Mac y probar lo de «Pendientes para Mac», abajo, y lo de cada entrada de
    «Cambios de Windows» desde la 0.26.0:
-   - 0.26: panel del juego en 26.3 (pestañas con el ratón, escribir) y abrir Parabellum dos veces.
+   - 0.26: panel del juego en 26.3 (pestañas con el ratón, escribir) y abrir Parabellum dos veces (esto
+     último probado el 2026-10-13: con la app abierta, abrirla otra vez muestra la misma, sin otra copia).
    - 0.27: página de Amigos, responder, reaccionar, grupos con foto y dueño, «Reportar problema».
    - 0.27.1: la página de Servidores (Tus servidores, De tus amigos, Guardados).
    - 0.28.0: vista previa al mandar una imagen (Cmd+V), punto de en línea en Mensajes y el panel del juego
      nuevo (`python mod/vista/vista.py` lo dibuja sin Minecraft; dentro del juego, revisa los emojis).
-2. Publicar la primera versión de Mac (0.28.0) en `_parabellum-mac` (tarea 11) y avisarlo aquí, en
-   «Versiones publicadas en Drive».
+2. ~~Publicar la primera versión de Mac (0.28.0) en `_parabellum-mac`~~ — hecho el 2026-10-13 (ver
+   «Versiones publicadas en Drive»). Compilada de `main` en `ee30e86`, publicada con
+   `--publicar-launcher` y `--subir-launcher-drive` desde la cuenta de Diego. El catálogo la ve como
+   `parabellum-mac 0.28.0 (Drive)` y el zip se baja sin iniciar sesión con el SHA-256 de su `.json`.
 3. Contar en un PR o aquí qué no funcionó, para que Windows lo arregle antes de seguir.
+   - 2026-10-14, Diego con la 0.28.0 de Mac: lo de la ventana va bien. «Reportar problema» dice «Mac
+     (aarch64)» y se manda a Hawntd.
+   - **No abrió «Fabric 26.3»**: «missing `server' JVM … libjvm.dylib». Su Java 25 estaba a medias
+     (`libjvm.dylib.parte`): Parabellum se cerró mientras lo bajaba y después lo daba por instalado.
+     Arreglado en el PR #13: un Java a medias ya no cuenta y «Jugar» lo completa. Puede pasar igual en
+     Windows.
+   - Falta lo de dentro del juego (panel en 26.3, emojis, capturas) y lo de con un amigo.
 
 ## Versiones publicadas en Drive
 
-Lo que ya tienen los compañeros con Windows. La más nueva, arriba.
+Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 
+- **Mac 0.28.0** · 2026-10-13 · la primera para Mac con chip Apple (macOS 13 o más nuevo), en
+  `_parabellum-mac`: todo lo de la 0.28.0 de Windows. Desde aquí se actualiza sola.
 - **0.28.0** · 2026-10-13 · trae todo lo de la 0.26.0 a la 0.28.0 (ninguna se publicó aparte):
   - Amigos: página propia en la barra (filtros, búsqueda, favoritos) y agregar también desde Mensajes.
   - Mensajes: responder, reaccionar, punto de en línea y vista previa antes de mandar una imagen.
@@ -167,7 +179,16 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Pendientes para Windows
 
-Nada por ahora.
+- [ ] **PR #13: compilar y correr las pruebas en Windows.** Cambios compartidos:
+  - `java::discover` ya no cuenta un Java a medias: con algún `.parte` o con la marca `.descargando`
+    (`mojang::DOWNLOADING`), que ahora `mojang::java_files` pone en su carpeta y quita quien lo baja al
+    terminar.
+  - Antes, si Parabellum se cerraba mientras bajaba un Java, ese Java se daba por instalado sin su
+    `libjvm` (en Windows, `jvm.dll`) y el juego no abría. Ahora «Jugar» lo completa (desde el PR #10,
+    completa lo que falte de la base).
+  - Prueba ampliada: `encuentra_el_java_de_mojang`.
+  - Además, `reemplaza_la_app_entera` (solo Mac) ya no ejecuta la app de juguete: la Mac de GitHub
+    (macOS 14) no la deja correr, y por eso falló el workflow de Mac del PR #12.
 
 - [x] **PR #12 (actualizarse solo en Mac)** (2026-10-13, Juan lo mezcló): en Windows compila sin
   advertencias, pasan las pruebas (con `actualizacion_del_launcher_segun_el_sistema`) y «Publicar esta

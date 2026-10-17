@@ -1,6 +1,6 @@
 //! Los Java incluidos en base\java (cada subcarpeta es un Java completo, como los de Mojang).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::paths::Paths;
 
@@ -24,6 +24,7 @@ pub fn discover(paths: &Paths) -> Vec<JavaRuntime> {
     entries
         .flatten()
         .filter(|e| crate::plataforma::java_binary(&e.path(), false).exists())
+        .filter(|e| !interrupted(&e.path()))
         .filter_map(|e| {
             // «release» está junto a bin/ (en los Java de Mojang para Mac, dentro de jre.bundle/Contents/Home).
             let binary = crate::plataforma::java_binary(&e.path(), false);
@@ -45,6 +46,23 @@ pub fn discover(paths: &Paths) -> Vec<JavaRuntime> {
 
 /// La versión mayor de un Java: "17.0.15", "1.8.0_74" (Java 8) o "8u51-cacert462b08" (así nombra
 /// Mojang a su Java 8 en la lista de Java).
+/// Un Java cuya descarga se cortó: tiene la marca de mojang::DOWNLOADING o algún «.parte» (lo que
+/// download dejaba a medias antes de la marca). Así no se usa (el juego no abriría: «missing server
+/// JVM») y la próxima instalación lo completa.
+fn interrupted(folder: &Path) -> bool {
+    fn has_partial(folder: &Path) -> bool {
+        std::fs::read_dir(folder).into_iter().flatten().flatten().any(|entry| {
+            let path = entry.path();
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                has_partial(&path)
+            } else {
+                path.extension().is_some_and(|e| e == "parte")
+            }
+        })
+    }
+    folder.join(crate::mojang::DOWNLOADING).exists() || has_partial(folder)
+}
+
 pub fn major_of(version: &str) -> u32 {
     let parts: Vec<&str> = version.split(['.', '_', '+', '-', 'u']).collect();
     if parts.first() == Some(&"1") {
@@ -88,6 +106,16 @@ mod tests {
         std::fs::write(home.join("release"), "JAVA_VERSION=\"21.0.7\"\n").unwrap();
         let found = discover(&paths);
         assert_eq!(found.iter().map(|r| (r.name.as_str(), r.major)).collect::<Vec<_>>(), [("java-runtime-delta", 21)]);
+        // A medias no cuenta: con un «.parte» (se cortó la descarga) o con la marca de que se está bajando.
+        let partial = home.join("lib").join("server");
+        std::fs::create_dir_all(&partial).unwrap();
+        std::fs::write(partial.join("libjvm.dylib.parte"), b"").unwrap();
+        assert!(discover(&paths).is_empty());
+        std::fs::remove_file(partial.join("libjvm.dylib.parte")).unwrap();
+        std::fs::write(runtime.join(crate::mojang::DOWNLOADING), b"").unwrap();
+        assert!(discover(&paths).is_empty());
+        std::fs::remove_file(runtime.join(crate::mojang::DOWNLOADING)).unwrap();
+        assert_eq!(discover(&paths).len(), 1);
         let _ = std::fs::remove_dir_all(&paths.root);
     }
 }
