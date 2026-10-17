@@ -583,6 +583,7 @@ fn base_delta(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress: 
     if let Some(bytes) = last {
         write(&version_json, &bytes)?;
     }
+    crate::java::package_installed(paths, entries.iter().map(|e| e.name.as_str()));
     packs::register(paths, &manifest.id, &manifest.version);
     Ok(())
 }
@@ -745,6 +746,7 @@ fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress
         );
         Ok(())
     })?;
+    crate::java::package_installed(paths, entries.iter().map(|e| e.name.as_str()));
 
     // Lo que el paquete ya no trae (por ejemplo, un mod quitado) va a la papelera.
     let mut leftovers = Vec::new();

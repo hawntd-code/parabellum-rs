@@ -269,11 +269,11 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
     }
     let version = launch::version_files(&instance.version_id, paths)?;
     let vanilla = launch::version_files(&version.root_id, paths)?;
-    let java = vanilla.java.as_ref().or(version.java.as_ref()).ok_or(t!("No hay Java para esta versión.", "There is no Java for this version."))?;
+    let java = vanilla.own_java().or(version.own_java()).ok_or_else(|| missing_java(vanilla.java_major))?;
 
     // Base: Minecraft puro + Java. Lo demás que use la versión (el loader) viaja con el modpack.
     let mut base_files: Vec<PathBuf> = vanilla.files.iter().filter(|f| f.is_file()).cloned().collect();
-    base_files.extend(walk(&java.home));
+    base_files.extend(java_files(java));
     let base_set: HashSet<String> = base_files.iter().map(|f| f.to_string_lossy().to_lowercase()).collect();
     let loader_files: Vec<PathBuf> =
         version.files.iter().filter(|f| f.is_file() && !base_set.contains(&f.to_string_lossy().to_lowercase())).cloned().collect();
@@ -377,14 +377,27 @@ fn base_manifest(minecraft: &str, java_major: u32, installed_size: u64, version_
     }
 }
 
+/// El paquete lleva el Java que pide la versión: uno de reemplazo (más nuevo) le llegaría a todos.
+fn missing_java(major: u32) -> String {
+    t!(
+        "Falta Java {major} en este PC (o quedó a medias). Abre una vez esa versión con internet para que se complete.",
+        "Java {major} is missing on this PC (or it is incomplete). Open that version once with internet so it is completed."
+    )
+}
+
+/// Los archivos de un Java para un paquete, sin los «.parte» que pudieran haber quedado sueltos.
+fn java_files(java: &crate::java::JavaRuntime) -> impl Iterator<Item = PathBuf> {
+    walk(&java.home).into_iter().filter(|f| !f.extension().is_some_and(|e| e == "parte"))
+}
+
 /// Solo Minecraft `minecraft` (lo que baja de Mojang y su Java) como paquete base, en
 /// `<salida>/<versión>/base-minecraft-<versión>.zip` y `.json`: para subirlo al catálogo de Drive sin un
 /// modpack. Si ya estaba ahí, no se vuelve a crear. Devuelve (zip, json).
 pub fn export_base(minecraft: &str, paths: &Paths, out_dir: &Path, progress: impl Fn(String, f64)) -> Result<(PathBuf, PathBuf), String> {
     let vanilla = launch::version_files(minecraft, paths)?;
-    let java = vanilla.java.as_ref().ok_or(t!("No hay Java para esta versión.", "There is no Java for this version."))?;
+    let java = vanilla.own_java().ok_or_else(|| missing_java(vanilla.java_major))?;
     let mut files: Vec<PathBuf> = vanilla.files.iter().filter(|f| f.is_file()).cloned().collect();
-    files.extend(walk(&java.home));
+    files.extend(java_files(java));
     let dir = out_dir.join(safe_file_name(minecraft));
     let name = format!("base-{}", base_id(minecraft));
     let (zip, json) = (dir.join(format!("{name}.zip")), dir.join(format!("{name}.json")));
@@ -518,6 +531,7 @@ pub fn install(zip_path: &Path, paths: &Paths, progress: impl Fn(String, f64)) -
     let total: u64 = (0..zip.len()).filter_map(|i| zip.by_index_raw(i).ok().map(|e| e.size())).sum::<u64>().max(1);
     let mut done = 0u64;
     let mut listed: Vec<(String, u32, u64)> = Vec::new();
+    let mut java_names: Vec<String> = Vec::new();
     let result = (|| -> Result<Installed, String> {
         for i in 0..zip.len() {
             let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
@@ -537,6 +551,9 @@ pub fn install(zip_path: &Path, paths: &Paths, progress: impl Fn(String, f64)) -
             if !manifest.is_base() {
                 listed.push((name.to_string_lossy().replace('\\', "/"), entry.crc32(), size));
             }
+            if target.starts_with(&paths.java) {
+                java_names.push(name.to_string_lossy().replace('\\', "/"));
+            }
             // Los archivos de base son compartidos: si ya están iguales (mismo tamaño) no se reescriben.
             let shared_present = target.starts_with(&paths.base) && target.metadata().is_ok_and(|m| m.len() == size);
             if !shared_present {
@@ -551,6 +568,7 @@ pub fn install(zip_path: &Path, paths: &Paths, progress: impl Fn(String, f64)) -
             done += size;
             progress(t!("Instalando {:.0} de {:.0} MB…", "Installing {:.0} of {:.0} MB…", done as f64 / 1048576.0, total as f64 / 1048576.0), done as f64 / total as f64);
         }
+        crate::java::package_installed(paths, java_names.iter().map(String::as_str));
         if manifest.is_base() {
             register(paths, &manifest.id, &manifest.version);
             return Ok(Installed { kind: "base".into(), name: manifest.name.clone(), folder: None, updated: false });

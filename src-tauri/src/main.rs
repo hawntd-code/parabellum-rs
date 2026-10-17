@@ -441,10 +441,11 @@ async fn install_vanilla(version: &str, paths: &Paths, progress: impl Fn(String,
     }
 }
 
-/// Si Minecraft `version` tiene aquí todo para jugarse: sus archivos (los de este sistema) y un Java de
-/// su versión. Lo mismo que se revisa para armar un paquete (launch::version_files).
+/// Si Minecraft `version` tiene aquí todo para jugarse: sus archivos (los de este sistema) y su Java (la
+/// misma versión mayor, no uno de reemplazo). Lo mismo que se revisa para armar un paquete
+/// (launch::version_files).
 fn base_complete(version: &str, paths: &Paths) -> bool {
-    launch::version_files(version, paths).is_ok_and(|v| v.java.is_some() && v.files.iter().all(|f| f.exists()))
+    launch::version_files(version, paths).is_ok_and(|v| v.own_java().is_some() && v.files.iter().all(|f| f.exists()))
 }
 
 /// Instala el loader (la versión pedida o la recomendada). Devuelve (id de la versión, versión del loader).

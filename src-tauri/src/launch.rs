@@ -89,9 +89,20 @@ fn library_paths(library: &Value, paths: &Paths) -> (Option<PathBuf>, Option<Pat
 /// empaquetarla y llevarla a donde Mojang está bloqueado.
 pub struct VersionFiles {
     pub files: Vec<PathBuf>,
+    /// El Java que se usaría (si falta el suyo, uno más nuevo: ver java::select).
     pub java: Option<JavaRuntime>,
+    /// La versión mayor de Java que pide.
+    pub java_major: u32,
     /// La versión vanilla de la que hereda (la propia si es vanilla).
     pub root_id: String,
+}
+
+impl VersionFiles {
+    /// Su propio Java (la versión mayor que pide), no uno de reemplazo: para dar la versión por completa
+    /// y para empaquetarla. Con el Java 17 a medias, java::select da el 25, y Forge 1.20.1 no abre con él.
+    pub fn own_java(&self) -> Option<&JavaRuntime> {
+        self.java.as_ref().filter(|j| j.major == self.java_major)
+    }
 }
 
 pub fn version_files(version_id: &str, paths: &Paths) -> Result<VersionFiles, String> {
@@ -135,7 +146,7 @@ pub fn version_files(version_id: &str, paths: &Paths) -> Result<VersionFiles, St
     // La misma ruta puede llegar escrita con / (del JSON) y con \ (de la carpeta): cuenta como una.
     files.retain(|f| seen.insert(f.components().collect::<PathBuf>().to_string_lossy().to_lowercase()));
     let java = java::select(&java::discover(paths), version.java_component.as_deref(), version.java_major).cloned();
-    Ok(VersionFiles { files, java, root_id: version.root_id })
+    Ok(VersionFiles { files, java, java_major: version.java_major, root_id: version.root_id })
 }
 
 pub fn plan(instance: &Instance, settings: &Settings, paths: &Paths) -> Result<LaunchPlan, String> {

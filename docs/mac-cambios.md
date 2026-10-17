@@ -23,18 +23,37 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
-- Última revisión de los PR de Mac en Windows: 2026-10-13, PR #1 a #12 (todos mezclados).
-- Windows estuvo en pausa en la 0.28.0 para que Mac llegara a la par; Juan pidió seguir con la
-  **0.29.0** (gestor de descargas e imágenes al chat, 2026-10-13: ver «Cambios de Windows»). La meta de
-  Mac sigue siendo la 0.28.0 («Para llegar a la 0.28.0», abajo); la 0.29.0 viene después.
-- Windows: la 0.28.0 está publicada en Drive desde el 2026-10-13 (ver «Versiones publicadas en Drive»):
-  los compañeros con Windows ya se actualizan a ella. Las reglas de Firebase de la 0.27 ya están
-  publicadas.
+- Última revisión de los PR de Mac en Windows: 2026-10-17, PR #1 a #14 (todos mezclados).
+- **Publicado en Drive: a la par.** Windows 0.28.0 en `_parabellum` y Mac 0.28.0 en `_parabellum-mac`
+  (catálogo revisado el 2026-10-17).
+- **En `main`: 0.29.0**, sin publicar (Juan la publica). Es código compartido y Mac ya lo compila: el
+  PR #13 se mezcló con la 0.29.0 y pasan sus pruebas. A Mac le falta probarla y un `TODO(mac)` (ver
+  «Para llegar a la 0.29.0», abajo).
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
+  Las reglas de Firebase de la 0.27 ya están publicadas.
+
+## Para llegar a la 0.29.0 (Mac)
+
+Lo que falta para publicar la 0.29.0 de Mac, en este orden:
+
+1. **Lo que quedó de la 0.28.0** (abajo, paso 3): dentro del juego (panel en 26.3, emojis, capturas) y
+   lo de con un amigo. Juan puede ser el amigo.
+2. **Probar lo de la 0.29.0** (ver la entrada de la 0.29.0 en «Cambios de Windows»):
+   - Descargas: dos modpacks seguidos (el segundo en cola), cancelar uno, reintentarlo y el límite de
+     velocidad.
+   - Cmd+V en cualquier parte de Mensajes y arrastrar una imagen desde Finder.
+   - Pregenerar un servidor Fabric y «Buscar el mod culpable» en una instancia con un mod roto.
+3. **Código:** el `TODO(mac)` de `plataforma/macos/arrastre.rs`: `clipboard_image` con NSPasteboard
+   (lo que la ventana no sabe pegar, como un archivo copiado en Finder).
+4. **Publicar la Mac 0.29.0** cuando Juan publique la 0.29.0 de Windows (compilada de `main` en ese
+   commit, como la 0.28.0).
+
+Para después, y antes hay que decidirlo con Juan: **bases de Mac en Drive**. Hoy, en una red sin Mojang
+(la escuela), una Mac no puede jugar una versión de Drive: le faltan su Java y sus nativos (PR #14).
 
 ## Para llegar a la 0.28.0 (Mac)
 
-Lo que falta para que Mac esté a la par de Windows:
+Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicada; queda el paso 3):
 
 1. Compilar `main` (0.28.0) en Mac y probar lo de «Pendientes para Mac», abajo, y lo de cada entrada de
    «Cambios de Windows» desde la 0.26.0:
@@ -179,7 +198,13 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Pendientes para Windows
 
-- [ ] **PR #14 (base de Drive en Mac): compilar, correr las pruebas e instalar una versión desde Drive.**
+- [x] **PR #14 (base de Drive en Mac): compilar, correr las pruebas e instalar una versión desde Drive.**
+  Hecho el 2026-10-17 (Juan lo mezcló): compila sin advertencias y pasan las 93 pruebas de Windows. Con
+  Mojang bloqueado (un proxy que solo deja pasar Google, como la red de la escuela), «Escuela 1.20.1»
+  se creó desde Drive en 38 s sin pasar por Mojang (`base_complete` da que sí) y `--probar-juego` llegó
+  al menú en 14 s; una versión que no está en Drive (1.19.4) da el aviso de Mojang bloqueado. Las 5
+  bases de Drive (1.20.1, 1.21.1, 26.1.2, 26.2 y 26.3) no traen ningún `.parte` ni `.descargando`.
+  Lo que pedía el PR:
   `install_vanilla` (`main.rs`):
   - **El problema:** la base de Drive se arma en Windows y trae su Java y sus nativos. En Mac, una 26.3
     desde Drive quedaba sin Java de Mac y sin `natives-macos`, y cada «Jugar» volvía a tomar la base sin
@@ -192,7 +217,11 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   - **Pendiente para después:** sin Mojang (en la escuela), una Mac no puede jugar esas versiones;
     harían falta bases para Mac en Drive.
 
-- [ ] **PR #13: compilar y correr las pruebas en Windows.** Cambios compartidos:
+- [x] **PR #13: compilar y correr las pruebas en Windows.** Hecho el 2026-10-17 (Juan lo mezcló): pasa
+  `encuentra_el_java_de_mojang`. Encontré un caso que quedaba abierto, y lo arreglé en `main` (ver
+  «Cambios de Windows», 2026-10-17): un Java cortado en casa y completado desde Drive en la escuela
+  seguía «a medias» para siempre. También moví el comentario de `major_of`, que había quedado encima
+  de `interrupted`. Cambios compartidos del PR:
   - `java::discover` ya no cuenta un Java a medias: con algún `.parte` o con la marca `.descargando`
     (`mojang::DOWNLOADING`), que ahora `mojang::java_files` pone en su carpeta y quita quien lo baja al
     terminar.
@@ -271,10 +300,34 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Próximo en Windows
 
-- En pausa hasta que Mac llegue a la 0.28.0 (ver «Estado»). Después: la prueba con compañeros en sus
-  casas y lo que salga de ella.
+- La 0.29.0 está lista para que Juan la publique. Después: la lista de cambios de Juan para la siguiente
+  iteración (2026-10-17).
 
 ## Cambios de Windows
+
+### 2026-10-17 · Un Java completado desde Drive vuelve a contar, y la base pide su propio Java
+
+- Qué cambió (revisando el PR #13):
+  - **El caso:** un compañero empieza a bajar Minecraft en casa y lo cierra a medias. Su Java queda con la
+    marca `.descargando` y algunos `.parte`. En la escuela, la base de Drive completa ese Java, pero la
+    marca y los `.parte` seguían ahí: `java::discover` no lo contaba, `base_complete` decía que no y
+    se iba a Mojang, que ahí está bloqueado. No había forma de jugar esa versión en la escuela.
+  - `java::package_installed` (nuevo): al terminar de instalar un paquete (`packs::install`,
+    `catalog::base_delta` y `catalog::delta_update`), los Java que trae quedan completos: se les quita
+    la marca y los `.parte`. Un `.parte` nunca sirve, porque las descargas empiezan de cero.
+  - `java::interrupted` ya no cuenta un `.parte` que está junto a su archivo (el archivo llegó de otro
+    lado). Prueba ampliada: `encuentra_el_java_de_mojang`.
+  - **El Java exacto** (`launch::VersionFiles::own_java`, campo nuevo `java_major`): con el Java 17 a
+    medias, `java::select` da uno más nuevo (el 25), y `base_complete` lo daba por bueno. Así, una 1.20.1
+    se quedaba con el Java 25 sin bajar el suyo, y Forge 1.20.1 no abre con él. Ahora `base_complete`
+    pide la misma versión mayor, como `mojang::install`.
+  - Por lo mismo, exportar un modpack o una base (`packs::export` y `packs::export_base`) ya no mete un
+    Java de reemplazo en el paquete, porque le llegaría a todos. Si falta el suyo, lo dice. Tampoco mete
+    un `.parte` suelto.
+  - Probado en Windows con Mojang bloqueado: con el Java 17 de una carpeta de prueba cortado (la marca
+    y `jvm.dll.parte`), «--crear» 1.20.1 lo completó desde Drive en 21 s. Ahora usa el Java 17 (antes,
+    el 25) y llega al menú en 12 s.
+- Mac: nada. Sirve igual en Mac cuando haya bases de Mac en Drive.
 
 ### 2026-10-14 · 0.29.0: gestor de descargas, imágenes al chat, descargas más rápidas y Minecraft desde Drive
 
