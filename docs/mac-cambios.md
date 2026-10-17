@@ -179,6 +179,19 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Pendientes para Windows
 
+- [ ] **PR #14 (base de Drive en Mac): compilar, correr las pruebas e instalar una versión desde Drive.**
+  `install_vanilla` (`main.rs`):
+  - **El problema:** la base de Drive se arma en Windows y trae su Java y sus nativos. En Mac, una 26.3
+    desde Drive quedaba sin Java de Mac y sin `natives-macos`, y cada «Jugar» volvía a tomar la base sin
+    pasar por Mojang.
+  - **El arreglo:** tras instalar la base, `base_complete` revisa si sirve en este sistema (los archivos
+    de `launch::version_files` y un Java de su versión). Si sirve (Windows), termina ahí sin Mojang,
+    como antes. Si no (Mac), completa con `mojang::install`.
+  - **Para probar en Windows:** una versión desde Drive no debe pasar por Mojang (sin red a Mojang
+    tiene que seguir sirviendo).
+  - **Pendiente para después:** sin Mojang (en la escuela), una Mac no puede jugar esas versiones;
+    harían falta bases para Mac en Drive.
+
 - [ ] **PR #13: compilar y correr las pruebas en Windows.** Cambios compartidos:
   - `java::discover` ya no cuenta un Java a medias: con algún `.parte` o con la marca `.descargando`
     (`mojang::DOWNLOADING`), que ahora `mojang::java_files` pone en su carpeta y quita quien lo baja al
