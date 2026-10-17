@@ -179,6 +179,11 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
     12–23 s); 1.17.1, 1.16.5 vanilla, Fabric y Forge, 1.12.2 y 1.8.9 (Rosetta, 20–56 s); el mod de
     Parabellum carga en Fabric 1.16.5, Forge 1.16.5 y Forge 1.18.2. Un servidor 1.16.5 arranca con el
     Java 8 de Intel.
+- Pegar imágenes en el chat (`macos/arrastre.rs`, `clipboard_image`): lo que la ventana no pega sola
+  (un `.heic` o cualquier imagen copiada en el Finder, o una imagen copiada de Vista Previa) lo lee
+  Parabellum del portapapeles con AppleScript (`osascript`): la ruta del archivo (si no es un enlace y
+  sus primeros bytes son de imagen) o la imagen guardada como PNG o TIFF en `datos/temporal`. Falta
+  arrastrar una imagen desde Safari (sin archivo).
 - Imágenes del chat en cualquier formato que abra el Mac (HEIC, TIFF, GIF, BMP…; `decode_image`):
   `sips -g` las mide, `sips` las pasa a PNG en un proceso aparte (`-Z` solo si son más grandes que
   el límite, porque también agranda) y el crate `png` las lee a RGBA. Como en Windows, no se giran

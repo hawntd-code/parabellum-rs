@@ -36,15 +36,17 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 Lo que falta para publicar la 0.29.0 de Mac, en este orden:
 
-1. **Lo que quedó de la 0.28.0** (abajo, paso 3): dentro del juego (panel en 26.3, emojis, capturas) y
-   lo de con un amigo. Juan puede ser el amigo.
+1. **Lo que quedó de la 0.28.0** (abajo, paso 3): dentro del juego (pestañas, escribir, emojis,
+   capturas) y lo de con un amigo. Juan puede ser el amigo. El panel ya abre con la O en «Fabric 26.3»
+   (2026-10-17).
 2. **Probar lo de la 0.29.0** (ver la entrada de la 0.29.0 en «Cambios de Windows»):
    - Descargas: dos modpacks seguidos (el segundo en cola), cancelar uno, reintentarlo y el límite de
      velocidad.
    - Cmd+V en cualquier parte de Mensajes y arrastrar una imagen desde Finder.
    - Pregenerar un servidor Fabric y «Buscar el mod culpable» en una instancia con un mod roto.
-3. **Código:** el `TODO(mac)` de `plataforma/macos/arrastre.rs`: `clipboard_image` con NSPasteboard
-   (lo que la ventana no sabe pegar, como un archivo copiado en Finder).
+3. ~~**Código:** el `TODO(mac)` de `plataforma/macos/arrastre.rs`: `clipboard_image` con NSPasteboard
+   (lo que la ventana no sabe pegar, como un archivo copiado en Finder).~~ — hecho en el PR #15, con
+   AppleScript (`osascript`). Queda arrastrar una imagen sin archivo desde Safari (`TODO(mac)`).
 4. **Publicar la Mac 0.29.0** cuando Juan publique la 0.29.0 de Windows (compilada de `main` en ese
    commit, como la 0.28.0).
 
@@ -74,7 +76,18 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
      (`libjvm.dylib.parte`): Parabellum se cerró mientras lo bajaba y después lo daba por instalado.
      Arreglado en el PR #13: un Java a medias ya no cuenta y «Jugar» lo completa. Puede pasar igual en
      Windows.
-   - Falta lo de dentro del juego (panel en 26.3, emojis, capturas) y lo de con un amigo.
+   - **El modpack «Fabric 26.3» de Drive trae la tecla de Parabellum en `[`**: su `options.txt` dice
+     `key_key.parabellum.abrir:key.keyboard.left.bracket`, así que la O no abre el panel a quien lo
+     instala (en Windows o en Mac). Diego la cambió a mano (2026-10-15). Sugerencia: ponerla en O en tu
+     instancia y volver a exportar, o que al armar paquetes se quite esa línea para que quede la O por
+     defecto.
+   - 2026-10-17: con la O ya en `options.txt`, **el panel abre en «Fabric 26.3»**. Ojo: en una instancia
+     **vanilla** 26.3 la O abre la «Lista de amigos» de Mojang (`key_key.friends:key.keyboard.o`, que es
+     lo que trae 26.x por defecto). Ahí no hay panel (el mod solo va con un loader), pero en una
+     instancia Fabric 26.x nueva **la de Mojang y la de Parabellum quedan las dos en la O**. En el
+     modpack de Drive no pasa porque trae la de Mojang en `]`. Sugerencia: otra tecla por defecto en
+     `mod/versiones/fabric-26.*`, o mover la de Mojang al poner el mod.
+   - Falta lo de dentro del juego (pestañas, escribir, emojis, capturas) y lo de con un amigo.
 
 ## Versiones publicadas en Drive
 
@@ -197,6 +210,16 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   encabezado de `macos/mod.rs` y la tarea 1 de `mac.md`): resuelto en el PR #5.
 
 ## Pendientes para Windows
+
+- [ ] **PR #15 (pegar imágenes en Mac): nada que compilar en Windows** (solo cambia
+  `plataforma/macos/arrastre.rs` y los docs). Dos sugerencias, por si las quieres:
+  - **La tecla O en 26.x** choca con la «Lista de amigos» de Mojang (ver «Para llegar a la 0.28.0»,
+    paso 3).
+  - **Revisar que una imagen pegada sea imagen de verdad.** En Mac, `clipboard_image` ya no acepta un
+    archivo del Finder solo por su nombre: lo rechaza si es un enlace o si sus primeros bytes no son de
+    PNG, JPEG, GIF, WebP, BMP, TIFF, ICO o HEIC/AVIF (`is_image_file`). Antes, `cuenta::leer_imagen`
+    habría pasado a la ventana cualquier archivo con nombre de imagen. En Windows (`windows/arrastre.rs`
+    y `leer_imagen`) sigue bastando el nombre.
 
 - [x] **PR #14 (base de Drive en Mac): compilar, correr las pruebas e instalar una versión desde Drive.**
   Hecho el 2026-10-17 (Juan lo mezcló): compila sin advertencias y pasan las 93 pruebas de Windows. Con
@@ -365,6 +388,9 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   - Compila y prueba el panel de Descargas (instalar dos modpacks seguidos, cancelar, reintentar).
   - TODO(mac) en `plataforma/macos/arrastre.rs`: `clipboard_image` con NSPasteboard (public.png,
     public.tiff o un archivo copiado en el Finder) y, si se puede, imágenes arrastradas desde Safari.
+    — `clipboard_image` hecho en el PR #15, con AppleScript (`osascript`, sin dependencias nuevas): un
+    archivo de imagen copiado en el Finder o la imagen copiada (PNG o TIFF). Arrastrar desde Safari
+    sigue pendiente: necesita un receptor de arrastre propio en la ventana.
 
 ### 2026-10-13 · 0.28.0: el panel del juego con lo mismo que la ventana
 
