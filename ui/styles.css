@@ -953,6 +953,74 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 @keyframes typing-dot { 0%, 60%, 100% { opacity: .3; transform: none; } 30% { opacity: 1; transform: translateY(-2px); } }
 .chat-item-last.typing { color: var(--accent-fg); font-style: italic; }
 .toast-action { margin-top: 8px; }
+
+/* ---------- Comunidades (ui/comunidad.js) ---------- */
+.cm-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.cm-head .section-title { margin: 0; flex: 1; }
+.cm-join { display: flex; gap: 8px; }
+.cm-join input { width: 190px; height: 38px; padding: 0 12px; border-radius: var(--r); border: 1px solid transparent; background: var(--field); color: var(--text); font: inherit; letter-spacing: .06em; text-transform: uppercase; outline: none; }
+.cm-join input::placeholder { text-transform: none; letter-spacing: 0; }
+.cm-join input:focus { border-color: var(--accent); }
+.cm-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.cm-tab { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 6px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-weight: 650; }
+.cm-tab.active, .cm-tab:hover { background: var(--card); color: var(--text); border-color: var(--border-strong); }
+.cm-image { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; flex: none; display: grid; place-items: center; }
+.cm-image.tiny { width: 24px; height: 24px; border-radius: 6px; }
+.cm-image.large { width: 72px; height: 72px; border-radius: 16px; }
+.cm-image-empty { background: var(--accent-soft); color: var(--accent-fg); }
+.cm-image-empty svg { width: 55%; height: 55%; }
+.cm-hero { display: flex; align-items: flex-start; gap: 16px; padding: 18px 20px; border-radius: var(--r-xl); background: var(--panel); border: 1px solid var(--border); animation: rise var(--dur-slow) var(--ease) both; }
+.cm-hero h2 { font-size: 22px; letter-spacing: -0.01em; }
+.cm-description { color: var(--muted); margin-top: 4px; white-space: pre-wrap; max-width: 70ch; }
+.cm-meta { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 10px; color: var(--muted); font-size: 13px; }
+.cm-meta > span { display: inline-flex; align-items: center; gap: 5px; }
+.cm-meta svg { width: 15px; height: 15px; }
+.cm-hero-actions { display: flex; align-items: center; gap: 8px; }
+.cm-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr); gap: 16px; margin-top: 16px; }
+@media (max-width: 980px) { .cm-grid { grid-template-columns: 1fr; } }
+.cm-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.cm-section { padding: 16px 18px; border-radius: var(--r-xl); background: var(--panel); border: 1px solid var(--border); }
+.cm-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.cm-section-head h3 { flex: 1; font-size: 15px; }
+.circle-btn.small { width: 30px; height: 30px; }
+.circle-btn.small svg { width: 15px; height: 15px; }
+.cm-server { padding: 12px; border-radius: var(--r-lg); background: var(--card); }
+.cm-server + .cm-server { margin-top: 10px; }
+.cm-server-main { display: flex; align-items: center; gap: 12px; }
+.cm-server-main b { font-size: 15px; }
+.cm-server-lines { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 2px; }
+.cm-address { display: inline-flex; align-items: center; gap: 5px; border: 0; padding: 0; background: transparent; color: var(--muted); font-size: 12.5px; }
+.cm-address svg { width: 13px; height: 13px; opacity: .7; }
+.cm-address:hover { color: var(--text); }
+.cm-state { flex: none; font-size: 12.5px; font-weight: 650; color: var(--muted); padding: 3px 10px; border-radius: 999px; background: var(--field); }
+.cm-state.on { color: var(--success); }
+.cm-server-note { margin: 8px 0 0 46px; color: var(--muted); font-size: 12.5px; }
+.cm-post { padding: 10px 0; }
+.cm-post + .cm-post { border-top: 1px solid var(--border); }
+.cm-post-head { display: flex; align-items: center; gap: 10px; }
+.cm-post-head b { flex: 1; }
+.cm-post p { margin-top: 4px; white-space: pre-wrap; line-height: 1.5; }
+.cm-rules { white-space: pre-wrap; line-height: 1.55; color: var(--text); }
+.cm-line { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+.cm-line + .cm-line { border-top: 1px solid var(--border); }
+.cm-line .grow { display: flex; flex-direction: column; min-width: 0; }
+.cm-line .faint { font-size: 12.5px; }
+.cm-code { font-family: ui-monospace, Consolas, monospace; font-size: 14px; font-weight: 700; letter-spacing: .08em; padding: 2px 8px; border-radius: 6px; background: var(--field); }
+.cm-members { display: flex; flex-direction: column; }
+.cm-member { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.cm-member .head { width: 28px; height: 28px; border-radius: 6px; image-rendering: pixelated; flex: none; }
+.cm-member .grow { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cm-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.cm-badges:empty { display: none; }
+.cm-empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+.cm-empty svg { width: 42px; height: 42px; color: var(--accent-fg); margin-bottom: 10px; }
+.cm-empty h3 { color: var(--text); margin-bottom: 6px; }
+.cm-fields { display: flex; flex-direction: column; gap: 14px; margin-bottom: 6px; }
+.cm-field { display: flex; flex-direction: column; gap: 6px; }
+.cm-field input, .cm-field textarea, .cm-field select { padding: 10px 12px; border-radius: var(--r); border: 1px solid transparent; background: var(--field); color: var(--text); font: inherit; outline: none; resize: vertical; }
+.cm-field input:focus, .cm-field textarea:focus, .cm-field select:focus { border-color: var(--accent); }
+.cm-field .faint { font-size: 12.5px; }
+.cm-form-danger { margin-right: auto; }
 .school-hint { display: flex; align-items: center; gap: 10px; margin: 8px 0; padding: 8px 10px 8px 12px; border-radius: var(--r); background: var(--accent-soft); color: var(--text); font-size: 13px; }
 .school-hint svg { width: 18px; height: 18px; flex: none; color: var(--accent-fg); }
 .school-hint span { flex: 1; }

@@ -365,6 +365,26 @@ El orden sigue las dependencias. Lo que se dice que «cabe» es lo razonable, no
 | **E5. Tarjetas de Minecraft** | Adaptadores por versión, compatibilidad estricta, pendientes hasta cerrar el juego | E1, E3 |
 | **E6. Después** | Subir solo lo que cambió de un mundo, configuraciones de mods por formato, aplicar en vivo con el mod, más comunidades y eventos, consolidar Firebase | lo anterior |
 
+**Avance (2026-10-18):**
+- **E0 hecha:**
+  - recuperación de actualizaciones;
+  - «Verificar» por huella;
+  - CI de Windows;
+  - Firebase medido;
+  - canal de pruebas abierto a todos;
+  - logo.
+- **E2, primera versión hecha (0.31.0):**
+  - reglas con 45 pruebas;
+  - `comunidad.rs`;
+  - la página: unirse con código o invitación, anuncios, reglas, servidores, staff, paquete oficial y
+    «Jugar» que instala o actualiza y entra.
+
+  Se probó de punta a punta en la ventana real contra el emulador de Firebase. Faltan dos cosas de Juan:
+  - publicar las reglas;
+  - subir el paquete oficial (Fabric 26.3 con Sodium, Fabric API y minimapa).
+- **E1** (identidad por huella, servicio de ajustes, respaldos) va ahora. La comunidad la usará para
+  avisar si alguien cambió los mods del paquete oficial.
+
 **Antes de diciembre**: E0, E1, E2 y E3 caben si las decisiones 1–3 llegan pronto. E4 es posible en el
 canal de pruebas. E5 y E6 quedan para después. Si algo se atrasa, se recorta E3 a soporte sin tarjetas
 antes de tocar E2: entrar al servidor es lo primero.

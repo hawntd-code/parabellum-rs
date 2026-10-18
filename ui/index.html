@@ -65,6 +65,7 @@
       <button class="rail-btn active" data-page="home" title="Inicio"><svg><use href="#i-play-outline"/></svg></button>
       <button class="rail-btn" data-page="explore" title="Explorar"><svg><use href="#i-compass"/></svg></button>
       <button class="rail-btn" data-page="servers" title="Servidores"><svg><use href="#i-server"/></svg><span class="rail-dot hidden" id="host-dot"></span></button>
+      <button class="rail-btn" data-page="communities" title="Comunidades"><svg><use href="#i-community"/></svg></button>
       <button class="rail-btn" data-page="friends" title="Amigos"><svg><use href="#i-users"/></svg><span class="rail-badge hidden" id="friends-badge"></span></button>
       <button class="rail-btn" data-page="chat" title="Mensajes"><svg><use href="#i-chat"/></svg><span class="rail-badge hidden" id="chat-badge"></span></button>
       <div class="rail-sep"></div>
@@ -347,6 +348,25 @@
         </section>
 
         <!-- MENSAJES -->
+        <!-- COMUNIDADES (ui/comunidad.js) -->
+        <section class="page hidden" id="page-communities">
+          <div class="page-inner cm-page">
+            <div class="cm-head">
+              <h1 class="section-title">Comunidades</h1>
+              <div class="cm-join">
+                <input id="cm-code" maxlength="12" placeholder="Código de invitación" aria-label="Código de invitación" autocomplete="off" spellcheck="false">
+                <button class="btn primary" id="cm-join">Unirse</button>
+              </div>
+              <button class="btn hidden" id="cm-create"><svg><use href="#i-plus"/></svg>Crear comunidad</button>
+            </div>
+            <div class="fp-out hidden" id="cm-signed-out"></div>
+            <div id="cm-main">
+              <div class="cm-tabs hidden" id="cm-tabs"></div>
+              <div id="cm-body"></div>
+            </div>
+          </div>
+        </section>
+
         <section class="page hidden" id="page-friends">
           <div class="page-inner friends-page">
             <div class="fp-head">
@@ -1258,6 +1278,23 @@
     </div>
   </div>
 
+  <!-- Formularios de Comunidades (ui/comunidad.js › askForm) -->
+  <div class="overlay hidden" id="cm-form-dialog">
+    <div class="modal small">
+      <div class="modal-head">
+        <h2 id="cm-form-title"></h2>
+      </div>
+      <div class="modal-body">
+        <div class="cm-fields" id="cm-form-fields"></div>
+        <div class="modal-actions">
+          <button class="btn danger hidden cm-form-danger" id="cm-form-danger"></button>
+          <button class="btn" id="cm-form-cancel">Cancelar</button>
+          <button class="btn primary" id="cm-form-ok"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay hidden" id="confirm-dialog">
     <div class="modal small">
       <div class="modal-head">
@@ -1392,6 +1429,7 @@
       <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3 10.5 13.5M21 3l-6.5 18-4-7.5L3 9.5z"/></symbol>
       <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
       <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-10z"/><path d="M14 3.5v5h5"/></symbol>
+      <symbol id="i-community" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
       <symbol id="i-school" viewBox="0 0 24 24"><path d="M21.4 10.9a1 1 0 0 0 0-1.8L12.8 5.2a2 2 0 0 0-1.6 0L2.6 9.1a1 1 0 0 0 0 1.8l8.6 3.9a2 2 0 0 0 1.6 0z"/><path d="M22 10v6M6 12.5V16a6 3 0 0 0 12 0v-3.5"/></symbol>
       <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7.5 18.5h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6.6 9.6 4.5 4.5 0 0 0 7.5 18.5z"/></symbol>
       <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 0 1-13 5.1M4.5 12a7.5 7.5 0 0 1 13-5.1"/><path d="M17.5 3.5v3.4h-3.4M6.5 20.5v-3.4h3.4"/></symbol>
@@ -1420,5 +1458,6 @@
   <script src="markdown.js"></script>
   <script src="app.js"></script>
   <script src="hostear.js"></script>
+  <script src="comunidad.js"></script>
 </body>
 </html>

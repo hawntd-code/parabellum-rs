@@ -78,6 +78,7 @@ const pages = {
   servers: { title: t("Servidores", "Servers"), icon: "server", sidebar: true },
   hosted: { title: "", icon: "server", sidebar: false },
   friends: { title: t("Amigos", "Friends"), icon: "users", sidebar: false },
+  communities: { title: t("Comunidades", "Communities"), icon: "community", sidebar: false },
   chat: { title: t("Mensajes", "Messages"), icon: "chat", sidebar: false },
   instance: { title: "", icon: "cubes", sidebar: false },
 };
@@ -367,6 +368,7 @@ function currentParam() {
   if (state.page === "instance") return state.current?.id ?? null;
   if (state.page === "project") return state.projectId ?? null;
   if (state.page === "hosted") return host.id ?? null;
+  if (state.page === "communities") return community.id ?? null;
   return null;
 }
 
@@ -400,6 +402,7 @@ function navigate(page, param = null, record = true) {
   }
   if (page === "servers") enterServers();
   if (page === "friends") renderFriendsPage();
+  if (page === "communities") enterCommunities(param);
   if (page === "chat") enterChat();
   else if (state.chatOpen) closeChat();
   // La página anterior se queda un momento debajo, desvaneciéndose, mientras entra la nueva.
@@ -2171,7 +2174,9 @@ function wireFriendsEvents() {
     if (row) messageFriend(row.dataset.uid);
   };
   listen("social", ({ payload }) => {
+    const connected = !state.social?.connected && payload?.connected;
     state.social = payload;
+    if (connected && state.page === "communities") enterCommunities();
     renderFriends();
     if (state.page === "chat" && state.chatOpen) renderChatHeader();
     renderFriendServers();
@@ -2582,7 +2587,7 @@ function messagePreview(m) {
   const share = parseShare(m.text);
   if (share) return `📦 ${share.n}`;
   const invite = parseInvite(m.text);
-  if (invite) return `🎮 ${t("Invitación", "Invite")}`;
+  if (invite) return invite.t === "comunidad" ? `🛡️ ${t(`Invitación a ${invite.n}`, `Invite to ${invite.n}`)}` : `🎮 ${t("Invitación", "Invite")}`;
   return (m.text ?? "").replace(/\s+/g, " ").trim();
 }
 
@@ -2765,6 +2770,12 @@ function parseInvite(text) {
 }
 
 function inviteCardHtml(invite, m) {
+  if (invite.t === "comunidad") {
+    const title = m.mine ? t(`Invitaste a la comunidad ${invite.n}`, `You invited them to the ${invite.n} community`) : t(`Te invitó a la comunidad ${invite.n}`, `Invited you to the ${invite.n} community`);
+    return `<div class="invite-card"><span class="invite-icon">${icon("community")}</span><div class="grow"><b>${escapeHtml(title)}</b><span>${escapeHtml(t(`Código ${invite.c ?? ""}`, `Code ${invite.c ?? ""}`))}</span></div>${
+      m.mine ? "" : `<button class="btn small primary" data-invite-join="${escapeHtml(m.id)}">${t("Unirse", "Join")}</button>`
+    }</div>`;
+  }
   const server = invite.t === "servidor";
   const title = m.mine
     ? server ? t(`Invitaste a ${invite.n}`, `You invited them to ${invite.n}`) : t("Invitaste a tu mundo", "You invited them to your world")
@@ -2778,6 +2789,7 @@ function joinInvite(id) {
   const m = state.chatMessages?.find((x) => x.id === id);
   const invite = m && parseInvite(m.text);
   if (!invite) return;
+  if (invite.t === "comunidad") return joinWithCode(invite.c);
   if (invite.t === "servidor") {
     const item = findActivity(`hosted:${m.from}:${invite.k}`);
     if (item?.online) return joinActivity(item);
@@ -7266,6 +7278,22 @@ function demoInvoke(command, args = {}) {
   if (command === "buscar_culpable") return later({ file: "entityculling-fabric-1.6.2.jar", name: "Entity Culling", dependents: [], dependentFiles: [], launches: 6, notAMod: false, suspects: [] }, 2500);
   if (command === "detener_busqueda") return Promise.resolve(null);
   if (command === "escribiendo" || command === "confirmar_arranque") return Promise.resolve(null);
+  if (command === "comunidades") return Promise.resolve([{ id: "c0000000000a1", name: "Parabellum", description: "El servidor de Parabellum", image: null, role: "owner", caps: {} }]);
+  if (command === "comunidad")
+    return Promise.resolve({
+      id: "c0000000000a1", name: "Parabellum", description: "El servidor de Parabellum: survival con amigos, 26.3.", image: null, role: "owner", caps: {}, owner: "yo",
+      members: [
+        { uid: "yo", name: "Hawntd", role: "owner", caps: {}, joinedAt: Date.now() - 864e5, you: true },
+        { uid: "f2", name: "Alex_mx", role: "admin", caps: { support: true }, joinedAt: Date.now() - 6e7, you: false },
+        { uid: "f3", name: "Dani", role: "member", caps: {}, joinedAt: Date.now() - 3e7, you: false },
+      ],
+      posts: [{ id: "a1", title: "¡Abrimos el 1 de diciembre!", text: "Entren con Parabellum para tener el paquete oficial.", authorName: "Hawntd", at: Date.now() - 36e5 }],
+      rules: "1. Respeto a todos.\n2. Nada de trampas.\n3. Diviértanse.",
+      servers: [{ id: "v00000001", name: "Survival", address: "mc.parabellum.mx", bedrock: "mc.parabellum.mx:19132", package: "p00000001" }],
+      packages: [{ id: "p00000001", name: "Parabellum Oficial", catalogId: "parabellum-oficial", version: "1.0.0", minecraft: "26.3", loader: "Fabric", loaderVersion: "", at: Date.now() }],
+      invites: [{ code: "ABCD2345", expiresAt: Date.now() + 6 * 864e5 }],
+    });
+  if (command === "paquete_comunidad") return Promise.resolve({ state: "falta", catalogId: "parabellum-oficial", wanted: "1.0.0", instance: null, installed: null });
   if (command === "estado_canal") return Promise.resolve({ channel: state.settings.updateChannel ?? "estable", backTo: null });
   if (command === "canal_actualizaciones") return Promise.resolve({ ...state.settings, updateChannel: args.canal });
   if (command === "modo_escuela") return Promise.resolve({ ...state.settings, schoolMode: args.activo });

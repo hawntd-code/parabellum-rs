@@ -207,7 +207,9 @@ impl Database {
     /// `path` puede llevar una consulta: "messages/x?orderBy=\"$key\"&limitToLast=100".
     async fn url(&self, path: &str) -> Result<String, String> {
         let (path, query) = path.split_once('?').map(|(p, q)| (p, format!("{q}&"))).unwrap_or((path, String::new()));
-        Ok(format!("{}/{}.json?{query}auth={}", self.url, path.trim_matches('/'), self.session.token().await?))
+        // La del emulador lleva su espacio («?ns=…»); la de verdad, nada.
+        let (base, fixed) = self.url.split_once('?').map(|(b, q)| (b, format!("{q}&"))).unwrap_or((self.url.as_str(), String::new()));
+        Ok(format!("{}/{}.json?{fixed}{query}auth={}", base, path.trim_matches('/'), self.session.token().await?))
     }
 
     async fn send(&self, method: reqwest::Method, path: &str, body: Option<&Value>) -> Result<Value, DbError> {

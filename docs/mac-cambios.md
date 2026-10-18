@@ -27,8 +27,9 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 - **Publicado en Drive:** Windows **0.30.0** desde el 2026-10-18 (Juan, compilada de `main` en
   `853716e`); Mac sigue en 0.28.0. **Mac va una versión atrás**: falta la Mac 0.30.0 (ver «Para llegar
   a la 0.30.0», abajo).
-- **En `main`: 0.30.1**, sin publicar: el logo nuevo también en el exe y el canal de pruebas, abierto a
-  todos (ver «Cambios de Windows»). Cuando salga, Mac puede publicar directo la 0.30.1.
+- **En `main`: 0.31.0**, sin publicar: el logo nuevo también en el exe, el canal de pruebas (abierto a
+  todos) y **Comunidades** (ver «Cambios de Windows»). Antes de publicarla, Juan publica las reglas de
+  Firebase. Cuando salga, Mac puede publicar directo la 0.31.0.
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
   Las reglas de Firebase de la 0.27 ya están publicadas.
 
@@ -360,6 +361,21 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   iteración (2026-10-17).
 
 ## Cambios de Windows
+
+### 2026-10-18 · Comunidades: la página
+
+- Qué cambió: `ui/comunidad.js` (nuevo, se carga después de `hostear.js`) y la página `#page-communities`
+  con su botón en la barra lateral (`i-community`).
+  - Unirse con un código, o con «Unirse» en una invitación por mensaje
+    (`parabellum:invitacion:{"t":"comunidad","c":código}`).
+  - Anuncios, reglas, servidores con su estado y las direcciones Java y Bedrock para copiar.
+  - «Jugar» instala o actualiza el paquete oficial con `instalar_de_catalogo` y entra directo con
+    `play(id, dirección)`.
+  - Paquete oficial (un modpack del catálogo), códigos de invitación y miembros con su rol y sus permisos.
+  - Formularios: `#cm-form-dialog` (`askForm`).
+- `PARABELLUM_FIREBASE_EMULADOR` (solo para pruebas): la base de datos del emulador, para probar con
+  reglas sin publicar (`firebase::Database::url` acepta `?ns=`).
+- Mac: nada distinto. Prueba unirte con un código que te mande Juan cuando publique las reglas.
 
 ### 2026-10-18 · Comunidades (en curso): reglas de Firebase y motor
 

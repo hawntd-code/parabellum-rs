@@ -169,8 +169,16 @@ fn summary(id: &str, community: &Value, me: &Value) -> Summary {
     }
 }
 
+/// Los errores de Firebase, con uno claro cuando las reglas no lo permiten.
+fn db_error(error: firebase::DbError) -> String {
+    match error {
+        firebase::DbError::Permission(_) => t!("No tienes permiso para hacer eso en esta comunidad.", "You do not have permission to do that in this community."),
+        other => other.to_string(),
+    }
+}
+
 async fn get(db: &Database, path: String) -> Result<Value, String> {
-    db.get(&path).await.map_err(|e| e.to_string())
+    db.get(&path).await.map_err(db_error)
 }
 
 /// Tus comunidades.
@@ -280,7 +288,7 @@ pub async fn crear_comunidad(app: AppHandle, nombre: String, descripcion: String
         format!("communityMembers/{cid}/{uid}"): { "role": "owner", "name": my_name(&app), "joinedAt": firebase::server_timestamp() },
         format!("userCommunities/{uid}/{cid}"): true,
     });
-    db.patch("", &update).await.map_err(|e| e.to_string())?;
+    db.patch("", &update).await.map_err(db_error)?;
     Ok(cid)
 }
 
@@ -298,7 +306,7 @@ pub async fn editar_comunidad(app: AppHandle, id: String, nombre: String, descri
         }
         update.insert(format!("communities/{id}/image"), json!(image));
     }
-    db.patch("", &Value::Object(update)).await.map_err(|e| e.to_string())?;
+    db.patch("", &Value::Object(update)).await.map_err(db_error)?;
     Ok(())
 }
 
@@ -358,7 +366,7 @@ pub async fn unirse_comunidad(app: AppHandle, codigo: String) -> Result<String, 
         format!("communityMembers/{cid}/{uid}"): { "role": "member", "name": my_name(&app), "joinedAt": firebase::server_timestamp(), "invite": code },
         format!("userCommunities/{uid}/{cid}"): true,
     });
-    db.patch("", &update).await.map_err(|e| e.to_string())?;
+    db.patch("", &update).await.map_err(db_error)?;
     Ok(cid)
 }
 
@@ -366,7 +374,7 @@ pub async fn unirse_comunidad(app: AppHandle, codigo: String) -> Result<String, 
 pub async fn salir_comunidad(app: AppHandle, id: String) -> Result<(), String> {
     let (db, uid) = db(&app)?;
     let update = json!({ format!("communityMembers/{id}/{uid}"): null, format!("userCommunities/{uid}/{id}"): null });
-    db.patch("", &update).await.map_err(|e| e.to_string())?;
+    db.patch("", &update).await.map_err(db_error)?;
     Ok(())
 }
 
@@ -380,7 +388,7 @@ pub async fn crear_invitacion(app: AppHandle, id: String, dias: u32) -> Result<I
         format!("inviteCodes/{code}"): { "cid": id, "createdBy": uid, "expiresAt": expires_at },
         format!("communityInvites/{id}/{code}"): expires_at,
     });
-    db.patch("", &update).await.map_err(|e| e.to_string())?;
+    db.patch("", &update).await.map_err(db_error)?;
     Ok(Invite { code, expires_at })
 }
 
@@ -389,7 +397,7 @@ pub async fn borrar_invitacion(app: AppHandle, id: String, codigo: String) -> Re
     let (db, _) = db(&app)?;
     let code = clean_code(&codigo)?;
     let update = json!({ format!("inviteCodes/{code}"): null, format!("communityInvites/{id}/{code}"): null });
-    db.patch("", &update).await.map_err(|e| e.to_string())?;
+    db.patch("", &update).await.map_err(db_error)?;
     Ok(())
 }
 
@@ -411,7 +419,7 @@ pub async fn cambiar_miembro(app: AppHandle, id: String, uid: String, rol: Strin
     } else {
         member.insert("caps".into(), serde_json::to_value(&permisos).unwrap());
     }
-    db.put(&format!("communityMembers/{id}/{uid}"), &Value::Object(member)).await.map_err(|e| e.to_string())?;
+    db.put(&format!("communityMembers/{id}/{uid}"), &Value::Object(member)).await.map_err(db_error)?;
     Ok(())
 }
 
@@ -419,7 +427,7 @@ pub async fn cambiar_miembro(app: AppHandle, id: String, uid: String, rol: Strin
 pub async fn sacar_de_comunidad(app: AppHandle, id: String, uid: String) -> Result<(), String> {
     let (db, _) = db(&app)?;
     let update = json!({ format!("communityMembers/{id}/{uid}"): null, format!("userCommunities/{uid}/{id}"): null });
-    db.patch("", &update).await.map_err(|e| e.to_string())?;
+    db.patch("", &update).await.map_err(db_error)?;
     Ok(())
 }
 
@@ -437,21 +445,21 @@ pub async fn publicar_anuncio(app: AppHandle, id: String, titulo: String, texto:
         "authorName": my_name(&app),
         "at": firebase::server_timestamp(),
     });
-    db.put(&format!("communityPosts/{id}/{}", self::id("a", 12)), &post).await.map_err(|e| e.to_string())?;
+    db.put(&format!("communityPosts/{id}/{}", self::id("a", 12)), &post).await.map_err(db_error)?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn borrar_anuncio(app: AppHandle, id: String, anuncio: String) -> Result<(), String> {
     let (db, _) = db(&app)?;
-    db.delete(&format!("communityPosts/{id}/{anuncio}")).await.map_err(|e| e.to_string())
+    db.delete(&format!("communityPosts/{id}/{anuncio}")).await.map_err(db_error)
 }
 
 #[tauri::command]
 pub async fn guardar_reglas(app: AppHandle, id: String, texto: String) -> Result<(), String> {
     let (db, uid) = db(&app)?;
     let rules = json!({ "text": texto.trim().chars().take(4000).collect::<String>(), "at": firebase::server_timestamp(), "by": uid });
-    db.put(&format!("communityRules/{id}"), &rules).await.map(|_| ()).map_err(|e| e.to_string())
+    db.put(&format!("communityRules/{id}"), &rules).await.map(|_| ()).map_err(db_error)
 }
 
 /// Crea o cambia un servidor de la comunidad (sin `server.id`, uno nuevo).
@@ -471,14 +479,19 @@ pub async fn guardar_servidor_comunidad(app: AppHandle, id: String, servidor: Se
         package: servidor.package.filter(|p| valid_id('p', 8, p)),
         order: servidor.order,
     };
-    db.put(&format!("communityServers/{id}/{sid}"), &serde_json::to_value(&server).unwrap()).await.map_err(|e| e.to_string())?;
+    let mut value = serde_json::to_value(&server).unwrap();
+    // El id es la clave en Firebase, no un campo (las reglas no aceptan campos de más).
+    if let Some(object) = value.as_object_mut() {
+        object.remove("id");
+    }
+    db.put(&format!("communityServers/{id}/{sid}"), &value).await.map_err(db_error)?;
     Ok(sid)
 }
 
 #[tauri::command]
 pub async fn borrar_servidor_comunidad(app: AppHandle, id: String, servidor: String) -> Result<(), String> {
     let (db, _) = db(&app)?;
-    db.delete(&format!("communityServers/{id}/{servidor}")).await.map_err(|e| e.to_string())
+    db.delete(&format!("communityServers/{id}/{servidor}")).await.map_err(db_error)
 }
 
 /// El paquete oficial: un paquete del catálogo de Drive (por su id), con la versión que piden.
@@ -491,7 +504,7 @@ pub async fn guardar_paquete_comunidad(app: AppHandle, id: String, paquete: Pack
         object.remove("id");
         object.retain(|_, v| !v.as_str().is_some_and(str::is_empty));
     }
-    db.put(&format!("communityPackages/{id}/{pk}"), &value).await.map_err(|e| e.to_string())?;
+    db.put(&format!("communityPackages/{id}/{pk}"), &value).await.map_err(db_error)?;
     Ok(pk)
 }
 

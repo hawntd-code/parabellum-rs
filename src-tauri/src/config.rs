@@ -45,6 +45,11 @@ impl Config {
                 }
             }
         }
+        // Pruebas: la base de datos del emulador de Firebase (docs/probar-reglas.py), p. ej.
+        // «http://127.0.0.1:9399?ns=parabellum-prueba». Así se prueba con las reglas nuevas sin publicarlas.
+        if let Ok(emulator) = std::env::var("PARABELLUM_FIREBASE_EMULADOR") {
+            config.firebase_database_url = emulator;
+        }
         config
     }
 

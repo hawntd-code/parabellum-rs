@@ -135,6 +135,20 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Probado: la prueba P2P por internet ve al invitado (destino, directo, ping) y lo quita al salir; Grupos y Capturas capturados en Fabric 1.21.1 (clic en una captura → «Enviar a»); el panel de 26.3 abre (sus clics no se pueden simular: los revisa Juan)
 - [ ] *Prueba:* Juan: en 26.3 cambiar de pestaña, «Mensaje» y Capturas; ver los jugadores del servidor; con un amigo, la tarjeta P2P (directo o relevo y ping)
 
+### 0.31.0: Comunidades (plan de diciembre, etapa E2; pedido de Juan)
+- [x] **Reglas de Firebase** de comunidades, con 45 pruebas en el emulador (`docs/probar-reglas.py`):
+  - se entra con un código vigente;
+  - solo el dueño nombra administradores;
+  - un administrador da permisos a los miembros, pero no a sí mismo ni a otros administradores;
+  - quien no es miembro solo ve lo público.
+- [x] **Motor** (`comunidad.rs`): crear, unirse, invitar, anuncios, reglas, servidores (Java y Bedrock), staff con sus permisos (soporte, publicar paquetes, servidores) y el paquete oficial (un modpack del catálogo de Drive)
+- [x] **Página Comunidades** (`ui/comunidad.js`):
+  - unirse con un código o con «Unirse» en la invitación por mensaje;
+  - anuncios, reglas, servidores con su estado y miembros;
+  - «Jugar» instala o actualiza el paquete oficial y entra directo al servidor.
+- [ ] Publicar las reglas en Firebase (Juan) antes que la versión
+- [ ] El paquete oficial del servidor: Fabric 26.3 con Sodium, Fabric API y minimapa, subido al catálogo de Drive (Juan)
+
 ### 0.30.1: canal de pruebas y el logo nuevo en el exe (pedido de Juan)
 - [x] **Canal de pruebas abierto a todos** (`canal.rs`): Ajustes › Acerca de › Estable o Pruebas. En pruebas llegan también las versiones de `_parabellum-pruebas`; al volver a estable con una de pruebas más nueva, «Volver a la versión estable» (sin perder datos). Quien publica elige el canal
 - [x] El logo nuevo también en el exe y en los accesos directos que ya había (ver la 0.30.0)
