@@ -1278,18 +1278,21 @@
     </div>
   </div>
 
-  <!-- Formularios de Comunidades (ui/comunidad.js › askForm) -->
-  <div class="overlay hidden" id="cm-form-dialog">
-    <div class="modal small">
-      <div class="modal-head">
-        <h2 id="cm-form-title"></h2>
+  <!-- Ventanas de Comunidades (ui/comunidad.js › cmDialog): cada una arma su cuerpo -->
+  <div class="overlay hidden" id="cm-dialog">
+    <div class="modal cm-modal">
+      <div class="modal-head cm-dialog-head">
+        <span class="cm-dialog-icon" id="cm-dialog-icon"></span>
+        <div class="grow"><h2 id="cm-dialog-title"></h2><p class="faint" id="cm-dialog-subtitle"></p></div>
+        <button class="circle-btn" id="cm-dialog-close" title="Cerrar"><svg><use href="#i-close"/></svg></button>
       </div>
       <div class="modal-body">
-        <div class="cm-fields" id="cm-form-fields"></div>
+        <div class="cm-fields" id="cm-dialog-body"></div>
+        <p class="field-error hidden" id="cm-dialog-error"></p>
         <div class="modal-actions">
-          <button class="btn danger hidden cm-form-danger" id="cm-form-danger"></button>
-          <button class="btn" id="cm-form-cancel">Cancelar</button>
-          <button class="btn primary" id="cm-form-ok"></button>
+          <button class="btn danger-ghost hidden" id="cm-dialog-danger"></button>
+          <button class="btn" id="cm-dialog-cancel">Cancelar</button>
+          <button class="btn primary" id="cm-dialog-ok"></button>
         </div>
       </div>
     </div>

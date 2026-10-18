@@ -27,9 +27,9 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 - **Publicado en Drive:** Windows **0.30.0** desde el 2026-10-18 (Juan, compilada de `main` en
   `853716e`); Mac sigue en 0.28.0. **Mac va una versión atrás**: falta la Mac 0.30.0 (ver «Para llegar
   a la 0.30.0», abajo).
-- **En `main`: 0.31.0**, sin publicar: el logo nuevo también en el exe, el canal de pruebas (abierto a
+- **En `main`: 0.31.1**, sin publicar: el logo nuevo también en el exe, el canal de pruebas (abierto a
   todos) y **Comunidades** (ver «Cambios de Windows»). Antes de publicarla, Juan publica las reglas de
-  Firebase. Cuando salga, Mac puede publicar directo la 0.31.0.
+  Firebase. Cuando salga, Mac puede publicar directo la misma versión.
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
   Las reglas de Firebase de la 0.27 ya están publicadas.
 
@@ -361,6 +361,34 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   iteración (2026-10-17).
 
 ## Cambios de Windows
+
+### 2026-10-18 · Comunidades: formularios nuevos y el paquete oficial desde una instancia (0.31.1)
+
+- Qué cambió:
+  - **Arreglo:** «Pedir la versión que está ahora en Drive» (y cada vez que se guardaba un paquete o un
+    servidor) creaba otro igual. El `id` llegaba vacío porque `Package.id` y `Server.id` tenían
+    `#[serde(skip_deserializing)]`. Ahora se respeta.
+  - **Paquete oficial desde una de tus instancias:** `publicar_paquete_comunidad(id, instancia,
+    paquete?, tarea)`. Exporta la instancia sin Minecraft (`ExportOptions.skip_base`, sale del espejo)
+    y la sube al catálogo de Drive con «Conectar Drive». Después queda como paquete de la comunidad.
+    Es una tarea de Descargas.
+  - `borrar_paquete_comunidad`.
+  - `comunidad` ahora trae, por paquete:
+    - `local`: el estado en este PC (`lista`, `falta` o `desactualizada`). `source` indica que este
+      PC tiene la instancia original de quien la publicó, y entonces se juega con ella.
+    - `catalog`: el icono, los mods, el tamaño y la versión que hay en Drive.
+  - **Ventanas nuevas** en `ui/comunidad.js` (`cmDialog`, en `#cm-dialog`, que reemplaza a
+    `askForm`/`#cm-form-dialog`):
+    - comunidad: la imagen se elige con un clic, y también desde la imagen de arriba;
+    - anuncio y reglas: con vista previa en Markdown (limpio, sin imágenes);
+    - servidor: con «Probar», y el paquete elegido en tarjetas;
+    - invitar: el código grande, cuándo vence y varios **amigos y grupos** a la vez;
+    - miembro: rol y permisos explicados;
+    - paquete: «Mis instancias» o «Ya en Drive», en tarjetas.
+  - La tarjeta del paquete muestra si está instalado, con «Instalar» o «Actualizar». En sus opciones:
+    publicar otra versión, pedir la de Drive, cambiarlo o quitarlo.
+  - La columna derecha es más angosta (~30 %) y compacta; servidores y anuncios ocupan el resto.
+- Mac: nada distinto, es código compartido. Para probar «Mis instancias» hace falta «Conectar Drive».
 
 ### 2026-10-18 · Comunidades: la página
 

@@ -146,8 +146,19 @@ El orden importa: cada fase usa lo que construyó la anterior.
   - unirse con un código o con «Unirse» en la invitación por mensaje;
   - anuncios, reglas, servidores con su estado y miembros;
   - «Jugar» instala o actualiza el paquete oficial y entra directo al servidor.
+- [x] **0.31.1 (pedido de Juan):**
+  - «Pedir la versión que está ahora en Drive» ya no duplica el paquete; tampoco se duplican los servidores al editarlos.
+  - El paquete muestra si está instalado, con «Instalar» o «Actualizar».
+  - **El paquete oficial sale de una de tus instancias**: se elige en tarjetas, se exporta sin Minecraft y se sube solo a Drive. También puede ser un modpack que ya está en Drive.
+  - Formularios rediseñados:
+    - comunidad: la imagen se cambia con un clic, también desde arriba;
+    - anuncios y reglas, con vista previa;
+    - servidor, con «Probar»;
+    - invitar a varios **amigos y grupos** a la vez, con el código grande;
+    - permisos explicados.
+  - La columna derecha es ~30 % más angosta.
 - [ ] Publicar las reglas en Firebase (Juan) antes que la versión
-- [ ] El paquete oficial del servidor: Fabric 26.3 con Sodium, Fabric API y minimapa, subido al catálogo de Drive (Juan)
+- [ ] El paquete oficial del servidor: Fabric 26.3 con Sodium, Fabric API y minimapa. Juan lo elige desde su instancia en Paquete oficial › Mis instancias
 
 ### 0.30.1: canal de pruebas y el logo nuevo en el exe (pedido de Juan)
 - [x] **Canal de pruebas abierto a todos** (`canal.rs`): Ajustes › Acerca de › Estable o Pruebas. En pruebas llegan también las versiones de `_parabellum-pruebas`; al volver a estable con una de pruebas más nueva, «Volver a la versión estable» (sin perder datos). Quien publica elige el canal

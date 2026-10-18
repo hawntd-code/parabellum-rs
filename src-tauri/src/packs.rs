@@ -245,6 +245,9 @@ pub struct ExportOptions {
     /// Solo .mrpack: nombre y versión del modpack.
     pub name: String,
     pub version: String,
+    /// Sin el paquete de Minecraft (base-minecraft-…): para el paquete oficial de una comunidad, porque
+    /// Minecraft ya sale del espejo de Drive (espejo.rs) y no hay que volver a subir ~700 MB.
+    pub skip_base: bool,
 }
 
 #[derive(Serialize, Debug)]
@@ -286,7 +289,7 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
     let base_name = format!("base-{base_id}");
     let base_zip = version_dir.join(format!("{base_name}.zip"));
     let base_json = version_dir.join(format!("{base_name}.json"));
-    let base_reused = base_zip.exists() && base_json.exists();
+    let base_reused = options.skip_base || (base_zip.exists() && base_json.exists());
 
     // instancia.json (las de CurseForge traen minecraftinstance.json, que sale con lo elegido).
     let mut instance_files: Vec<PathBuf> = Some(instance.folder.join(INSTANCE_FILE)).filter(|f| f.is_file()).into_iter().collect();

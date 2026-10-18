@@ -3963,6 +3963,8 @@ fn main() {
             comunidad::borrar_servidor_comunidad,
             comunidad::guardar_paquete_comunidad,
             comunidad::paquete_comunidad,
+            comunidad::borrar_paquete_comunidad,
+            comunidad::publicar_paquete_comunidad,
             estado_canal,
             volver_a_estable,
             cuenta::escribiendo,

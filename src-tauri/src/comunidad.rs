@@ -80,7 +80,8 @@ pub struct Post {
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Server {
-    #[serde(skip_deserializing)]
+    /// La clave en Firebase (no se guarda como campo). Al editar, la ventana la manda: sin ella cada
+    /// «Guardar» creaba otro servidor.
     pub id: String,
     pub name: String,
     /// Java: «mc.ejemplo.com» o «mc.ejemplo.com:25565».
@@ -98,7 +99,8 @@ pub struct Server {
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Package {
-    #[serde(skip_deserializing)]
+    /// La clave en Firebase (no se guarda como campo). Sin ella, «usar la versión de Drive» duplicaba el
+    /// paquete en vez de cambiarlo.
     pub id: String,
     pub name: String,
     /// El paquete del catálogo de Drive (su id): de ahí se instala y se actualiza.
@@ -130,6 +132,21 @@ pub struct Detail {
     pub packages: Vec<Package>,
     /// Los códigos vigentes (solo el dueño y los administradores).
     pub invites: Vec<Invite>,
+    /// Cómo está cada paquete en este PC (por su id).
+    pub local: std::collections::HashMap<String, Readiness>,
+    /// Lo que dice el catálogo de cada paquete: icono, mods, tamaño, versión publicada (por su id).
+    pub catalog: std::collections::HashMap<String, PackageInfo>,
+}
+
+#[derive(Serialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageInfo {
+    pub icon: Option<String>,
+    pub mods: u32,
+    pub size: u64,
+    pub description: String,
+    /// La versión que está ahora en el catálogo (si es más nueva que la que piden, se puede pedir).
+    pub version: String,
 }
 
 fn db(app: &AppHandle) -> Result<(Arc<Database>, String), String> {
@@ -262,7 +279,29 @@ pub async fn comunidad(app: AppHandle, id: String) -> Result<Detail, String> {
     let mut invite_list: Vec<Invite> =
         entries(&invites).into_iter().filter_map(|(code, at)| Some(Invite { code, expires_at: at.as_i64()? })).filter(|i| i.expires_at > now).collect();
     invite_list.sort_by_key(|i| std::cmp::Reverse(i.expires_at));
+    let paths = app.state::<AppState>().paths.clone();
+    let instances = crate::instances::list(&paths);
+    let local = package_list.iter().map(|p| (p.id.clone(), readiness_for(p, &instances))).collect();
+    let catalog = crate::catalog::current(&paths).await;
+    let info = package_list
+        .iter()
+        .filter_map(|p| {
+            let entry = catalog.entries.iter().find(|e| !e.is_launcher() && e.manifest.id.eq_ignore_ascii_case(&p.catalog_id))?;
+            Some((
+                p.id.clone(),
+                PackageInfo {
+                    icon: entry.icon.clone(),
+                    mods: entry.manifest.mod_count,
+                    size: entry.size,
+                    description: entry.manifest.description.clone(),
+                    version: entry.manifest.version.clone(),
+                },
+            ))
+        })
+        .collect();
     Ok(Detail {
+        local,
+        catalog: info,
         summary: summary(&id, &community, &me),
         owner: text(&community, "owner"),
         members: member_list,
@@ -509,7 +548,7 @@ pub async fn guardar_paquete_comunidad(app: AppHandle, id: String, paquete: Pack
 }
 
 /// Cómo está en este PC el paquete oficial de un servidor de la comunidad.
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Readiness {
     /// "lista" (instalada y al día), "falta" o "desactualizada"; "sin-paquete" si el servidor no pide uno.
@@ -520,6 +559,33 @@ pub struct Readiness {
     /// La instancia de este PC que viene de ese paquete.
     pub instance: Option<String>,
     pub installed: Option<String>,
+    /// En este PC está la instancia de la que se publicó (la de quien lo publica): se juega con ella.
+    pub source: bool,
+}
+
+/// Cómo está un paquete en este PC: la instancia que se instaló desde él (no por su nombre) o, en el PC
+/// de quien lo publica, la instancia original (no se instala otra encima).
+fn readiness_for(package: &Package, instances: &[crate::instances::Instance]) -> Readiness {
+    if let Some(source) = instances.iter().find(|i| crate::packs::installed_manifest(i).is_none() && crate::packs::slug(&i.id).eq_ignore_ascii_case(&package.catalog_id)) {
+        return Readiness { state: "lista".into(), catalog_id: Some(package.catalog_id.clone()), wanted: Some(package.version.clone()).filter(|v| !v.is_empty()), instance: Some(source.id.clone()), installed: None, source: true };
+    }
+    let local = instances
+        .iter()
+        .filter_map(|i| crate::packs::installed_manifest(i).filter(|m| m.id.eq_ignore_ascii_case(&package.catalog_id)).map(|m| (i.id.clone(), m.version)))
+        .max_by(|a, b| crate::loaders::compare_versions(&a.1, &b.1));
+    let state = match &local {
+        None => "falta",
+        Some((_, version)) if !package.version.is_empty() && crate::loaders::compare_versions(version, &package.version) == std::cmp::Ordering::Less => "desactualizada",
+        Some(_) => "lista",
+    };
+    Readiness {
+        state: state.into(),
+        catalog_id: Some(package.catalog_id.clone()),
+        wanted: Some(package.version.clone()).filter(|v| !v.is_empty()),
+        installed: local.as_ref().map(|(_, v)| v.clone()),
+        instance: local.map(|(i, _)| i),
+        source: false,
+    }
 }
 
 /// «Jugar»: qué falta para entrar al servidor con el paquete oficial. La ventana lo instala o actualiza
@@ -530,27 +596,73 @@ pub async fn paquete_comunidad(app: AppHandle, id: String, servidor: String) -> 
     let (db, _) = db(&app)?;
     let server: Server = serde_json::from_value(get(&db, format!("communityServers/{id}/{servidor}")).await?).map_err(|_| t!("Ese servidor ya no está.", "That server is no longer there."))?;
     let Some(pk) = server.package.filter(|p| !p.is_empty()) else {
-        return Ok(Readiness { state: "sin-paquete".into(), catalog_id: None, wanted: None, instance: None, installed: None });
+        return Ok(Readiness { state: "sin-paquete".into(), catalog_id: None, wanted: None, instance: None, installed: None, source: false });
     };
     let package: Package = serde_json::from_value(get(&db, format!("communityPackages/{id}/{pk}")).await?).map_err(|_| t!("El paquete oficial ya no está.", "The official package is no longer there."))?;
     let paths = app.state::<AppState>().paths.clone();
-    // La instancia que se instaló desde ese paquete del catálogo (no por su nombre).
-    let local = crate::instances::list(&paths)
-        .into_iter()
-        .filter_map(|i| crate::packs::installed_manifest(&i).filter(|m| m.id.eq_ignore_ascii_case(&package.catalog_id)).map(|m| (i.id, m.version)))
-        .max_by(|a, b| crate::loaders::compare_versions(&a.1, &b.1));
-    let state = match &local {
-        None => "falta",
-        Some((_, version)) if !package.version.is_empty() && crate::loaders::compare_versions(version, &package.version) == std::cmp::Ordering::Less => "desactualizada",
-        Some(_) => "lista",
-    };
-    Ok(Readiness {
-        state: state.into(),
-        catalog_id: Some(package.catalog_id),
-        wanted: Some(package.version).filter(|v| !v.is_empty()),
-        installed: local.as_ref().map(|(_, v)| v.clone()),
-        instance: local.map(|(i, _)| i),
+    Ok(readiness_for(&package, &crate::instances::list(&paths)))
+}
+
+#[tauri::command]
+pub async fn borrar_paquete_comunidad(app: AppHandle, id: String, paquete: String) -> Result<(), String> {
+    let (db, _) = db(&app)?;
+    db.delete(&format!("communityPackages/{id}/{paquete}")).await.map_err(db_error)
+}
+
+/// El paquete oficial desde una de tus instancias: se exporta (sin Minecraft, que sale del espejo), se
+/// sube al catálogo de Drive y queda como paquete de la comunidad (`paquete`: el que se reemplaza, si
+/// ya había uno). Hace falta «Conectar Drive» (Ajustes › Acerca de). Es una tarea de Descargas.
+#[tauri::command]
+pub async fn publicar_paquete_comunidad(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    id: String,
+    instancia: String,
+    paquete: Option<String>,
+    tarea: Option<String>,
+) -> Result<String, String> {
+    let paths = state.paths.clone();
+    let instance = crate::instances::find(&paths, &instancia).ok_or(t!("No se encontró la instancia.", "The instance was not found."))?;
+    if state.games.lock().unwrap().contains_key(&instance.id) {
+        return Err(t!("Cierra el juego antes de publicar la instancia.", "Close the game before publishing the instance."));
+    }
+    let publisher = crate::drive_publisher(&state)
+        .await?
+        .ok_or(t!("Para subirla hace falta conectar Drive: Ajustes › Acerca de › Conectar Drive.", "To upload it you need to connect Drive: Settings › About › Connect Drive."))?;
+    let out = crate::remembered_export_folder(&paths).unwrap_or_else(|| paths.root.join(crate::catalog::LOCAL_FOLDER));
+    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+    let job = crate::descargas::start(tarea, "drive", t!("Publicar {} como paquete oficial", "Publish {} as the official package", instance.name));
+    let progress = job.progress("drive");
+    job.run(async {
+        // Lo que se exporta normalmente (mods, configuración, opciones…), sin mundos.
+        let include = crate::packs::exportable(&instance).into_iter().filter(|e| e.checked).map(|e| e.name).collect();
+        let options = crate::packs::ExportOptions { include, skip_base: true, ..Default::default() };
+        let (exported, report) = (instance.clone(), progress.clone());
+        let paths_copy = paths.clone();
+        let out_copy = out.clone();
+        let result = tauri::async_runtime::spawn_blocking(move || crate::packs::export(&exported, &paths_copy, &out_copy, &options, move |stage, f| report(stage, f * 0.4)))
+            .await
+            .map_err(|e| e.to_string())??;
+        let modpack = std::path::PathBuf::from(&result.modpack);
+        let manifest = crate::packs::read_manifest(&modpack)?.ok_or(t!("El paquete no quedó bien.", "The package was not created correctly."))?;
+        let files = crate::drive::files_in(modpack.parent().unwrap_or(&out));
+        let report = progress.clone();
+        publisher.publish(&out, &crate::upload_order(files), move |stage, f| report(stage, 0.4 + f * 0.6)).await?;
+        // El catálogo ya trae la versión nueva.
+        crate::catalog_snapshot(&state, true).await;
+        let package = Package {
+            id: paquete.unwrap_or_default(),
+            name: instance.name.clone(),
+            catalog_id: manifest.id.clone(),
+            version: manifest.version.clone(),
+            minecraft: instance.minecraft_version.clone(),
+            loader: instance.loader.clone(),
+            loader_version: instance.loader_version.clone().unwrap_or_default(),
+            at: 0,
+        };
+        guardar_paquete_comunidad(app.clone(), id.clone(), package).await
     })
+    .await
 }
 
 #[cfg(test)]

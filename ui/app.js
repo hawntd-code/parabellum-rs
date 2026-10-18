@@ -4771,6 +4771,7 @@ function wireEvents() {
       return;
     }
     if (event.key === "Escape") {
+      if (topModal()?.id === "cm-dialog") community.cancelDialog?.();
       closeModal("#create-dialog");
       closeModal("#settings-dialog");
       closeModal("#edit-dialog");
@@ -7287,12 +7288,23 @@ function demoInvoke(command, args = {}) {
         { uid: "f2", name: "Alex_mx", role: "admin", caps: { support: true }, joinedAt: Date.now() - 6e7, you: false },
         { uid: "f3", name: "Dani", role: "member", caps: {}, joinedAt: Date.now() - 3e7, you: false },
       ],
-      posts: [{ id: "a1", title: "¡Abrimos el 1 de diciembre!", text: "Entren con Parabellum para tener el paquete oficial.", authorName: "Hawntd", at: Date.now() - 36e5 }],
-      rules: "1. Respeto a todos.\n2. Nada de trampas.\n3. Diviértanse.",
-      servers: [{ id: "v00000001", name: "Survival", address: "mc.parabellum.mx", bedrock: "mc.parabellum.mx:19132", package: "p00000001" }],
+      posts: [
+        { id: "a1", title: "¡Abrimos el 1 de diciembre!", text: "Entren con **Parabellum** para tener el paquete oficial:\n- Sodium y Fabric API\n- Minimapa", authorName: "Hawntd", at: Date.now() - 36e5 },
+        { id: "a2", title: "Pruebas del servidor", text: "El sábado probamos el servidor. *Traigan amigos.*", authorName: "Alex_mx", at: Date.now() - 2 * 864e5 },
+      ],
+      rules: "1. **Respeto** a todos.\n2. Nada de trampas.\n3. Diviértanse.",
+      servers: [
+        { id: "v00000001", name: "Survival", address: "mc.parabellum.mx", bedrock: "mc.parabellum.mx:19132", package: "p00000001" },
+        { id: "v00000002", name: "Creativo", address: "creativo.parabellum.mx" },
+      ],
       packages: [{ id: "p00000001", name: "Parabellum Oficial", catalogId: "parabellum-oficial", version: "1.0.0", minecraft: "26.3", loader: "Fabric", loaderVersion: "", at: Date.now() }],
       invites: [{ code: "ABCD2345", expiresAt: Date.now() + 6 * 864e5 }],
+      local: { p00000001: { state: "falta", catalogId: "parabellum-oficial", wanted: "1.0.0", instance: null, installed: null, source: false } },
+      catalog: { p00000001: { icon: null, mods: 12, size: 182e6, description: "", version: "1.0.0" } },
     });
+  if (command === "crear_invitacion") return later({ code: "WXYZ6789", expiresAt: Date.now() + args.dias * 864e5 }, 300);
+  if (command === "estado_servidores") return later(Object.fromEntries(args.direcciones.map((a) => [a.toLowerCase(), a.startsWith("creativo") ? { online: false } : { online: true, players: 7, maxPlayers: 50 }])), 400);
+  if (command === "drive_publicar") return Promise.resolve("hawntd@gmail.com");
   if (command === "paquete_comunidad") return Promise.resolve({ state: "falta", catalogId: "parabellum-oficial", wanted: "1.0.0", instance: null, installed: null });
   if (command === "estado_canal") return Promise.resolve({ channel: state.settings.updateChannel ?? "estable", backTo: null });
   if (command === "canal_actualizaciones") return Promise.resolve({ ...state.settings, updateChannel: args.canal });
