@@ -3722,6 +3722,12 @@ fn main() {
     if !arranque::startup(&paths) {
         plataforma::lanzador::cleanup();
     }
+    // La primera vez que abre cada versión, los accesos directos que ya había toman su icono (si cambió).
+    let seen = paths.data.join("version-iconos.txt");
+    if std::fs::read_to_string(&seen).ok().as_deref() != Some(env!("CARGO_PKG_VERSION")) {
+        accesos::refresh_icons();
+        let _ = std::fs::write(&seen, env!("CARGO_PKG_VERSION"));
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         // Iconos de mods, resource packs y mundos (http://icono.localhost/…): se leen cuando se ven.

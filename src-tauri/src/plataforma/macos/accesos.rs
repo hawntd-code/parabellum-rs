@@ -35,6 +35,9 @@ pub fn status(_exe: &Path) -> Status {
     Status { desktop: "no", start_menu: "no" }
 }
 
+/// En Windows refresca los iconos guardados del shell; en Mac no hace falta.
+pub fn refresh_icons() {}
+
 pub fn create(_place: Place, _exe: &Path) -> Result<(), String> {
     Err(t!("En Mac no hay accesos directos: fija Parabellum en el Dock.", "There are no shortcuts on Mac: keep Parabellum in the Dock."))
 }

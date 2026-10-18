@@ -53,7 +53,8 @@
 //!
 //! Módulos
 //!   avisos    notificaciones del sistema (register, show, init_thread, history_count).
-//!   accesos   accesos directos (Place, Status, status, create, remove, supported).
+//!   accesos   accesos directos (Place, Status, status, create, remove, supported) y refresh_icons (que el
+//!             sistema vuelva a leer el icono del programa tras cambiar de logo).
 //!   arrastre  imágenes al chat: install (el receptor de arrastre propio de la ventana: emite
 //!             "arrastre" con las rutas, y con accept_images también imágenes sin archivo, guardadas
 //!             en datos/temporal) y clipboard_image (la imagen del portapapeles como archivo).

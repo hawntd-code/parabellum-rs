@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use windows::core::{Interface, HSTRING};
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoTaskMemFree, IPersistFile, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, STGM_READ};
-use windows::Win32::UI::Shell::{FOLDERID_Desktop, FOLDERID_Programs, IShellLinkW, SHGetKnownFolderPath, ShellLink, KF_FLAG_DEFAULT};
+use windows::Win32::UI::Shell::{FOLDERID_Desktop, FOLDERID_Programs, IShellLinkW, SHChangeNotify, SHGetKnownFolderPath, ShellLink, KF_FLAG_DEFAULT, SHCNE_ASSOCCHANGED, SHCNF_IDLIST};
 
 const NAME: &str = "Parabellum.lnk";
 
@@ -110,7 +110,18 @@ pub fn create(place: Place, exe: &Path) -> Result<(), String> {
         }
         link.SetIconLocation(&HSTRING::from(exe.as_os_str()), 0).map_err(failed)?;
         link.SetDescription(&HSTRING::from(t!("Launcher de Minecraft", "Minecraft launcher"))).map_err(failed)?;
-        link.cast::<IPersistFile>().map_err(failed)?.Save(&HSTRING::from(path.as_os_str()), true).map_err(failed)
+        link.cast::<IPersistFile>().map_err(failed)?.Save(&HSTRING::from(path.as_os_str()), true).map_err(failed)?;
+    }
+    refresh_icons();
+    Ok(())
+}
+
+/// Windows guarda los iconos de los programas: tras cambiar el del exe (un logo nuevo) seguía mostrando
+/// el anterior en el Escritorio y el menú Inicio. Esto le pide que los vuelva a leer.
+pub fn refresh_icons() {
+    // SAFETY: aviso global del shell, sin punteros (SHCNE_ASSOCCHANGED no usa los dos elementos).
+    unsafe {
+        SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None);
     }
 }
 
