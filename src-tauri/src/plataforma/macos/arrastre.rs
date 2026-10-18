@@ -38,6 +38,8 @@ const FILE_TYPES: &[&str] = &["NSFilenamesPboardType", "public.file-url"];
 const PROMISE_TYPES: &[&str] = &["Apple files promise pasteboard type", "com.apple.NSFilePromiseItemMetaData", "com.apple.pasteboard.promised-file-url"];
 /// Lo que se espera a que el navegador escriba el archivo prometido (Chrome puede bajarlo antes).
 const PROMISE_WAIT: Duration = Duration::from_secs(10);
+/// Cuántos archivos prometidos se miran como mucho (solo se manda uno).
+const MAX_PROMISED: usize = 16;
 
 /// Mensajes está abierto: se aceptan imágenes sin archivo.
 static IMAGES: AtomicBool = AtomicBool::new(false);
@@ -210,11 +212,25 @@ fn promised_names(info: &AnyObject, folder: &Path) -> Vec<String> {
     let url: Option<Retained<AnyObject>> = unsafe { msg_send![url_class, fileURLWithPath: &*path, isDirectory: true] };
     let Some(url) = url else { return Vec::new() };
     let names: Option<Retained<NSArray<NSString>>> = unsafe { msg_send![info, namesOfPromisedFilesDroppedAtDestination: &*url] };
-    names.map(|names| (0..names.count()).map(|i| names.objectAtIndex(i).to_string()).filter(|n| is_image_name(Path::new(n))).collect()).unwrap_or_default()
+    let Some(names) = names else { return Vec::new() };
+    (0..names.count()).map(|i| names.objectAtIndex(i).to_string()).filter(|n| is_plain_name(n) && is_image_name(Path::new(n))).take(MAX_PROMISED).collect()
+}
+
+/// Un nombre de archivo solo, sin carpetas: el nombre lo elige la app de origen, y uno como
+/// `/Users/…/foto.png` o `../foto.png` haría leer un archivo de fuera de la carpeta del arrastre.
+fn is_plain_name(name: &str) -> bool {
+    let mut parts = Path::new(name).components();
+    matches!((parts.next(), parts.next()), (Some(std::path::Component::Normal(part)), None) if part == name)
 }
 
 /// El primero de `names` que aparece en `folder` como imagen completa (el mismo tamaño en dos vueltas).
+/// Tiene que quedar dentro de `folder` (ni un nombre con carpetas ni un enlace hacia fuera).
 fn wait_for_image(folder: &Path, names: &[String], wait: Duration) -> Option<PathBuf> {
+    let names: Vec<&String> = names.iter().filter(|n| is_plain_name(n)).collect();
+    let inside = |file: &Path| -> bool {
+        let (Ok(file), Ok(folder)) = (file.canonicalize(), folder.canonicalize()) else { return false };
+        file.parent() == Some(folder.as_path())
+    };
     let step = Duration::from_millis(100);
     let mut sizes = vec![0u64; names.len()];
     let mut waited = Duration::ZERO;
@@ -222,7 +238,7 @@ fn wait_for_image(folder: &Path, names: &[String], wait: Duration) -> Option<Pat
         for (name, last) in names.iter().zip(sizes.iter_mut()) {
             let file = folder.join(name);
             let size = file.symlink_metadata().map(|m| m.len()).unwrap_or(0);
-            if size > 0 && size == *last && is_image_file(&file) {
+            if size > 0 && size == *last && is_image_file(&file) && inside(&file) {
                 return Some(file);
             }
             *last = size;
@@ -339,6 +355,10 @@ mod tests {
         // Uno que no es imagen no se acepta.
         std::fs::write(folder.join("falsa.png"), b"no").unwrap();
         assert_eq!(wait_for_image(&folder, &["falsa.png".to_string()], Duration::from_millis(300)), None);
+        // Ni uno que la app de origen nombra fuera de la carpeta, aunque sea una imagen de verdad.
+        let logo = std::fs::canonicalize("../ui/logo.png").unwrap();
+        let outside = [logo.to_string_lossy().to_string(), "../logo.png".to_string(), format!("../{}/foto.png", folder.file_name().unwrap().to_string_lossy())];
+        assert_eq!(wait_for_image(&folder, &outside, Duration::from_millis(300)), None);
         let _ = std::fs::remove_dir_all(&folder);
     }
 
@@ -359,6 +379,14 @@ mod tests {
         pasteboard_with_file("file:///.file/id=6571367.99999999", |board| assert!(unreadable_files(board)));
         let logo = std::fs::canonicalize("../ui/logo.png").unwrap();
         pasteboard_with_file(&format!("file://{}", logo.display()), |board| assert!(!unreadable_files(board)));
+    }
+
+    #[test]
+    fn nombres_sin_carpetas() {
+        assert!(is_plain_name("foto.png") && is_plain_name("Captura de pantalla 2026.png"));
+        for name in ["/Users/yo/foto.png", "../foto.png", "a/foto.png", "..", ".", "", "./foto.png"] {
+            assert!(!is_plain_name(name), "{name}");
+        }
     }
 
     #[test]
