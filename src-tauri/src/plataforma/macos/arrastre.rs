@@ -191,10 +191,13 @@ fn dropped_image(info: &AnyObject, temp: &Path) -> Dropped {
     }
     let fallback = data(&pasteboard, "public.tiff").and_then(|bytes| save(temp, "tiff", &bytes));
     if has_type(&pasteboard, PROMISE_TYPES) {
-        // Una carpeta vacía en cada arrastre: el origen elige el nombre y no se mezcla con otro anterior.
+        // Una carpeta nueva y vacía en cada arrastre: el origen elige el nombre y no se mezcla con otro
+        // anterior. remove_dir_all no sigue un enlace (lo borra), y create_dir falla si algo la volvió a
+        // crear entre medio. Se resuelve una vez, al crearla.
         let folder = temp.join("arrastre");
         let _ = std::fs::remove_dir_all(&folder);
-        if std::fs::create_dir_all(&folder).is_ok() {
+        let created = std::fs::create_dir_all(temp).and_then(|_| std::fs::create_dir(&folder)).and_then(|_| folder.canonicalize());
+        if let Ok(folder) = created {
             let names = promised_names(info, &folder);
             if !names.is_empty() {
                 return Dropped::Promised { folder, names, fallback };
@@ -223,21 +226,20 @@ fn is_plain_name(name: &str) -> bool {
     matches!((parts.next(), parts.next()), (Some(std::path::Component::Normal(part)), None) if part == name)
 }
 
-/// El primero de `names` que aparece en `folder` como imagen completa (el mismo tamaño en dos vueltas).
-/// Tiene que quedar dentro de `folder` (ni un nombre con carpetas ni un enlace hacia fuera).
+/// El primero de `names` que aparece en `folder` (ya resuelta, recién creada) como imagen completa (el
+/// mismo tamaño en dos vueltas). Tiene que ser de esa carpeta y de nadie más: ni un nombre con carpetas,
+/// ni un enlace, ni un enlace duro (un archivo con otro nombre fuera).
 fn wait_for_image(folder: &Path, names: &[String], wait: Duration) -> Option<PathBuf> {
+    use std::os::unix::fs::MetadataExt;
     let names: Vec<&String> = names.iter().filter(|n| is_plain_name(n)).collect();
-    let inside = |file: &Path| -> bool {
-        let (Ok(file), Ok(folder)) = (file.canonicalize(), folder.canonicalize()) else { return false };
-        file.parent() == Some(folder.as_path())
-    };
+    let inside = |file: &Path| file.canonicalize().is_ok_and(|file| file.parent() == Some(folder));
     let step = Duration::from_millis(100);
     let mut sizes = vec![0u64; names.len()];
     let mut waited = Duration::ZERO;
     while waited <= wait {
         for (name, last) in names.iter().zip(sizes.iter_mut()) {
             let file = folder.join(name);
-            let size = file.symlink_metadata().map(|m| m.len()).unwrap_or(0);
+            let size = file.symlink_metadata().ok().filter(|m| m.nlink() == 1).map_or(0, |m| m.len());
             if size > 0 && size == *last && is_image_file(&file) && inside(&file) {
                 return Some(file);
             }
@@ -341,6 +343,7 @@ mod tests {
     fn espera_la_imagen_prometida() {
         let folder = std::env::temp_dir().join(format!("parabellum-promesa-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();
+        let folder = folder.canonicalize().unwrap();
         let names = vec!["foto.png".to_string()];
         // Como Chrome: el archivo llega un rato después de soltar.
         let writer = {
@@ -359,6 +362,13 @@ mod tests {
         let logo = std::fs::canonicalize("../ui/logo.png").unwrap();
         let outside = [logo.to_string_lossy().to_string(), "../logo.png".to_string(), format!("../{}/foto.png", folder.file_name().unwrap().to_string_lossy())];
         assert_eq!(wait_for_image(&folder, &outside, Duration::from_millis(300)), None);
+        // Ni un enlace duro a una imagen de fuera.
+        let elsewhere = folder.with_extension("fuera");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::copy(&logo, elsewhere.join("logo.png")).unwrap();
+        std::fs::hard_link(elsewhere.join("logo.png"), folder.join("duro.png")).unwrap();
+        assert_eq!(wait_for_image(&folder, &["duro.png".to_string()], Duration::from_millis(300)), None);
+        let _ = std::fs::remove_dir_all(&elsewhere);
         let _ = std::fs::remove_dir_all(&folder);
     }
 
