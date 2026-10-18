@@ -16,7 +16,8 @@ en `ui/`.
 2. Lee [docs/mac-cambios.md](docs/mac-cambios.md): ahí están los cambios de un lado que le tocan al
    otro y los pendientes de cada revisión.
 3. La guía de cada sistema: [docs/mac.md](docs/mac.md) y [docs/windows.md](docs/windows.md). La
-   historia y los planes están en [ROADMAP.md](ROADMAP.md).
+   historia y los planes están en [ROADMAP.md](ROADMAP.md). Hacia dónde va Parabellum (cliente oficial
+   del servidor, comunidades, soporte, mundos en Drive) y en qué orden: [docs/plan-diciembre.md](docs/plan-diciembre.md).
 
 ## Reglas
 

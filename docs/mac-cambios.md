@@ -341,6 +341,16 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-18 · Logo nuevo y plan hacia diciembre
+
+- Qué cambió: el logo nuevo de Parabellum en `ui/logo.png` (ventana, pantalla de carga) y en
+  `src-tauri/icons/icon.png` e `icon.ico` (exe, barra de tareas, bandeja, avisos de Windows). Plan nuevo:
+  [plan-diciembre.md](plan-diciembre.md) (comunidades, soporte con tarjetas de ajustes, mundos en el
+  Drive de cada jugador, canal de pruebas). Todavía es propuesta: Juan tiene que contestar sus
+  decisiones.
+- Mac: `empaquetar.sh` arma el `.icns` desde `ui/logo.png`, así que la `.app` toma el logo sola al
+  empaquetarla. Lee el plan: cada etapa dice qué toca a Mac (sección 13).
+
 ### 2026-10-18 · 0.30.0: espejo de Minecraft en Drive, modo escuela, pantalla de carga y chat
 
 - Qué cambió:
