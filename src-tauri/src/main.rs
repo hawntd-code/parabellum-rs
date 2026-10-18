@@ -20,6 +20,7 @@ mod descargas;
 mod download;
 mod favoritos;
 mod drive;
+mod espejo;
 mod externos;
 mod firebase;
 mod forge;
@@ -77,6 +78,8 @@ struct AppState {
     catalog: Mutex<Option<Arc<catalog::Catalog>>>,
     /// Cuenta de Google, amigos y servidor de sesión local.
     social: cuenta::SocialState,
+    /// La versión nueva de Parabellum que encontró la pantalla de carga (sin leer el catálogo entero).
+    launcher_found: Mutex<Option<catalog::Entry>>,
     /// «Hostear partida»: servidores en marcha y el túnel de playit.gg.
     hosting: hosting::Hosting,
     /// Permiso para publicar en el Drive del catálogo (solo quien publica lo tiene).
@@ -119,6 +122,8 @@ struct Progress {
 struct Versions {
     /// false: sin acceso a Mojang (por ejemplo, en la red de la escuela).
     mojang: bool,
+    /// En modo escuela la lista es la del espejo de Drive.
+    school: bool,
     releases: Vec<mojang::Release>,
     installed: Vec<String>,
     /// Versiones que están en el catálogo de Drive (se bajan de ahí aunque Mojang esté bloqueado).
@@ -184,6 +189,7 @@ fn guardar_ajustes(app: AppHandle, state: State<AppState>, mut ajustes: Settings
     ajustes.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
     *state.settings.lock().unwrap() = ajustes.clone();
     descargas::configure(ajustes.download_parallel, ajustes.download_limit_mb);
+    espejo::set_school_mode(ajustes.school_mode);
     if language_changed {
         idioma::set(&ajustes.language);
         // El menú del icono junto al reloj se vuelve a crear con los textos nuevos.
@@ -343,11 +349,23 @@ fn listar_instancias(state: State<AppState>) -> Vec<Instance> {
 async fn listar_versiones(state: State<'_, AppState>) -> Result<Versions, String> {
     let installed = mojang::installed_versions(&state.paths);
     let loaders = loaders::installed(&state.paths);
-    let (releases, catalog) = futures::join!(mojang::list(), catalog::current(&state.paths));
-    let drive = catalog.entries.iter().filter(|e| e.manifest.is_base()).map(|e| e.manifest.minecraft_version.clone()).collect();
+    let school = espejo::school_mode();
+    let releases = async {
+        if school {
+            Err(String::new())
+        } else {
+            mojang::list().await
+        }
+    };
+    let (releases, catalog, mirror) = futures::join!(releases, catalog::current(&state.paths), espejo::remote(&state.paths));
+    let mirror = mirror.ok().flatten().map(|m| espejo::minecraft_versions(&m)).unwrap_or_default();
+    let mut drive: Vec<String> = catalog.entries.iter().filter(|e| e.manifest.is_base()).map(|e| e.manifest.minecraft_version.clone()).collect();
+    drive.extend(mirror.iter().map(|r| r.id.clone()).filter(|v| !drive.contains(v)).collect::<Vec<_>>());
     Ok(match releases {
-        Ok(releases) => Versions { mojang: true, releases, installed, drive, loaders, message: None },
-        Err(message) => Versions { mojang: false, releases: Vec::new(), installed, drive, loaders, message: Some(message) },
+        Ok(releases) => Versions { mojang: true, school, releases, installed, drive, loaders, message: None },
+        // En modo escuela, o sin Mojang: las versiones del espejo de Drive.
+        Err(_) if school => Versions { mojang: false, school, releases: mirror, installed, drive, loaders, message: None },
+        Err(message) => Versions { mojang: false, school, releases: mirror, installed, drive, loaders, message: Some(message) },
     })
 }
 
@@ -365,10 +383,22 @@ struct LoaderGames {
 }
 
 #[tauri::command]
-async fn versiones_compatibles(loader: String) -> Result<LoaderGames, String> {
-    Ok(match loaders::game_versions(parse_loader(&loader)?).await {
+async fn versiones_compatibles(state: State<'_, AppState>, loader: String) -> Result<LoaderGames, String> {
+    let loader = parse_loader(&loader)?;
+    // Las del espejo de Drive (en modo escuela, o si el servidor del loader no responde).
+    let mirror = || async {
+        let remote = espejo::remote(&state.paths).await.ok().flatten();
+        remote.map(|r| espejo::minecraft_versions(&r).into_iter().map(|v| v.id).filter(|v| !espejo::loader_versions(&r, loader, v).is_empty()).collect::<Vec<_>>()).unwrap_or_default()
+    };
+    if espejo::school_mode() {
+        return Ok(LoaderGames { online: true, games: mirror().await, message: None });
+    }
+    Ok(match loaders::game_versions(loader).await {
         Ok(games) => LoaderGames { online: true, games, message: None },
-        Err(message) => LoaderGames { online: false, games: Vec::new(), message: Some(message) },
+        Err(message) => {
+            let games = mirror().await;
+            LoaderGames { online: !games.is_empty(), games, message: Some(message) }
+        }
     })
 }
 
@@ -391,7 +421,8 @@ async fn versiones_loader(state: State<'_, AppState>, loader: String, minecraft:
         .filter(|i| i.loader == loader.name() && i.minecraft == minecraft)
         .map(|i| i.loader_version)
         .collect();
-    Ok(match loaders::loader_versions(loader, &minecraft).await {
+    let online = if espejo::school_mode() { Err(String::new()) } else { loaders::loader_versions(loader, &minecraft).await };
+    Ok(match online {
         Ok(versions) => LoaderVersions {
             online: true,
             recommended: loaders::recommended(&versions).map(|v| v.version.clone()),
@@ -399,45 +430,83 @@ async fn versiones_loader(state: State<'_, AppState>, loader: String, minecraft:
             installed,
             message: None,
         },
-        Err(message) => LoaderVersions {
-            online: false,
-            recommended: installed.first().cloned(),
-            versions: installed.iter().map(|v| loaders::LoaderVersion { stable: !v.contains('-'), version: v.clone() }).collect(),
-            installed,
-            message: Some(message),
-        },
+        // En modo escuela (o sin conexión con el loader): las del espejo de Drive y las instaladas.
+        Err(message) => {
+            let mut found: Vec<String> = espejo::remote(&state.paths).await.ok().flatten().map(|r| espejo::loader_versions(&r, loader, &minecraft)).unwrap_or_default();
+            found.extend(installed.iter().filter(|v| !found.contains(v)).cloned().collect::<Vec<_>>());
+            found.sort_by(|a, b| loaders::compare_versions(b, a));
+            let mirror = !found.is_empty() && found.len() > installed.len();
+            LoaderVersions {
+                online: mirror,
+                recommended: found.first().cloned(),
+                versions: found.iter().map(|v| loaders::LoaderVersion { stable: !v.contains('-'), version: v.clone() }).collect(),
+                installed,
+                message: (!message.is_empty() && !mirror).then_some(message),
+            }
+        }
     })
 }
 
-/// Descarga (o completa) una versión vanilla. Primero del catálogo de Google Drive, si tiene esa versión
-/// (pedido de Juan: así sirve en cualquier red, también donde Mojang está bloqueado, y solo baja lo que
-/// falte); si no, de Mojang. Sin conexión sirve si ya estaba descargada.
+/// Descarga (o completa) una versión vanilla. En modo escuela, de Google Drive: el espejo (espejo.rs) o
+/// la base del catálogo, sin intentar Mojang, que ahí está bloqueado. Si no, de Mojang, y si Mojang no
+/// responde, de Drive. Sin conexión sirve si ya estaba descargada.
 async fn install_vanilla(version: &str, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<(), String> {
     let installed = mojang::installed_versions(paths).iter().any(|v| v == version);
-    let catalog = catalog::current(paths).await;
-    let mut drive_error = None;
-    if let Some(base) = catalog::base_for(&catalog.entries, version).filter(|b| b.source == catalog::Source::Drive || !installed) {
-        match catalog::install_base(base, paths, progress.clone()).await {
-            // La base de Drive se arma en Windows: en Mac le faltan el Java y los nativos de Mac, y eso se
-            // completa con Mojang (abajo). Si ya sirve en este sistema, Mojang no hace falta.
-            Ok(()) if base_complete(version, paths) => return Ok(()),
-            Ok(()) => {}
-            Err(error) if error == descargas::cancelled_error() => return Err(error),
-            // Si Drive falla (por ejemplo, limitó las descargas de hoy), se intenta con Mojang.
-            Err(error) => drive_error = Some(error),
+    let mut mojang_error = None;
+    if !espejo::school_mode() {
+        let release = match mojang::list().await {
+            Ok(releases) => releases.into_iter().find(|r| r.id == version).ok_or(t!("Mojang no tiene la versión {version}.", "Mojang does not have version {version}.")),
+            Err(message) => Err(message),
+        };
+        // Se ejecuta siempre: si ya estaba descargada termina al momento y completa lo que faltara.
+        match release {
+            Ok(release) => match mojang::install(&release, paths, progress.clone()).await {
+                Ok(()) => return Ok(()),
+                Err(error) if error == descargas::cancelled_error() => return Err(error),
+                Err(error) => mojang_error = Some(error),
+            },
+            Err(error) => mojang_error = Some(error),
         }
+    } else if base_complete(version, paths) {
+        return Ok(());
     }
-    match mojang::list().await {
-        Ok(releases) => {
-            let release = releases.into_iter().find(|r| r.id == version).ok_or(t!("Mojang no tiene la versión {version}.", "Mojang does not have version {version}."))?;
-            // Se ejecuta siempre: si ya estaba descargada termina al momento y completa lo que faltara.
-            mojang::install(&release, paths, progress).await
-        }
-        Err(message) if !installed => Err(match drive_error {
-            Some(drive) => t!("No se pudo bajar Minecraft {version} de Google Drive ({drive}) ni de Mojang: {message}", "Minecraft {version} could not be downloaded from Google Drive ({drive}) or from Mojang: {message}"),
-            None => message,
-        }),
-        Err(_) => Ok(()),
+    let drive_error = match from_drive(version, paths, progress).await {
+        Ok(true) => return Ok(()),
+        Ok(false) => None,
+        Err(error) if error == descargas::cancelled_error() => return Err(error),
+        Err(error) => Some(error),
+    };
+    if installed {
+        return Ok(());
+    }
+    Err(match (mojang_error, drive_error) {
+        (Some(mojang), Some(drive)) => t!("No se pudo bajar Minecraft {version} de Mojang ({mojang}) ni de Google Drive: {drive}", "Minecraft {version} could not be downloaded from Mojang ({mojang}) or from Google Drive: {drive}"),
+        (Some(mojang), None) => mojang,
+        (None, Some(drive)) => drive,
+        (None, None) => t!(
+            "Minecraft {version} no está en Google Drive. Desactiva el modo escuela (con internet) o pide a quien publica que la suba.",
+            "Minecraft {version} is not on Google Drive. Turn off school mode (with internet) or ask whoever publishes to upload it."
+        ),
+    })
+}
+
+/// Minecraft `version` desde Google Drive: el espejo y, si no la tiene, la base del catálogo. Ok(false):
+/// no está en Drive (para este sistema).
+async fn from_drive(version: &str, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<bool, String> {
+    let mirror_error = match espejo::install_minecraft(version, paths, progress.clone()).await {
+        Ok(true) if base_complete(version, paths) => return Ok(true),
+        Ok(_) => None,
+        Err(error) if error == descargas::cancelled_error() => return Err(error),
+        Err(error) => Some(error),
+    };
+    let catalog = catalog::current(paths).await;
+    match catalog::base_for(&catalog.entries, version) {
+        // La base del catálogo se arma en Windows: en Mac le faltan el Java y los nativos de Mac.
+        Some(base) => match catalog::install_base(base, paths, progress).await {
+            Ok(()) => Ok(base_complete(version, paths)),
+            Err(error) => Err(error),
+        },
+        None => mirror_error.map_or(Ok(false), Err),
     }
 }
 
@@ -451,6 +520,36 @@ fn base_complete(version: &str, paths: &Paths) -> bool {
 /// Instala el loader (la versión pedida o la recomendada). Devuelve (id de la versión, versión del loader).
 /// Sin conexión sirve si esa versión ya estaba instalada.
 async fn install_loader(
+    loader: Loader,
+    minecraft: &str,
+    requested: Option<&str>,
+    paths: &Paths,
+    progress: impl Fn(String, f64) + Send + Sync + Clone + 'static,
+) -> Result<(String, String), String> {
+    let requested = requested.map(str::trim).filter(|v| !v.is_empty());
+    if espejo::school_mode() {
+        // Ya instalado: no hace falta Drive.
+        if let Some(found) = requested.and_then(|v| loaders::installed_id(loader, minecraft, v, paths).map(|id| (id, v.to_string()))) {
+            return Ok(found);
+        }
+        return espejo::install_loader(loader, minecraft, requested, paths, progress).await?.ok_or(t!(
+            "{} para Minecraft {minecraft} no está en Google Drive. Desactiva el modo escuela (con internet) o pide a quien publica que lo suba.",
+            "{} for Minecraft {minecraft} is not on Google Drive. Turn off school mode (with internet) or ask whoever publishes to upload it.",
+            loader.name()
+        ));
+    }
+    match install_loader_online(loader, minecraft, requested, paths, progress.clone()).await {
+        Ok(found) => Ok(found),
+        Err(error) if error == descargas::cancelled_error() => Err(error),
+        // El servidor del loader no responde: del espejo de Drive.
+        Err(error) => match espejo::install_loader(loader, minecraft, requested, paths, progress).await {
+            Ok(Some(found)) => Ok(found),
+            _ => Err(error),
+        },
+    }
+}
+
+async fn install_loader_online(
     loader: Loader,
     minecraft: &str,
     requested: Option<&str>,
@@ -1954,6 +2053,20 @@ fn quitar_descarga(id: Option<String>) {
     descargas::remove(id.as_deref());
 }
 
+/// El botón «Modo escuela» de arriba (ver espejo.rs).
+#[tauri::command]
+fn modo_escuela(app: AppHandle, state: State<AppState>, activo: bool) -> Result<Settings, String> {
+    let settings = {
+        let mut settings = state.settings.lock().unwrap();
+        settings.school_mode = activo;
+        settings.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
+        settings.clone()
+    };
+    espejo::set_school_mode(activo);
+    let _ = app.emit("ajustes", settings.clone());
+    Ok(settings)
+}
+
 /// Descargas simultáneas (1 a 3) y límite de velocidad en MB/s (0 = sin límite), desde el panel.
 #[tauri::command]
 fn ajustes_descargas(app: AppHandle, state: State<AppState>, simultaneas: u32, limite: f64) -> Result<Settings, String> {
@@ -2055,13 +2168,17 @@ struct LauncherUpdate {
 
 /// Versión nueva de Parabellum publicada en Drive o en la carpeta paquetes, si la hay.
 #[tauri::command]
-async fn actualizacion_launcher(state: State<'_, AppState>, recargar: bool) -> Result<Option<LauncherUpdate>, String> {
+async fn actualizacion_launcher(state: State<'_, AppState>, recargar: bool, rapido: Option<bool>) -> Result<Option<LauncherUpdate>, String> {
+    let describe = |e: &catalog::Entry| LauncherUpdate { version: e.manifest.version.clone(), notes: e.manifest.description.clone(), size: e.size };
+    // La pantalla de carga: solo la carpeta del launcher (el catálogo entero tarda más).
+    if rapido == Some(true) {
+        let found = catalog::quick_launcher_update(&state.paths, &state.config).await;
+        let update = found.as_ref().map(describe);
+        *state.launcher_found.lock().unwrap() = found;
+        return Ok(update);
+    }
     let catalog = catalog_snapshot(&state, recargar).await;
-    Ok(catalog::launcher_update(&catalog.entries).map(|e| LauncherUpdate {
-        version: e.manifest.version.clone(),
-        notes: e.manifest.description.clone(),
-        size: e.size,
-    }))
+    Ok(catalog::launcher_update(&catalog.entries).map(describe))
 }
 
 /// Cierra Parabellum del todo (desde la ventana de la actualización obligatoria).
@@ -2074,7 +2191,8 @@ fn cerrar_parabellum(app: AppHandle) {
 #[tauri::command]
 async fn aplicar_actualizacion(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let catalog = catalog_snapshot(&state, false).await;
-    let entry = catalog::launcher_update(&catalog.entries).ok_or(t!("No hay una versión nueva.", "There is no new version."))?.clone();
+    let found = state.launcher_found.lock().unwrap().clone();
+    let entry = catalog::launcher_update(&catalog.entries).cloned().or(found).ok_or(t!("No hay una versión nueva.", "There is no new version."))?;
     let installed = catalog::apply_launcher_update(&entry, &state.paths, progress_emitter(&app, "actualizacion")).await?;
     plataforma::lanzador::restart(&installed).map_err(|e| t!("Se actualizó, pero no se pudo reabrir: {e}", "It was updated, but could not be reopened: {e}"))?;
     app.exit(0);
@@ -2446,8 +2564,9 @@ async fn versiones_en_drive(state: State<'_, AppState>) -> Result<DriveVersions,
         return Err(t!("Solo quien publica puede subir versiones.", "Only the publisher can upload versions."));
     }
     let releases = mojang::list().await?.into_iter().filter(|r| r.kind == "release").map(|r| r.id).collect();
-    let catalog = catalog_snapshot(&state, true).await;
-    let in_drive = catalog.entries.iter().filter(|e| e.manifest.is_base() && e.source == catalog::Source::Drive).map(|e| e.manifest.minecraft_version.clone()).collect();
+    catalog_snapshot(&state, true).await;
+    // Las que ya están en el espejo (para este sistema).
+    let in_drive = espejo::remote(&state.paths).await.ok().flatten().map(|r| espejo::minecraft_versions(&r).into_iter().map(|v| v.id).collect()).unwrap_or_default();
     let publisher = drive_publisher(&state).await?;
     let storage = match &publisher {
         Some(p) => p.storage().await.ok(),
@@ -2456,10 +2575,10 @@ async fn versiones_en_drive(state: State<'_, AppState>) -> Result<DriveVersions,
     Ok(DriveVersions { releases, in_drive, email: publisher.map(|p| p.email().to_string()), used: storage.map(|s| s.0), limit: storage.and_then(|s| s.1) })
 }
 
-/// Sube a Drive Minecraft de esas versiones (paquetes base), para que se bajen de ahí en cualquier red,
-/// también donde Mojang está bloqueado (pedido de Juan). Las que ya están en Drive se saltan. Cada una
-/// se baja de Mojang si falta, se empaqueta, se sube y se borra el zip de este PC. Es una tarea del
-/// gestor de descargas (se ve su avance; cancelar la para entre versiones o mientras baja de Mojang).
+/// Sube a Drive Minecraft de esas versiones al espejo (espejo.rs), con cada loader que las tenga y sus
+/// servidores, para que se bajen de ahí en cualquier red, también donde Mojang está bloqueado (pedido de
+/// Juan). Lo que ya está en el espejo se salta, y lo que comparten las versiones se sube una vez. Es una
+/// tarea del gestor de descargas (cancelar la para entre una cosa y otra; la capa a medias no se sube).
 #[tauri::command]
 async fn subir_versiones_drive(state: State<'_, AppState>, versiones: Vec<String>, tarea: Option<String>) -> Result<String, String> {
     if !is_creator(&state.paths) {
@@ -2470,53 +2589,51 @@ async fn subir_versiones_drive(state: State<'_, AppState>, versiones: Vec<String
     let job = descargas::start(tarea, "drive", t!("Subir {count} versiones de Minecraft a Drive", "Upload {count} Minecraft versions to Drive"));
     let progress = job.progress("drive");
     let paths = state.paths.clone();
-    let out = paths.data.join("temporal").join("versiones-drive");
-    let summary = job
-        .run(async {
-            let releases = mojang::list().await?;
-            let catalog = catalog_snapshot(&state, true).await;
-            let (mut uploaded, mut skipped) = (Vec::new(), Vec::new());
-            for (index, version) in versiones.iter().enumerate() {
-                descargas::check()?;
-                // Avance total: cada versión es una parte igual (bajar 40 %, empaquetar 20 %, subir 40 %).
-                let (part, parts) = (index as f64, count.max(1) as f64);
-                if catalog::base_for(&catalog.entries, version).is_some_and(|e| e.source == catalog::Source::Drive) {
-                    skipped.push(version.clone());
-                    continue;
-                }
-                let release = releases.iter().find(|r| &r.id == version).ok_or(t!("Mojang no tiene la versión {version}.", "Mojang does not have version {version}."))?;
-                // De Mojang (no de Drive: es lo que se va a subir).
-                let report = progress.clone();
-                let step = format!("{version} ({} / {count})", index + 1);
-                let label = step.clone();
-                mojang::install(release, &paths, move |stage, fraction| report(format!("{label}: {stage}"), (part + fraction * 0.4) / parts)).await?;
-                let (report, label, minecraft, from, to) = (progress.clone(), step.clone(), version.clone(), paths.clone(), out.clone());
-                let (zip, json) = tauri::async_runtime::spawn_blocking(move || {
-                    packs::export_base(&minecraft, &from, &to, |stage, fraction| report(format!("{label}: {stage}"), (part + 0.4 + fraction * 0.2) / parts))
-                })
-                .await
-                .map_err(|e| e.to_string())??;
-                let report = progress.clone();
-                publisher.publish(&out, &upload_order(vec![zip.clone(), json.clone()]), |stage, fraction| report(format!("{step}: {stage}"), (part + 0.6 + fraction * 0.4) / parts)).await?;
-                let _ = std::fs::remove_file(&zip);
-                let _ = std::fs::remove_file(&json);
-                uploaded.push(version.clone());
-            }
-            *state.catalog.lock().unwrap() = None;
-            Ok(match (uploaded.len(), skipped.len()) {
-                (0, _) => t!("Ya estaban en Drive: no hubo que subir nada.", "They were already on Drive: nothing had to be uploaded."),
-                (_, 0) => t!("Listo: se subieron a Drive {}. Ya se bajan de ahí en cualquier red.", "Done: {} were uploaded to Drive. They now download from there on any network.", uploaded.join(", ")),
-                _ => t!(
-                    "Listo: se subieron a Drive {} ({} ya estaban). Ya se bajan de ahí en cualquier red.",
-                    "Done: {} were uploaded to Drive ({} were already there). They now download from there on any network.",
-                    uploaded.join(", "),
-                    skipped.join(", ")
-                ),
+    job.run(async {
+        // Los servidores de los modpacks del catálogo, con su versión exacta del loader.
+        let catalog = catalog_snapshot(&state, true).await;
+        let extra: Vec<(String, Loader, String)> = catalog
+            .entries
+            .iter()
+            .filter(|e| !e.manifest.is_base() && !e.is_launcher())
+            .filter_map(|e| {
+                let (loader, version) = espejo::loader_of(&e.manifest.version_id, &e.manifest.minecraft_version)?;
+                Some((e.manifest.minecraft_version.clone(), loader, version))
             })
+            .collect();
+        let plan = espejo::plan(&versiones, true, true, &extra).await?;
+        let total = plan.len().max(1);
+        let at = Arc::new(Mutex::new(0.0f64));
+        let (report, fraction) = (progress.clone(), at.clone());
+        let mut builder = espejo::Builder::open(&paths, publisher, move |line: String| report(line.trim().to_string(), *fraction.lock().unwrap())).await?;
+        let mut failed = Vec::new();
+        for (index, item) in plan.iter().enumerate() {
+            descargas::check()?;
+            let done = index as f64 / total as f64;
+            *at.lock().unwrap() = done;
+            progress(format!("{} ({} / {total})", item.describe(), index + 1), done);
+            match builder.add(item).await {
+                Ok(()) => {}
+                Err(error) if error == descargas::cancelled_error() => return Err(error),
+                Err(error) if error.contains("no tiene espacio") || error.contains("has no space") => return Err(error),
+                Err(error) => failed.push(format!("{}: {error}", item.describe())),
+            }
+        }
+        builder.flush().await?;
+        *state.catalog.lock().unwrap() = None;
+        Ok(if failed.is_empty() {
+            t!("Listo: {} quedaron en el espejo de Drive, con sus loaders y servidores.", "Done: {} are now in the Drive mirror, with their loaders and servers.", versiones.join(", "))
+        } else {
+            t!(
+                "Listo: {} quedaron en el espejo de Drive. No se pudieron subir {}: {}",
+                "Done: {} are now in the Drive mirror. {} could not be uploaded: {}",
+                versiones.join(", "),
+                failed.len(),
+                failed.iter().take(3).cloned().collect::<Vec<_>>().join("; ")
+            )
         })
-        .await;
-    let _ = std::fs::remove_dir_all(&out);
-    summary
+    })
+    .await
 }
 
 /// Sube a Drive la carpeta que dejó «Publicar esta versión» (_parabellum o _parabellum-mac) y quita de ahí las versiones
@@ -2602,11 +2719,106 @@ fn system_ram_gb() -> u32 {
 ///   --probar-servidor <servidor> [seg]              lo enciende, espera a que esté listo y lo apaga
 ///   --playit                                        estado de la cuenta y del túnel de playit.gg
 ///   --catalogo                                      modpacks y versiones de Drive y de la carpeta paquetes
+///   --espejo [filtro]                               qué tiene el espejo de Minecraft en Drive (y el espacio)
+///   --espejo-subir <todo|v1,v2…> [sin-loaders] [sin-servidores]  lo arma y lo sube (quien publica)
 ///   --instalar-catalogo <id> [reparar]              instala, actualiza o repara (bajando solo lo que cambió)
 ///   --publicar-launcher <carpeta> [notas]           prepara _parabellum (en Mac, _parabellum-mac) para subirla a Drive
 ///   --subir-launcher-drive <carpeta>                la sube a Drive (con el permiso de «Conectar Drive»)
 fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<String, String> {
+    // PARABELLUM_ESCUELA=1: como con el modo escuela activado (para probar sin cambiar los ajustes).
+    espejo::set_school_mode(settings.school_mode || std::env::var_os("PARABELLUM_ESCUELA").is_some());
     match args[0].as_str() {
+        "--espejo" => {
+            // Qué tiene el espejo de Minecraft en Drive (y, con el permiso de Drive, cuánto espacio queda).
+            let config = config::Config::load(paths);
+            tauri::async_runtime::block_on(async {
+                let catalog = catalog::load(paths, &config).await;
+                let mut lines = Vec::new();
+                if let Some(refresh) = drive::load(paths) {
+                    if let Ok(publisher) = drive::Publisher::resume(&config, refresh).await {
+                        if let Ok((usage, limit)) = publisher.storage().await {
+                            lines.push(format!(
+                                "Drive de {}: usados {:.2} GB de {}",
+                                publisher.email(),
+                                usage as f64 / 1e9,
+                                limit.map(|l| format!("{:.2} GB", l as f64 / 1e9)).unwrap_or("sin límite".into())
+                            ));
+                        }
+                    }
+                }
+                let Some(location) = catalog.mirror.clone() else {
+                    lines.push("El catálogo no tiene espejo.".into());
+                    return Ok(lines.join("\n"));
+                };
+                let remote = espejo::remote(paths).await?.ok_or("No se pudo leer el espejo.")?;
+                let total: u64 = remote.index.layers.iter().map(|l| l.size).sum();
+                lines.push(format!("Espejo ({}): {} capas, {:.2} GB; {} archivos en la carpeta", remote.index.updated, remote.index.layers.len(), total as f64 / 1e9, location.files.len()));
+                let mut kinds: std::collections::BTreeMap<String, usize> = Default::default();
+                for package in remote.index.packages.values() {
+                    *kinds.entry(package.kind.clone()).or_default() += 1;
+                }
+                lines.push(format!("Paquetes: {kinds:?}"));
+                for (id, package) in remote.index.packages.iter().filter(|(id, _)| args.get(1).is_none_or(|f| id.contains(f.as_str()))) {
+                    lines.push(format!("  {id}: {} archivos, {:.0} MB ({})", package.files, package.size as f64 / 1048576.0, package.list));
+                }
+                Ok(lines.join("\n"))
+            })
+        }
+        "--espejo-subir" => {
+            // Arma y sube el espejo (solo quien publica, con el permiso de «Conectar Drive»): las versiones
+            // que se pidan («todo» o separadas por comas), sus loaders y sus servidores. Lo que ya está se salta.
+            // El avance va a datos/logs/espejo.txt.
+            let which = args.get(1).map(String::as_str).unwrap_or("todo");
+            let only: Vec<String> = if which == "todo" { Vec::new() } else { which.split(',').map(|v| v.trim().to_string()).filter(|v| !v.is_empty()).collect() };
+            let servers = !args.iter().any(|a| a == "sin-servidores");
+            let loaders_too = !args.iter().any(|a| a == "sin-loaders");
+            let refresh = drive::load(paths).ok_or("Primero conecta Drive en Parabellum (Acerca de › Conectar Drive).")?;
+            let config = config::Config::load(paths);
+            let log_file = paths.logs.join("espejo.txt");
+            let _ = std::fs::create_dir_all(&paths.logs);
+            let log = move |line: String| {
+                use std::io::Write as _;
+                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&log_file) {
+                    let _ = writeln!(file, "[{}] {line}", chrono::Local::now().format("%H:%M:%S"));
+                }
+            };
+            tauri::async_runtime::block_on(async {
+                let publisher = drive::Publisher::resume(&config, refresh).await?;
+                log(format!("Espejo: subiendo con {} ({which})", publisher.email()));
+                // Los servidores de los modpacks del catálogo, con su versión exacta del loader.
+                let catalog = catalog::load(paths, &config).await;
+                let extra: Vec<(String, Loader, String)> = catalog
+                    .entries
+                    .iter()
+                    .filter(|e| !e.manifest.is_base() && !e.is_launcher())
+                    .filter_map(|e| {
+                        let (loader, version) = espejo::loader_of(&e.manifest.version_id, &e.manifest.minecraft_version)?;
+                        Some((e.manifest.minecraft_version.clone(), loader, version))
+                    })
+                    .collect();
+                let plan = espejo::plan(&only, loaders_too, servers, &extra).await?;
+                log(format!("{} elementos en el plan", plan.len()));
+                let mut builder = espejo::Builder::open(paths, Arc::new(publisher), log.clone()).await?;
+                let (mut done, mut failed) = (0, Vec::new());
+                for (i, item) in plan.iter().enumerate() {
+                    log(format!("({}/{}) {}", i + 1, plan.len(), item.describe()));
+                    match builder.add(item).await {
+                        Ok(()) => done += 1,
+                        Err(error) if error.contains("no tiene espacio") => {
+                            log(format!("ALTO: {error}"));
+                            return Err(error);
+                        }
+                        Err(error) => {
+                            log(format!("  ✗ {error}"));
+                            failed.push(format!("{}: {error}", item.describe()));
+                        }
+                    }
+                }
+                builder.flush().await?;
+                log(format!("Listo: {done} bien, {} con error", failed.len()));
+                Ok(format!("Espejo: {done} elementos bien, {} con error\n{}", failed.len(), failed.join("\n")))
+            })
+        }
         "--comprobar" => {
             let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
             let plan = launch::plan(&instance, settings, paths)?;
@@ -3463,6 +3675,7 @@ fn main() {
             stopped: Mutex::default(),
             catalog: Mutex::default(),
             social: cuenta::SocialState::default(),
+            launcher_found: Mutex::new(None),
             hosting: hosting::Hosting::default(),
             drive_publisher: Default::default(),
             p2p: Default::default(),
@@ -3480,6 +3693,7 @@ fn main() {
             {
                 let settings = app.state::<AppState>().settings.lock().unwrap().clone();
                 descargas::init(app.handle(), settings.download_parallel, settings.download_limit_mb);
+                espejo::set_school_mode(settings.school_mode);
             }
             {
                 let state = app.state::<AppState>();
@@ -3592,6 +3806,8 @@ fn main() {
             pregenerar_mundo,
             buscar_culpable,
             detener_busqueda,
+            modo_escuela,
+            cuenta::escribiendo,
             pausar_pregeneracion,
             subir_versiones_drive,
             arrastre_imagenes,

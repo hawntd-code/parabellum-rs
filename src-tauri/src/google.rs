@@ -359,6 +359,11 @@ pub fn save_session(paths: &Paths, refresh_token: &str) -> Result<(), String> {
     std::fs::write(paths.data.join(SESSION_FILE), data).map_err(|e| e.to_string())
 }
 
+/// Hay una sesión guardada (sin descifrarla).
+pub fn has_session(paths: &Paths) -> bool {
+    paths.data.join(SESSION_FILE).exists()
+}
+
 pub fn load_session(paths: &Paths) -> Option<String> {
     let data = std::fs::read(paths.data.join(SESSION_FILE)).ok()?;
     String::from_utf8(dpapi(&data, false)?).ok().filter(|t| !t.is_empty())

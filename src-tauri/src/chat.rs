@@ -97,6 +97,9 @@ pub struct Message {
 
 #[derive(Default)]
 struct Inner {
+    /// Ya llegaron la lista de conversaciones y lo leído (al conectar).
+    ids_loaded: bool,
+    reads_loaded: bool,
     chat_ids: HashSet<String>,
     chats: HashMap<String, Value>,
     chat_listeners: HashMap<String, Listener>,
@@ -235,7 +238,10 @@ impl Chat {
             move |data| {
                 if let Some(chat) = weak.upgrade() {
                     let reads = data.as_object().map(|o| o.iter().filter_map(|(k, v)| Some((k.clone(), v.as_i64()?))).collect()).unwrap_or_default();
-                    chat.inner.lock().unwrap().reads = reads;
+                    let mut inner = chat.inner.lock().unwrap();
+                    inner.reads = reads;
+                    inner.reads_loaded = true;
+                    drop(inner);
                     (chat.changed)();
                 }
             },
@@ -244,6 +250,12 @@ impl Chat {
         let mut tasks = self.tasks.lock().unwrap();
         tasks.push(chats);
         tasks.push(reads);
+    }
+
+    /// Ya llegaron las conversaciones (con su último mensaje) y lo leído.
+    pub fn synced(&self) -> bool {
+        let inner = self.inner.lock().unwrap();
+        inner.ids_loaded && inner.reads_loaded && inner.chat_ids.iter().all(|id| inner.chats.contains_key(id))
     }
 
     pub fn stop(&self) {
@@ -265,6 +277,7 @@ impl Chat {
             }
             let added: Vec<String> = ids.difference(&inner.chat_ids).cloned().collect();
             inner.chat_ids = ids;
+            inner.ids_loaded = true;
             for id in added {
                 let weak: Weak<Chat> = Arc::downgrade(self);
                 let chat_id = id.clone();

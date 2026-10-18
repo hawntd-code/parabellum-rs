@@ -48,6 +48,9 @@ pub struct Settings {
     pub download_parallel: u32,
     /// Límite de velocidad de las descargas en MB/s (0 = sin límite).
     pub download_limit_mb: f64,
+    /// Modo escuela: Minecraft, los loaders y los servidores se bajan del espejo de Google Drive
+    /// (espejo.rs) y no se intenta Mojang ni los servidores de los loaders.
+    pub school_mode: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
@@ -101,6 +104,7 @@ impl Default for Settings {
             favorites_owner: None,
             download_parallel: 1,
             download_limit_mb: 0.0,
+            school_mode: false,
         }
     }
 }

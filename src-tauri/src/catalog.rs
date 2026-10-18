@@ -12,7 +12,7 @@ use base64::Engine;
 use serde::Serialize;
 use serde_json::Value;
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
 
@@ -63,6 +63,8 @@ impl Entry {
 pub struct Catalog {
     pub entries: Vec<Entry>,
     pub warnings: Vec<String>,
+    /// El espejo de Minecraft (espejo.rs), si la carpeta de Drive tiene uno.
+    pub mirror: Option<crate::espejo::Location>,
 }
 
 /// El último catálogo leído: lo usa `current` (instalar Minecraft desde Drive sin volver a leerlo).
@@ -96,7 +98,8 @@ pub async fn load(paths: &Paths, config: &Config) -> Catalog {
     }
     if config.has_drive() {
         match load_drive(paths, config).await {
-            Ok((entries, warnings)) => {
+            Ok((entries, warnings, mirror)) => {
+                catalog.mirror = mirror;
                 catalog.entries.extend(entries);
                 catalog.warnings.extend(warnings.into_iter().map(|w| format!("Google Drive: {w}")));
             }
@@ -140,60 +143,118 @@ fn load_local(folder: &Path) -> (Vec<Entry>, Vec<String>) {
     (entries, warnings)
 }
 
-async fn load_drive(paths: &Paths, config: &Config) -> Result<(Vec<Entry>, Vec<String>), String> {
+async fn load_drive(paths: &Paths, config: &Config) -> Result<(Vec<Entry>, Vec<String>, Option<crate::espejo::Location>), String> {
     let mut entries = Vec::new();
     let mut warnings = Vec::new();
-    // Raíz / versión / modpack (y un nivel más por si acaso).
-    let mut pending = VecDeque::from([(config.drive_folder_id.clone(), String::new(), 0)]);
-    while let Some((folder_id, path, depth)) = pending.pop_front() {
-        let children = list_children(&folder_id, &config.drive_api_key).await?;
-        let mut by_name: HashMap<String, &Value> = HashMap::new();
-        for child in &children {
-            let name = child["name"].as_str().unwrap_or_default();
-            if child["mimeType"] == FOLDER_MIME {
-                if depth < 3 && valid_id(child["id"].as_str().unwrap_or_default()) {
-                    pending.push_back((child["id"].as_str().unwrap().to_string(), format!("{path}{name}/"), depth + 1));
-                }
-                continue;
-            }
-            // Si hay dos archivos con el mismo nombre, el más reciente.
-            let newer = by_name.get(&name.to_lowercase()).is_none_or(|old| child["modifiedTime"].as_str() > old["modifiedTime"].as_str());
-            if newer {
-                by_name.insert(name.to_lowercase(), child);
-            }
+    let mut mirror = None;
+    // Raíz / versión / modpack (y un nivel más por si acaso). Las carpetas de un mismo nivel se listan a
+    // la vez: Drive tarda ~0.3 s en contestar cada una y, de una en una, el catálogo tardaba ~9 s.
+    let mut level = vec![(config.drive_folder_id.clone(), String::new())];
+    for depth in 0..=3 {
+        if level.is_empty() {
+            break;
         }
-        for json in by_name.values().filter(|f| f["name"].as_str().is_some_and(|n| n.to_lowercase().ends_with(".json"))) {
-            let name = json["name"].as_str().unwrap_or_default();
-            let Some(id) = json["id"].as_str().filter(|id| valid_id(id)) else { continue };
-            let manifest = match download_text(id).await.and_then(|t| serde_json::from_str::<Manifest>(&t).map_err(|e| e.to_string())) {
-                Ok(manifest) => manifest,
-                Err(error) => {
-                    warnings.push(format!("{path}{name}: {error}"));
-                    continue;
+        let listed = futures::future::join_all(level.iter().map(|(id, _)| list_children(id, &config.drive_api_key))).await;
+        let mut next = Vec::new();
+        let mut folders = Vec::new();
+        for ((_, path), children) in level.iter().zip(listed) {
+            let children = children?;
+            for child in children.iter().filter(|c| c["mimeType"] == FOLDER_MIME) {
+                let (name, id) = (child["name"].as_str().unwrap_or_default(), child["id"].as_str().unwrap_or_default());
+                if depth < 3 && valid_id(id) {
+                    next.push((id.to_string(), format!("{path}{name}/")));
                 }
-            };
-            if manifest.id.is_empty() {
-                continue;
             }
-            let Some(zip) = by_name.get(&manifest.archive.to_lowercase()).filter(|z| z["id"].as_str().is_some_and(valid_id)) else {
-                warnings.push(t!("{path}{name}: falta «{}» en la misma carpeta.", "{path}{name}: «{}» is missing from the same folder.", manifest.archive));
-                continue;
-            };
-            let icon = match manifest.icon.as_ref().and_then(|n| by_name.get(&n.to_lowercase())) {
-                Some(icon) => cached_icon(icon, paths).await,
-                None => None,
-            };
-            entries.push(Entry {
-                archive: zip["id"].as_str().unwrap().to_string(),
-                size: zip["size"].as_str().and_then(|s| s.parse().ok()).unwrap_or(manifest.archive_size),
-                location: path.trim_end_matches('/').to_string(),
-                source: Source::Drive,
-                icon,
-                manifest,
-            });
+            folders.push((children, path.clone()));
+        }
+        // Los .json de todas las carpetas del nivel, también a la vez (Drive tarda ~1 s en dar cada uno).
+        for (found, warned, location) in futures::future::join_all(folders.iter().map(|(children, path)| folder_entries(children, path, paths))).await {
+            entries.extend(found);
+            warnings.extend(warned);
+            mirror = mirror.or(location);
+        }
+        level = next;
+    }
+    Ok((entries, warnings, mirror))
+}
+
+/// Los paquetes de una carpeta de Drive (sus .json, que se bajan a la vez) y, si está ahí, el espejo.
+async fn folder_entries(children: &[Value], path: &str, paths: &Paths) -> (Vec<Entry>, Vec<String>, Option<crate::espejo::Location>) {
+    let mut entries = Vec::new();
+    let mut warnings = Vec::new();
+    let mut by_name: HashMap<String, &Value> = HashMap::new();
+    for child in children.iter().filter(|c| c["mimeType"] != FOLDER_MIME) {
+        let name = child["name"].as_str().unwrap_or_default();
+        // Si hay dos archivos con el mismo nombre, el más reciente.
+        let newer = by_name.get(&name.to_lowercase()).is_none_or(|old| child["modifiedTime"].as_str() > old["modifiedTime"].as_str());
+        if newer {
+            by_name.insert(name.to_lowercase(), child);
         }
     }
-    Ok((entries, warnings))
+    // El espejo de Minecraft: su índice y las capas de la misma carpeta.
+    let mirror = by_name.get(crate::espejo::INDEX_FILE).filter(|f| f["id"].as_str().is_some_and(valid_id)).map(|index| crate::espejo::Location {
+        index: index["id"].as_str().unwrap().to_string(),
+        modified: index["modifiedTime"].as_str().unwrap_or_default().to_string(),
+        files: by_name
+            .values()
+            .filter_map(|f| {
+                let id = f["id"].as_str().filter(|id| valid_id(id))?;
+                Some((f["name"].as_str()?.to_string(), (id.to_string(), f["size"].as_str()?.parse().ok()?)))
+            })
+            .collect(),
+    });
+    let jsons: Vec<(&str, &str)> = by_name
+        .values()
+        .filter(|f| f["name"].as_str().is_some_and(|n| n.to_lowercase().ends_with(".json")))
+        .filter_map(|f| Some((f["name"].as_str()?, f["id"].as_str().filter(|id| valid_id(id))?)))
+        .collect();
+    let texts = futures::future::join_all(jsons.iter().map(|(_, id)| download_text(id))).await;
+    for ((name, _), text) in jsons.into_iter().zip(texts) {
+        let manifest = match text.and_then(|t| serde_json::from_str::<Manifest>(&t).map_err(|e| e.to_string())) {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                warnings.push(format!("{path}{name}: {error}"));
+                continue;
+            }
+        };
+        if manifest.id.is_empty() {
+            continue;
+        }
+        let Some(zip) = by_name.get(&manifest.archive.to_lowercase()).filter(|z| z["id"].as_str().is_some_and(valid_id)) else {
+            warnings.push(t!("{path}{name}: falta «{}» en la misma carpeta.", "{path}{name}: «{}» is missing from the same folder.", manifest.archive));
+            continue;
+        };
+        let icon = match manifest.icon.as_ref().and_then(|n| by_name.get(&n.to_lowercase())) {
+            Some(icon) => cached_icon(icon, paths).await,
+            None => None,
+        };
+        entries.push(Entry {
+            archive: zip["id"].as_str().unwrap().to_string(),
+            size: zip["size"].as_str().and_then(|s| s.parse().ok()).unwrap_or(manifest.archive_size),
+            location: path.trim_end_matches('/').to_string(),
+            source: Source::Drive,
+            icon,
+            manifest,
+        });
+    }
+    (entries, warnings, mirror)
+}
+
+/// Solo la versión nueva de Parabellum, para la pantalla de carga: la carpeta del launcher de este
+/// sistema (_parabellum o _parabellum-mac) y la carpeta paquetes, sin leer el resto del catálogo.
+pub async fn quick_launcher_update(paths: &Paths, config: &Config) -> Option<Entry> {
+    let local = paths.root.join(LOCAL_FOLDER);
+    let mut entries: Vec<Entry> = tauri::async_runtime::spawn_blocking(move || load_local(&local).0).await.unwrap_or_default();
+    if config.has_drive() {
+        let folder = format!("_{}", crate::plataforma::lanzador::ID);
+        let root = list_children(&config.drive_folder_id, &config.drive_api_key).await.ok()?;
+        let found = root.iter().find(|c| c["mimeType"] == FOLDER_MIME && c["name"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(&folder)));
+        if let Some(id) = found.and_then(|f| f["id"].as_str()).filter(|id| valid_id(id)) {
+            let children = list_children(id, &config.drive_api_key).await.ok()?;
+            entries.extend(folder_entries(&children, &format!("{folder}/"), paths).await.0);
+        }
+    }
+    launcher_update(&merge(entries)).cloned()
 }
 
 async fn list_children(folder_id: &str, api_key: &str) -> Result<Vec<Value>, String> {
@@ -270,7 +331,7 @@ async fn check_download(response: reqwest::Response) -> Result<reqwest::Response
     })
 }
 
-async fn download_text(file_id: &str) -> Result<String, String> {
+pub(crate) async fn download_text(file_id: &str) -> Result<String, String> {
     let response = download::client().get(download_url(file_id)).send().await.map_err(|_| unavailable())?;
     check_download(response).await?.text().await.map_err(|e| e.to_string())
 }
@@ -615,12 +676,15 @@ pub async fn install(
     }
     let manifest = &entry.manifest;
     if !manifest.is_base() && !packs::base_available(&manifest.minecraft_version, paths) {
-        let base_id = manifest.base_id.clone().unwrap_or_else(|| packs::base_id(&manifest.minecraft_version));
-        let base = catalog.iter().find(|e| e.manifest.is_base() && e.manifest.id.eq_ignore_ascii_case(&base_id)).ok_or(t!(
-            "Este modpack necesita Minecraft {}, pero «base-{base_id}» no está en el catálogo. Súbela a la carpeta de Drive.", "This modpack needs Minecraft {}, but «base-{base_id}» is not in the catalog. Upload it to the Drive folder.",
-            manifest.minecraft_version
-        ))?;
-        install_full(base, paths, progress.clone()).await?;
+        // Minecraft de esa versión: del espejo (solo lo que falte en este PC) o, si no, su base del catálogo.
+        if !crate::espejo::install_minecraft(&manifest.minecraft_version, paths, progress.clone()).await.unwrap_or(false) {
+            let base_id = manifest.base_id.clone().unwrap_or_else(|| packs::base_id(&manifest.minecraft_version));
+            let base = catalog.iter().find(|e| e.manifest.is_base() && e.manifest.id.eq_ignore_ascii_case(&base_id)).ok_or(t!(
+                "Este modpack necesita Minecraft {}, que no está en Google Drive. Súbela con «Subir versiones de Minecraft».", "This modpack needs Minecraft {}, which is not on Google Drive. Upload it with «Upload Minecraft versions».",
+                manifest.minecraft_version
+            ))?;
+            install_full(base, paths, progress.clone()).await?;
+        }
     }
 
     // Actualizar (o reparar) por partes: solo modpacks de Drive que ya están instalados desde ese paquete.

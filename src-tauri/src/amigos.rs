@@ -45,6 +45,9 @@ pub struct Presence {
     /// Dirección P2P de su Parabellum ("id|relevo"): con ella sus amigos entran directo a sus
     /// servidores y mundos abiertos, y él sabe quién se le conecta.
     pub p2p: Option<String>,
+    /// La conversación en la que está escribiendo (su id): sus amigos ven «está escribiendo…». Se quita al
+    /// mandar o a los pocos segundos sin escribir.
+    pub typing: Option<String>,
 }
 
 impl Presence {
@@ -65,6 +68,7 @@ impl Presence {
             ("hosting", &self.hosting),
             ("player", &self.player),
             ("p2p", &self.p2p),
+            ("typing", &self.typing),
         ];
         for (key, value) in fields {
             if let Some(value) = value.as_deref().filter(|v| !v.is_empty()) {
@@ -88,6 +92,7 @@ impl Presence {
             hosting: text("hosting"),
             player: text("player"),
             p2p: text("p2p"),
+            typing: text("typing"),
         }
     }
 }
@@ -155,6 +160,8 @@ pub enum ClaimError {
 
 #[derive(Default)]
 struct Inner {
+    /// Ya llegó la lista de amigos (al conectar).
+    friends_loaded: bool,
     friend_ids: HashSet<String>,
     names: HashMap<String, String>,
     presence: HashMap<String, Value>,
@@ -339,6 +346,12 @@ impl Social {
     }
 
     // ================= Amigos
+
+    /// Ya llegaron los amigos y si cada uno está en línea (la pantalla de carga espera esto).
+    pub fn synced(&self) -> bool {
+        let inner = self.inner.lock().unwrap();
+        inner.friends_loaded && inner.friend_ids.iter().all(|uid| inner.presence.contains_key(uid))
+    }
 
     pub fn view(&self) -> View {
         let inner = self.inner.lock().unwrap();
@@ -545,6 +558,7 @@ impl Social {
             }
             let added: Vec<String> = ids.difference(&inner.friend_ids).cloned().collect();
             inner.friend_ids = ids;
+            inner.friends_loaded = true;
             for uid in &added {
                 let weak = Arc::downgrade(self);
                 let friend = uid.clone();
@@ -663,9 +677,11 @@ mod tests {
             hosting: Some("LosPanas".into()),
             player: Some("Juan_07".into()),
             p2p: Some("0a1b2c|https://use1-1.relay.n0.iroh.link./".into()),
+            typing: Some("d_abc_def".into()),
         };
         let json = presence.to_json("GxxseS");
         assert_eq!(json["mc"], "1.20.1");
+        assert_eq!(json["typing"], "d_abc_def");
         assert!(json.get("server").is_none());
         assert_eq!(Presence::from_json(&json), presence);
     }

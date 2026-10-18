@@ -17,6 +17,8 @@ use crate::{instances, sesion_local, AppState};
 
 #[derive(Default)]
 pub struct SocialState {
+    /// La conversación en la que estás escribiendo y cuándo fue la última tecla (va en tu presencia).
+    typing: Mutex<Option<(String, std::time::Instant)>>,
     google: Mutex<Option<Arc<GoogleAccount>>>,
     social: Mutex<Option<Arc<Social>>>,
     chat: Mutex<Option<Arc<Chat>>>,
@@ -42,6 +44,8 @@ struct Seen {
 
 #[derive(Default, Clone)]
 struct Status {
+    /// Ya se intentó recuperar la sesión guardada al abrir (salió bien o mal).
+    resumed: bool,
     signing_in: bool,
     connecting: bool,
     error: Option<String>,
@@ -61,6 +65,10 @@ pub struct SocialView {
     signing_in: bool,
     connecting: bool,
     connected: bool,
+    /// Al abrir: se está recuperando la sesión de Google guardada (la pantalla de carga espera).
+    restoring: bool,
+    /// Ya llegaron los amigos y las conversaciones.
+    synced: bool,
     error: Option<String>,
     warning: Option<String>,
     name_conflict: Option<String>,
@@ -102,6 +110,8 @@ pub fn view(app: &AppHandle) -> SocialView {
     let status = state.social.status.lock().unwrap().clone();
     let account = google_account(app);
     let social = social(app);
+    let chat = state.social.chat.lock().unwrap().clone();
+    let restoring = available(&state) && !status.resumed && status.error.is_none() && crate::google::has_session(&state.paths);
     SocialView {
         available: available(&state),
         signed_in: account.is_some(),
@@ -110,6 +120,8 @@ pub fn view(app: &AppHandle) -> SocialView {
         signing_in: status.signing_in,
         connecting: status.connecting,
         connected: social.is_some(),
+        restoring,
+        synced: social.as_ref().is_some_and(|s| s.synced()) && chat.is_some_and(|c| c.synced()),
         error: status.error,
         warning: status.warning,
         name_conflict: status.name_conflict,
@@ -646,9 +658,11 @@ fn current_presence(app: &AppHandle) -> Option<(Presence, Option<(u16, String)>)
     let running = state.games.lock().unwrap().keys().next().cloned();
     let mut tracker = state.social.tracker.lock().unwrap();
     let hosting = crate::hosting::hosted_name(app);
+    // «Está escribiendo» dura 6 s desde la última tecla.
+    let typing = state.social.typing.lock().unwrap().as_ref().filter(|(_, at)| at.elapsed() < Duration::from_secs(6)).map(|(chat, _)| chat.clone());
     let Some(id) = running else {
         *tracker = (None, Tracker::default());
-        return Some((Presence { hosting, p2p: p2p_address(app), ..Presence::online() }, None));
+        return Some((Presence { hosting, typing, p2p: p2p_address(app), ..Presence::online() }, None));
     };
     let instance = instances::find(&state.paths, &id)?;
     let started = std::fs::read_to_string(instance.state_dir().join("ultima-partida.txt")).ok().and_then(|t| t.trim().parse::<i64>().ok()).unwrap_or(0);
@@ -672,8 +686,24 @@ fn current_presence(app: &AppHandle) -> Option<(Presence, Option<(u16, String)>)
         hosting,
         player: Some(state.settings.lock().unwrap().username.clone()),
         p2p: p2p_address(app),
+        typing,
     };
     Some((presence, shared))
+}
+
+/// La ventana avisa que estás escribiendo en esa conversación (None: la vaciaste o mandaste el mensaje).
+/// Va en tu presencia: tus amigos ven «está escribiendo…».
+#[tauri::command]
+pub fn escribiendo(app: AppHandle, chat: Option<String>) {
+    let chat = chat.filter(|c| !c.is_empty() && c.len() <= 120 && c.chars().all(|ch| ch.is_ascii_alphanumeric() || "-_".contains(ch)));
+    *app.state::<AppState>().social.typing.lock().unwrap() = chat.map(|c| (c, std::time::Instant::now()));
+    // Se publica ya (no a los 2 s de la vuelta de la presencia), solo si cambió.
+    if let (Some((presence, _)), Some(social)) = (current_presence(&app), social(&app)) {
+        if presence != social.my_presence() {
+            social.set_presence(presence);
+            emit(&app);
+        }
+    }
 }
 
 /// La dirección P2P de este Parabellum (se publica siempre: también sirve para que tus servidores
@@ -687,6 +717,35 @@ pub fn p2p_address(app: &AppHandle) -> Option<String> {
 /// Servidor de sesión local, sesión de Google guardada y la presencia (cada 2 s).
 pub fn startup(app: &AppHandle) {
     let app = app.clone();
+    // La sesión de Google guardada, a la vez que lo demás: la pantalla de carga espera a los amigos y los
+    // mensajes, no a la conexión directa.
+    {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let (paths, config, ok) = {
+                let state = app.state::<AppState>();
+                (state.paths.clone(), state.config.clone(), available(&state))
+            };
+            if ok {
+                if let Some(refresh) = google::load_session(&paths) {
+                    update_status(&app, |s| s.connecting = true);
+                    match GoogleAccount::resume(&config, refresh).await {
+                        Ok(account) => {
+                            let account = Arc::new(account);
+                            *app.state::<AppState>().social.google.lock().unwrap() = Some(account.clone());
+                            upload_profile(&app, &account).await;
+                            connect(&app).await;
+                        }
+                        Err(error) => update_status(&app, |s| {
+                            s.connecting = false;
+                            s.error = Some(t!("No se pudo recuperar tu sesión de Google ({error}). Puedes volver a iniciarla.", "Your Google session could not be restored ({error}). You can sign in again."));
+                        }),
+                    }
+                }
+            }
+            update_status(&app, |s| s.resumed = true);
+        });
+    }
     tauri::async_runtime::spawn(async move {
         // Conexión directa con los amigos: entran a tus servidores y mundos abiertos (los que estén
         // encendidos) sin pasar por playit.gg.
@@ -703,27 +762,6 @@ pub fn startup(app: &AppHandle) {
         let log = app.state::<AppState>().paths.logs.join("sesion-local.log");
         if let Ok(port) = sesion_local::start(log).await {
             *app.state::<AppState>().social.session_port.lock().unwrap() = Some(port);
-        }
-        let (paths, config, ok) = {
-            let state = app.state::<AppState>();
-            (state.paths.clone(), state.config.clone(), available(&state))
-        };
-        if ok {
-            if let Some(refresh) = google::load_session(&paths) {
-                update_status(&app, |s| s.connecting = true);
-                match GoogleAccount::resume(&config, refresh).await {
-                    Ok(account) => {
-                        let account = Arc::new(account);
-                        *app.state::<AppState>().social.google.lock().unwrap() = Some(account.clone());
-                        upload_profile(&app, &account).await;
-                        connect(&app).await;
-                    }
-                    Err(error) => update_status(&app, |s| {
-                        s.connecting = false;
-                        s.error = Some(t!("No se pudo recuperar tu sesión de Google ({error}). Puedes volver a iniciarla.", "Your Google session could not be restored ({error}). You can sign in again."));
-                    }),
-                }
-            }
         }
         loop {
             tokio::time::sleep(Duration::from_secs(2)).await;

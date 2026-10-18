@@ -505,6 +505,7 @@ function enterExplore() {
   fillTargetSelect($("#explore-instance"));
   if (e.initialized) return;
   e.initialized = true;
+  if (state.settings?.schoolMode) e.kind = "drive";
   loadExploreVersions();
   if (e.target === null) {
     const modded = [...state.instances]
@@ -2163,6 +2164,7 @@ function wireFriendsEvents() {
   });
   listen("ajustes", ({ payload }) => {
     state.settings = payload;
+    renderSchool();
     renderSidebar();
     renderSettings();
     renderSteps();
@@ -2235,10 +2237,13 @@ function renderChatList() {
     );
     return;
   }
-  const chats = allChats();
-  const friends = state.social?.friends?.friends ?? [];
+  $("#chat-search-box").classList.toggle("hidden", allChats().length + (state.social?.friends?.friends?.length ?? 0) < 6 && !state.chatFilter);
+  const query = (state.chatFilter ?? "").trim().toLowerCase();
+  const matches = (...texts) => !query || texts.some((text) => (text ?? "").toLowerCase().includes(query));
+  const chats = allChats().filter((c) => matches(c.name, c.lastText, ...(c.members ?? []).map((m) => m.name)));
+  const friends = (state.social?.friends?.friends ?? []).filter((f) => matches(f.name));
   // Amigos con los que todavía no hay conversación: para empezar una.
-  const talking = new Set(chats.filter((c) => c.kind === "directo").flatMap((c) => c.members.map((m) => m.uid)));
+  const talking = new Set(allChats().filter((c) => c.kind === "directo").flatMap((c) => c.members.map((m) => m.uid)));
   const others = friends.filter((f) => !talking.has(f.uid));
   const favorites = chats.filter((c) => isFavoriteChat(c.id));
   const recent = chats.filter((c) => !isFavoriteChat(c.id));
@@ -2246,7 +2251,11 @@ function renderChatList() {
           ${c.kind === "grupo" ? chatAvatar(c) : presenceHead(c.name, chatFriend(c))}
           <span class="grow">
             <span class="chat-item-top"><b>${escapeHtml(c.name)}${isFavoriteChat(c.id) ? favMark() : ""}</b><small>${escapeHtml(chatTime(c.lastAt))}</small></span>
-            <span class="chat-item-last">${escapeHtml(c.lastText ? (c.kind === "grupo" && c.lastName ? `${c.lastName}: ${chatPreview(c.lastText)}` : chatPreview(c.lastText)) : c.kind === "grupo" ? t("Grupo nuevo", "New group") : t("Sin mensajes todavía", "No messages yet"))}</span>
+            ${
+              typingIn(c.id).length
+                ? `<span class="chat-item-last typing">${escapeHtml(t("escribiendo…", "typing…"))}</span>`
+                : `<span class="chat-item-last">${escapeHtml(c.lastText ? (c.kind === "grupo" && c.lastName ? `${c.lastName}: ${chatPreview(c.lastText)}` : chatPreview(c.lastText)) : c.kind === "grupo" ? t("Grupo nuevo", "New group") : t("Sin mensajes todavía", "No messages yet"))}</span>`
+            }
           </span>
           ${c.unread ? `<span class="unread-dot"></span>` : ""}
         </button>`;
@@ -2266,7 +2275,9 @@ function renderChatList() {
           )
           .join("")
       : "") ||
-    `<p class="side-note">${t("Todavía no tienes conversaciones. Agrega amigos con el botón de arriba para escribirles.", "You have no conversations yet. Add friends with the button above to write to them.")}</p>`;
+    (query
+      ? `<p class="side-note">${t("Nada coincide con tu búsqueda.", "Nothing matches your search.")}</p>`
+      : `<p class="side-note">${t("Todavía no tienes conversaciones. Agrega amigos con el botón de arriba para escribirles.", "You have no conversations yet. Add friends with the button above to write to them.")}</p>`);
   // La conversación con un mensaje nuevo sube a su lugar en vez de saltar.
   if (setHtml($("#chat-list"), listHtml)) for (const canvas of $$("#chat-list canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
   if (!state.chatOpen) showChatEmpty(chats.length ? t("Elige una conversación.", "Choose a conversation.") : t("Escríbele a un amigo para empezar.", "Write to a friend to start."), false);
@@ -2347,10 +2358,12 @@ function renderChatHeader() {
   $("#chat-avatar").title = chat.kind === "grupo" ? t("Miembros del grupo", "Group members") : "";
   if (chat.kind === "grupo") {
     $("#chat-subtitle").textContent = chat.members.map((m) => m.name).join(", ");
+    renderTyping();
   } else {
     const friend = (state.social?.friends?.friends ?? []).find((f) => chat.members.some((m) => m.uid === f.uid));
     $("#chat-subtitle").textContent = friend ? friendStatus(friend) : "";
     join = friend && joinTarget(friend);
+    renderTyping();
   }
   state.chatJoin = join;
   const favorite = isFavoriteChat(chat.id);
@@ -2371,6 +2384,19 @@ function joinTarget(friend) {
 
 async function openChat(id) {
   if (state.page !== "chat") navigate("chat");
+  // Lo que ibas escribiendo se queda en su conversación.
+  if (state.chatOpen !== id) {
+    const input = $("#chat-input");
+    state.chatDrafts ??= {};
+    if (state.chatOpen) {
+      if (input.value.trim()) state.chatDrafts[state.chatOpen] = input.value;
+      else delete state.chatDrafts[state.chatOpen];
+    }
+    input.value = state.chatDrafts[id] ?? "";
+    autoGrow(input);
+    stopTyping();
+    closeEmojiPicker();
+  }
   if (state.chatOpen !== id) state.chatReply = null;
   renderReplyBar();
   state.chatOpen = id;
@@ -2397,9 +2423,51 @@ function closeChat() {
   invoke("cerrar_chat").catch(() => {});
 }
 
+/** «Hoy», «Ayer» o la fecha (con el año si no es este). */
+function dayLabel(ms) {
+  const date = new Date(ms);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return t("Hoy", "Today");
+  if (date.toDateString() === yesterday.toDateString()) return t("Ayer", "Yesterday");
+  const options = { weekday: "long", day: "numeric", month: "long" };
+  if (date.getFullYear() !== today.getFullYear()) options.year = "numeric";
+  return date.toLocaleDateString(locale(), options);
+}
+
+/** El texto de un mensaje, con los enlaces que se pueden abrir (en el navegador). */
+function messageTextHtml(text) {
+  return escapeHtml(text).replace(/\bhttps?:\/\/[^\s<>"']+/g, (url) => {
+    const clean = url.replace(/[.,;:!?)\]]+$/, "");
+    return `<a class="bubble-link" href="${clean}" title="${clean}">${clean}</a>${url.slice(clean.length)}`;
+  });
+}
+
+/** Los que mandaste en esta conversación y Firebase todavía no confirma (o no se pudieron mandar). */
+function pendingMessages() {
+  return (state.chatPending ?? []).filter((p) => p.chat === state.chatOpen);
+}
+
+/** Quita los que ya llegaron de Firebase (mismo texto, tuyo, de hace poco). */
+function settlePending(messages) {
+  if (!state.chatPending?.length) return;
+  const used = new Set();
+  state.chatPending = state.chatPending.filter((p) => {
+    if (!p.sent || p.chat !== state.chatOpen) return true;
+    // Mandado hace rato y Firebase no lo devolvió (otra conversación abierta, se reconectó…): ya está.
+    if (Date.now() - p.at > 30000) return false;
+    const arrived = messages.find((m) => m.mine && !used.has(m.id) && m.text === p.text && m.at >= p.at - 120000);
+    if (arrived) used.add(arrived.id);
+    return !arrived;
+  });
+}
+
 function renderMessages() {
   const box = $("#chat-messages");
-  const messages = state.chatMessages ?? [];
+  settlePending(state.chatMessages ?? []);
+  const me = (state.chatMessages ?? []).find((m) => m.mine)?.from;
+  const messages = [...(state.chatMessages ?? []), ...pendingMessages().map((p) => ({ id: p.key, from: me, mine: true, text: p.text, at: p.at, reply: p.reply, pending: !p.failed && !p.sent, failed: p.failed }))];
   const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
   // Mismo chat que la última vez: lo nuevo entra y lo demás se acomoda. Otro chat: se pinta de golpe.
   const same = state.chatShown === state.chatOpen;
@@ -2417,7 +2485,7 @@ function renderMessages() {
   for (const m of messages) {
     const day = new Date(m.at).toDateString();
     if (!previous || new Date(previous.at).toDateString() !== day) {
-      html += `<div class="chat-day" data-key="d:${escapeHtml(day)}">${escapeHtml(new Date(m.at).toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long" }))}</div>`;
+      html += `<div class="chat-day" data-key="d:${escapeHtml(day)}">${escapeHtml(dayLabel(m.at))}</div>`;
     }
     const continued = previous && previous.from === m.from && m.at - previous.at < 5 * 60000 && new Date(previous.at).toDateString() === day;
     const author = group && !m.mine && !continued ? `<span class="bubble-author">${escapeHtml(m.name)}</span>` : "";
@@ -2434,11 +2502,11 @@ function renderMessages() {
         ? shareCardHtml(share, m)
         : invite
           ? inviteCardHtml(invite, m)
-          : `<span class="bubble-text">${escapeHtml(m.text ?? "")}</span>`;
+          : `<span class="bubble-text">${messageTextHtml(m.text ?? "")}</span>`;
     // Al pasar el ratón: reaccionar y responder; en los tuyos también editar (solo texto) y borrar.
     // Clic derecho para el menú.
     const tool = (attribute, name, title) => `<button class="bubble-tool" ${attribute}="${escapeHtml(m.id)}" title="${title}">${icon(name)}</button>`;
-    const tools = editing
+    const tools = editing || m.pending || m.failed
       ? ""
       : `<div class="bubble-tools">${tool("data-msg-react", "smile", t("Reaccionar", "React"))}${tool("data-msg-reply", "reply", t("Responder", "Reply"))}${
           m.mine ? `${canEditMessage(m) ? tool("data-msg-edit", "pencil", t("Editar", "Edit")) : ""}${tool("data-msg-delete", "trash", t("Borrar", "Delete"))}` : ""
@@ -2453,8 +2521,14 @@ function renderMessages() {
           .join("")}</div>`
       : "";
     const time = new Date(m.at).toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
-    const stack = `<div class="bubble-stack"><div class="bubble ${editing ? "editing" : ""}">${author}${quote}${body}<span class="bubble-time">${m.edited ? `<span class="bubble-edited">${t("editado", "edited")}</span> · ` : ""}${escapeHtml(time)}</span></div>${reactions}</div>`;
-    html += `<div class="bubble-row ${m.mine ? "mine" : ""} ${continued ? "continued" : ""}" data-msg="${escapeHtml(m.id)}" data-key="m:${escapeHtml(m.id)}">
+    const stamp = m.pending
+      ? `<span class="bubble-pending">${icon("clock")}${t("Enviando…", "Sending…")}</span>`
+      : `${m.edited ? `<span class="bubble-edited">${t("editado", "edited")}</span> · ` : ""}${escapeHtml(time)}`;
+    const failed = m.failed
+      ? `<div class="bubble-failed">${t("No se envió", "Not sent")}<button data-pending-retry="${escapeHtml(m.id)}">${t("Reintentar", "Retry")}</button><button data-pending-drop="${escapeHtml(m.id)}">${t("Descartar", "Discard")}</button></div>`
+      : "";
+    const stack = `<div class="bubble-stack"><div class="bubble ${editing ? "editing" : ""}">${author}${quote}${body}<span class="bubble-time">${stamp}</span></div>${reactions}${failed}</div>`;
+    html += `<div class="bubble-row ${m.mine ? "mine" : ""} ${continued ? "continued" : ""} ${m.pending ? "pending" : ""} ${m.failed ? "failed" : ""}" ${m.pending || m.failed ? "" : `data-msg="${escapeHtml(m.id)}"`} data-key="m:${escapeHtml(m.id)}">
       ${m.mine ? tools + stack : stack + tools}
     </div>`;
     previous = m;
@@ -2793,17 +2867,130 @@ async function sendChatText() {
   state.chatStick = true;
   input.value = "";
   autoGrow(input);
+  delete state.chatDrafts?.[state.chatOpen];
+  stopTyping();
   const reply = state.chatReply;
   state.chatReply = null;
   renderReplyBar();
+  // Se ve al momento (un poco transparente) hasta que Firebase lo confirma.
+  const pending = { key: `p:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`, chat: state.chatOpen, text, at: Date.now(), reply: reply ? { id: reply.id, name: reply.name, text: reply.text } : null };
+  (state.chatPending ??= []).push(pending);
+  renderMessages();
+  await deliverPending(pending);
+}
+
+async function deliverPending(pending) {
+  pending.failed = false;
   try {
-    await invoke("enviar_mensaje", { chat: state.chatOpen, texto: text, respuesta: reply?.id ?? null });
+    await invoke("enviar_mensaje", { chat: pending.chat, texto: pending.text, respuesta: pending.reply?.id ?? null });
+    pending.sent = true;
   } catch (error) {
-    input.value = text;
-    state.chatReply = reply;
-    renderReplyBar();
+    pending.failed = true;
     toast(String(error), "error");
   }
+  if (state.chatOpen === pending.chat) renderMessages();
+}
+
+/** Botones de un mensaje que no se pudo mandar. */
+function pendingAction(event) {
+  const retry = event.target.closest("[data-pending-retry]");
+  const drop = event.target.closest("[data-pending-drop]");
+  const key = (retry ?? drop)?.dataset.pendingRetry ?? (retry ?? drop)?.dataset.pendingDrop;
+  if (!key) return false;
+  const pending = state.chatPending?.find((p) => p.key === key);
+  if (!pending) return true;
+  if (drop) {
+    state.chatPending = state.chatPending.filter((p) => p !== pending);
+    renderMessages();
+  } else {
+    pending.at = Date.now();
+    state.chatStick = true;
+    renderMessages();
+    deliverPending(pending);
+  }
+  return true;
+}
+
+// ---------- Está escribiendo… ----------
+/** Avisa (como mucho cada 3 s) que estás escribiendo en la conversación abierta. */
+function noteTyping() {
+  const text = $("#chat-input").value.trim();
+  if (!state.chatOpen || !text) return stopTyping();
+  const now = Date.now();
+  if (state.typingSent?.chat === state.chatOpen && now - state.typingSent.at < 3000) return;
+  state.typingSent = { chat: state.chatOpen, at: now };
+  invoke("escribiendo", { chat: state.chatOpen }).catch(() => {});
+}
+
+function stopTyping() {
+  if (!state.typingSent) return;
+  state.typingSent = null;
+  invoke("escribiendo", { chat: null }).catch(() => {});
+}
+
+/** Los amigos que están escribiendo en esa conversación (su presencia, de hace menos de 90 s). */
+function typingIn(chatId) {
+  const friends = state.social?.friends?.friends ?? [];
+  return friends.filter((f) => f.online && f.presence?.typing === chatId && Date.now() - (f.lastSeen ?? 0) < 90000);
+}
+
+function typingText(names) {
+  if (!names.length) return "";
+  if (names.length === 1) return t(`${names[0]} está escribiendo`, `${names[0]} is typing`);
+  if (names.length === 2) return t(`${names[0]} y ${names[1]} están escribiendo`, `${names[0]} and ${names[1]} are typing`);
+  return t("Varios están escribiendo", "Several people are typing");
+}
+
+function renderTyping() {
+  const chat = currentChat();
+  const box = $("#chat-typing");
+  if (!box) return;
+  const typing = chat ? typingIn(chat.id) : [];
+  const names = typing.map((f) => f.name);
+  box.classList.toggle("hidden", !names.length);
+  $("#chat-subtitle").classList.toggle("hidden", !!names.length);
+  if (names.length) box.innerHTML = `<i><b></b><b></b><b></b></i>${escapeHtml(typingText(chat.kind === "grupo" ? names : [chat.name]))}`;
+}
+
+// ---------- Emojis al escribir ----------
+const COMPOSER_EMOJIS = ["😀", "😂", "🤣", "😊", "😍", "😎", "🤔", "😅", "😭", "😡", "😴", "🥳", "😱", "🙄", "😏", "🤯", "👍", "👎", "👏", "🙏", "💪", "👀", "🔥", "✨", "❤️", "💜", "💔", "💀", "🎉", "✅", "❌", "⭐", "⛏️", "🗡️", "🛡️", "🏹", "🧱", "💎", "🪓", "🧟", "🐷", "🐺", "🌙", "☀️", "🎮", "🏆", "🍕", "🍪"];
+
+function toggleEmojiPicker() {
+  const button = $("#chat-emoji");
+  const open = $(".emoji-picker");
+  if (open) return closeEmojiPicker();
+  const picker = document.createElement("div");
+  picker.className = "emoji-picker";
+  picker.setAttribute("role", "dialog");
+  picker.setAttribute("aria-label", t("Emojis", "Emojis"));
+  picker.innerHTML = COMPOSER_EMOJIS.map((e) => `<button type="button" data-emoji-insert="${e}">${e}</button>`).join("");
+  document.body.append(picker);
+  const rect = button.getBoundingClientRect();
+  picker.style.left = `${Math.max(12, rect.right - picker.offsetWidth)}px`;
+  picker.style.top = `${Math.max(12, rect.top - picker.offsetHeight - 8)}px`;
+  button.setAttribute("aria-expanded", "true");
+  picker.onclick = (event) => {
+    const emoji = event.target.closest("[data-emoji-insert]")?.dataset.emojiInsert;
+    if (!emoji) return;
+    insertAtCaret($("#chat-input"), emoji);
+    if (!event.shiftKey) closeEmojiPicker();
+  };
+  picker.querySelector("button")?.focus();
+}
+
+function closeEmojiPicker() {
+  $(".emoji-picker")?.remove();
+  $("#chat-emoji")?.setAttribute("aria-expanded", "false");
+}
+
+function insertAtCaret(input, text) {
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  input.value = input.value.slice(0, start) + text + input.value.slice(end);
+  input.focus();
+  input.setSelectionRange(start + text.length, start + text.length);
+  autoGrow(input);
+  noteTyping();
 }
 
 function autoGrow(textarea) {
@@ -3362,7 +3549,44 @@ function wireChatEvents() {
       }
     }
   });
-  $("#chat-input").addEventListener("input", (event) => autoGrow(event.target));
+  $("#chat-input").addEventListener("input", (event) => {
+    autoGrow(event.target);
+    noteTyping();
+  });
+  $("#chat-input").addEventListener("blur", () => setTimeout(() => document.activeElement !== $("#chat-input") && !$(".emoji-picker") && stopTyping(), 200));
+  $("#chat-emoji").onclick = (event) => {
+    event.stopPropagation();
+    toggleEmojiPicker();
+  };
+  document.addEventListener("click", (event) => {
+    if ($(".emoji-picker") && !event.target.closest(".emoji-picker, #chat-emoji")) closeEmojiPicker();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && $(".emoji-picker")) {
+      event.stopPropagation();
+      closeEmojiPicker();
+      $("#chat-input").focus();
+    }
+  }, true);
+  $("#chat-messages").addEventListener("click", (event) => {
+    if (pendingAction(event)) event.stopPropagation();
+  }, true);
+  $("#chat-search").addEventListener("input", (event) => {
+    state.chatFilter = event.target.value;
+    renderChatList();
+  });
+  $("#chat-search").addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && event.target.value) {
+      event.stopPropagation();
+      event.target.value = "";
+      state.chatFilter = "";
+      renderChatList();
+    } else if (event.key === "Enter") {
+      // Enter abre la primera que coincide.
+      const first = $("#chat-list [data-chat], #chat-list [data-chat-friend]");
+      first?.click();
+    }
+  });
   // Pegar una imagen (una captura, «Copiar imagen» del navegador, un archivo copiado en el Explorador)
   // en cualquier parte de Mensajes: sale la vista previa para confirmarla.
   document.addEventListener("paste", (event) => {
@@ -3738,7 +3962,9 @@ async function showCustomStep() {
   updateCreateArt();
   $("#new-versions").innerHTML = `<div class="version-empty">${t("Cargando versiones…", "Loading versions…")}</div>`;
   state.versions = await invoke("listar_versiones");
-  if (!state.versions.mojang) {
+  if (state.versions.school) {
+    $("#new-status").textContent = t("Modo escuela: las versiones que están en Google Drive y las que ya tienes.", "School mode: the versions on Google Drive and the ones you already have.");
+  } else if (!state.versions.mojang) {
     $("#new-status").textContent = `${state.versions.message} ${
       state.versions.drive?.length
         ? t("Puedes usar las versiones ya descargadas en este PC y las que están en Google Drive.", "You can use the versions already downloaded on this PC and the ones on Google Drive.")
@@ -3785,7 +4011,13 @@ function versionOptions() {
   const drive = new Set(v.drive ?? []);
   let options = v.mojang
     ? v.releases.map((r) => ({ ...r, installed: installed.has(r.id), drive: drive.has(r.id) }))
-    : [...new Set([...v.installed, ...drive])]
+    : v.school
+      ? [...v.releases, ...v.installed.filter((id) => !v.releases.some((r) => r.id === id)).map((id) => ({ id, type: "release", releaseTime: null }))].map((r) => ({
+          ...r,
+          installed: installed.has(r.id),
+          drive: drive.has(r.id),
+        }))
+      : [...new Set([...v.installed, ...drive])]
         .sort((a, b) => b.localeCompare(a, "en", { numeric: true }))
         .map((id) => ({ id, type: "release", releaseTime: null, installed: installed.has(id), drive: drive.has(id) }));
   if (state.loader !== "vanilla") {
@@ -3859,7 +4091,9 @@ function updateCreateStatus() {
       ? t("Ya está descargada: la instancia se crea al momento.", "It is already downloaded: the instance is created right away.")
       : option.installed
         ? t(`Se descargará ${name} ${chosen} (tarda unos segundos).`, `${name} ${chosen} will be downloaded (it takes a few seconds).`)
-        : t(`Se descargará Minecraft ${option.id} con su Java${option.drive ? " (de Google Drive)" : ""} y ${name} ${chosen}.`, `Minecraft ${option.id} will be downloaded with its Java${option.drive ? " (from Google Drive)" : ""} and ${name} ${chosen}.`);
+        : state.versions?.school
+          ? t(`Se descargará de Google Drive: Minecraft ${option.id} con su Java y ${name} ${chosen}.`, `It will be downloaded from Google Drive: Minecraft ${option.id} with its Java and ${name} ${chosen}.`)
+          : t(`Se descargará Minecraft ${option.id} con su Java${option.drive ? " (de Google Drive)" : ""} y ${name} ${chosen}.`, `Minecraft ${option.id} will be downloaded with its Java${option.drive ? " (from Google Drive)" : ""} and ${name} ${chosen}.`);
 }
 
 async function loadLoaderVersions(minecraft) {
@@ -4079,6 +4313,9 @@ async function loadJava() {
 // ======================================================================
 function wireEvents() {
   $("#win-min").onclick = () => appWindow?.minimize();
+  $("#school-toggle").onclick = () => toggleSchool();
+  // Los botones de la pantalla de carga (minimizar y cerrar, como los de arriba).
+  for (const button of $$("[data-win]")) button.onclick = () => (button.dataset.win === "min" ? appWindow?.minimize() : $("#win-close").click());
   $("#win-max").onclick = () => appWindow?.toggleMaximize();
   // Se abre maximizada; el botón cambia entre maximizar y restaurar.
   const updateMaxButton = async () => {
@@ -4674,6 +4911,87 @@ function timeLeft(task, fraction) {
   return left < 60 ? `${Math.ceil(left / 5) * 5} s` : `${Math.round(left / 60)} min`;
 }
 
+/** Una promesa con tiempo límite: si tarda más, da `fallback`. */
+function within(promise, ms, fallback = null) {
+  return Promise.race([promise.catch(() => fallback), new Promise((resolve) => setTimeout(() => resolve(fallback), ms))]);
+}
+
+function splashStatus(text) {
+  $("#splash-status").textContent = text;
+}
+
+/**
+ * La pantalla de carga. Devuelve true si hay una versión nueva: entonces solo queda actualizar (la ventana
+ * de la actualización sale encima y la interfaz no se carga).
+ */
+async function bootSplash() {
+  if (!tauri) {
+    document.body.classList.remove("booting");
+    return false;
+  }
+  const started = Date.now();
+  splashStatus(t("Buscando actualizaciones…", "Checking for updates…"));
+  const update = await within(invoke("actualizacion_launcher", { recargar: false, rapido: true }), 6000);
+  if (update) {
+    state.launcherUpdate = update;
+    splashStatus(t(`Hay una versión nueva: ${update.version}`, `There is a new version: ${update.version}`));
+    $("#update-pill").classList.remove("hidden");
+    $("#update-text").textContent = t(`Actualizar a ${update.version}`, `Update to ${update.version}`);
+    showUpdateDialog();
+    return true;
+  }
+  // La sesión de Google: hasta que se recupera y llegan los amigos y las conversaciones (15 s como mucho).
+  const skip = $("#splash-skip");
+  let skipped = false;
+  skip.onclick = () => (skipped = true);
+  const skipTimer = setTimeout(() => skip.classList.remove("hidden"), 6000);
+  while (!skipped && Date.now() - started < 15000) {
+    const social = await within(invoke("estado_social"), 2000);
+    if (!social) break;
+    const waiting = social.restoring || (social.signedIn && !social.error && !social.synced);
+    if (!waiting) break;
+    splashStatus(
+      social.connected
+        ? t("Cargando tus amigos y mensajes…", "Loading your friends and messages…")
+        : t("Conectando con tu cuenta de Google…", "Connecting to your Google account…"),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  clearTimeout(skipTimer);
+  document.body.classList.remove("booting");
+  return false;
+}
+
+/** El botón «Modo escuela» de arriba. */
+function renderSchool() {
+  const on = !!state.settings?.schoolMode;
+  const button = $("#school-toggle");
+  button.classList.toggle("on", on);
+  button.setAttribute("aria-pressed", String(on));
+  button.title = on
+    ? t("Modo escuela activado: Minecraft, los loaders y los servidores se bajan del Google Drive de Parabellum. Clic para desactivarlo.", "School mode on: Minecraft, loaders and servers download from Parabellum's Google Drive. Click to turn it off.")
+    : t("Modo escuela: todo se baja del Google Drive de Parabellum, para redes donde Mojang y Modrinth están bloqueados (como la de la escuela).", "School mode: everything downloads from Parabellum's Google Drive, for networks where Mojang and Modrinth are blocked (like the school's).");
+}
+
+async function toggleSchool() {
+  const on = !state.settings.schoolMode;
+  try {
+    state.settings = await invoke("modo_escuela", { activo: on });
+    state.versions = null;
+    state.loaderGames = {};
+    state.loaderVersions = {};
+    renderSchool();
+    if (on && state.page === "explore" && state.explore.kind !== "drive") selectExploreKind("drive");
+    toast(
+      on
+        ? t("Modo escuela activado: Minecraft, los loaders y los servidores se bajan de Google Drive.", "School mode on: Minecraft, loaders and servers download from Google Drive.")
+        : t("Modo escuela desactivado: se baja de Mojang y de los servidores de cada loader.", "School mode off: downloads come from Mojang and each loader's servers."),
+    );
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
 async function init() {
   translateStatic();
   wireEvents();
@@ -4683,6 +5001,8 @@ async function init() {
   if (adoptLanguage(initial.settings.language)) return location.reload();
   state.settings = initial.settings;
   state.instances = initial.instances;
+  applyTheme(state.settings.theme);
+  renderSchool();
   invoke("lista_descargas").then(onDownloads, () => onDownloads([]));
   state.systemRam = initial.systemRamGb;
   state.version = initial.version;
@@ -4692,13 +5012,14 @@ async function init() {
   document.body.dataset.platform = initial.platform ?? "Windows";
   $("#platform-text").textContent = document.body.dataset.platform;
   document.body.classList.toggle("no-shortcuts", initial.shortcuts === false);
-  // Al abrir se busca una versión nueva (y cada media hora, por si se queda junto al reloj): si la
-  // hay, hay que actualizar para seguir.
-  setTimeout(() => checkLauncherUpdate(false, true), 1200);
+  // Cada media hora se busca una versión nueva (por si se queda junto al reloj): si la hay, hay que
+  // actualizar para seguir. Al abrir, la busca la pantalla de carga.
   setInterval(() => checkLauncherUpdate(true, true), 30 * 60e3);
   $("#root-text").textContent = initial.root;
   $("#version-text").textContent = `Parabellum ${initial.version}`;
-  applyTheme(state.settings.theme);
+  // Pantalla de carga: primero la actualización (si la hay, se pide antes de mostrar lo demás) y después
+  // la sesión de Google, hasta que lleguen los amigos y los mensajes.
+  if (await bootSplash()) return;
   renderSidebar();
   renderSteps();
   renderHome();
@@ -6203,7 +6524,8 @@ function renderDrive() {
 // ---------- Subir versiones de Minecraft a Drive (quien publica; ver subir_versiones_drive) ----------
 const POPULAR_VERSIONS = ["1.8.9", "1.12.2", "1.16.5", "1.18.2", "1.19.2", "1.20.1", "1.20.4", "1.21.1", "1.21.4"];
 // Lo que pesa más o menos cada versión en Drive (Minecraft, sus sonidos e idiomas y Java).
-const BASE_SIZE = 650 * 1048576;
+/** Lo que suma al espejo una versión más, con sus loaders y servidores (lo compartido ya está). */
+const BASE_SIZE = 300 * 1048576;
 
 async function openVersionsDrive() {
   state.versionsDrive = { data: null, picked: new Set() };
@@ -6542,6 +6864,13 @@ function wireDriveEvents() {
     else state.versionsDrive.picked.delete(box.dataset.vd);
     renderVersionsDriveStatus();
   };
+  $("#vd-all").onclick = () => {
+    const data = state.versionsDrive?.data;
+    if (!data) return;
+    const inDrive = new Set(data.inDrive);
+    state.versionsDrive.picked = new Set(data.releases.filter((v) => !inDrive.has(v)));
+    renderVersionsDrive();
+  };
   $("#vd-popular").onclick = () => {
     const data = state.versionsDrive?.data;
     if (!data) return;
@@ -6848,6 +7177,8 @@ function demoInvoke(command, args = {}) {
   if (command === "versiones_en_drive") return later({ releases: ["26.3", "26.2", "26.1.2", "1.21.11", "1.21.4", "1.21.1", "1.20.4", "1.20.1", "1.19.2", "1.18.2", "1.16.5", "1.12.2", "1.8.9"], inDrive: ["26.3", "26.2", "26.1.2", "1.20.1"], email: "hawntd@gmail.com", used: 6.2e9, limit: 16.1e9 }, 500);
   if (command === "buscar_culpable") return later({ file: "entityculling-fabric-1.6.2.jar", name: "Entity Culling", dependents: [], dependentFiles: [], launches: 6, notAMod: false, suspects: [] }, 2500);
   if (command === "detener_busqueda") return Promise.resolve(null);
+  if (command === "escribiendo") return Promise.resolve(null);
+  if (command === "modo_escuela") return Promise.resolve({ ...state.settings, schoolMode: args.activo });
   if (command === "ajustes_descargas") return Promise.resolve(Object.assign(settings, { downloadParallel: args.simultaneas, downloadLimitMb: args.limite }));
   if (["duplicar_instancia", "eliminar_instancia", "activar_contenido", "eliminar_contenido", "detener", "agregar_contenido", "elegir_contenido", "cambiar_loader"].includes(command))
     return Promise.reject("Modo demostración: esta acción solo funciona en Parabellum.exe.");

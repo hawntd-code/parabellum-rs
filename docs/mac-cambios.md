@@ -26,15 +26,15 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 - Última revisión de los PR de Mac en Windows: 2026-10-17, PR #1 a #14 (todos mezclados).
 - **Publicado en Drive: a la par.** Windows 0.28.0 en `_parabellum` y Mac 0.28.0 en `_parabellum-mac`
   (catálogo revisado el 2026-10-17).
-- **En `main`: 0.29.0**, sin publicar (Juan la publica). Es código compartido y Mac ya lo compila: el
-  PR #13 se mezcló con la 0.29.0 y pasan sus pruebas. A Mac le falta probarla y un `TODO(mac)` (ver
-  «Para llegar a la 0.29.0», abajo).
+- **En `main`: 0.30.0**, sin publicar (Juan la publica; la 0.29.0 no salió sola). Es código compartido:
+  A Mac le falta probarla y, si quiere, subir sus paquetes al espejo (ver «Para llegar
+  a la 0.30.0», abajo).
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
   Las reglas de Firebase de la 0.27 ya están publicadas.
 
-## Para llegar a la 0.29.0 (Mac)
+## Para llegar a la 0.30.0 (Mac)
 
-Lo que falta para publicar la 0.29.0 de Mac, en este orden:
+Lo que falta para publicar la 0.30.0 de Mac (trae lo de la 0.29.0), en este orden:
 
 1. **Lo que quedó de la 0.28.0** (abajo, paso 3): dentro del juego (pestañas, escribir, emojis,
    capturas) y lo de con un amigo. Juan puede ser el amigo. El panel ya abre con la O en «Fabric 26.3»
@@ -44,14 +44,19 @@ Lo que falta para publicar la 0.29.0 de Mac, en este orden:
      velocidad.
    - Cmd+V en cualquier parte de Mensajes y arrastrar una imagen desde Finder.
    - Pregenerar un servidor Fabric y «Buscar el mod culpable» en una instancia con un mod roto.
+   - 0.30.0: la pantalla de carga, el botón «Modo escuela» y el chat (mandar, borrador, emojis,
+     buscar, «está escribiendo…» con Juan).
 3. ~~**Código:** el `TODO(mac)` de `plataforma/macos/arrastre.rs`: `clipboard_image` con NSPasteboard
    (lo que la ventana no sabe pegar, como un archivo copiado en Finder).~~ — hecho en el PR #15, con
    AppleScript (`osascript`). Queda arrastrar una imagen sin archivo desde Safari (`TODO(mac)`).
-4. **Publicar la Mac 0.29.0** cuando Juan publique la 0.29.0 de Windows (compilada de `main` en ese
+4. **Publicar la Mac 0.30.0** cuando Juan publique la 0.30.0 de Windows (compilada de `main` en ese
    commit, como la 0.28.0).
-
-Para después, y antes hay que decidirlo con Juan: **bases de Mac en Drive**. Hoy, en una red sin Mojang
-(la escuela), una Mac no puede jugar una versión de Drive: le faltan su Java y sus nativos (PR #14).
+5. **Opcional: los paquetes de Mac en el espejo de Drive** (así una Mac también juega en la escuela).
+   El espejo ya tiene lo que sirve en los dos sistemas (sonidos, bibliotecas, loaders, servidores);
+   a Mac le faltan solo su Minecraft (los nativos) y su Java, que van con el sistema en el nombre
+   (`minecraft/1.20.1@macos-aarch64`, `java/…@macos-aarch64`). Desde tu Mac, con «Conectar Drive»
+   (tu cuenta ya puede escribir en la carpeta): `--espejo-subir todo sin-servidores`. Lo que ya está
+   se salta: solo sube lo de Mac. No lo corran los dos a la vez (las capas se numeran solas).
 
 ## Para llegar a la 0.28.0 (Mac)
 
@@ -327,6 +332,30 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   iteración (2026-10-17).
 
 ## Cambios de Windows
+
+### 2026-10-18 · 0.30.0: espejo de Minecraft en Drive, modo escuela, pantalla de carga y chat
+
+- Qué cambió:
+  - `espejo.rs` (nuevo): el espejo de Minecraft en `_espejo/` (capas `capa-NNN.zip` con cada archivo por
+    su SHA-1, `o/<sha1>`, y el índice `espejo.indice`). `Builder` lo arma (quien publica), `remote`,
+    `install_minecraft`, `install_loader` e `install_server` lo usan. Los paquetes que dependen del
+    sistema llevan `@<os>-<arch>` (`espejo::platform()`). `catalog::Catalog` tiene `mirror` (lo
+    encuentra al listar) y `RemoteEntry` se guarda en `datos/espejo/`.
+  - `main.rs`: `install_vanilla` (modo escuela: espejo y base del catálogo, sin Mojang; si no, Mojang y
+    Drive si no responde), `install_loader`, `listar_versiones` (`school`), `versiones_compatibles`,
+    `versiones_loader`, `subir_versiones_drive` (ahora al espejo), comandos `modo_escuela` y
+    `cuenta::escribiendo`, `--espejo` y `--espejo-subir`. `packs::export_base` ya no existe.
+  - `servidor.rs`: `software` (espejo en modo escuela o si falla lo de siempre), `install_software_only`,
+    `warm_up`; el instalador de Quilt corre con Java 17 o más nuevo.
+  - `settings.rs`: `schoolMode`. `catalog.rs`: carpetas y .json de cada nivel a la vez,
+    `quick_launcher_update`; un modpack sin su base la toma del espejo.
+  - Pantalla de carga: `SocialView` trae `restoring` y `synced` (`Social::synced`, `Chat::synced`,
+    `google::has_session`); la sesión de Google se recupera aparte de la conexión directa.
+  - Chat: `Presence.typing` (la conversación donde escribes; las versiones anteriores lo ignoran).
+  - `ui/`: `#splash` y `bootSplash`, `#school-toggle`, y en Mensajes buscar, emojis, mensajes al momento,
+    borradores y «está escribiendo…».
+- Mac: compila y prueba lo de arriba. Nada de código obligatorio. Opcional: tus paquetes en el espejo
+  («Para llegar a la 0.30.0», paso 5).
 
 ### 2026-10-17 · Un Java completado desde Drive vuelve a contar, y la base pide su propio Java
 

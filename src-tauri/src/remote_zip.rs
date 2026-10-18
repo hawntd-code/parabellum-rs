@@ -10,7 +10,7 @@ pub const NO_RANGES: &str = "El servidor no permite descargar por partes.";
 /// Cambió casi todo: es más rápido descargar el zip completo de una vez.
 pub const PREFER_FULL: &str = "Conviene descargar el paquete completo.";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RemoteEntry {
     pub name: String,
     pub crc32: u32,

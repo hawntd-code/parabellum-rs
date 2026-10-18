@@ -177,6 +177,8 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--probar-favoritos` | Con la sesión guardada: lee los favoritos de la cuenta, escribe uno de prueba (y lo borra) y comprueba las reglas de Firebase |
 | `--probar-tiempo-real [veces]` | Con la sesión de Google guardada: cuánto tarda en llegar por la escucha de Firebase algo recién escrito |
 | `--catalogo` | Modpacks y versiones de Drive y de la carpeta paquetes, con su estado |
+| `--espejo [filtro]` | Qué tiene el espejo de Minecraft en Drive (paquetes, capas y el espacio del Drive) |
+| `--espejo-subir <todo\|1.20.1,1.21.1…> [sin-loaders] [sin-servidores]` | Arma y sube el espejo (quien publica, con «Conectar Drive»); el avance va a `datos/logs/espejo.txt` |
 | `--instalar-catalogo <id> [reparar]` | Instala, actualiza o repara un paquete (bajando solo lo que cambió) |
 | `--publicar-launcher <carpeta> [notas]` | Prepara _parabellum con esta versión para subirla a Drive |
 

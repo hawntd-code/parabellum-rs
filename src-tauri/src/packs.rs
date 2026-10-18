@@ -390,37 +390,6 @@ fn java_files(java: &crate::java::JavaRuntime) -> impl Iterator<Item = PathBuf> 
     walk(&java.home).into_iter().filter(|f| !f.extension().is_some_and(|e| e == "parte"))
 }
 
-/// Solo Minecraft `minecraft` (lo que baja de Mojang y su Java) como paquete base, en
-/// `<salida>/<versión>/base-minecraft-<versión>.zip` y `.json`: para subirlo al catálogo de Drive sin un
-/// modpack. Si ya estaba ahí, no se vuelve a crear. Devuelve (zip, json).
-pub fn export_base(minecraft: &str, paths: &Paths, out_dir: &Path, progress: impl Fn(String, f64)) -> Result<(PathBuf, PathBuf), String> {
-    let vanilla = launch::version_files(minecraft, paths)?;
-    let java = vanilla.own_java().ok_or_else(|| missing_java(vanilla.java_major))?;
-    let mut files: Vec<PathBuf> = vanilla.files.iter().filter(|f| f.is_file()).cloned().collect();
-    files.extend(java_files(java));
-    let dir = out_dir.join(safe_file_name(minecraft));
-    let name = format!("base-{}", base_id(minecraft));
-    let (zip, json) = (dir.join(format!("{name}.zip")), dir.join(format!("{name}.json")));
-    if zip.exists() && json.exists() {
-        return Ok((zip, json));
-    }
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let stamp = chrono::Local::now();
-    let total = total_size(&files).max(1);
-    let manifest = base_manifest(minecraft, java.major, total, &stamp.format("%Y%m%d%H%M").to_string(), &stamp.to_rfc3339_opts(chrono::SecondsFormat::Secs, false));
-    let entries: Vec<(PathBuf, String)> = files.iter().filter_map(|f| Some((f.clone(), format!("base/{}", relative(&paths.base, f)?)))).collect();
-    let mut done = 0u64;
-    write_archive(&zip, &manifest, &entries, |bytes| {
-        done += bytes;
-        progress(
-            t!("Empaquetando Minecraft {minecraft}… {:.0} de {:.0} MB", "Packing Minecraft {minecraft}… {:.0} of {:.0} MB", done as f64 / 1048576.0, total as f64 / 1048576.0),
-            done as f64 / total as f64,
-        );
-    })?;
-    write_sidecar(&zip, &json, manifest)?;
-    Ok((zip, json))
-}
-
 fn write_archive(zip_path: &Path, manifest: &Manifest, entries: &[(PathBuf, String)], mut on_file: impl FnMut(u64)) -> Result<(), String> {
     // Se escribe en un temporal: si algo falla no queda un zip a medias con el nombre bueno.
     let temp = zip_path.with_extension("zip.tmp");

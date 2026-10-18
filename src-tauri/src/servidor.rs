@@ -626,6 +626,13 @@ fn java_major(instance: &Instance, version: &Value) -> u32 {
     instance.java_major.unwrap_or_else(|| version.pointer("/javaVersion/majorVersion").and_then(Value::as_u64).unwrap_or(8) as u32)
 }
 
+/// El Java más nuevo de este PC, si es de `minimum` o más.
+fn newest_java(minimum: u32, paths: &Paths) -> Option<PathBuf> {
+    let runtimes = java::discover(paths);
+    let runtime = runtimes.iter().filter(|r| r.major >= minimum).max_by_key(|r| r.major)?;
+    Some(crate::plataforma::java_binary(&runtime.home, false))
+}
+
 pub fn java_executable(major: u32, paths: &Paths) -> Option<PathBuf> {
     let runtimes = java::discover(paths);
     let runtime = runtimes.iter().filter(|r| r.major == major).max_by(|a, b| a.version.cmp(&b.version)).or_else(|| java::select(&runtimes, None, major))?;
@@ -688,7 +695,7 @@ async fn build(
         folder: folder.to_path_buf(),
         ..Default::default()
     };
-    config.launch = install_software(&config, &version, &java, paths, progress.clone()).await?;
+    config.launch = software(&mut config, &version, &java, paths, progress.clone()).await?;
 
     // Mods: los que sirven en un servidor.
     progress(t!("Revisando qué mods van en el servidor…", "Checking which mods go on the server…"), 0.75);
@@ -740,6 +747,98 @@ async fn build(
 }
 
 // ================= Software del servidor
+
+/// El software del servidor. En modo escuela, del espejo de Google Drive; si no, de Mojang y del loader,
+/// y si no responden, del espejo. Del espejo puede venir otra versión del loader (la más nueva que tenga
+/// para esa versión de Minecraft): queda en `config`.
+async fn software(
+    config: &mut ServerConfig,
+    version: &Value,
+    java: &Path,
+    paths: &Paths,
+    progress: impl Fn(String, f64) + Send + Sync + Clone + 'static,
+) -> Result<Vec<String>, String> {
+    let loader = Loader::parse(&config.loader);
+    let wanted = loader.zip(config.loader_version.clone());
+    let from_mirror = |progress| {
+        let (minecraft, folder, paths) = (config.minecraft.clone(), config.folder.clone(), paths.clone());
+        let wanted = wanted.clone();
+        async move { crate::espejo::install_server(&minecraft, wanted.as_ref().map(|(l, v)| (*l, v.as_str())), &folder, &paths, progress).await }
+    };
+    let found = if crate::espejo::school_mode() {
+        let found = from_mirror(progress.clone()).await?;
+        if found.is_none() {
+            return Err(t!(
+                "El servidor de {} {} no está en Google Drive. Desactiva el modo escuela (con internet) o pide a quien publica que lo suba.",
+                "The {} {} server is not on Google Drive. Turn off school mode (with internet) or ask whoever publishes to upload it.",
+                config.loader,
+                config.minecraft
+            ));
+        }
+        found
+    } else {
+        match install_software(config, version, java, paths, progress.clone()).await {
+            Ok(launch) => return Ok(launch),
+            Err(error) => match from_mirror(progress.clone()).await {
+                Ok(Some(found)) => Some(found),
+                _ => return Err(error),
+            },
+        }
+    };
+    let (launch, loader_version) = found.unwrap();
+    if loader.is_some() {
+        config.loader_version = loader_version;
+    }
+    Ok(launch)
+}
+
+/// Para el espejo de Drive (espejo::Builder): solo el software de un servidor, vanilla o con loader, en
+/// `folder` (sin mods ni mundo). Devuelve cómo arrancarlo.
+pub(crate) async fn install_software_only(minecraft: &str, loader: Option<Loader>, loader_version: Option<&str>, folder: &Path, paths: &Paths) -> Result<Vec<String>, String> {
+    let version = vanilla_json(minecraft, paths).await?;
+    let major = version.pointer("/javaVersion/majorVersion").and_then(Value::as_u64).unwrap_or(8) as u32;
+    mojang::ensure_java(major, paths, |_, _| {}).await?;
+    let java = java_executable(major, paths).ok_or(t!("Falta Java {major}.", "Java {major} is missing."))?;
+    let config = ServerConfig {
+        minecraft: minecraft.to_string(),
+        loader: loader.map(|l| l.name()).unwrap_or("Vanilla").to_string(),
+        loader_version: loader_version.map(String::from),
+        folder: folder.to_path_buf(),
+        ..Default::default()
+    };
+    install_software(&config, &version, &java, paths, |_, _| {}).await
+}
+
+/// Arranca el servidor una vez sin aceptar el EULA, así Minecraft se cierra solo (como mucho 5 minutos):
+/// el lanzador de Fabric baja sus bibliotecas la primera vez que arranca. Para el espejo de Drive.
+pub(crate) async fn warm_up(minecraft: &str, folder: &Path, launch: &[String], paths: &Paths) -> Result<(), String> {
+    let version = vanilla_json(minecraft, paths).await?;
+    let major = version.pointer("/javaVersion/majorVersion").and_then(Value::as_u64).unwrap_or(8) as u32;
+    let java = java_executable(major, paths).ok_or(t!("Falta Java {major}.", "Java {major} is missing."))?;
+    let mut child = Command::new(java)
+        .arg("-Xmx1G")
+        .args(launch)
+        .current_dir(folder)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .no_console()
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let started = std::time::Instant::now();
+        while started.elapsed().as_secs() < 300 {
+            if child.try_wait().ok().flatten().is_some() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
 
 /// Instala el servidor del loader y devuelve cómo arrancarlo.
 async fn install_software(
@@ -804,7 +903,15 @@ async fn install_software(
                 // Relativa a la carpeta del servidor: el instalador de Quilt parte las rutas con espacios.
                 "--install-dir=.".into(),
             ];
-            run_installer(java, &args, folder, "Quilt", progress.clone()).await?;
+            // El instalador de Quilt pide Java 17 o más nuevo, aunque el servidor sea de 1.16 (con Java 8).
+            let installer_java = match newest_java(17, paths) {
+                Some(found) => found,
+                None => {
+                    mojang::ensure_java(21, paths, |_, _| {}).await?;
+                    newest_java(17, paths).ok_or(t!("Falta Java 17 para el instalador de Quilt.", "Java 17 is missing for the Quilt installer."))?
+                }
+            };
+            run_installer(&installer_java, &args, folder, "Quilt", progress.clone()).await?;
             let _ = std::fs::remove_file(&installer);
             if !folder.join("quilt-server-launch.jar").exists() {
                 return Err(t!("El instalador de Quilt no dejó el servidor listo.", "The Quilt installer did not leave the server ready."));
@@ -883,7 +990,7 @@ async fn run_installer(java: &Path, args: &[String], folder: &Path, name: &str, 
 }
 
 /// Cómo arrancar un servidor de Forge o NeoForge recién instalado.
-fn forge_launch(folder: &Path, loader_version: &str) -> Option<Vec<String>> {
+pub(crate) fn forge_launch(folder: &Path, loader_version: &str) -> Option<Vec<String>> {
     // 1.17 en adelante: un archivo con los argumentos (lo que usan run.bat y run.sh). El instalador
     // deja los dos; solo cambia el separador de rutas.
     let args_file = crate::plataforma::FORGE_SERVER_ARGS;
