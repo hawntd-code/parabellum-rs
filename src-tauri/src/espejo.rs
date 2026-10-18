@@ -234,20 +234,27 @@ impl Remote {
         serde_json::from_slice(&self.zip(&package.list)?.read(entry)?).map_err(|_| damaged())
     }
 
-    /// Baja a `root` los archivos del paquete que faltan (o tienen otro tamaño). Los JSON de las versiones
-    /// van al final: si se corta, la versión no parece instalada.
-    fn install(&self, id: &str, root: &Path, paths: &Paths, label: &str, progress: &(dyn Fn(String, f64) + Send + Sync)) -> Result<(), String> {
-        progress(t!("Comparando {label} con Google Drive…", "Comparing {label} with Google Drive…"), 0.0);
+    /// Baja a `root` los archivos del paquete que faltan (o tienen otro tamaño). Con `verify`, también los
+    /// que tienen el tamaño bueno pero otra huella (dañados): es lo que hace «Verificar». Lo normal es solo
+    /// el tamaño, porque todo lo que se baja ya se comprueba antes de quedar con su nombre (CRC32 del zip y
+    /// el «.parte»). Los JSON de las versiones van al final: si se corta, la versión no parece instalada.
+    /// Devuelve cuántos archivos bajó.
+    fn install(&self, id: &str, root: &Path, paths: &Paths, label: &str, verify: bool, progress: &(dyn Fn(String, f64) + Send + Sync)) -> Result<usize, String> {
+        progress(
+            if verify { t!("Revisando {label} archivo por archivo…", "Checking {label} file by file…") } else { t!("Comparando {label} con Google Drive…", "Comparing {label} with Google Drive…") },
+            0.0,
+        );
         let mut wanted: HashMap<String, Vec<PathBuf>> = HashMap::new();
         for file in self.list(id, paths)? {
             let relative = crate::mrpack::safe_relative(&file.path).ok_or_else(damaged)?;
             let target = root.join(relative);
-            if !target.metadata().is_ok_and(|m| m.len() == file.size) {
+            let same = target.metadata().is_ok_and(|m| m.len() == file.size) && (!verify || content_sha1(&target).is_some_and(|h| h == file.sha1));
+            if !same {
                 wanted.entry(file.sha1).or_default().push(target);
             }
         }
         if wanted.is_empty() {
-            return Ok(());
+            return Ok(0);
         }
         let objects = self.objects(paths)?;
         let mut by_layer: BTreeMap<String, Vec<(RemoteEntry, Vec<PathBuf>)>> = BTreeMap::new();
@@ -287,7 +294,21 @@ impl Remote {
         for (target, bytes) in last {
             write(&target, &bytes)?;
         }
-        Ok(())
+        Ok(count)
+    }
+}
+
+/// SHA-1 del contenido (siempre leído: para verificar no vale el nombre de los sonidos).
+pub fn content_sha1(file: &Path) -> Option<String> {
+    let mut source = std::fs::File::open(file).ok()?;
+    let mut hasher = Sha1::new();
+    let mut buffer = vec![0u8; 1 << 20];
+    loop {
+        let read = source.read(&mut buffer).ok()?;
+        if read == 0 {
+            return Some(hex::encode(hasher.finalize()));
+        }
+        hasher.update(&buffer[..read]);
     }
 }
 
@@ -349,14 +370,27 @@ pub async fn install_minecraft(version: &str, paths: &Paths, progress: impl Fn(S
     let (paths, version) = (paths.clone(), version.to_string());
     blocking(move || {
         if let Some(java) = package.java.as_deref().filter(|j| remote.index.packages.contains_key(&java_id(j))) {
-            remote.install(&java_id(java), &paths.base, &paths, &format!("Java ({java})"), &progress)?;
+            remote.install(&java_id(java), &paths.base, &paths, &format!("Java ({java})"), false, &progress)?;
             // Completo: sin la marca de que se estaba bajando ni «.parte» (ver java::package_installed).
             crate::java::package_installed(&paths, [format!("base/java/{java}/").as_str()]);
         }
-        remote.install(&id, &paths.base, &paths, &format!("Minecraft {version}"), &progress)?;
+        remote.install(&id, &paths.base, &paths, &format!("Minecraft {version}"), false, &progress)?;
         Ok(true)
     })
     .await
+}
+
+/// «Verificar» el Java `component` contra el espejo (por huella). Ok(None): el espejo no lo tiene para
+/// este sistema. Devuelve cuántos archivos repuso.
+pub async fn verify_java(component: &str, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + 'static) -> Result<Option<usize>, String> {
+    let Some(remote) = remote(paths).await? else { return Ok(None) };
+    let id = java_id(component);
+    if !remote.index.packages.contains_key(&id) {
+        return Ok(None);
+    }
+    let (paths, component) = (paths.clone(), component.to_string());
+    let fixed = blocking(move || remote.install(&id, &paths.base, &paths, &format!("Java ({component})"), true, &progress)).await?;
+    Ok(Some(fixed))
 }
 
 /// Instala un loader desde el espejo (la versión pedida o la más nueva que tenga). Devuelve (id de la
@@ -380,7 +414,7 @@ pub async fn install_loader(
     let Some(version_id) = remote.index.packages.get(&id).and_then(|p| p.version_id.clone()) else { return Ok(None) };
     let paths = paths.clone();
     let label = format!("{} {version}", loader.name());
-    blocking(move || remote.install(&id, &paths.base, &paths, &label, &progress)).await?;
+    blocking(move || remote.install(&id, &paths.base, &paths, &label, false, &progress)).await?;
     Ok(Some((version_id, version)))
 }
 
@@ -415,7 +449,7 @@ pub async fn install_server(
         Some((loader, version)) => t!("el servidor de {} {version}", "the {} {version} server", loader.name()),
         None => t!("el servidor de Minecraft {minecraft}", "the Minecraft {minecraft} server"),
     };
-    blocking(move || remote.install(&id, &folder_copy, &paths, &label, &progress)).await?;
+    blocking(move || remote.install(&id, &folder_copy, &paths, &label, false, &progress)).await?;
     // Forge y NeoForge: el archivo de argumentos de este sistema (win_args.txt o unix_args.txt).
     let launch = match &loader {
         Some((Loader::Forge | Loader::NeoForge, version)) => crate::servidor::forge_launch(folder, version).unwrap_or(package.launch),

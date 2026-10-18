@@ -1150,6 +1150,10 @@ async fn ensure_complete(
         }
     }
     let mut report = integridad::repair(&instance.game_dir, deep, progress.clone()).await;
+    // A fondo: también Minecraft, sus bibliotecas, sonidos y su Java, por huella.
+    if deep {
+        verify_base(instance, paths, &mut report, progress.clone()).await;
+    }
     if let Some(error) = early_failure {
         report.fail(None, error);
     }
@@ -1203,6 +1207,56 @@ async fn ensure_complete(
     }
     progress(t!("Listo", "Done"), 1.0);
     report
+}
+
+/// «Verificar» la base de una instancia (mejora 2 de docs/plan-diciembre.md): los archivos de su versión con
+/// otra huella que la publicada se borran y se vuelven a bajar (de Mojang, del loader o del espejo en modo
+/// escuela), y su Java se revisa contra el espejo o contra la lista de Mojang.
+async fn verify_base(instance: &Instance, paths: &Paths, report: &mut integridad::Report, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) {
+    progress(t!("Revisando los archivos de Minecraft…", "Checking the Minecraft files…"), 0.0);
+    let (version_id, paths_copy) = (instance.version_id.clone(), paths.clone());
+    let checked = tauri::async_runtime::spawn_blocking(move || -> Result<(usize, Vec<PathBuf>), String> {
+        let known = launch::known_hashes(&version_id, &paths_copy)?;
+        let damaged = known
+            .iter()
+            .filter(|(path, sha1)| path.exists() && espejo::content_sha1(path).is_none_or(|h| !h.eq_ignore_ascii_case(sha1)))
+            .map(|(path, _)| path.clone())
+            .collect();
+        Ok((known.len(), damaged))
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r);
+    match checked {
+        Ok((count, damaged)) => {
+            report.checked += count;
+            if !damaged.is_empty() {
+                for path in &damaged {
+                    let _ = std::fs::remove_file(path);
+                }
+                let loader = Loader::parse(&instance.loader);
+                match install_game(&instance.minecraft_version, loader, instance.loader_version.as_deref(), paths, progress.clone()).await {
+                    Ok(_) => report.repaired.push(t!("{} archivos de Minecraft dañados (se bajaron de nuevo)", "{} damaged Minecraft files (downloaded again)", damaged.len())),
+                    Err(error) => report.fail(None, t!("No se pudieron reponer {} archivos de Minecraft dañados: {error}", "{} damaged Minecraft files could not be restored: {error}", damaged.len())),
+                }
+            }
+        }
+        Err(error) => report.fail(None, error),
+    }
+    // Su Java: contra el espejo (sin internet de Mojang) o contra la lista de Mojang.
+    let Some(java) = launch::version_files(&instance.version_id, paths).ok().and_then(|v| v.own_java().cloned()) else { return };
+    progress(t!("Revisando Java {}…", "Checking Java {}…", java.major), 0.5);
+    let fixed = match espejo::verify_java(&java.name, paths, progress.clone()).await {
+        Ok(Some(fixed)) => Ok(fixed),
+        _ if espejo::school_mode() => return,
+        _ => mojang::verify_java(&java.name, java.major, paths).await,
+    };
+    match fixed {
+        Ok(0) => {}
+        Ok(fixed) => report.repaired.push(t!("{fixed} archivos de Java dañados", "{fixed} damaged Java files")),
+        // Sin conexión no se puede comparar el Java: no es un error de la instancia.
+        Err(_) => {}
+    }
 }
 
 /// Repara un modpack instalado desde Drive o la carpeta paquetes (baja solo lo que falte o esté dañado).

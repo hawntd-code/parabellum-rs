@@ -105,6 +105,53 @@ impl VersionFiles {
     }
 }
 
+/// Los archivos de una versión cuya huella SHA-1 se conoce: la publica Mojang en sus JSON (bibliotecas,
+/// el juego, el índice de sonidos, la configuración de registros) o es el nombre del archivo (sonidos).
+/// Para «Verificar»: encuentra los dañados aunque tengan el tamaño bueno.
+pub fn known_hashes(version_id: &str, paths: &Paths) -> Result<Vec<(PathBuf, String)>, String> {
+    let version = ResolvedVersion::resolve(version_id, paths)?;
+    let features = Features::new();
+    let mut known: Vec<(PathBuf, String)> = Vec::new();
+    let text = |value: Option<&Value>| value.and_then(Value::as_str).map(String::from);
+    let mut libraries = version.libraries.clone();
+    libraries.extend(plataforma::adapt_libraries(version.libraries.clone(), version.java_major));
+    for library in libraries.iter().filter(|l| rules_allow(l.get("rules"), &features)) {
+        let (native, artifact) = library_paths(library, paths);
+        if let (Some(path), Some(sha1)) = (artifact, text(library.pointer("/downloads/artifact/sha1"))) {
+            known.push((path, sha1));
+        }
+        let classifier = library.pointer(&format!("/natives/{}", plataforma::MOJANG_OS)).and_then(Value::as_str).map(|c| c.replace("${arch}", "64"));
+        if let (Some(path), Some(sha1)) = (native, classifier.and_then(|c| text(library.pointer(&format!("/downloads/classifiers/{c}/sha1"))))) {
+            known.push((path, sha1));
+        }
+    }
+    let mut next = Some(version_id.to_string());
+    let mut steps = 0;
+    while let Some(id) = next.take().filter(|_| steps < 10) {
+        steps += 1;
+        let Some(json) = std::fs::read_to_string(paths.version_json(&id)).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) else { break };
+        if let Some(sha1) = text(json.pointer("/downloads/client/sha1")) {
+            known.push((paths.version_jar(&id), sha1));
+        }
+        if let (Some(index), Some(sha1)) = (text(json.pointer("/assetIndex/id")), text(json.pointer("/assetIndex/sha1"))) {
+            known.push((paths.assets.join("indexes").join(format!("{index}.json")), sha1));
+        }
+        if let (Some(file), Some(sha1)) = (text(json.pointer("/logging/client/file/id")), text(json.pointer("/logging/client/file/sha1"))) {
+            known.push((paths.assets.join("log_configs").join(file), sha1));
+        }
+        next = text(json.get("inheritsFrom")).filter(|s| !s.is_empty());
+    }
+    let index = paths.assets.join("indexes").join(format!("{}.json", version.asset_index.clone().unwrap_or_else(|| "legacy".into())));
+    if let Some(index) = std::fs::read_to_string(&index).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
+        for hash in index["objects"].as_object().into_iter().flatten().filter_map(|(_, o)| o["hash"].as_str()).filter(|h| h.len() == 40) {
+            known.push((paths.assets.join("objects").join(&hash[..2]).join(hash), hash.to_string()));
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    known.retain(|(path, _)| seen.insert(path.to_string_lossy().to_lowercase()));
+    Ok(known)
+}
+
 pub fn version_files(version_id: &str, paths: &Paths) -> Result<VersionFiles, String> {
     let version = ResolvedVersion::resolve(version_id, paths)?;
     let mut files = Vec::new();

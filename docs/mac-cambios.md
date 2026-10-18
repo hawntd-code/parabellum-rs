@@ -341,6 +341,14 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-18 · «Verificar» revisa por huella también Minecraft y su Java
+
+- Qué cambió: `launch::known_hashes` (las huellas que publica Mojang de cada archivo de una versión),
+  `espejo::Remote::install` con `verify` y `espejo::verify_java`, `mojang::verify_java`, y en `main.rs`
+  `verify_base` dentro de `ensure_complete` (solo a fondo). Lo dañado se borra y se baja de nuevo.
+- Mac: nada distinto. Para probar: dañar un archivo de una biblioteca sin cambiar su tamaño y usar
+  «Verificar» en la instancia.
+
 ### 2026-10-18 · Una actualización que no arranca se deshace sola
 
 - Qué cambió: `arranque.rs` (nuevo). Al actualizar, `arranque::hand_over` anota

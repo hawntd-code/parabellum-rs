@@ -203,6 +203,30 @@ pub async fn ensure_java(major: u32, paths: &Paths, progress: impl Fn(String, f6
     Ok(())
 }
 
+/// «Verificar» un Java de Mojang: los archivos que tienen otra huella (dañados) se bajan de nuevo.
+/// Devuelve cuántos repuso.
+pub async fn verify_java(component: &str, major: u32, paths: &Paths) -> Result<usize, String> {
+    let (files, programs, home) = java_files(component, major, paths).await?;
+    let damaged: Vec<FileDownload> = {
+        let files = files.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            files
+                .into_iter()
+                .filter(|f| f.path.exists() && f.sha1.as_ref().is_some_and(|sha1| crate::espejo::content_sha1(&f.path).is_none_or(|h| !h.eq_ignore_ascii_case(sha1))))
+                .collect()
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    };
+    for file in &damaged {
+        let _ = std::fs::remove_file(&file.path);
+    }
+    download::download_all(files, |_, _, _, _| {}).await?;
+    programs.iter().for_each(|program| crate::plataforma::make_executable(program));
+    let _ = std::fs::remove_file(home.join(DOWNLOADING));
+    Ok(damaged.len())
+}
+
 /// Archivos del Java de Mojang para este sistema (el mismo que usa el launcher oficial), cuáles son
 /// programas (java, jspawnhelper…: después de bajarlos hay que marcarlos como ejecutables) y su carpeta,
 /// que queda con la marca DOWNLOADING hasta que quien lo baja la quita al terminar. Si Mojang
