@@ -47,16 +47,51 @@ pub fn restart(path: &Path) -> Result<(), String> {
 }
 
 /// Al actualizarse, el exe anterior queda como .old (Windows deja renombrar un exe abierto, no borrarlo).
-/// También los .old-<hora> que quedaron cuando el .old de antes no se podía borrar.
+/// También los .old-<hora> que quedaron cuando el .old de antes no se podía borrar, y el .fallida de una
+/// versión que no arrancó. Solo se llama cuando esta versión ya confirmó su arranque (ver arranque.rs).
 pub fn cleanup() {
     let Ok(exe) = std::env::current_exe() else { return };
     let (Some(folder), Some(name)) = (exe.parent(), exe.file_name().map(|n| n.to_string_lossy().to_lowercase())) else { return };
     for entry in std::fs::read_dir(folder).into_iter().flatten().flatten() {
         let file = entry.file_name().to_string_lossy().to_lowercase();
-        if file == format!("{name}.old") || file.starts_with(&format!("{name}.old-")) {
+        if file == format!("{name}.old") || file.starts_with(&format!("{name}.old-")) || file == format!("{name}.fallida") {
             let _ = std::fs::remove_file(entry.path());
         }
     }
+}
+
+/// El exe anterior a `installed` (el .old, o el .old-<hora> más nuevo).
+fn previous(installed: &Path) -> Option<PathBuf> {
+    let (folder, name) = (installed.parent()?, installed.file_name()?.to_string_lossy().to_lowercase());
+    std::fs::read_dir(folder)
+        .ok()?
+        .flatten()
+        .filter(|e| {
+            let file = e.file_name().to_string_lossy().to_lowercase();
+            file == format!("{name}.old") || file.starts_with(&format!("{name}.old-"))
+        })
+        .max_by_key(|e| e.metadata().and_then(|m| m.modified()).ok())
+        .map(|e| e.path())
+}
+
+/// Lo que se abre como vigía de la actualización (arranque.rs): el exe anterior.
+pub fn previous_executable(installed: &Path) -> Option<PathBuf> {
+    previous(installed)
+}
+
+/// La versión nueva no arrancó: queda aparte (.fallida) y la anterior vuelve a su lugar. Devuelve qué abrir.
+pub fn rollback(installed: &Path) -> Result<PathBuf, String> {
+    let previous = previous(installed).ok_or(t!("No está la versión anterior.", "The previous version is not there."))?;
+    let failed = PathBuf::from(format!("{}.fallida", installed.display()));
+    let _ = std::fs::remove_file(&failed);
+    if installed.exists() {
+        std::fs::rename(installed, &failed).map_err(|e| e.to_string())?;
+    }
+    if let Err(error) = std::fs::rename(&previous, installed) {
+        let _ = std::fs::rename(&failed, installed);
+        return Err(error.to_string());
+    }
+    Ok(installed.to_path_buf())
 }
 
 /// Instrucciones de la primera vez: el exe no lleva firma de pago, así que Windows avisa al abrirlo.

@@ -341,6 +341,21 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-18 · Una actualización que no arranca se deshace sola
+
+- Qué cambió: `arranque.rs` (nuevo). Al actualizar, `arranque::hand_over` anota
+  `datos/actualizacion/pendiente.json` y abre un **vigía**: el programa anterior con
+  `--vigilar-actualizacion`, que abre la versión nueva y espera su confirmación (`confirmar_arranque`,
+  lo primero que hace la ventana, sin internet). Si en 90 s no llega, la cierra, vuelve a la anterior,
+  la abre y anota `fallida.json` (esa versión no se vuelve a ofrecer). `lanzador::cleanup` ya no corre
+  al abrir una versión recién puesta: corre al confirmar.
+- **Contrato de `plataforma::lanzador`:** `previous_executable(installed)` y `rollback(installed)`. En
+  Mac ya están escritas (`.app.old/Contents/MacOS/Parabellum` como vigía; `.app` → `.app.fallida` y
+  `.app.old` → `.app`), pero **sin probar** (`TODO(mac)`).
+- Mac: probarlo con una `.app` de versión falsa que no arranque. Se puede acortar la espera con
+  `PARABELLUM_ESPERA_ARRANQUE=10`. En Windows lo probé así con `whoami.exe` en lugar de la versión
+  nueva (`scratchpad/f57_vigia.py`).
+
 ### 2026-10-18 · Logo nuevo y plan hacia diciembre
 
 - Qué cambió: el logo nuevo de Parabellum en `ui/logo.png` (ventana, pantalla de carga) y en

@@ -861,6 +861,8 @@ pub fn launcher_update(catalog: &[Entry]) -> Option<&Entry> {
         .iter()
         .filter(|e| e.is_launcher() && e.manifest.id == crate::plataforma::lanzador::ID)
         .filter(|e| compare_versions(&e.manifest.version, current_version()) == Ordering::Greater)
+        // La que ya no arrancó en este PC no se ofrece otra vez (ver arranque.rs).
+        .filter(|e| crate::arranque::failed_version().is_none_or(|failed| failed != e.manifest.version))
         .max_by(|a, b| compare_versions(&a.manifest.version, &b.manifest.version))
 }
 

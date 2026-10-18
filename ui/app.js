@@ -4993,6 +4993,8 @@ async function toggleSchool() {
 }
 
 async function init() {
+  // Esta versión arranca: lo primero, antes de tocar internet (ver arranque.rs).
+  const failedUpdate = invoke("confirmar_arranque").catch(() => null);
   translateStatic();
   wireEvents();
   setupAccessibility();
@@ -5020,6 +5022,7 @@ async function init() {
   // Pantalla de carga: primero la actualización (si la hay, se pide antes de mostrar lo demás) y después
   // la sesión de Google, hasta que lleguen los amigos y los mensajes.
   if (await bootSplash()) return;
+  failedUpdate.then((notice) => notice && toast(notice, "error"));
   renderSidebar();
   renderSteps();
   renderHome();
@@ -7177,7 +7180,7 @@ function demoInvoke(command, args = {}) {
   if (command === "versiones_en_drive") return later({ releases: ["26.3", "26.2", "26.1.2", "1.21.11", "1.21.4", "1.21.1", "1.20.4", "1.20.1", "1.19.2", "1.18.2", "1.16.5", "1.12.2", "1.8.9"], inDrive: ["26.3", "26.2", "26.1.2", "1.20.1"], email: "hawntd@gmail.com", used: 6.2e9, limit: 16.1e9 }, 500);
   if (command === "buscar_culpable") return later({ file: "entityculling-fabric-1.6.2.jar", name: "Entity Culling", dependents: [], dependentFiles: [], launches: 6, notAMod: false, suspects: [] }, 2500);
   if (command === "detener_busqueda") return Promise.resolve(null);
-  if (command === "escribiendo") return Promise.resolve(null);
+  if (command === "escribiendo" || command === "confirmar_arranque") return Promise.resolve(null);
   if (command === "modo_escuela") return Promise.resolve({ ...state.settings, schoolMode: args.activo });
   if (command === "ajustes_descargas") return Promise.resolve(Object.assign(settings, { downloadParallel: args.simultaneas, downloadLimitMb: args.limite }));
   if (["duplicar_instancia", "eliminar_instancia", "activar_contenido", "eliminar_contenido", "detener", "agregar_contenido", "elegir_contenido", "cambiar_loader"].includes(command))

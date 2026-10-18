@@ -144,7 +144,33 @@ pub fn restart(app: &Path) -> Result<(), String> {
 pub fn cleanup() {
     if let Ok(app) = current_app() {
         let _ = std::fs::remove_dir_all(format!("{}.old", app.display()));
+        let _ = std::fs::remove_dir_all(format!("{}.fallida", app.display()));
     }
+}
+
+/// Lo que se abre como vigía de la actualización (arranque.rs): el programa de la .app anterior.
+/// TODO(mac): probarlo con una versión que no arranca (docs/mac-cambios.md).
+pub fn previous_executable(installed: &Path) -> Option<PathBuf> {
+    let program = PathBuf::from(format!("{}.old", installed.display())).join("Contents").join("MacOS").join("Parabellum");
+    program.exists().then_some(program)
+}
+
+/// La versión nueva no arrancó: la .app queda aparte (.fallida) y la anterior vuelve a su lugar.
+pub fn rollback(installed: &Path) -> Result<PathBuf, String> {
+    let previous = PathBuf::from(format!("{}.old", installed.display()));
+    if !previous.exists() {
+        return Err(t!("No está la versión anterior.", "The previous version is not there."));
+    }
+    let failed = PathBuf::from(format!("{}.fallida", installed.display()));
+    let _ = std::fs::remove_dir_all(&failed);
+    if installed.exists() {
+        std::fs::rename(installed, &failed).map_err(|e| e.to_string())?;
+    }
+    if let Err(error) = std::fs::rename(&previous, installed) {
+        let _ = std::fs::rename(&failed, installed);
+        return Err(error.to_string());
+    }
+    Ok(installed.to_path_buf())
 }
 
 /// Instrucciones de la primera vez: la app no lleva firma de Apple, así que macOS pide confirmar.

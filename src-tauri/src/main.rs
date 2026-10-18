@@ -7,6 +7,7 @@ mod idioma;
 use plataforma::{accesos, avisos};
 mod actividad;
 mod amigos;
+mod arranque;
 mod catalog;
 mod chat;
 mod compartir;
@@ -2194,9 +2195,18 @@ async fn aplicar_actualizacion(app: AppHandle, state: State<'_, AppState>) -> Re
     let found = state.launcher_found.lock().unwrap().clone();
     let entry = catalog::launcher_update(&catalog.entries).cloned().or(found).ok_or(t!("No hay una versión nueva.", "There is no new version."))?;
     let installed = catalog::apply_launcher_update(&entry, &state.paths, progress_emitter(&app, "actualizacion")).await?;
-    plataforma::lanzador::restart(&installed).map_err(|e| t!("Se actualizó, pero no se pudo reabrir: {e}", "It was updated, but could not be reopened: {e}"))?;
+    // La abre un vigía que vuelve a esta versión si la nueva no arranca (ver arranque.rs).
+    arranque::hand_over(&state.paths, &installed, &entry.manifest.version)
+        .map_err(|e| t!("Se actualizó, pero no se pudo reabrir: {e}", "It was updated, but could not be reopened: {e}"))?;
     app.exit(0);
     Ok(())
+}
+
+/// La ventana cargó (antes de tocar internet): esta versión arranca bien. Devuelve el aviso de una
+/// versión que no arrancó, si hay que darlo.
+#[tauri::command]
+fn confirmar_arranque(state: State<AppState>) -> Option<String> {
+    arranque::confirm(&state.paths)
 }
 
 /// Carpeta donde se guardan los paquetes para subir a Drive (se recuerda la última).
@@ -3629,6 +3639,11 @@ fn main() {
     }
     idioma::set(&settings.language);
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // El vigía de una actualización (ver arranque.rs): sin ventana ni candado.
+    if args.first().is_some_and(|a| a == "--vigilar-actualizacion") {
+        arranque::watch(&paths);
+        return;
+    }
     // Tras actualizarse, la versión nueva espera a que la anterior termine de cerrarse.
     let restarting = args.first().is_some_and(|a| a == "--reiniciar");
     if restarting {
@@ -3649,7 +3664,10 @@ fn main() {
             return;
         }
     };
-    plataforma::lanzador::cleanup();
+    // Si esta es una versión recién puesta, el .old se conserva hasta que confirme su arranque.
+    if !arranque::startup(&paths) {
+        plataforma::lanzador::cleanup();
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         // Iconos de mods, resource packs y mundos (http://icono.localhost/…): se leen cuando se ven.
@@ -3807,6 +3825,7 @@ fn main() {
             buscar_culpable,
             detener_busqueda,
             modo_escuela,
+            confirmar_arranque,
             cuenta::escribiendo,
             pausar_pregeneracion,
             subir_versiones_drive,
