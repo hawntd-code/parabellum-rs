@@ -13,6 +13,7 @@ mod catalog;
 mod chat;
 mod compartir;
 mod compat;
+mod comunidad;
 mod config;
 mod content;
 mod diagnostico;
@@ -3944,6 +3945,24 @@ fn main() {
             modo_escuela,
             confirmar_arranque,
             canal_actualizaciones,
+            comunidad::comunidades,
+            comunidad::comunidad,
+            comunidad::crear_comunidad,
+            comunidad::editar_comunidad,
+            comunidad::ver_invitacion,
+            comunidad::unirse_comunidad,
+            comunidad::salir_comunidad,
+            comunidad::crear_invitacion,
+            comunidad::borrar_invitacion,
+            comunidad::cambiar_miembro,
+            comunidad::sacar_de_comunidad,
+            comunidad::publicar_anuncio,
+            comunidad::borrar_anuncio,
+            comunidad::guardar_reglas,
+            comunidad::guardar_servidor_comunidad,
+            comunidad::borrar_servidor_comunidad,
+            comunidad::guardar_paquete_comunidad,
+            comunidad::paquete_comunidad,
             estado_canal,
             volver_a_estable,
             cuenta::escribiendo,

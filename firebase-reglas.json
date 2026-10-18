@@ -262,6 +262,215 @@
           ".validate": false
         }
       }
+    },
+    "communities": {
+      "$cid": {
+        ".read": "auth != null",
+        ".write": "auth != null && ((!data.exists() && newData.child('owner').val() === auth.uid) || (data.exists() && newData.exists() && newData.child('owner').val() === data.child('owner').val() && (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin')) || (data.exists() && !newData.exists() && data.child('owner').val() === auth.uid))",
+        ".validate": "$cid.matches(/^c[0-9a-z]{12}$/) && newData.hasChildren(['name', 'owner', 'createdAt'])",
+        "name": {
+          ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 40"
+        },
+        "description": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "image": {
+          ".validate": "newData.isString() && newData.val().length <= 120000 && newData.val().beginsWith('data:image/')"
+        },
+        "owner": {
+          ".validate": "newData.isString()"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "communityMembers": {
+      "$cid": {
+        ".read": "auth != null && data.child(auth.uid).exists()",
+        "$uid": {
+          ".write": "auth != null && (($uid === auth.uid && !data.exists() && newData.child('role').val() === 'owner' && !newData.child('caps').exists() && newData.parent().parent().parent().child('communities').child($cid).child('owner').val() === auth.uid) || ($uid === auth.uid && !data.exists() && newData.child('role').val() === 'member' && !newData.child('caps').exists() && root.child('inviteCodes').child(newData.child('invite').val()).child('cid').val() === $cid && root.child('inviteCodes').child(newData.child('invite').val()).child('expiresAt').val() > now) || ($uid === auth.uid && !newData.exists() && data.child('role').val() !== 'owner') || ($uid !== auth.uid && root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' && data.exists() && data.child('role').val() !== 'owner' && (!newData.exists() || newData.child('role').val() === 'member' || newData.child('role').val() === 'admin')) || ($uid !== auth.uid && root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin' && data.child('role').val() === 'member' && (!newData.exists() || newData.child('role').val() === 'member')))",
+          ".validate": "newData.hasChildren(['role', 'name', 'joinedAt'])",
+          "role": {
+            ".validate": "newData.val() === 'owner' || newData.val() === 'admin' || newData.val() === 'member'"
+          },
+          "name": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 16"
+          },
+          "joinedAt": {
+            ".validate": "newData.isNumber()"
+          },
+          "invite": {
+            ".validate": "newData.isString() && newData.val().length <= 16"
+          },
+          "caps": {
+            "support": {
+              ".validate": "newData.isBoolean()"
+            },
+            "publish": {
+              ".validate": "newData.isBoolean()"
+            },
+            "servers": {
+              ".validate": "newData.isBoolean()"
+            },
+            "$other": {
+              ".validate": false
+            }
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "userCommunities": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$cid": {
+          ".write": "auth != null && (auth.uid === $uid || (!newData.exists() && (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin')))",
+          ".validate": "newData.val() === true && newData.parent().parent().parent().child('communityMembers').child($cid).child($uid).exists()"
+        }
+      }
+    },
+    "inviteCodes": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null && ((!data.exists() && newData.exists() && (root.child('communityMembers').child(newData.child('cid').val()).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child(newData.child('cid').val()).child(auth.uid).child('role').val() === 'admin')) || (data.exists() && !newData.exists() && (root.child('communityMembers').child(data.child('cid').val()).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child(data.child('cid').val()).child(auth.uid).child('role').val() === 'admin')))",
+        ".validate": "$code.matches(/^[A-HJ-NP-Z2-9]{8}$/) && newData.hasChildren(['cid', 'createdBy', 'expiresAt'])",
+        "cid": {
+          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 20"
+        },
+        "createdBy": {
+          ".validate": "newData.val() === auth.uid"
+        },
+        "expiresAt": {
+          ".validate": "newData.isNumber() && newData.val() > now && newData.val() <= now + 2678400000"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "communityInvites": {
+      "$cid": {
+        ".read": "auth != null && (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin')",
+        "$code": {
+          ".write": "auth != null && (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin')",
+          ".validate": "newData.isNumber()"
+        }
+      }
+    },
+    "communityServers": {
+      "$cid": {
+        ".read": "auth != null && root.child('communityMembers').child($cid).child(auth.uid).exists()",
+        "$sid": {
+          ".write": "auth != null && ((root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin') || root.child('communityMembers').child($cid).child(auth.uid).child('caps').child('servers').val() === true)",
+          ".validate": "$sid.matches(/^v[0-9a-z]{8}$/) && newData.hasChildren(['name', 'address'])",
+          "name": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 40"
+          },
+          "address": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 100"
+          },
+          "bedrock": {
+            ".validate": "newData.isString() && newData.val().length <= 100"
+          },
+          "package": {
+            ".validate": "newData.isString() && newData.val().length <= 20"
+          },
+          "order": {
+            ".validate": "newData.isNumber()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "communityPosts": {
+      "$cid": {
+        ".read": "auth != null && root.child('communityMembers').child($cid).child(auth.uid).exists()",
+        "$pid": {
+          ".write": "auth != null && (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin')",
+          ".validate": "newData.hasChildren(['title', 'text', 'author', 'at'])",
+          "title": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 80"
+          },
+          "text": {
+            ".validate": "newData.isString() && newData.val().length <= 2000"
+          },
+          "author": {
+            ".validate": "newData.val() === auth.uid"
+          },
+          "authorName": {
+            ".validate": "newData.isString() && newData.val().length <= 16"
+          },
+          "at": {
+            ".validate": "newData.isNumber()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "communityRules": {
+      "$cid": {
+        ".read": "auth != null && root.child('communityMembers').child($cid).child(auth.uid).exists()",
+        ".write": "auth != null && (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin')",
+        ".validate": "newData.hasChildren(['text', 'at'])",
+        "text": {
+          ".validate": "newData.isString() && newData.val().length <= 4000"
+        },
+        "at": {
+          ".validate": "newData.isNumber()"
+        },
+        "by": {
+          ".validate": "newData.val() === auth.uid"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "communityPackages": {
+      "$cid": {
+        ".read": "auth != null && root.child('communityMembers').child($cid).child(auth.uid).exists()",
+        "$pk": {
+          ".write": "auth != null && ((root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin') || root.child('communityMembers').child($cid).child(auth.uid).child('caps').child('publish').val() === true)",
+          ".validate": "$pk.matches(/^p[0-9a-z]{8}$/) && newData.hasChildren(['name', 'catalogId', 'minecraft', 'at'])",
+          "name": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 60"
+          },
+          "catalogId": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 80"
+          },
+          "version": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "minecraft": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 20"
+          },
+          "loader": {
+            ".validate": "newData.isString() && newData.val().length <= 20"
+          },
+          "loaderVersion": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "contentHash": {
+            ".validate": "newData.isString() && newData.val().length <= 80"
+          },
+          "at": {
+            ".validate": "newData.isNumber()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
     }
   }
 }

@@ -361,6 +361,20 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-18 · Comunidades (en curso): reglas de Firebase y motor
+
+- Qué cambió:
+  - `firebase-reglas.json`: `communities`, `communityMembers`, `userCommunities`, `inviteCodes`,
+    `communityInvites`, `communityServers`, `communityPosts`, `communityRules` y `communityPackages`.
+  - `docs/probar-reglas.py`: 45 casos nuevos (unirse con código, darse permisos, roles, leer sin ser
+    miembro…). Todos pasan en el emulador. **Todavía no están publicadas: las publica Juan antes que
+    la versión.**
+  - `comunidad.rs` (nuevo): comandos para crear, unirse con código, invitar, anuncios, reglas,
+    servidores, staff y el paquete oficial (`paquete_comunidad`). Sin escuchas abiertas: se lee al
+    abrir la página.
+  - **Falta la interfaz** (`ui/comunidad.js`), que viene en el siguiente paso.
+- Mac: nada distinto, es código compartido.
+
 ### 2026-10-18 · 0.30.1: canal de pruebas, abierto a todos
 
 - Qué cambió: `canal.rs` (nuevo). Cada quien elige en Ajustes › Acerca de «Estable» o «Pruebas»
