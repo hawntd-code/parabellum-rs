@@ -216,8 +216,16 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Pendientes para Windows
 
-- [ ] **PR #15 (pegar imágenes en Mac): nada que compilar en Windows** (solo cambia
-  `plataforma/macos/arrastre.rs` y los docs). Dos sugerencias, por si las quieres:
+- [x] **PR #15 (pegar imágenes en Mac): nada que compilar en Windows** (solo cambia
+  `plataforma/macos/arrastre.rs` y los docs). Hechas las dos sugerencias el 2026-10-18 (en la 0.30.0):
+  - `juego::free_panel_key`: en 26.x, mientras la tecla del panel siga en la O, la «Lista de amigos»
+    de Mojang pasa a «]» al poner el mod (si ya hay `options.txt`). Prueba `tecla_del_panel_en_26`.
+  - Al exportar un paquete, `options.txt` va sin `key_key.parabellum.abrir` (`packs::without_panel_key`):
+    a cada quien le queda la O. El modpack «Fabric 26.3» de Drive se arregla al volver a exportarlo.
+  - `cuenta::leer_imagen` (los dos sistemas) rechaza enlaces y archivos que no son imagen por dentro
+    (`imagen::is_image`, prueba `imagen_por_dentro`).
+
+  Lo que sugería Diego:
   - **La tecla O en 26.x** choca con la «Lista de amigos» de Mojang (ver «Para llegar a la 0.28.0»,
     paso 3).
   - **Revisar que una imagen pegada sea imagen de verdad.** En Mac, `clipboard_image` ya no acepta un
@@ -354,6 +362,8 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   - Chat: `Presence.typing` (la conversación donde escribes; las versiones anteriores lo ignoran).
   - `ui/`: `#splash` y `bootSplash`, `#school-toggle`, y en Mensajes buscar, emojis, mensajes al momento,
     borradores y «está escribiendo…».
+  - Lo del PR #15: `juego::free_panel_key` (la O en 26.x), `packs::without_panel_key` e
+    `imagen::is_image` en `cuenta::leer_imagen` (ver «Pendientes para Windows»).
 - Mac: compila y prueba lo de arriba. Nada de código obligatorio. Opcional: tus paquetes en el espejo
   («Para llegar a la 0.30.0», paso 5).
 

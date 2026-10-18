@@ -62,6 +62,7 @@ pub fn install(instance: &Instance, enabled: bool) {
     let path = instance.game_dir.join("mods").join(FILE_NAME);
     match build_for(&instance.loader, &instance.minecraft_version).filter(|_| enabled && !disabled_by_crash(instance)) {
         Some(build) => {
+            free_panel_key(&instance.minecraft_version, &instance.game_dir.join("options.txt"));
             let same = std::fs::metadata(&path).is_ok_and(|m| m.len() == build.jar.len() as u64) && std::fs::read(&path).is_ok_and(|b| b == build.jar);
             if !same {
                 let _ = std::fs::create_dir_all(instance.game_dir.join("mods"));
@@ -72,6 +73,25 @@ pub fn install(instance: &Instance, enabled: bool) {
         }
         None => remove(instance),
     }
+}
+
+/// Desde 26.1 la «Lista de amigos» de Mojang también viene en la O, la tecla del panel: mientras las dos
+/// sigan ahí, la de Mojang pasa a «]» (como en el modpack de Drive; lo vio Diego, PR #15). Solo si ya hay
+/// options.txt: la primera partida lo crea y se arregla en la siguiente.
+fn free_panel_key(minecraft: &str, options: &std::path::Path) {
+    let year = minecraft.split('.').next().and_then(|y| y.parse::<u32>().ok()).unwrap_or(0);
+    if year < 26 {
+        return;
+    }
+    let Ok(text) = std::fs::read_to_string(options) else { return };
+    let value = |key: &str| text.lines().find_map(|l| l.strip_prefix(key)?.strip_prefix(':')).map(str::trim);
+    const O: &str = "key.keyboard.o";
+    if value("key_key.parabellum.abrir").unwrap_or(O) != O || value("key_key.friends").unwrap_or(O) != O {
+        return;
+    }
+    let mut lines: Vec<&str> = text.lines().filter(|l| !l.starts_with("key_key.friends:")).collect();
+    lines.push("key_key.friends:key.keyboard.right.bracket");
+    let _ = std::fs::write(options, lines.join("\n") + "\n");
 }
 
 /// Si el juego se cayó y el error menciona al mod, no se vuelve a poner en esa instancia: el juego de
@@ -135,6 +155,26 @@ pub fn is_ours(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tecla_del_panel_en_26() {
+        let folder = std::env::temp_dir().join(format!("parabellum-tecla-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let options = folder.join("options.txt");
+        // 26.x con las dos en la O (por defecto): la de Mojang pasa a «]».
+        std::fs::write(&options, "version:4556\nkey_key.jump:key.keyboard.space\n").unwrap();
+        free_panel_key("26.3", &options);
+        assert!(std::fs::read_to_string(&options).unwrap().contains("key_key.friends:key.keyboard.right.bracket"));
+        // Si el jugador movió la del panel, no se toca nada.
+        std::fs::write(&options, "key_key.parabellum.abrir:key.keyboard.p\nkey_key.friends:key.keyboard.o\n").unwrap();
+        free_panel_key("26.3", &options);
+        assert!(std::fs::read_to_string(&options).unwrap().contains("key_key.friends:key.keyboard.o"));
+        // Antes de 26 no existe esa tecla de Mojang.
+        std::fs::write(&options, "version:3955\n").unwrap();
+        free_panel_key("1.21.1", &options);
+        assert_eq!(std::fs::read_to_string(&options).unwrap(), "version:3955\n");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
 
     #[test]
     fn culpa_del_mod() {

@@ -8,6 +8,24 @@ const MAX_SIDE: u32 = 2048;
 pub const MAX_BYTES: usize = 25 * 1024 * 1024;
 
 /// La imagen como PNG (RGBA), reducida a MAX_SIDE de lado como mucho.
+/// Si los primeros bytes son de una imagen (PNG, JPEG, GIF, WebP, BMP, TIFF, ICO, HEIC/AVIF, JPEG XR o
+/// DDS) y no solo el nombre. Lo mismo que hace Mac al pegar (PR #15, is_image_file).
+pub fn is_image(bytes: &[u8]) -> bool {
+    let starts = |magic: &[u8]| bytes.starts_with(magic);
+    starts(b"\x89PNG\r\n\x1a\n")
+        || starts(&[0xFF, 0xD8, 0xFF])
+        || starts(b"GIF87a")
+        || starts(b"GIF89a")
+        || (starts(b"RIFF") && bytes.get(8..12) == Some(b"WEBP"))
+        || starts(b"BM")
+        || starts(b"II*\0")
+        || starts(b"MM\0*")
+        || starts(&[0x49, 0x49, 0xBC])
+        || starts(&[0, 0, 1, 0])
+        || starts(b"DDS ")
+        || bytes.get(4..8) == Some(b"ftyp")
+}
+
 pub fn to_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
     let failed = || t!("{} tampoco pudo abrir esa imagen. Prueba con una captura o un PNG/JPG.", "{} could not open that image either. Try a screenshot or a PNG/JPG.", crate::plataforma::NAME);
     if bytes.is_empty() || bytes.len() > MAX_BYTES {
@@ -53,6 +71,16 @@ fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn imagen_por_dentro() {
+        assert!(is_image(b"\x89PNG\r\n\x1a\n...."));
+        assert!(is_image(&[0xFF, 0xD8, 0xFF, 0xE0]));
+        assert!(is_image(b"RIFF\0\0\0\0WEBPVP8 "));
+        assert!(is_image(b"\0\0\0\x18ftypheic"));
+        assert!(!is_image(b"MZ\x90\0 un programa"));
+        assert!(!is_image(b"hola, soy texto"));
+    }
 
     #[test]
     fn png_valido_y_windows_lo_abre() {

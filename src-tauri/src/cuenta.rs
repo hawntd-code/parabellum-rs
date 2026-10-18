@@ -497,7 +497,14 @@ pub fn leer_imagen(ruta: String) -> Result<String, String> {
     if path.metadata().map(|m| m.len()).unwrap_or(0) > 25 * 1024 * 1024 {
         return Err(t!("La imagen pesa más de 25 MB.", "The image is larger than 25 MB."));
     }
+    // Un enlace no, y tiene que ser imagen por dentro, no solo por el nombre (como en Mac, PR #15).
+    if path.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err(t!("Eso no es una imagen.", "That is not an image."));
+    }
     let bytes = std::fs::read(&path).map_err(|e| t!("No se pudo leer la imagen: {e}", "Could not read the image: {e}"))?;
+    if !crate::imagen::is_image(&bytes) {
+        return Err(t!("Eso no es una imagen.", "That is not an image."));
+    }
     match mime {
         Some(mime) => Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes))),
         None => Ok(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(crate::imagen::to_png(&bytes)?))),

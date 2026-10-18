@@ -397,7 +397,11 @@ fn write_archive(zip_path: &Path, manifest: &Manifest, entries: &[(PathBuf, Stri
         let mut zip = ZipOut::create(&temp)?;
         zip.add_bytes(MANIFEST_IN_ARCHIVE, &serde_json::to_vec_pretty(manifest).unwrap())?;
         for (file, name) in entries {
-            zip.add_file(file, name)?;
+            // La tecla del panel de quien exporta no viaja: a cada quien le queda la suya (la O).
+            match (name.ends_with("instancia/options.txt"), std::fs::read_to_string(file)) {
+                (true, Ok(text)) => zip.add_bytes(name, without_panel_key(&text).as_bytes())?,
+                _ => zip.add_file(file, name)?,
+            }
             on_file(file.metadata().map(|m| m.len()).unwrap_or(0));
         }
         zip.finish()
@@ -409,6 +413,11 @@ fn write_archive(zip_path: &Path, manifest: &Manifest, entries: &[(PathBuf, Stri
             Err(e)
         }
     }
+}
+
+/// options.txt sin la tecla del panel de Parabellum (lo vio Diego en el modpack «Fabric 26.3»: venía en «[»).
+fn without_panel_key(text: &str) -> String {
+    text.lines().filter(|l| !l.starts_with("key_key.parabellum.abrir:")).map(|l| format!("{l}\n")).collect()
 }
 
 fn write_sidecar(zip_path: &Path, json_path: &Path, mut manifest: Manifest) -> Result<(), String> {

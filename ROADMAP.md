@@ -144,6 +144,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] El catálogo de Drive se lee con las carpetas y los .json de cada nivel a la vez: de ~15 s a 3–5 s; buscar la versión nueva al abrir mira solo la carpeta del launcher (~1.4 s)
 - [x] **Chat**: tu mensaje sale al momento («Enviando…») y, si falla, «Reintentar» o «Descartar»; un borrador por conversación; los enlaces se abren en el navegador; buscar conversaciones (Enter abre la primera); emojis al escribir; «Hoy» y «Ayer» en los separadores (y la fecha en el idioma de la ventana); **«está escribiendo…»** arriba y en la lista (va en la presencia, sin reglas nuevas de Firebase)
 - [x] Servidores Quilt de 1.14 a 1.17: su instalador pide Java 17 y se le daba el de la versión (fallaba siempre); ahora usa el más nuevo
+- [x] De Diego (PR #15): en 26.x la «Lista de amigos» de Mojang también venía en la O: pasa a «]» mientras la del panel siga en la O; los paquetes exportados ya no llevan tu tecla del panel; una imagen pegada tiene que ser imagen por dentro
 - [ ] Fuera del espejo: Forge para jugar en 1.8 a 1.12.1 (instalador antiguo que Parabellum no maneja; sus servidores sí están) y Forge 1.13.2, 1.14.2 y 1.14.3 (su instalador falla)
 - [ ] *Prueba:* Juan en la escuela: activar el modo escuela, crear una instancia y un servidor, instalar un modpack; con un amigo, «está escribiendo…» y mandar con la red lenta
 
