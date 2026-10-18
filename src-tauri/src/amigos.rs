@@ -308,7 +308,7 @@ impl Social {
         tasks.push(friends);
         tasks.push(requests);
         tasks.push(invites);
-        tasks.push(Listener(heartbeat));
+        tasks.push(Listener::task(heartbeat));
     }
 
     /// La base de datos y la sesión, para el chat.

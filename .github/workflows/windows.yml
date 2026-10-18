@@ -1,0 +1,44 @@
+# Compila Parabellum en Windows y corre sus pruebas (mejora 4 de docs/plan-diciembre.md).
+# Corre en cada PR a main (los de Mac, que hasta ahora solo se compilaban en Mac) y a mano
+# (Actions › Windows › Run workflow). No corre en cada cambio de main: Juan ya compila y prueba en
+# Windows, y en repos privados los minutos de Windows cuentan doble.
+name: Windows
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    # Sin advertencias (igual que en el PC de Juan); en todo el trabajo, para no compilar dos veces.
+    env:
+      RUSTFLAGS: -D warnings
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust
+        run: |
+          rustup update stable
+          rustup default stable
+          rustc --version
+
+      - name: Caché de cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: windows-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: windows-cargo-
+
+      - name: Revisar que compile sin advertencias (cargo check)
+        run: cargo check --release
+
+      - name: Pruebas
+        run: cargo test --release

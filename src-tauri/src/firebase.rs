@@ -6,6 +6,48 @@ use serde_json::{Map, Value};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// Cuánto se usa Firebase, para medirlo antes de cambiar cómo se conecta (mejora 5 de
+/// docs/plan-diciembre.md). Ver `metrics` y `cuenta::startup`, que lo anota cada minuto.
+pub mod metrics {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Escuchas activas (una por rama: amigos, cada amigo, cada conversación…).
+    pub static LISTENERS: AtomicU64 = AtomicU64::new(0);
+    /// Conexiones abiertas ahora.
+    pub static OPEN: AtomicU64 = AtomicU64::new(0);
+    /// Conexiones abiertas desde que arrancó (las de más son reconexiones).
+    pub static CONNECTS: AtomicU64 = AtomicU64::new(0);
+    /// Cambios que llegaron (put/patch) y bytes de las escuchas.
+    pub static EVENTS: AtomicU64 = AtomicU64::new(0);
+    pub static STREAM_BYTES: AtomicU64 = AtomicU64::new(0);
+    /// Lecturas y escrituras sueltas y sus bytes.
+    pub static REQUESTS: AtomicU64 = AtomicU64::new(0);
+    pub static REQUEST_BYTES: AtomicU64 = AtomicU64::new(0);
+
+    pub fn add(counter: &AtomicU64, amount: u64) {
+        counter.fetch_add(amount, Ordering::Relaxed);
+    }
+
+    pub fn sub(counter: &AtomicU64) {
+        counter.fetch_sub(1, Ordering::Relaxed);
+    }
+
+    /// Una línea del CSV: escuchas, abiertas, conexiones, eventos, bytes de escuchas, peticiones, bytes.
+    pub fn line() -> String {
+        let get = |c: &AtomicU64| c.load(Ordering::Relaxed);
+        format!(
+            "{},{},{},{},{},{},{}",
+            get(&LISTENERS),
+            get(&OPEN),
+            get(&CONNECTS),
+            get(&EVENTS),
+            get(&STREAM_BYTES),
+            get(&REQUESTS),
+            get(&REQUEST_BYTES)
+        )
+    }
+}
+
 const SIGN_IN_URL: &str = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=";
 const REFRESH_URL: &str = "https://securetoken.googleapis.com/v1/token?key=";
 
@@ -176,6 +218,8 @@ impl Database {
         let response = request.send().await.map_err(|_| DbError::Other(t!("Sin conexión con el servidor de amigos.", "No connection with the friends server.")))?;
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
+        metrics::add(&metrics::REQUESTS, 1);
+        metrics::add(&metrics::REQUEST_BYTES, text.len() as u64);
         if status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(DbError::Permission(path.to_string()));
         }
@@ -215,6 +259,7 @@ impl Database {
         on_error: impl Fn(String) + Send + Sync + 'static,
     ) -> Listener {
         let db = self.clone();
+        metrics::add(&metrics::LISTENERS, 1);
         let task = tauri::async_runtime::spawn(async move {
             let mut delay = Duration::from_secs(1);
             loop {
@@ -234,7 +279,7 @@ impl Database {
                 }
             }
         });
-        Listener(task)
+        Listener { task, counted: true }
     }
 
     async fn stream(&self, path: &str, data: &mut Value, on_change: &(impl Fn(Value) + Send + Sync)) -> Result<(), String> {
@@ -258,6 +303,16 @@ impl Database {
         if !response.status().is_success() {
             return Err(status_message(response.status()));
         }
+        metrics::add(&metrics::CONNECTS, 1);
+        metrics::add(&metrics::OPEN, 1);
+        // Al salir (por donde sea) deja de contar como abierta.
+        struct Open;
+        impl Drop for Open {
+            fn drop(&mut self) {
+                metrics::sub(&metrics::OPEN);
+            }
+        }
+        let _open = Open;
         let mut response = response;
         // Bytes y no texto: una letra con tilde o un emoji puede quedar partida entre dos trozos.
         let mut buffer: Vec<u8> = Vec::new();
@@ -272,6 +327,7 @@ impl Database {
                 Ok(Ok(None)) | Err(_) => return Ok(()),
                 Ok(Err(e)) => return Err(e.without_url().to_string()),
             };
+            metrics::add(&metrics::STREAM_BYTES, chunk.len() as u64);
             buffer.extend_from_slice(&chunk);
             while let Some(end) = buffer.iter().position(|b| *b == b'\n') {
                 let bytes: Vec<u8> = buffer.drain(..=end).collect();
@@ -282,6 +338,7 @@ impl Database {
                 } else if let Some(payload) = line.strip_prefix("data:") {
                     if event == "put" || event == "patch" {
                         if let Ok(message) = serde_json::from_str::<Value>(payload.trim()) {
+                            metrics::add(&metrics::EVENTS, 1);
                             apply(data, event == "patch", &message);
                             on_change(data.clone());
                         }
@@ -307,11 +364,25 @@ fn status_message(status: reqwest::StatusCode) -> String {
 }
 
 /// Una escucha activa; se detiene al soltarla.
-pub struct Listener(pub tauri::async_runtime::JoinHandle<()>);
+pub struct Listener {
+    task: tauri::async_runtime::JoinHandle<()>,
+    /// Es una escucha de Firebase (cuenta en metrics::LISTENERS); si no, otra tarea que se para igual.
+    counted: bool,
+}
+
+impl Listener {
+    /// Una tarea cualquiera que se detiene al soltarla (no es una escucha de Firebase).
+    pub fn task(task: tauri::async_runtime::JoinHandle<()>) -> Self {
+        Self { task, counted: false }
+    }
+}
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        self.0.abort();
+        self.task.abort();
+        if self.counted {
+            metrics::sub(&metrics::LISTENERS);
+        }
     }
 }
 

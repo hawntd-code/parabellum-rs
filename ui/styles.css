@@ -952,6 +952,11 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .chat-typing i b:nth-child(3) { animation-delay: .3s; }
 @keyframes typing-dot { 0%, 60%, 100% { opacity: .3; transform: none; } 30% { opacity: 1; transform: translateY(-2px); } }
 .chat-item-last.typing { color: var(--accent-fg); font-style: italic; }
+.toast-action { margin-top: 8px; }
+.school-hint { display: flex; align-items: center; gap: 10px; margin: 8px 0; padding: 8px 10px 8px 12px; border-radius: var(--r); background: var(--accent-soft); color: var(--text); font-size: 13px; }
+.school-hint svg { width: 18px; height: 18px; flex: none; color: var(--accent-fg); }
+.school-hint span { flex: 1; }
+.toast-action svg { width: 15px; height: 15px; }
 .chat-composer .btn { height: 42px; }
 .group-friends { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
 .group-friend { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: var(--r); cursor: pointer; }

@@ -254,6 +254,17 @@ function toast(message, kind = "info") {
   // Los errores se anuncian de inmediato al lector de pantalla; lo demás, cuando termine de hablar.
   if (kind === "error") element.setAttribute("role", "alert");
   element.innerHTML = `${icon(kind === "error" ? "alert" : "check")}<div>${escapeHtml(message)}</div>`;
+  // Mojang o un loader bloqueados (la escuela): el arreglo está a un clic.
+  if (kind === "error" && suggestsSchool(message)) {
+    const button = document.createElement("button");
+    button.className = "btn small primary toast-action";
+    button.innerHTML = `${icon("school")}<span>${t("Activar modo escuela", "Turn on school mode")}</span>`;
+    button.onclick = () => {
+      element.remove();
+      if (!state.settings.schoolMode) toggleSchool();
+    };
+    element.querySelector("div").append(button);
+  }
   $("#toasts").appendChild(element);
   setTimeout(() => {
     if (!motionOk()) return element.remove();
@@ -269,6 +280,11 @@ function toast(message, kind = "info") {
     );
     whenDone(leave, () => element.remove(), 360);
   }, kind === "error" ? 7000 : 3500);
+}
+
+/** Un error de red de Mojang o de un loader, con el modo escuela apagado: en la escuela, eso lo arregla. */
+function suggestsSchool(message) {
+  return !state.settings?.schoolMode && /servidores de (Mojang|Fabric|Quilt|Forge|NeoForge)|(Mojang|Fabric|Quilt|Forge|NeoForge)('s)? servers/i.test(String(message));
 }
 
 function contextMenu(anchor, items, { matchWidth = false, emojis = null } = {}) {
@@ -3962,9 +3978,21 @@ async function showCustomStep() {
   updateCreateArt();
   $("#new-versions").innerHTML = `<div class="version-empty">${t("Cargando versiones…", "Loading versions…")}</div>`;
   state.versions = await invoke("listar_versiones");
+  $("#new-school-hint").classList.add("hidden");
   if (state.versions.school) {
     $("#new-status").textContent = t("Modo escuela: las versiones que están en Google Drive y las que ya tienes.", "School mode: the versions on Google Drive and the ones you already have.");
   } else if (!state.versions.mojang) {
+    if (state.versions.drive?.length) {
+      // Sin Mojang (la escuela): las versiones de Drive sirven, y el modo escuela evita esperar a Mojang.
+      const hint = $("#new-school-hint");
+      hint.innerHTML = `${icon("school")}<span>${escapeHtml(t("No hay conexión con Mojang: estas versiones salen de Google Drive.", "There is no connection with Mojang: these versions come from Google Drive."))}</span><button class="btn small" id="new-school">${escapeHtml(t("Activar modo escuela", "Turn on school mode"))}</button>`;
+      hint.classList.remove("hidden");
+      $("#new-school").onclick = async () => {
+        await toggleSchool();
+        if (state.settings.schoolMode) showCustomStep();
+      };
+      return renderVersions();
+    }
     $("#new-status").textContent = `${state.versions.message} ${
       state.versions.drive?.length
         ? t("Puedes usar las versiones ya descargadas en este PC y las que están en Google Drive.", "You can use the versions already downloaded on this PC and the ones on Google Drive.")

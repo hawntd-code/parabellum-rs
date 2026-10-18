@@ -341,6 +341,18 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-18 · Firebase medido, pruebas de Windows en los PR y sugerir el modo escuela
+
+- Qué cambió:
+  - `firebase::metrics`: contadores de escuchas, conexiones, eventos y bytes; `cuenta::startup` los anota
+    cada minuto en `datos/logs/firebase.csv` con el tiempo hasta sincronizar. `firebase::Listener` ahora
+    es un struct (`Listener::task` para las tareas que no son escuchas).
+  - `.github/workflows/windows.yml`: **tus PR también se compilan y prueban en Windows**, sin
+    advertencias (`-D warnings`).
+  - `ui/`: el aviso de Mojang o de un loader bloqueado trae «Activar modo escuela»; en «Crear
+    instancia», la franja `#new-school-hint`.
+- Mac: nada distinto. Si quieres comparar, manda tu `firebase.csv`.
+
 ### 2026-10-18 · «Verificar» revisa por huella también Minecraft y su Java
 
 - Qué cambió: `launch::known_hashes` (las huellas que publica Mojang de cada archivo de una versión),

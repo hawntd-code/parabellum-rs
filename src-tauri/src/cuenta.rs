@@ -753,6 +753,51 @@ pub fn startup(app: &AppHandle) {
             update_status(&app, |s| s.resumed = true);
         });
     }
+    // Firebase, medido: cada minuto una línea en datos/logs/firebase.csv, y cuánto tardó en sincronizar.
+    {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let started = std::time::Instant::now();
+            let path = app.state::<AppState>().paths.logs.join("firebase.csv");
+            let _ = std::fs::create_dir_all(path.parent().unwrap());
+            let write = |line: String| {
+                use std::io::Write as _;
+                let new = !path.exists();
+                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+                    if new {
+                        let _ = writeln!(file, "hora,segundos,amigos,conversaciones,escuchas,abiertas,conexiones,eventos,bytes_escuchas,peticiones,bytes_peticiones,nota");
+                    }
+                    let _ = writeln!(file, "{line}");
+                }
+            };
+            let row = |note: &str| {
+                let (friends, chats) = {
+                    let view = social(&app).map(|s| s.view().friends.len()).unwrap_or(0);
+                    let chats = app.state::<AppState>().social.chat.lock().unwrap().as_ref().map(|c| c.list().len()).unwrap_or(0);
+                    (view, chats)
+                };
+                format!(
+                    "{},{},{friends},{chats},{},{note}",
+                    chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                    started.elapsed().as_secs(),
+                    crate::firebase::metrics::line()
+                )
+            };
+            let mut synced = false;
+            let mut last = std::time::Instant::now();
+            loop {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+                if !synced && view(&app).synced {
+                    synced = true;
+                    write(row(&format!("sincronizado en {} ms", started.elapsed().as_millis())));
+                }
+                if last.elapsed() >= Duration::from_secs(60) {
+                    last = std::time::Instant::now();
+                    write(row(""));
+                }
+            }
+        });
+    }
     tauri::async_runtime::spawn(async move {
         // Conexión directa con los amigos: entran a tus servidores y mundos abiertos (los que estén
         // encendidos) sin pasar por playit.gg.
