@@ -341,6 +341,16 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-18 · El logo nuevo también en el exe y en los accesos directos
+
+- Qué cambió: el exe seguía con el logo viejo, porque Cargo no volvía a meter el icono al cambiar
+  `icons/icon.ico` y reutilizaba el recurso anterior. `build.rs` ahora vigila `icons/icon.ico` e
+  `icon.png`. Contrato de `plataforma::accesos`: `refresh_icons()` (Windows: `SHChangeNotify` para
+  que el Escritorio y el menú Inicio vuelvan a leer el icono; se llama al crear un acceso y la primera
+  vez que abre cada versión).
+- Mac: `refresh_icons` es una función vacía en `macos/accesos.rs`. La `.app` toma el logo de
+  `ui/logo.png` al empaquetarla (`empaquetar.sh`). Revisa que el `.icns` salga con el logo nuevo.
+
 ### 2026-10-18 · Firebase medido, pruebas de Windows en los PR y sugerir el modo escuela
 
 - Qué cambió:

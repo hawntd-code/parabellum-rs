@@ -150,6 +150,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] **Si Mojang o un loader no responden**, el aviso trae «Activar modo escuela», y «Crear instancia» lo ofrece en una franja encima de las versiones (que ya salen de Drive)
 - [x] **Firebase medido** (mejora 5): cada minuto una línea en `datos/logs/firebase.csv` (escuchas, conexiones, reconexiones, eventos, bytes) y cuánto tardó en sincronizar. Con 7 amigos y 8 conversaciones: 24 conexiones, sincroniza en 3.1 s, ~1.3 KB por minuto
 - [x] Pruebas automáticas en Windows (`.github/workflows/windows.yml`): en cada PR a `main` (los de Mac) y a mano; compila sin advertencias y corre las pruebas
+- [x] **Logo nuevo** en la ventana, el exe, la barra de tareas, la bandeja y los avisos. El exe seguía con el viejo porque Cargo no volvía a meter el icono (`build.rs` ahora lo vigila); los accesos directos que ya había lo toman la primera vez que se abre la versión nueva (`accesos::refresh_icons`)
 - [ ] Fuera del espejo: Forge para jugar en 1.8 a 1.12.1 (instalador antiguo que Parabellum no maneja; sus servidores sí están) y Forge 1.13.2, 1.14.2 y 1.14.3 (su instalador falla)
 - [ ] *Prueba:* Juan en la escuela: activar el modo escuela, crear una instancia y un servidor, instalar un modpack; con un amigo, «está escribiendo…» y mandar con la red lenta
 
