@@ -1,7 +1,10 @@
 # Parabellum, cliente oficial del servidor (plan hacia diciembre de 2026)
 
-Estado: **propuesta** (2026-10-18). Sale de lo que pidió Juan y de una auditoría de otro agente. Las
-decisiones que faltan están en la sección 11; lo que dependa de ellas no se empieza hasta tenerlas.
+Estado: **aprobado con las respuestas de Juan del 2026-10-18** (sección 11). Sale de lo que pidió Juan
+y de una auditoría de otro agente. Lo que todavía depende de una respuesta está marcado.
+
+El servidor es **Paper**, alojado por Juan en una nube aparte: Parabellum es solo el cliente para
+entrar; no lo aloja ni lo administra.
 Cada etapa se entrega en incrementos pequeños, probados en carpetas de prueba (nunca en los mundos ni
 servidores reales de nadie), con sus textos en español e inglés y su entrada en `mac-cambios.md`.
 
@@ -159,8 +162,8 @@ cambió.
 ### 6.1 Datos en Firebase (primera versión)
 
 ```
-communities/{cid}             nombre, descripción, imagen, dueño, cómo se entra (abierta o con invitación)
-communityMembers/{cid}/{uid}  rol y permisos: { role: "owner"|"admin"|"member", caps: { support, publish, server } }
+communities/{cid}             nombre, descripción, imagen, dueño
+communityMembers/{cid}/{uid}  rol y permisos: { role: "owner"|"admin"|"member", caps: { support, publish, servers } }
 userCommunities/{uid}/{cid}   true (para listar las tuyas con una sola escucha)
 communityInvites/{cid}/{code} quién la creó, caducidad, usos
 communityServers/{cid}/{sid}  nombre, dirección, paquete requerido
@@ -172,11 +175,17 @@ communityPackages/{cid}/{pk}  familia, versión vigente por canal, huella, id de
 Permisos separados, validados en las reglas con `auth.uid`:
 - **administrar la comunidad** (anuncios, reglas, miembros): `owner` o `admin`;
 - **publicar paquetes**: `caps.publish`;
-- **administrar el servidor de Minecraft**: `caps.server`;
+- **editar los servidores de la comunidad** (nombre, dirección, paquete requerido): `caps.servers`. El
+  servidor de Minecraft en sí se administra fuera de Parabellum;
 - **atender soporte**: `caps.support`.
 
 Solo el dueño o un administrador dan permisos; nadie se los da a sí mismo; el dueño solo cambia por
-transferencia.
+transferencia. Al inicio el dueño es Juan; desde la página de la comunidad nombra a otros como staff y
+elige qué puede hacer cada uno.
+
+**Unirse** (decisión 3): con el código de la comunidad, en la sección Comunidades, o con una invitación
+que llega por mensaje directo y tiene el botón «Unirse». Las dos usan `communityInvites`; no hay
+comunidades abiertas en la primera versión.
 
 ### 6.2 «Preparar y jugar»
 
@@ -193,16 +202,12 @@ estructural, resource packs obligatorios. El resto es personal: `options.txt`, c
 capturas, `servers.dat`, mapas de minimapas. Hoy esa lista es fija en el código
 (`PRESERVED_ON_UPDATE`); pasa a ser parte del paquete, con la fija como mínimo.
 
-### 6.3 Ser el cliente oficial no es exigirlo
+### 6.3 El servidor
 
-Que Parabellum prepare la instalación no impide que alguien entre con otro launcher. El servidor es no
-premium, así que además cualquiera puede escribir el nombre de otro. Si se quiere exigir Parabellum, o
-al menos que cada nombre sea de su dueño, hace falta algo **en el servidor**:
-- **A. Lista blanca administrada por Parabellum.** Es simple, pero no protege contra quien copie un
-  nombre en modo no premium.
-- **B. Un mod o plugin de autenticación en el servidor (recomendado).** El mod de Parabellum manda al
-  entrar un comprobante firmado por Firebase; el servidor lo valida y ata el nombre a la cuenta.
-  Depende del tipo de servidor (decisión 1).
+Paper, en una nube de Juan. Parabellum no exige ser el launcher para entrar (decisión 2): es el cliente
+recomendado. Con Paper el paquete oficial es del lado del cliente (vanilla o con mods que no hace falta
+tener en el servidor, como los de rendimiento); la versión de Minecraft todavía está por confirmar. El
+estado y los jugadores salen del ping del servidor (`ping.rs`), sin acceso a su consola.
 
 ## 7. Soporte por chat y tarjetas de ajustes
 
@@ -216,8 +221,9 @@ supportMessages/{cid}/{tid}  mensajes (los mismos campos que el chat, más tarje
 ```
 
 - Cualquiera de la comunidad abre una desde la comunidad o la instancia.
-- El equipo de soporte ve **la cola**: tema y estado, no los mensajes.
-- Un miembro del staff la **toma** y desde ahí la leen solo quien la pidió y quien la tomó (decisión 7).
+- **Todo el equipo de soporte** (`caps.support`) ve la cola y lee los mensajes de cada solicitud
+  (decisión 7). El jugador lo ve antes de escribir: «Lo leerá el equipo de soporte de <comunidad>».
+- Un miembro del staff puede tomarla para que se sepa quién la atiende.
 - Ser staff no da acceso a los mensajes privados del chat normal.
 
 **El diagnóstico** reutiliza `reporte.rs` y se ve antes de mandarlo. Se filtran:
@@ -353,7 +359,7 @@ El orden sigue las dependencias. Lo que se dice que «cabe» es lo razonable, no
 |---|---|---|
 | **E0. Consolidar** (ya) | Probar la 0.30.0 en la escuela y publicarla; logo nuevo (hecho); integridad del espejo (mejora 2); recuperación de actualizaciones (mejora 3); flujo de Windows en GitHub y scripts de prueba en el repo (mejora 4); medir Firebase (mejora 5); canal de pruebas (mejora 7) | — |
 | **E1. Base compartida** | `identidad.rs` (manifiesto, huella, diferencias, recetas v2); servicio de ajustes y su registro; `respaldos.rs` (mejora 1) | E0 |
-| **E2. Comunidad oficial** | Datos y reglas de comunidades; página de la comunidad (unirse, anuncios, reglas, servidores con su estado); paquete oficial y «Preparar y jugar»; si se decide, el mod de autenticación del servidor | E1, decisiones 1–3 |
+| **E2. Comunidad oficial** | Datos y reglas de comunidades; página de la comunidad (unirse con código o invitación, anuncios, reglas, servidores con su estado, nombrar staff); paquete oficial y «Preparar y jugar» | E1; la versión de Minecraft para el paquete |
 | **E3. Soporte y tarjetas de Parabellum** | Tickets, diagnóstico revisable, tarjetas de los 7 ajustes de Parabellum, reglas y sus pruebas | E1, E2 (roles) |
 | **E4. Mundos en Drive** | Copias completas, cola reanudable, revisiones, conflictos, restaurar con su instancia | E1 (identidad, respaldos) |
 | **E5. Tarjetas de Minecraft** | Adaptadores por versión, compatibilidad estricta, pendientes hasta cerrar el juego | E1, E3 |
@@ -374,22 +380,24 @@ antes de tocar E2: entrar al servidor es lo primero.
 - [ ] Probada en el canal de pruebas.
 - [ ] `mac-cambios.md` al día y la versión anotada en «Versiones publicadas en Drive».
 
-## 11. Decisiones que necesito de Juan
+## 11. Decisiones
 
-1. **El servidor de diciembre:**
-   - versión de Minecraft;
-   - loader del servidor (NeoForge, Fabric o Paper/Purpur sin mods);
-   - si el paquete oficial lleva mods. De esto dependen el paquete y el mod de autenticación.
-2. **Exclusividad:** ¿se exige Parabellum para entrar, o al menos que cada nombre sea de su dueño
-   (opción B de 6.3)? ¿O basta con que sea el cliente recomendado?
-3. **Unirse a la comunidad:** ¿abierta para cualquiera con Parabellum, o con código de invitación?
-4. **Carpeta de los mundos:** visible «Parabellum/Mundos» con `drive.file` (recomendado) o la privada.
-5. **Límites de los mundos:** ¿5 revisiones y 5 GB por cuenta te parecen bien?
-6. **Quién es staff** al inicio y con qué permisos: soporte, publicar, servidor.
-7. **Privacidad del soporte:** ¿los mensajes de un ticket los lee solo quien lo tomó, o todo el equipo de
-   soporte? (La cola con temas sí la ve todo el equipo.)
-8. **Canal de pruebas:** ¿quiénes lo prueban?
-9. **Firebase:** ¿hay un tope de gasto mensual que deba respetar el diseño?
+Contestadas por Juan el 2026-10-18:
+
+1. **Servidor:** Paper, alojado por Juan en una nube aparte. Parabellum solo es el cliente. *Falta:* la
+   versión de Minecraft y si el paquete oficial lleva mods (del lado del cliente).
+2. **Exclusividad:** no se exige Parabellum para entrar. Queda fuera del plan.
+3. **Unirse:** con código en la sección Comunidades, o con una invitación por mensaje directo con el
+   botón «Unirse».
+4. **Mundos:** carpeta visible «Parabellum/Mundos» en el Drive de cada jugador (`drive.file`).
+5. **Límites:** 5 revisiones por mundo y 5 GB por cuenta.
+6. **Staff:** Juan es el dueño y administrador; desde Parabellum nombra a otros y elige sus permisos
+   (soporte, publicar paquetes, editar servidores).
+7. **Soporte:** todo el equipo de soporte lee los mensajes de las solicitudes.
+8. **Canal de pruebas:** *falta* quiénes lo prueban.
+9. **Firebase:** sin tope de gasto. Igual se mide y se reduce (mejora 5), por velocidad.
+
+Prioridad de Juan: **dejar el launcher lo más pulido posible** mientras él prepara el servidor.
 
 ## 12. Pruebas de aceptación y en qué etapa se cubren
 
@@ -403,7 +411,7 @@ antes de tocar E2: entrar al servidor es lo primero.
 | El staff manda un ajuste y el resultado coincide con la configuración normal | E3 | comparar `ajustes.json` y los efectos con los de la ventana de Ajustes |
 | Un doble clic o un reintento no invierte el ajuste | E3 | aplicar la misma `op` dos veces |
 | Una tarjeta de Minecraft se aplica a la instancia exacta y se rechaza en otra | E5 | dos instancias con distinta huella |
-| Falsificar una tarjeta oficial o cambiar permisos falla | E2/E3 | emulador: remitente falso, rol falso, editar tarjeta, darse permisos |
+| Falsificar una tarjeta oficial o cambiar permisos falla | E2/E3 | emulador: remitente falso, rol falso, editar tarjeta, darse permisos, leer soporte sin serlo |
 | Una versión nueva del launcher no arranca y hay recuperación | E0 | exe de prueba que se cierra al iniciar; el anterior vuelve solo |
 
 ## 13. Coordinación con Mac
