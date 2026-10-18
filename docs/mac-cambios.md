@@ -23,12 +23,12 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
-- Última revisión de los PR de Mac en Windows: 2026-10-17, PR #1 a #14 (todos mezclados).
-- **Publicado en Drive: a la par.** Windows 0.28.0 en `_parabellum` y Mac 0.28.0 en `_parabellum-mac`
-  (catálogo revisado el 2026-10-17).
-- **En `main`: 0.30.0**, sin publicar (Juan la publica; la 0.29.0 no salió sola). Es código compartido:
-  A Mac le falta probarla y, si quiere, subir sus paquetes al espejo (ver «Para llegar
+- Última revisión de los PR de Mac en Windows: 2026-10-18, PR #1 a #15 (todos mezclados).
+- **Publicado en Drive:** Windows **0.30.0** desde el 2026-10-18 (Juan, compilada de `main` en
+  `853716e`); Mac sigue en 0.28.0. **Mac va una versión atrás**: falta la Mac 0.30.0 (ver «Para llegar
   a la 0.30.0», abajo).
+- **En `main`: 0.30.1**, sin publicar: el logo nuevo también en el exe y el canal de pruebas, abierto a
+  todos (ver «Cambios de Windows»). Cuando salga, Mac puede publicar directo la 0.30.1.
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
   Las reglas de Firebase de la 0.27 ya están publicadas.
 
@@ -97,6 +97,26 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 ## Versiones publicadas en Drive
 
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
+Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
+
+- **0.30.0** · 2026-10-18 · trae lo de la 0.29.0 y la 0.30.0 (la 0.29.0 no salió sola). Publicada por
+  Juan, compilada de `main` en `853716e`:
+  - **Todo Minecraft en Google Drive** (el espejo: versiones, loaders y servidores) y el botón **Modo
+    escuela**.
+  - Gestor de **Descargas**: cola, cancelar, reintentar y límite de velocidad.
+  - Descargas más rápidas.
+  - Pegar y arrastrar imágenes al chat.
+  - **Pantalla de carga**: busca la versión nueva antes de mostrar lo demás y espera a tus amigos y
+    mensajes.
+  - Chat:
+    - el mensaje sale al momento, con «Reintentar» si falla;
+    - borradores, enlaces, buscar, emojis;
+    - «está escribiendo…».
+  - Servidores: menos trabones (guardado sin forzar el disco) y «Pregenerar el mundo».
+  - Doctor: «Buscar el mod culpable».
+  - «Verificar» revisa por huella también Minecraft y su Java.
+  - **Una actualización que no arranca se deshace sola**, desde esta versión.
+  - Logo nuevo en la ventana. El exe todavía lleva el icono viejo; se corrige en la 0.30.1.
 
 - **Mac 0.28.0** · 2026-10-13 · la primera para Mac con chip Apple (macOS 13 o más nuevo), en
   `_parabellum-mac`: todo lo de la 0.28.0 de Windows. Desde aquí se actualiza sola.
@@ -340,6 +360,22 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   iteración (2026-10-17).
 
 ## Cambios de Windows
+
+### 2026-10-18 · 0.30.1: canal de pruebas, abierto a todos
+
+- Qué cambió: `canal.rs` (nuevo). Cada quien elige en Ajustes › Acerca de «Estable» o «Pruebas»
+  (`settings.updateChannel`, comando `canal_actualizaciones`).
+  - En pruebas también recibe las versiones de `_parabellum-pruebas` (en Mac, `_parabellum-mac-pruebas`)
+    y se queda con la más nueva de las dos carpetas.
+  - Si vuelves a estable con una versión de pruebas más nueva, aparece «Volver a la versión estable»
+    (`volver_a_estable`, `estado_canal`); los datos se conservan.
+  - Al publicar se elige el canal: «Publicar en» en Acerca de, o `--publicar-launcher <carpeta> [notas]
+    pruebas`.
+  - `catalog::publish_launcher(out, notes, test)`, `catalog::newest_stable`.
+  - `arranque::hand_over`: al bajar a una versión anterior a la 0.30.0 no se usa el vigía, porque esa
+    versión no confirma su arranque.
+- Mac: nada de código. Para probar versiones de Mac antes que todos, publícalas en
+  `_parabellum-mac-pruebas` con «Publicar en: Pruebas».
 
 ### 2026-10-18 · El logo nuevo también en el exe y en los accesos directos
 

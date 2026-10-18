@@ -133,6 +133,12 @@ pub fn confirm(paths: &Paths) -> Option<String> {
 /// Tras dejar la versión nueva en su lugar: anota la espera y abre el vigía (el exe anterior), que abre la
 /// nueva. Si el vigía no abre, se abre la nueva directamente (como antes).
 pub fn hand_over(paths: &Paths, installed: &Path, to: &str) -> Result<(), String> {
+    // Una versión anterior a la que confirma su arranque (al volver a estable) no avisaría nunca: el vigía
+    // la daría por rota. Se abre directo.
+    if crate::loaders::compare_versions(to, crate::canal::FIRST_CONFIRMING) == std::cmp::Ordering::Less {
+        log(paths, &format!("cambiando de {} a {to}: sin vigía (no confirma su arranque)", current_version()));
+        return crate::plataforma::lanzador::restart(installed);
+    }
     let pending = Pending { from: current_version().into(), to: to.into(), installed: installed.to_path_buf(), at: chrono::Utc::now().timestamp_millis(), pid: None };
     write(&folder(paths).join(PENDING), &pending)?;
     let _ = std::fs::remove_file(confirmation(paths, to));

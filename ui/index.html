@@ -777,6 +777,17 @@
               <button class="btn" id="about-check"><svg><use href="#i-refresh"/></svg>Buscar actualizaciones</button>
             </div>
             <div class="setting">
+              <div class="grow"><b>Canal de actualizaciones</b><span id="channel-hint">Pruebas: recibes las novedades antes que los demás (pueden traer fallos). Puedes volver a Estable cuando quieras sin perder nada.</span></div>
+              <div class="segmented" id="channel-choice">
+                <button data-channel="estable">Estable</button>
+                <button data-channel="pruebas">Pruebas</button>
+              </div>
+            </div>
+            <div class="setting hidden" id="channel-back">
+              <div class="grow"><b id="channel-back-title">Volver a la versión estable</b><span>Tus instancias, mundos y ajustes se conservan.</span></div>
+              <button class="btn" id="channel-back-button"><svg><use href="#i-download"/></svg><span>Volver</span></button>
+            </div>
+            <div class="setting">
               <div class="grow"><b>Reportar problema</b><span>Manda por chat lo que hace falta para ayudarte: la versión, tu PC y el último error.</span></div>
               <button class="btn" id="about-report"><svg><use href="#i-flag"/></svg>Reportar</button>
             </div>
@@ -793,6 +804,13 @@
               <div class="grow"><b>Publicar esta versión</b><span>Los demás se actualizarán solos al abrir Parabellum.</span></div>
             </div>
             <input id="about-notes" maxlength="200" autocomplete="off" placeholder="Qué cambió (opcional, lo verán al actualizar)">
+            <div class="setting">
+              <div class="grow"><b>Publicar en</b><span>Pruebas: solo la reciben quienes eligieron ese canal.</span></div>
+              <div class="segmented" id="publish-channel">
+                <button data-publish-channel="estable" class="active">Estable</button>
+                <button data-publish-channel="pruebas">Pruebas</button>
+              </div>
+            </div>
             <div class="row-actions">
               <button class="btn primary" id="about-publish"><svg><use href="#i-upload"/></svg><span>Publicar en la carpeta</span></button>
               <button class="btn hidden" id="about-open-drive"><svg><use href="#i-external"/></svg>Abrir mi Drive</button>

@@ -246,12 +246,15 @@ pub async fn quick_launcher_update(paths: &Paths, config: &Config) -> Option<Ent
     let local = paths.root.join(LOCAL_FOLDER);
     let mut entries: Vec<Entry> = tauri::async_runtime::spawn_blocking(move || load_local(&local).0).await.unwrap_or_default();
     if config.has_drive() {
-        let folder = format!("_{}", crate::plataforma::lanzador::ID);
         let root = list_children(&config.drive_folder_id, &config.drive_api_key).await.ok()?;
-        let found = root.iter().find(|c| c["mimeType"] == FOLDER_MIME && c["name"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(&folder)));
-        if let Some(id) = found.and_then(|f| f["id"].as_str()).filter(|id| valid_id(id)) {
-            let children = list_children(id, &config.drive_api_key).await.ok()?;
-            entries.extend(folder_entries(&children, &format!("{folder}/"), paths).await.0);
+        // La carpeta estable y, en el canal de pruebas, también la de pruebas.
+        let folders: Vec<String> = [Some(crate::canal::folder(false)), crate::canal::on_test().then(|| crate::canal::folder(true))].into_iter().flatten().collect();
+        for folder in folders {
+            let found = root.iter().find(|c| c["mimeType"] == FOLDER_MIME && c["name"].as_str().is_some_and(|n| n.eq_ignore_ascii_case(&folder)));
+            if let Some(id) = found.and_then(|f| f["id"].as_str()).filter(|id| valid_id(id)) {
+                let children = list_children(id, &config.drive_api_key).await.ok()?;
+                entries.extend(folder_entries(&children, &folder, paths).await.0);
+            }
         }
     }
     launcher_update(&merge(entries)).cloned()
@@ -355,8 +358,9 @@ async fn cached_icon(file: &Value, paths: &Paths) -> Option<String> {
 fn merge(entries: Vec<Entry>) -> Vec<Entry> {
     let mut best: HashMap<String, Entry> = HashMap::new();
     for entry in entries {
+        // Una versión del launcher puede estar en el canal estable y en el de pruebas: son dos.
         let key = if entry.is_launcher() {
-            format!("{}@{}", entry.manifest.id.to_lowercase(), entry.manifest.version)
+            format!("{}@{}@{}", entry.manifest.id.to_lowercase(), entry.manifest.version, crate::canal::is_test_location(&entry.location))
         } else {
             entry.manifest.id.to_lowercase()
         };
@@ -860,9 +864,19 @@ pub fn launcher_update(catalog: &[Entry]) -> Option<&Entry> {
     catalog
         .iter()
         .filter(|e| e.is_launcher() && e.manifest.id == crate::plataforma::lanzador::ID)
+        // En estable, solo las de la carpeta estable; en pruebas, las dos (ver canal.rs).
+        .filter(|e| crate::canal::on_test() || !crate::canal::is_test_location(&e.location))
         .filter(|e| compare_versions(&e.manifest.version, current_version()) == Ordering::Greater)
         // La que ya no arrancó en este PC no se ofrece otra vez (ver arranque.rs).
         .filter(|e| crate::arranque::failed_version().is_none_or(|failed| failed != e.manifest.version))
+        .max_by(|a, b| compare_versions(&a.manifest.version, &b.manifest.version))
+}
+
+/// La versión estable más nueva de Parabellum para este sistema (para volver a estable desde una de pruebas).
+pub fn newest_stable(catalog: &[Entry]) -> Option<&Entry> {
+    catalog
+        .iter()
+        .filter(|e| e.is_launcher() && e.manifest.id == crate::plataforma::lanzador::ID && !crate::canal::is_test_location(&e.location))
         .max_by(|a, b| compare_versions(&a.manifest.version, &b.manifest.version))
 }
 
@@ -882,13 +896,14 @@ pub async fn apply_launcher_update(entry: &Entry, paths: &Paths, progress: impl 
 
 /// Prepara la carpeta de las versiones de este sistema («_» + su id: _parabellum en Windows,
 /// _parabellum-mac en Mac) con este mismo Parabellum para subirla a Drive (solo la versión final).
-pub fn publish_launcher(out_dir: &Path, notes: &str) -> Result<PathBuf, String> {
+pub fn publish_launcher(out_dir: &Path, notes: &str, test: bool) -> Result<PathBuf, String> {
     if cfg!(debug_assertions) {
         return Err(t!("Este Parabellum es una compilación de desarrollo: publica desde el Parabellum final (compilado con --release).", "This Parabellum is a development build: publish from the final Parabellum (built with --release)."));
     }
     let launcher = crate::plataforma::lanzador::published_files()?;
     let id = crate::plataforma::lanzador::ID;
-    let folder = out_dir.join(format!("_{id}"));
+    // _parabellum o _parabellum-pruebas (ver canal.rs).
+    let folder = out_dir.join(crate::canal::folder(test));
     std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
     // Solo la última versión
     for old in std::fs::read_dir(&folder).into_iter().flatten().flatten() {

@@ -8,6 +8,7 @@ use plataforma::{accesos, avisos};
 mod actividad;
 mod amigos;
 mod arranque;
+mod canal;
 mod catalog;
 mod chat;
 mod compartir;
@@ -191,6 +192,7 @@ fn guardar_ajustes(app: AppHandle, state: State<AppState>, mut ajustes: Settings
     *state.settings.lock().unwrap() = ajustes.clone();
     descargas::configure(ajustes.download_parallel, ajustes.download_limit_mb);
     espejo::set_school_mode(ajustes.school_mode);
+    canal::set(&ajustes.update_channel);
     if language_changed {
         idioma::set(&ajustes.language);
         // El menú del icono junto al reloj se vuelve a crear con los textos nuevos.
@@ -2256,6 +2258,57 @@ async fn aplicar_actualizacion(app: AppHandle, state: State<'_, AppState>) -> Re
     Ok(())
 }
 
+/// Cambia el canal de actualizaciones (Ajustes › Acerca de): "estable" o "pruebas".
+#[tauri::command]
+fn canal_actualizaciones(app: AppHandle, state: State<AppState>, canal: String) -> Result<Settings, String> {
+    let settings = {
+        let mut settings = state.settings.lock().unwrap();
+        settings.update_channel = canal;
+        settings.normalize()?;
+        settings.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
+        settings.clone()
+    };
+    canal::set(&settings.update_channel);
+    // El catálogo guardado se leyó con el otro canal.
+    *state.catalog.lock().unwrap() = None;
+    let _ = app.emit("ajustes", settings.clone());
+    Ok(settings)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChannelState {
+    channel: String,
+    /// La versión estable más nueva, si esta es más nueva que ella (una de pruebas): se puede volver.
+    back_to: Option<String>,
+}
+
+/// En qué canal está y si se puede volver a la estable.
+#[tauri::command]
+async fn estado_canal(state: State<'_, AppState>) -> Result<ChannelState, String> {
+    let catalog = catalog_snapshot(&state, false).await;
+    let channel = state.settings.lock().unwrap().update_channel.clone();
+    // Solo si esta versión salió en el canal de pruebas (una sin publicar, como la de quien compila, no).
+    let current = env!("CARGO_PKG_VERSION");
+    let from_test = catalog.entries.iter().any(|e| e.is_launcher() && canal::is_test_location(&e.location) && e.manifest.version == current);
+    let back_to = catalog::newest_stable(&catalog.entries)
+        .filter(|e| from_test && loaders::compare_versions(&e.manifest.version, current) == std::cmp::Ordering::Less)
+        .map(|e| e.manifest.version.clone());
+    Ok(ChannelState { channel, back_to })
+}
+
+/// Vuelve a la versión estable más nueva desde una de pruebas (más nueva): los datos se conservan.
+#[tauri::command]
+async fn volver_a_estable(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let catalog = catalog_snapshot(&state, true).await;
+    let entry = catalog::newest_stable(&catalog.entries).cloned().ok_or(t!("No hay una versión estable en el catálogo.", "There is no stable version in the catalog."))?;
+    let installed = catalog::apply_launcher_update(&entry, &state.paths, progress_emitter(&app, "actualizacion")).await?;
+    arranque::hand_over(&state.paths, &installed, &entry.manifest.version)
+        .map_err(|e| t!("Se instaló, pero no se pudo reabrir: {e}", "It was installed, but could not be reopened: {e}"))?;
+    app.exit(0);
+    Ok(())
+}
+
 /// La ventana cargó (antes de tocar internet): esta versión arranca bien. Devuelve el aviso de una
 /// versión que no arrancó, si hay que darlo.
 #[tauri::command]
@@ -2513,10 +2566,11 @@ async fn salir_de_servidor(app: AppHandle, anfitrion: String, clave: String) -> 
 /// Prepara la carpeta de las versiones de este sistema (_parabellum o _parabellum-mac) con esta versión
 /// para subirla a Drive. None si se canceló.
 #[tauri::command]
-async fn publicar_launcher(app: AppHandle, state: State<'_, AppState>, notas: String, elegir: bool) -> Result<Option<String>, String> {
+async fn publicar_launcher(app: AppHandle, state: State<'_, AppState>, notas: String, elegir: bool, pruebas: Option<bool>) -> Result<Option<String>, String> {
     let title = t!("Carpeta de tus paquetes para Drive (donde va la carpeta de las versiones de Parabellum)", "Your Drive packages folder (where the Parabellum versions folder goes)");
     let Some(folder) = export_folder(&app, &state.paths, elegir, &title).await? else { return Ok(None) };
-    let result = tauri::async_runtime::spawn_blocking(move || catalog::publish_launcher(&folder, &notas)).await.map_err(|e| e.to_string())??;
+    let test = pruebas.unwrap_or(false);
+    let result = tauri::async_runtime::spawn_blocking(move || catalog::publish_launcher(&folder, &notas, test)).await.map_err(|e| e.to_string())??;
     Ok(Some(result.display().to_string()))
 }
 
@@ -2786,7 +2840,7 @@ fn system_ram_gb() -> u32 {
 ///   --espejo [filtro]                               qué tiene el espejo de Minecraft en Drive (y el espacio)
 ///   --espejo-subir <todo|v1,v2…> [sin-loaders] [sin-servidores]  lo arma y lo sube (quien publica)
 ///   --instalar-catalogo <id> [reparar]              instala, actualiza o repara (bajando solo lo que cambió)
-///   --publicar-launcher <carpeta> [notas]           prepara _parabellum (en Mac, _parabellum-mac) para subirla a Drive
+///   --publicar-launcher <carpeta> [notas] [pruebas] prepara _parabellum (en Mac, _parabellum-mac; con «pruebas», _parabellum-pruebas) para subirla a Drive
 ///   --subir-launcher-drive <carpeta>                la sube a Drive (con el permiso de «Conectar Drive»)
 fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<String, String> {
     // PARABELLUM_ESCUELA=1: como con el modo escuela activado (para probar sin cambiar los ajustes).
@@ -3629,7 +3683,9 @@ abierto {seconds} s"));
         "--publicar-launcher" => {
             let folder = PathBuf::from(args.get(1).ok_or("Falta la carpeta.")?);
             let notes = args.get(2).cloned().unwrap_or_default();
-            Ok(format!("{}", catalog::publish_launcher(&folder, &notes)?.display()))
+            // «pruebas» al final: en el canal de pruebas (_parabellum-pruebas).
+            let test = args.iter().skip(3).any(|a| a == canal::TEST);
+            Ok(format!("{}", catalog::publish_launcher(&folder, &notes, test)?.display()))
         }
         "--subir-launcher-drive" => {
             // Lo mismo que «Subir a Drive» en Acerca de, sin la ventana: con el permiso de Drive que se dio
@@ -3772,6 +3828,7 @@ fn main() {
                 let settings = app.state::<AppState>().settings.lock().unwrap().clone();
                 descargas::init(app.handle(), settings.download_parallel, settings.download_limit_mb);
                 espejo::set_school_mode(settings.school_mode);
+                canal::set(&settings.update_channel);
             }
             {
                 let state = app.state::<AppState>();
@@ -3886,6 +3943,9 @@ fn main() {
             detener_busqueda,
             modo_escuela,
             confirmar_arranque,
+            canal_actualizaciones,
+            estado_canal,
+            volver_a_estable,
             cuenta::escribiendo,
             pausar_pregeneracion,
             subir_versiones_drive,

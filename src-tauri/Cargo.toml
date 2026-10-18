@@ -1,6 +1,6 @@
 [package]
 name = "parabellum"
-version = "0.30.0"
+version = "0.30.1"
 description = "Parabellum: launcher de Minecraft no premium"
 edition = "2021"
 publish = false

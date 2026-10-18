@@ -51,6 +51,8 @@ pub struct Settings {
     /// Modo escuela: Minecraft, los loaders y los servidores se bajan del espejo de Google Drive
     /// (espejo.rs) y no se intenta Mojang ni los servidores de los loaders.
     pub school_mode: bool,
+    /// Canal de actualizaciones: "estable" o "pruebas" (ver canal.rs).
+    pub update_channel: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
@@ -105,6 +107,7 @@ impl Default for Settings {
             download_parallel: 1,
             download_limit_mb: 0.0,
             school_mode: false,
+            update_channel: crate::canal::STABLE.into(),
         }
     }
 }
@@ -176,6 +179,9 @@ impl Settings {
         });
         self.download_parallel = self.download_parallel.clamp(1, 3);
         self.download_limit_mb = if self.download_limit_mb.is_finite() { self.download_limit_mb.clamp(0.0, 1000.0) } else { 0.0 };
+        if self.update_channel != crate::canal::TEST {
+            self.update_channel = crate::canal::STABLE.into();
+        }
         Ok(())
     }
 

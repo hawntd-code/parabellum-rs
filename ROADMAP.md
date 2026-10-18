@@ -135,7 +135,11 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Probado: la prueba P2P por internet ve al invitado (destino, directo, ping) y lo quita al salir; Grupos y Capturas capturados en Fabric 1.21.1 (clic en una captura → «Enviar a»); el panel de 26.3 abre (sus clics no se pueden simular: los revisa Juan)
 - [ ] *Prueba:* Juan: en 26.3 cambiar de pestaña, «Mensaje» y Capturas; ver los jugadores del servidor; con un amigo, la tarjeta P2P (directo o relevo y ping)
 
-### 0.30.0: todo Minecraft en Drive, modo escuela, pantalla de carga y chat (pedido de Juan)
+### 0.30.1: canal de pruebas y el logo nuevo en el exe (pedido de Juan)
+- [x] **Canal de pruebas abierto a todos** (`canal.rs`): Ajustes › Acerca de › Estable o Pruebas. En pruebas llegan también las versiones de `_parabellum-pruebas`; al volver a estable con una de pruebas más nueva, «Volver a la versión estable» (sin perder datos). Quien publica elige el canal
+- [x] El logo nuevo también en el exe y en los accesos directos que ya había (ver la 0.30.0)
+
+### 0.30.0: todo Minecraft en Drive, modo escuela, pantalla de carga y chat (pedido de Juan) — publicada el 2026-10-18
 - [x] **Espejo de Minecraft en Google Drive** (`espejo.rs`, carpeta `_espejo` del catálogo): las 75 versiones que abre Parabellum (1.8 a 26.3), 155 loaders (Fabric, Quilt, Forge y NeoForge, su versión recomendada) y 248 servidores (vanilla y con cada loader, más los de los modpacks del catálogo con su versión exacta), con sus Java. Cada archivo se guarda **una sola vez** por su SHA-1 en capas de ~2 GB: todo ocupa **12.8 GB** (un zip por versión habrían sido más de 50). Cada PC baja por partes solo lo que le falta
 - [x] Al crear una instancia, cambiar de loader, instalar un modpack de Drive sin su base o crear un servidor, si no hay Mojang (o con el modo escuela) todo sale del espejo. Probado con un proxy que solo deja pasar Google (como la escuela) y una carpeta vacía: Fabric 1.20.1 en 53 s (al menú en 27 s), su servidor en 24 s (listo en 45 s), Forge 1.20.1 desde la ventana en 63 s y el modpack «Fabric 26.3» con su Minecraft en 70 s
 - [x] **«Subir versiones de Minecraft»** (quien publica) ahora sube al espejo, con sus loaders y servidores, y tiene «Todas». También `--espejo` y `--espejo-subir` (README)

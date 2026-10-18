@@ -6758,6 +6758,7 @@ async function versionClicked() {
 
 async function refreshAbout() {
   $("#about-version").textContent = `Parabellum ${state.version}`;
+  renderChannel();
   if (!state.creator) return;
   const folder = await invoke("carpeta_exportar").catch(() => null);
   $("#about-folder").textContent = folder ?? t("Todavía no eliges una (se pide al publicar o exportar).", "You have not chosen one yet (it is asked when publishing or exporting).");
@@ -6782,6 +6783,54 @@ async function refreshDrivePublisher() {
   $("#about-drive-connect span").textContent = email ? t("Desconectar", "Disconnect") : t("Conectar Drive", "Connect Drive");
   $("#about-drive-connect").classList.toggle("hidden", !state.driveUrl);
   $("#about-publish span").textContent = email ? t("Publicar en Drive", "Publish to Drive") : t("Publicar en la carpeta", "Publish to the folder");
+}
+
+// ---------- Canal de actualizaciones (canal.rs) ----------
+async function renderChannel() {
+  const channel = state.settings?.updateChannel ?? "estable";
+  for (const button of $$("#channel-choice [data-channel]")) button.classList.toggle("active", button.dataset.channel === channel);
+  try {
+    const info = await invoke("estado_canal");
+    // En estable con una versión de pruebas más nueva: se puede volver a la estable.
+    const back = info.channel === "estable" && info.backTo;
+    $("#channel-back").classList.toggle("hidden", !back);
+    if (back) $("#channel-back-title").textContent = t(`Volver a la versión estable (${info.backTo})`, `Go back to the stable version (${info.backTo})`);
+  } catch {
+    $("#channel-back").classList.add("hidden");
+  }
+}
+
+async function setChannel(channel) {
+  if ((state.settings.updateChannel ?? "estable") === channel) return;
+  try {
+    state.settings = await invoke("canal_actualizaciones", { canal: channel });
+    toast(
+      channel === "pruebas"
+        ? t("Canal de pruebas: recibirás las novedades antes que los demás.", "Test channel: you will get new things before everyone else.")
+        : t("Canal estable.", "Stable channel."),
+    );
+    await renderChannel();
+    checkLauncherUpdate(true, true);
+  } catch (error) {
+    toast(String(error), "error");
+  }
+}
+
+async function backToStable() {
+  const ok = await confirmAction({
+    title: t("Volver a la versión estable", "Go back to the stable version"),
+    text: t("Parabellum se reinicia con la versión estable. Tus instancias, mundos y ajustes se conservan.", "Parabellum restarts with the stable version. Your instances, worlds and settings are kept."),
+    ok: t("Volver", "Go back"),
+    primary: true,
+  });
+  if (!ok) return;
+  $("#channel-back-button").disabled = true;
+  try {
+    await invoke("volver_a_estable");
+  } catch (error) {
+    toast(String(error), "error");
+    $("#channel-back-button").disabled = false;
+  }
 }
 
 /** Pide en el navegador el permiso de escribir en el Drive del catálogo. Devuelve si quedó conectado. */
@@ -6828,7 +6877,8 @@ async function publishLauncher() {
   const button = $("#about-publish");
   button.disabled = true;
   try {
-    const folder = await invoke("publicar_launcher", { notas: $("#about-notes").value, elegir: false });
+    const test = $("#publish-channel .active")?.dataset.publishChannel === "pruebas";
+    const folder = await invoke("publicar_launcher", { notas: $("#about-notes").value, elegir: false, pruebas: test });
     if (!folder) return;
     refreshAbout();
     if (!state.drivePublisher) {
@@ -6928,6 +6978,13 @@ function wireDriveEvents() {
     }
   };
   $("#about-publish").onclick = publishLauncher;
+  for (const button of $$("#channel-choice [data-channel]")) button.onclick = () => setChannel(button.dataset.channel);
+  $("#channel-back-button").onclick = backToStable;
+  for (const button of $$("#publish-channel [data-publish-channel]")) {
+    button.onclick = () => {
+      for (const other of $$("#publish-channel [data-publish-channel]")) other.classList.toggle("active", other === button);
+    };
+  }
   $("#about-drive-connect").onclick = toggleDrivePublisher;
   $("#about-version").onclick = versionClicked;
   $("#export-upload").onclick = uploadExport;
@@ -7209,6 +7266,8 @@ function demoInvoke(command, args = {}) {
   if (command === "buscar_culpable") return later({ file: "entityculling-fabric-1.6.2.jar", name: "Entity Culling", dependents: [], dependentFiles: [], launches: 6, notAMod: false, suspects: [] }, 2500);
   if (command === "detener_busqueda") return Promise.resolve(null);
   if (command === "escribiendo" || command === "confirmar_arranque") return Promise.resolve(null);
+  if (command === "estado_canal") return Promise.resolve({ channel: state.settings.updateChannel ?? "estable", backTo: null });
+  if (command === "canal_actualizaciones") return Promise.resolve({ ...state.settings, updateChannel: args.canal });
   if (command === "modo_escuela") return Promise.resolve({ ...state.settings, schoolMode: args.activo });
   if (command === "ajustes_descargas") return Promise.resolve(Object.assign(settings, { downloadParallel: args.simultaneas, downloadLimitMb: args.limite }));
   if (["duplicar_instancia", "eliminar_instancia", "activar_contenido", "eliminar_contenido", "detener", "agregar_contenido", "elegir_contenido", "cambiar_loader"].includes(command))
