@@ -157,8 +157,9 @@ El orden importa: cada fase usa lo que construyó la anterior.
     - invitar a varios **amigos y grupos** a la vez, con el código grande;
     - permisos explicados.
   - La columna derecha es ~30 % más angosta.
-- [ ] Publicar las reglas en Firebase (Juan) antes que la versión
-- [ ] El paquete oficial del servidor: Fabric 26.3 con Sodium, Fabric API y minimapa. Juan lo elige desde su instancia en Paquete oficial › Mis instancias
+- [x] Reglas de Firebase publicadas (Juan, 2026-10-18), y después la 0.31.1 en Drive
+- [x] Paquete oficial conectado desde una instancia de Juan («RETORCIDOS | MODPACK OFICIAL», 26.2, Fabric, 11 mods): la primera publicación real con «Mis instancias»
+- [x] **0.31.2:** el catálogo reintenta los `.json` que Drive no entrega a la primera. Antes, 2 de 5 lecturas perdían uno, a veces el de la versión nueva de Parabellum
 
 ### 0.30.1: canal de pruebas y el logo nuevo en el exe (pedido de Juan)
 - [x] **Canal de pruebas abierto a todos** (`canal.rs`): Ajustes › Acerca de › Estable o Pruebas. En pruebas llegan también las versiones de `_parabellum-pruebas`; al volver a estable con una de pruebas más nueva, «Volver a la versión estable» (sin perder datos). Quien publica elige el canal

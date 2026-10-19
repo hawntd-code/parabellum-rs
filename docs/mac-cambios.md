@@ -24,12 +24,11 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 ## Estado
 
 - Última revisión de los PR de Mac en Windows: 2026-10-18, PR #1 a #15 (todos mezclados).
-- **Publicado en Drive:** Windows **0.30.0** desde el 2026-10-18 (Juan, compilada de `main` en
-  `853716e`); Mac sigue en 0.28.0. **Mac va una versión atrás**: falta la Mac 0.30.0 (ver «Para llegar
-  a la 0.30.0», abajo).
-- **En `main`: 0.31.1**, sin publicar: el logo nuevo también en el exe, el canal de pruebas (abierto a
-  todos) y **Comunidades** (ver «Cambios de Windows»). Antes de publicarla, Juan publica las reglas de
-  Firebase. Cuando salga, Mac puede publicar directo la misma versión.
+- **Publicado en Drive:** Windows **0.31.1** desde el 2026-10-18 (Juan, compilada de `main` en
+  `949be92`), con las reglas de Firebase de Comunidades ya publicadas. Mac sigue en 0.28.0: puede
+  publicar directo la 0.31.x (lo de «Para llegar a la 0.30.0», abajo, sigue valiendo).
+- **En `main`: 0.31.2**, sin publicar: el catálogo reintenta los `.json` que Drive no entrega a la
+  primera (ver «Cambios de Windows»).
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
   Las reglas de Firebase de la 0.27 ya están publicadas.
 
@@ -100,6 +99,15 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
 
+- **0.31.1** · 2026-10-18 · trae lo de la 0.30.1, la 0.31.0 y la 0.31.1. Publicada por Juan, compilada
+  de `main` en `949be92`, con las reglas de Firebase de Comunidades publicadas antes:
+  - **Comunidades** (botón del escudo):
+    - unirse con un código o con «Unirse» en una invitación por mensaje;
+    - anuncios, reglas, servidores con su estado y miembros con sus permisos;
+    - «Jugar» instala o actualiza el paquete oficial y entra directo al servidor.
+  - El paquete oficial sale de una instancia de quien lo publica: se sube solo a Drive.
+  - **Canal de pruebas** en Ajustes › Acerca de (abierto a todos).
+  - El logo nuevo también en el exe y en los accesos directos.
 - **0.30.0** · 2026-10-18 · trae lo de la 0.29.0 y la 0.30.0 (la 0.29.0 no salió sola). Publicada por
   Juan, compilada de `main` en `853716e`:
   - **Todo Minecraft en Google Drive** (el espejo: versiones, loaders y servidores) y el botón **Modo
@@ -361,6 +369,14 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   iteración (2026-10-17).
 
 ## Cambios de Windows
+
+### 2026-10-18 · El catálogo reintenta los .json que Drive no entrega (0.31.2)
+
+- Qué cambió: `catalog::download_text` (los `.json` del catálogo y el índice del espejo) reintenta dos
+  veces si Drive contesta con una página o se corta. No reintenta si el archivo no existe o no está
+  compartido. Al leer el catálogo con la 0.31.1 recién publicada, 2 de 5 lecturas perdían un `.json`;
+  una de ellas fue el de la versión nueva, que esa vez no aparecía como actualización.
+- Mac: nada distinto (también lee `_parabellum-mac` con esto).
 
 ### 2026-10-18 · Comunidades: formularios nuevos y el paquete oficial desde una instancia (0.31.1)
 

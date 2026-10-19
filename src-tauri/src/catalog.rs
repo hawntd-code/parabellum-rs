@@ -334,9 +334,29 @@ async fn check_download(response: reqwest::Response) -> Result<reqwest::Response
     })
 }
 
+/// Los .json del catálogo (y el índice del espejo). De vez en cuando Drive contesta uno con una página o
+/// corta la conexión al pedir muchos a la vez (2 de 5 lecturas del catálogo perdían alguno, a veces el de
+/// la versión nueva de Parabellum): se reintenta dos veces. Si no existe o no está compartido, no.
 pub(crate) async fn download_text(file_id: &str) -> Result<String, String> {
-    let response = download::client().get(download_url(file_id)).send().await.map_err(|_| unavailable())?;
-    check_download(response).await?.text().await.map_err(|e| e.to_string())
+    let mut attempt = 0;
+    loop {
+        let result = async {
+            let response = download::client().get(download_url(file_id)).send().await.map_err(|_| (unavailable(), true))?;
+            let status = response.status();
+            let lasting = matches!(status, reqwest::StatusCode::NOT_FOUND | reqwest::StatusCode::FORBIDDEN | reqwest::StatusCode::UNAUTHORIZED);
+            let response = check_download(response).await.map_err(|e| (e, !lasting))?;
+            response.text().await.map_err(|e| (e.to_string(), true))
+        }
+        .await;
+        match result {
+            Ok(text) => return Ok(text),
+            Err((error, retry)) if !retry || attempt == 2 => return Err(error),
+            Err(_) => {
+                attempt += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(700 * attempt)).await;
+            }
+        }
+    }
 }
 
 /// Los iconos son pequeños: se guardan por id y fecha de modificación.
