@@ -7143,6 +7143,8 @@ function demoInvoke(command, args = {}) {
   ];
   const settings = demoInvoke.settings ?? (demoInvoke.settings = {
     username: "GxxseS", uuid: "", accounts: [{ username: "Hawntd", uuid: "" }], ramGb: 6, theme: "oscuro", windowWidth: 1280, windowHeight: 720, minimizeOnLaunch: true,
+    // Con «?en» en la dirección, la demostración sale en inglés.
+    language: location.search.includes("en") && !location.search.includes("actualizacion") ? "en" : "es",
     servers: [{ name: "UniversoCraft", address: "mc.universocraft.com", instance: "Vanilla 1.21.1" }],
   });
   const demo = {

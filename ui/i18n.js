@@ -45,6 +45,12 @@ function adoptLanguage(code) {
 }
 
 const HTML_EN = {
+  // 0.32 (pulido de la interfaz)
+  "Solicitudes": "Requests",
+  "Launcher de Minecraft no premium, hecho para jugar con tus amigos y en la escuela.": "Non-premium Minecraft launcher, made to play with your friends and at school.",
+  "Ver el registro": "See the log",
+  "Reportar el problema": "Report the problem",
+  "Subir": "Upload",
   "Atrás": "Back",
   "Adelante": "Forward",
   "Inicio": "Home",

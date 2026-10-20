@@ -66,7 +66,7 @@ modo demostración). Se marca cada punto al corregirlo.
 
 ## Revisar después de corregir
 
-- [ ] Inglés: textos que no caben o quedan sin traducir.
-- [ ] Ventana chica (960 × 620): nada cortado ni encimado.
-- [ ] Teclado: foco visible en todo y orden lógico con Tab.
+- [x] Inglés: textos que no caben o quedan sin traducir (la demostración ahora abre en inglés con `?en`).
+- [x] Ventana chica (960 × 620): nada cortado ni encimado (el título de arriba y los filtros de Amigos ya no se parten).
+- [x] Teclado: foco visible en todo y orden lógico con Tab.
 - [ ] Ventana real (WebView2): las mismas escenas, sin errores en la consola.
