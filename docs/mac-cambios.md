@@ -387,6 +387,20 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-19 · Pulido de la interfaz (0.32, en curso)
+
+- Qué cambió: la auditoría de `docs/auditoria-ui.md`, por tandas. Hasta ahora:
+  - **arranque**: `init()` espera a que estén cargados `hostear.js` y `comunidad.js`. Antes, si los
+    datos llegaban primero, fallaba la lista de Servidores y no se cargaban amigos ni mensajes;
+  - **campos, listas desplegables, casillas y opciones**: una sola forma en `styles.css`. El campo lleva
+    su borde (`--field-border`), las listas desplegables una flecha propia (`--chevron`) y las casillas
+    y opciones son propias;
+  - en las ventanas largas, la fila de botones se queda abajo a la vista (`fitModal`, clase `scrolls`);
+  - el menú del clic derecho sale donde está el ratón (`contextMenu(..., { at })`);
+  - las columnas de Contenido alinean aunque un mod tenga actualización.
+- Mac: nada distinto. Si algo se ve raro en WebKit (las casillas propias, la flecha de las listas
+  desplegables), avisa en un PR.
+
 ### 2026-10-19 · Modrinth en redes que lo bloquean, sin modo escuela (0.31.3)
 
 - Medido en la red de la escuela (UABC):

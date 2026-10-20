@@ -1068,6 +1068,7 @@
     <div class="modal small">
       <div class="modal-head">
         <h2 id="group-title">Nuevo grupo</h2>
+        <button class="circle-btn" data-click="#group-cancel" title="Cerrar"><svg><use href="#i-close"/></svg></button>
       </div>
       <div class="modal-body">
         <div class="group-identity" id="group-name-box">
@@ -1137,13 +1138,14 @@
     <div class="modal small">
       <div class="modal-head">
         <h2>Agregar amigo</h2>
+        <button class="circle-btn" data-click="#dialog-friend-cancel" title="Cerrar"><svg><use href="#i-close"/></svg></button>
       </div>
       <div class="modal-body">
         <label class="label" for="dialog-friend-name">Su nombre de jugador en Parabellum</label>
         <input id="dialog-friend-name" maxlength="16" autocomplete="off" spellcheck="false">
         <p class="side-note hidden" id="dialog-friend-message"></p>
         <div class="modal-actions">
-          <button class="btn" id="dialog-friend-cancel">Cerrar</button>
+          <button class="btn" id="dialog-friend-cancel">Cancelar</button>
           <button class="btn primary" id="dialog-friend-send">Enviar solicitud</button>
         </div>
       </div>
@@ -1154,6 +1156,7 @@
     <div class="modal small">
       <div class="modal-head">
         <h2 id="account-title">Añadir cuenta</h2>
+        <button class="circle-btn" data-click="#account-cancel" title="Cerrar"><svg><use href="#i-close"/></svg></button>
       </div>
       <div class="modal-body">
         <label class="label" for="account-name">Nombre de jugador</label>
@@ -1334,8 +1337,8 @@
         </div>
       </div>
       <footer class="doc-foot">
-        <button class="btn ghost" id="doctor-logs"><svg><use href="#i-terminal"/></svg>Registro</button>
-        <button class="btn ghost" id="doctor-report"><svg><use href="#i-flag"/></svg>Reportar</button>
+        <button class="circle-btn" id="doctor-logs" title="Ver el registro"><svg><use href="#i-terminal"/></svg></button>
+        <button class="circle-btn" id="doctor-report" title="Reportar el problema"><svg><use href="#i-flag"/></svg></button>
         <span class="grow"></span>
         <button class="btn ghost" id="doctor-anyway">Jugar de todos modos</button>
         <button class="btn hidden" id="doctor-bisect"><svg><use href="#i-search"/></svg><span>Buscar el mod culpable</span></button>

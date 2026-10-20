@@ -1575,7 +1575,7 @@ function renderServerDetail() {
   $("#srv-motd").innerHTML = motdHtml(motd);
   const rows = [
     [t("Anfitrión", "Host"), info.host],
-    [t("Modpack", "Modpack"), info.pack],
+    [t("Instancia", "Instance"), info.pack],
     [t("Versión", "Version"), info.version || status?.version],
     [t("Jugadores", "Players"), info.players ? `${info.players}${status?.sample?.length ? ` · ${status.sample.join(", ")}` : ""}` : null],
     [t("Dirección", "Address"), info.address],

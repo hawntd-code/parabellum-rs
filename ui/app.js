@@ -288,7 +288,7 @@ function suggestsSchool(message) {
   return !state.settings?.schoolMode && /servidores de (Mojang|Fabric|Quilt|Forge|NeoForge)|(Mojang|Fabric|Quilt|Forge|NeoForge)('s)? servers/i.test(String(message));
 }
 
-function contextMenu(anchor, items, { matchWidth = false, emojis = null } = {}) {
+function contextMenu(anchor, items, { matchWidth = false, emojis = null, at = null } = {}) {
   $$(".menu").forEach((m) => m.remove());
   const menu = document.createElement("div");
   menu.className = "menu";
@@ -311,12 +311,16 @@ function contextMenu(anchor, items, { matchWidth = false, emojis = null } = {}) 
   document.body.appendChild(menu);
   for (const canvas of menu.querySelectorAll("canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
   // Siempre dentro de la ventana: bajo el botón y alineado a su derecha; si no cabe, encima; si el
-  // botón está pegado a la izquierda (la barra lateral), a su lado y hacia arriba.
+  // botón está pegado a la izquierda (la barra lateral), a su lado y hacia arriba. Con clic derecho
+  // (`at`), donde está el ratón: hacia abajo a la derecha o, si no cabe, hacia el otro lado.
   const rect = anchor.getBoundingClientRect();
   const [width, height] = [menu.offsetWidth, menu.offsetHeight];
   let left = rect.right - width;
   let top = rect.bottom + 6;
-  if (left < 10) {
+  if (at) {
+    left = at.x + width > innerWidth - 10 ? at.x - width : at.x;
+    top = at.y + height > innerHeight - 10 ? at.y - height : at.y;
+  } else if (left < 10) {
     left = rect.right + 8;
     top = rect.bottom - height;
   } else if (top + height > innerHeight - 10) {
@@ -709,7 +713,7 @@ function renderContent() {
   }
   const updates = availableUpdates();
   $("#content-favorites").classList.toggle("hidden", !favoriteKinds[state.kind]);
-  $("#content-update-all").classList.toggle("hidden", !updates.length);
+  $("#content-update-all").classList.toggle("hidden", !updates.length || state.kind === "worlds");
   $("#content-update-all span").textContent = t(`Actualizar todo (${updates.length})`, `Update all (${updates.length})`);
   const query = $("#content-search").value.trim().toLowerCase();
   const items = content[state.kind].filter((i) => !query || `${i.name} ${i.file} ${i.authors ?? ""}`.toLowerCase().includes(query));
@@ -743,7 +747,9 @@ function renderContent() {
         ${
           item.projectId && favoriteKinds[state.kind]
             ? `<button class="circle-btn fav-toggle ${isFavoriteMod(item.projectId) ? "starred" : ""}" data-fav="${escapeHtml(item.file)}" title="${isFavoriteMod(item.projectId) ? t("Quitar de favoritos", "Remove from favorites") : t("Agregar a favoritos", "Add to favorites")}">${icon("star")}</button>`
-            : ""
+            : favoriteKinds[state.kind]
+              ? `<span class="btn-slot"></span>`
+              : ""
         }
         <button class="circle-btn" data-remove="${escapeHtml(item.file)}" title="${t("Mandar a la papelera", "Move to the Recycle Bin")}">${icon("trash")}</button>
       </div>`;
@@ -3657,10 +3663,14 @@ function wireChatEvents() {
     if (!item) return;
     event.preventDefault();
     const id = item.dataset.chat;
-    contextMenu(item, [
-      { icon: "star", label: isFavoriteChat(id) ? t("Quitar de favoritos", "Remove from favorites") : t("Agregar a favoritos", "Add to favorites"), action: () => toggleFavoriteChat(id) },
-      { icon: "chat", label: t("Abrir", "Open"), action: () => openChat(id) },
-    ]);
+    contextMenu(
+      item,
+      [
+        { icon: "star", label: isFavoriteChat(id) ? t("Quitar de favoritos", "Remove from favorites") : t("Agregar a favoritos", "Add to favorites"), action: () => toggleFavoriteChat(id) },
+        { icon: "chat", label: t("Abrir", "Open"), action: () => openChat(id) },
+      ],
+      { at: { x: event.clientX, y: event.clientY } },
+    );
   });
   $("#chat-join").onclick = () => {
     const join = state.chatJoin;
@@ -3832,11 +3842,32 @@ function topModal() {
   return [...$$(".overlay")].filter((o) => !o.classList.contains("hidden") && !o.classList.contains("closing")).pop() ?? null;
 }
 
+/** Si el contenido de una ventana no cabe, su fila de botones se queda abajo a la vista (ver styles.css). */
+function fitModal(overlay) {
+  const modal = $(".modal", overlay);
+  const body = modal && $(".modal-body", modal);
+  if (body) modal.classList.toggle("scrolls", body.scrollHeight > body.clientHeight + 2);
+}
+// Muchas ventanas se llenan después de abrirse (Exportar lee la carpeta): se vuelve a medir cuando el
+// contenido cambia de tamaño.
+const modalFit = new ResizeObserver((entries) => {
+  for (const entry of entries) {
+    const overlay = entry.target.closest(".overlay");
+    if (overlay && !overlay.classList.contains("hidden")) fitModal(overlay);
+  }
+});
+
 function openModal(id) {
   const overlay = $(id);
   const wasHidden = overlay.classList.contains("hidden") || overlay.classList.contains("closing");
   clearTimeout(overlay.closeTimer);
   overlay.classList.remove("hidden", "closing");
+  requestAnimationFrame(() => fitModal(overlay));
+  const body = $(".modal-body", overlay);
+  if (body) {
+    modalFit.observe(body);
+    for (const child of body.children) modalFit.observe(child);
+  }
   if (!wasHidden) return;
   if (!overlay.contains(document.activeElement)) overlay.returnFocus = document.activeElement;
   // El foco entra al diálogo (a su primer campo, si tiene) para poder usarlo con el teclado.
@@ -3886,6 +3917,16 @@ function setupAccessibility() {
   new MutationObserver((changes) => {
     for (const change of changes) for (const node of change.addedNodes) if (node.nodeType === 1) mark(node.parentElement ?? node);
   }).observe(document.body, { childList: true, subtree: true });
+  // La X de algunas ventanas hace lo mismo que su «Cancelar» (data-click).
+  document.addEventListener("click", (event) => {
+    const proxy = event.target.closest("[data-click]");
+    if (proxy) $(proxy.dataset.click)?.click();
+  });
+  // Al cambiar el tamaño de la ventana, la fila de botones de la ventana abierta se acomoda.
+  window.addEventListener("resize", () => {
+    const overlay = topModal();
+    if (overlay) fitModal(overlay);
+  });
   document.addEventListener("keydown", (event) => {
     const target = event.target;
     if ((event.key === "Enter" || event.key === " ") && target.getAttribute?.("role") === "button" && !target.matches("button")) {
@@ -4517,7 +4558,7 @@ function wireEvents() {
     const target = event.target.closest("[data-open]");
     if (!target) return;
     event.preventDefault();
-    contextMenu(target, instanceMenuItems(target.dataset.open));
+    contextMenu(target, instanceMenuItems(target.dataset.open), { at: { x: event.clientX, y: event.clientY } });
   });
 
   // Ajustes de la instancia
@@ -5461,7 +5502,8 @@ function openInstallDialog({ alert, title, text, items, ok, secondary, onOk, sin
     .join("");
   $("#install-ok").textContent = ok;
   $("#install-ok").classList.toggle("hidden", !ok);
-  $("#install-secondary").textContent = secondary;
+  $("#install-secondary").textContent = secondary ?? "";
+  $("#install-secondary").classList.toggle("hidden", !secondary);
   $("#install-ok").onclick = () => {
     const chosen = $$("#install-list input:checked").map((i) => i.value);
     closeModal("#install-dialog");
@@ -7208,7 +7250,8 @@ function demoInvoke(command, args = {}) {
         { id: "minecraft-1.20.1", kind: "base", name: "Minecraft 1.20.1 (base)", description: "", version: "202610010000", minecraftVersion: "1.20.1", loader: "Vanilla", modCount: 0, size: 727e6, installedSize: 800e6, exportedAt: "2026-10-01T10:00:00-07:00", icon: null, source: "carpeta", location: "1.20.1", status: "nuevo", instance: null, unsupported: null },
       ],
     }, 400);
-  if (command === "actualizacion_launcher") return later({ version: "0.7.1", notes: "Arreglos del catálogo de Drive.", size: 7.4e6 }, 200);
+  // Sin versión nueva (con «?actualizacion» en la dirección, sí): la pantalla de carga sigue hasta los amigos.
+  if (command === "actualizacion_launcher") return later(location.search.includes("actualizacion") ? { version: "0.7.1", notes: "Arreglos del catálogo de Drive.", size: 7.4e6 } : null, 200);
   if (command === "carpeta_exportar") return later("D:\\Drive\\Parabellum", 50);
   if (command === "instalar_de_catalogo") return later({ id: "Minecraft++", name: "Minecraft++", kind: "modpack", updated: true, downloadedFiles: 3, downloadedBytes: 8.4e6 }, 900);
   // Modpacks de ejemplo
@@ -7316,4 +7359,9 @@ function demoInvoke(command, args = {}) {
   return Promise.resolve(demo[command]);
 }
 
-init().catch((error) => toast(String(error), "error"));
+// hostear.js y comunidad.js se cargan después de este archivo y init usa lo suyo (savedInfo, la página
+// de Comunidades): arranca cuando ya están todos. Si los datos llegaban antes que hostear.js, la lista de
+// Servidores fallaba y el arranque se cortaba (sin amigos ni mensajes).
+const start = () => init().catch((error) => toast(String(error), "error"));
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });
+else start();
