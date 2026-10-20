@@ -3159,8 +3159,10 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                 sort: "relevance".into(),
                 offset: 0,
             };
+            let started = std::time::Instant::now();
             let results = tauri::async_runtime::block_on(modrinth::search(&query))?;
-            let mut out = format!("{} resultados\n", results.total);
+            let route = if modrinth::via_bridge() { "por el puente" } else { "directo" };
+            let mut out = format!("{} resultados ({route}, {:.1} s)\n", results.total, started.elapsed().as_secs_f64());
             for hit in results.hits.iter().take(10) {
                 out += &format!("  {} ({}) por {} · {} descargas · {:?}\n", hit.title, hit.slug, hit.author, hit.downloads, hit.categories);
             }

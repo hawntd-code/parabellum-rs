@@ -24,11 +24,11 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 ## Estado
 
 - Última revisión de los PR de Mac en Windows: 2026-10-18, PR #1 a #15 (todos mezclados).
-- **Publicado en Drive:** Windows **0.31.1** desde el 2026-10-18 (Juan, compilada de `main` en
-  `949be92`), con las reglas de Firebase de Comunidades ya publicadas. Mac sigue en 0.28.0: puede
+- **Publicado en Drive:** Windows **0.31.2** desde el 2026-10-18 (Juan, compilada de `main` en
+  `6cd5a51`). Las reglas de Firebase de Comunidades ya están publicadas. Mac sigue en 0.28.0: puede
   publicar directo la 0.31.x (lo de «Para llegar a la 0.30.0», abajo, sigue valiendo).
-- **En `main`: 0.31.2**, sin publicar: el catálogo reintenta los `.json` que Drive no entrega a la
-  primera (ver «Cambios de Windows»).
+- **En `main`: 0.31.3**, sin publicar: Modrinth funciona en la escuela por el puente (ver «Cambios
+  de Windows»).
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
   Las reglas de Firebase de la 0.27 ya están publicadas.
 
@@ -102,6 +102,9 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
 
+- **0.31.2** · 2026-10-18 · Publicada por Juan, compilada de `main` en `6cd5a51`: el catálogo
+  reintenta los `.json` que Drive no entrega a la primera. Antes, a veces no aparecía un paquete o la
+  versión nueva.
 - **0.31.1** · 2026-10-18 · trae lo de la 0.30.1, la 0.31.0 y la 0.31.1. Publicada por Juan, compilada
   de `main` en `949be92`, con las reglas de Firebase de Comunidades publicadas antes:
   - **Comunidades** (botón del escudo):
@@ -383,6 +386,33 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   iteración (2026-10-17).
 
 ## Cambios de Windows
+
+### 2026-10-19 · Modrinth en redes que lo bloquean, sin modo escuela (0.31.3)
+
+- Medido en la red de la escuela (UABC):
+  - un FortiGate bloquea por nombre `api.modrinth.com`, Mojang, `meta.fabricmc.net`, Forge, Quilt,
+    CurseForge, playit y los relevos P2P;
+  - deja pasar Google, Drive, Firebase, `*.run.app`, `cdn.modrinth.com`, `maven.fabricmc.net`,
+    NeoForge y GitHub.
+- Qué cambió:
+  - **`puente-modrinth/`** (nuevo): una función de Cloud Run en el proyecto `parabellum52`,
+    `https://modrinth-86460886589.us-central1.run.app`. Hace las mismas peticiones a la API de
+    Modrinth, solo en las 10 rutas que usa Parabellum, con caché y gzip. Lo publicó Juan el
+    2026-10-19; cómo actualizarlo está en su README.
+  - **`modrinth.rs`**: va directo y, si la red no deja (no conecta o contesta un filtro), sigue por
+    el puente toda la sesión. En modo escuela, el puente primero. Los archivos siguen bajando de
+    `cdn.modrinth.com`. `PARABELLUM_MODRINTH_PUENTE` cambia el puente, para probar.
+  - **Explorar** ya no abre en los paquetes de Drive con el modo escuela: Modrinth funciona.
+  - **`espejo::install_loader`**: si el espejo no tiene la versión exacta del loader que pide un
+    modpack de Modrinth, usa la más nueva que tenga para esa versión de Minecraft, como ya hacían los
+    servidores.
+- Probado con el bloqueo de la escuela simulado (proxy muerto salvo Google y el CDN):
+  - buscar (2.4 s, por el puente);
+  - instalar Sodium (3 s);
+  - revisar actualizaciones;
+  - instalar Fabulously Optimized desde Modrinth (49 mods, 52 s), que llegó al menú con 150 mods.
+  - En la escuela de verdad, con un puente local: el cambio al puente tardó 0.1 s.
+- Mac: nada distinto. El puente sirve igual en Mac.
 
 ### 2026-10-18 · El catálogo reintenta los .json que Drive no entrega (0.31.2)
 

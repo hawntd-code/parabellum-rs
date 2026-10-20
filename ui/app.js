@@ -524,7 +524,6 @@ function enterExplore() {
   fillTargetSelect($("#explore-instance"));
   if (e.initialized) return;
   e.initialized = true;
-  if (state.settings?.schoolMode) e.kind = "drive";
   loadExploreVersions();
   if (e.target === null) {
     const modded = [...state.instances]
@@ -5011,7 +5010,7 @@ function renderSchool() {
   button.setAttribute("aria-pressed", String(on));
   button.title = on
     ? t("Modo escuela activado: Minecraft, los loaders y los servidores se bajan del Google Drive de Parabellum. Clic para desactivarlo.", "School mode on: Minecraft, loaders and servers download from Parabellum's Google Drive. Click to turn it off.")
-    : t("Modo escuela: todo se baja del Google Drive de Parabellum, para redes donde Mojang y Modrinth están bloqueados (como la de la escuela).", "School mode: everything downloads from Parabellum's Google Drive, for networks where Mojang and Modrinth are blocked (like the school's).");
+    : t("Modo escuela: Minecraft, los loaders y los servidores se bajan del Google Drive de Parabellum, sin intentar Mojang (para redes que lo bloquean, como la de la escuela).", "School mode: Minecraft, loaders and servers download from Parabellum's Google Drive without trying Mojang (for networks that block it, like the school's).");
 }
 
 async function toggleSchool() {

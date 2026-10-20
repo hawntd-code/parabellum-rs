@@ -135,6 +135,17 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] Probado: la prueba P2P por internet ve al invitado (destino, directo, ping) y lo quita al salir; Grupos y Capturas capturados en Fabric 1.21.1 (clic en una captura → «Enviar a»); el panel de 26.3 abre (sus clics no se pueden simular: los revisa Juan)
 - [ ] *Prueba:* Juan: en 26.3 cambiar de pestaña, «Mensaje» y Capturas; ver los jugadores del servidor; con un amigo, la tarjeta P2P (directo o relevo y ping)
 
+### 0.31.3: Modrinth en la escuela, sin modo escuela (pedido de Juan)
+- [x] **Medida la red de la escuela** (UABC): un FortiGate bloquea por nombre la API de Modrinth, Mojang, la info de Fabric, Forge, Quilt, CurseForge, playit y el P2P. Deja pasar Google, Drive, Firebase, Cloud Run, el CDN de Modrinth, `maven.fabricmc.net`, NeoForge y GitHub. Drive da ~12 MB/s con 6 conexiones
+- [x] **Puente de Modrinth** (`puente-modrinth/`, Cloud Run en `parabellum52`):
+  - Parabellum va directo y, si la red lo bloquea, por el puente, sin preguntar;
+  - los archivos siguen bajando directo del CDN;
+  - solo 10 rutas permitidas, con caché y gzip (las categorías pasan de 55 KB a 5.6 KB);
+  - máximo 3 instancias; costo estimado: centavos al mes.
+- [x] Explorar abre en Modrinth también en modo escuela
+- [x] Un modpack de Modrinth cuyo loader exacto no está en el espejo usa el del espejo para esa versión de Minecraft. Antes fallaba en la escuela
+- [ ] *Prueba:* Juan en la escuela: buscar e instalar mods y un modpack de Modrinth sin modo escuela
+
 ### 0.31.0: Comunidades (plan de diciembre, etapa E2; pedido de Juan)
 - [x] **Reglas de Firebase** de comunidades, con 45 pruebas en el emulador (`docs/probar-reglas.py`):
   - se entra con un código vigente;

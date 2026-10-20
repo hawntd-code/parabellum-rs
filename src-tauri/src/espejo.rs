@@ -404,8 +404,10 @@ pub async fn install_loader(
 ) -> Result<Option<(String, String)>, String> {
     let Some(remote) = remote(paths).await? else { return Ok(None) };
     let version = match requested.map(str::trim).filter(|v| !v.is_empty()) {
-        Some(version) => version.to_string(),
-        None => match loader_versions(&remote, loader, minecraft).into_iter().next() {
+        Some(version) if remote.index.packages.contains_key(&loader_id(loader, minecraft, version)) => version.to_string(),
+        // Esa versión exacta no está (un modpack de Modrinth pide la suya y el espejo guarda la recomendada
+        // de cada Minecraft): la más nueva que tenga, como con los servidores. Los mods piden una mínima.
+        _ => match loader_versions(&remote, loader, minecraft).into_iter().next() {
             Some(version) => version,
             None => return Ok(None),
         },

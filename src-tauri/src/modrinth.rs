@@ -17,21 +17,75 @@ use crate::download::{self, FileDownload};
 use crate::instances::Instance;
 
 const API: &str = "https://api.modrinth.com/v2";
+/// El puente de Modrinth (`puente-modrinth/`, una función de Google Cloud): la misma API para las redes
+/// que bloquean api.modrinth.com, como la de la escuela. Los archivos siguen bajando de cdn.modrinth.com,
+/// que esas redes dejan pasar. `PARABELLUM_MODRINTH_PUENTE` lo cambia (para probar uno local).
+const BRIDGE: &str = "https://modrinth-86460886589.us-central1.run.app";
 /// Modrinth pide un User-Agent que identifique al programa.
 const USER_AGENT: &str = concat!("juanrojasgarcialin/parabellum/", env!("CARGO_PKG_VERSION"));
 const CDN: &str = "https://cdn.modrinth.com/";
 const INDEX_FILE: &str = "modrinth.json";
 pub fn unavailable() -> String {
     t!(
-        "No se puede conectar con Modrinth (en algunas redes, como la de la escuela, está bloqueado).",
-        "Cannot connect to Modrinth (on some networks, like the school's, it is blocked)."
+        "No se puede conectar con Modrinth: esta red lo bloquea y el puente de Parabellum tampoco respondió.",
+        "Cannot connect to Modrinth: this network blocks it and the Parabellum bridge did not answer either."
     )
 }
 
 // ================= HTTP
 
-async fn send(request: reqwest::RequestBuilder) -> Result<Value, String> {
-    let response = request.header(reqwest::header::USER_AGENT, USER_AGENT).send().await.map_err(|_| unavailable())?;
+/// Por dónde se llega a Modrinth en esta sesión (se decide con la primera petición).
+static ROUTE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(ROUTE_UNKNOWN);
+const ROUTE_UNKNOWN: u8 = 0;
+const ROUTE_DIRECT: u8 = 1;
+const ROUTE_BRIDGE: u8 = 2;
+
+fn bridge() -> Option<String> {
+    let base = std::env::var("PARABELLUM_MODRINTH_PUENTE").ok().filter(|b| !b.trim().is_empty()).unwrap_or_else(|| BRIDGE.to_string());
+    (!base.is_empty()).then(|| format!("{}/v2", base.trim().trim_end_matches('/').trim_end_matches("/v2")))
+}
+
+/// Si se usa el puente (para el aviso de Explorar).
+pub fn via_bridge() -> bool {
+    ROUTE.load(std::sync::atomic::Ordering::Relaxed) == ROUTE_BRIDGE
+}
+
+/// Una respuesta que no viene de Modrinth: la página de un filtro (una red escolar con su propio
+/// certificado instalado puede contestar en lugar de Modrinth).
+fn filtered(response: &reqwest::Response) -> bool {
+    response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|t| t.contains("html"))
+}
+
+/// Primero directo a Modrinth. Si la red no deja (no conecta, el filtro corta la conexión o contesta él),
+/// por el puente, y la sesión sigue por ahí. En modo escuela, el puente primero. Si el puente falla,
+/// directo como último intento (otra red, o el puente caído).
+async fn send(build: impl Fn(&str) -> reqwest::RequestBuilder) -> Result<Value, String> {
+    use std::sync::atomic::Ordering::Relaxed;
+    let bridge = bridge();
+    let route = ROUTE.load(Relaxed);
+    let bridge_first = bridge.is_some() && (route == ROUTE_BRIDGE || (route == ROUTE_UNKNOWN && crate::espejo::school_mode()));
+    let mut order: Vec<(&str, u8)> = vec![(API, ROUTE_DIRECT)];
+    if let Some(bridge) = bridge.as_deref() {
+        order.insert(if bridge_first { 0 } else { 1 }, (bridge, ROUTE_BRIDGE));
+    }
+    for (i, (base, kind)) in order.iter().enumerate() {
+        let mut request = build(base).header(reqwest::header::USER_AGENT, USER_AGENT);
+        // Sin saber todavía si esta red deja pasar: hay filtros que no rechazan, solo no contestan.
+        if *kind == ROUTE_DIRECT && i == 0 && route == ROUTE_UNKNOWN && order.len() > 1 {
+            request = request.timeout(std::time::Duration::from_secs(8));
+        }
+        match request.send().await {
+            Ok(response) if !filtered(&response) => {
+                ROUTE.store(*kind, Relaxed);
+                return answer(response).await;
+            }
+            _ => continue,
+        }
+    }
+    Err(unavailable())
+}
+
+async fn answer(response: reqwest::Response) -> Result<Value, String> {
     match response.status() {
         status if status.is_success() => response.json().await.map_err(|e| t!("Modrinth respondió algo inesperado: {e}", "Modrinth answered something unexpected: {e}")),
         reqwest::StatusCode::NOT_FOUND => Err(t!("Modrinth no tiene ese proyecto o versión.", "Modrinth does not have that project or version.")),
@@ -41,11 +95,11 @@ async fn send(request: reqwest::RequestBuilder) -> Result<Value, String> {
 }
 
 async fn get(path: &str, query: &[(&str, String)]) -> Result<Value, String> {
-    send(download::client().get(format!("{API}{path}")).query(query)).await
+    send(|base| download::client().get(format!("{base}{path}")).query(query)).await
 }
 
 async fn post(path: &str, body: &Value) -> Result<Value, String> {
-    send(download::client().post(format!("{API}{path}")).json(body)).await
+    send(|base| download::client().post(format!("{base}{path}")).json(body)).await
 }
 
 /// Los ids y slugs de Modrinth solo llevan letras, números, guiones y puntos.
