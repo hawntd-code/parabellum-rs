@@ -24,11 +24,11 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 ## Estado
 
 - Última revisión de los PR de Mac en Windows: 2026-10-18, PR #1 a #15 (todos mezclados).
-- **Publicado en Drive:** Windows **0.31.2** desde el 2026-10-18 (Juan, compilada de `main` en
-  `6cd5a51`). Las reglas de Firebase de Comunidades ya están publicadas. Mac sigue en 0.28.0: puede
-  publicar directo la 0.31.x (lo de «Para llegar a la 0.30.0», abajo, sigue valiendo).
-- **En `main`: 0.32.0**, sin publicar: Modrinth en la escuela por el puente (0.31.3) y el pulido completo
-  de la interfaz (ver «Cambios de Windows» y `docs/auditoria-ui.md`).
+- **Publicado en Drive:** Windows **0.32.0** desde el 2026-10-20 (Juan; el exe publicado es idéntico
+  al compilado de `main` en `52fe1d5`). Las reglas de Firebase de Comunidades ya están publicadas.
+  **Mac sigue en 0.28.0**, cuatro versiones atrás: puede publicar directo la 0.32.0 (lo de «Para
+  llegar a la 0.30.0», abajo, sigue valiendo).
+- **En `main`: 0.32.0**, lo mismo que está publicado.
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
   Las reglas de Firebase de la 0.27 ya están publicadas.
 
@@ -102,6 +102,18 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
 
+- **0.32.0** · 2026-10-20 · trae lo de la 0.31.3 y la 0.32.0. Publicada por Juan, compilada de `main`
+  en `52fe1d5`:
+  - **Modrinth en la escuela sin modo escuela**: si la red lo bloquea, Parabellum pregunta por el
+    puente (`puente-modrinth/`) y los archivos siguen bajando del CDN de Modrinth.
+  - **Interfaz pulida** de punta a punta (`docs/auditoria-ui.md`):
+    - campos visibles en tema oscuro;
+    - Amigos en dos columnas;
+    - gráficas del servidor;
+    - esqueletos mientras carga;
+    - cambio de tema con un círculo;
+    - y los errores de la auditoría.
+  - Arreglado: a veces no se cargaban amigos ni mensajes al abrir.
 - **0.31.2** · 2026-10-18 · Publicada por Juan, compilada de `main` en `6cd5a51`: el catálogo
   reintenta los `.json` que Drive no entrega a la primera. Antes, a veces no aparecía un paquete o la
   versión nueva.

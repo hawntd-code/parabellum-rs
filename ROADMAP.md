@@ -94,7 +94,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 
 ### Plan desde el 2026-10-19 (pedido de Juan): primero la interfaz, después lo demás
 
-**1. 0.32.0: pulido completo de la interfaz (hecho el 2026-10-20, en `main`; detalle en `docs/auditoria-ui.md`).** Que todo se vea pulcro, tenga sentido, esté bien
+**1. 0.32.0: pulido completo de la interfaz (publicada por Juan el 2026-10-20; detalle en `docs/auditoria-ui.md`).** Que todo se vea pulcro, tenga sentido, esté bien
 centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
 - [x] **Inventario con capturas** de cada vista en todos sus estados (vacía, cargando, con error, llena), en tema oscuro y claro, en español e inglés, y con la ventana chica y grande
 - [x] **Sistema de diseño**:
