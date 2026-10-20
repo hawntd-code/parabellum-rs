@@ -27,8 +27,8 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 - **Publicado en Drive:** Windows **0.31.2** desde el 2026-10-18 (Juan, compilada de `main` en
   `6cd5a51`). Las reglas de Firebase de Comunidades ya están publicadas. Mac sigue en 0.28.0: puede
   publicar directo la 0.31.x (lo de «Para llegar a la 0.30.0», abajo, sigue valiendo).
-- **En `main`: 0.31.3**, sin publicar: Modrinth funciona en la escuela por el puente (ver «Cambios
-  de Windows»).
+- **En `main`: 0.32.0**, sin publicar: Modrinth en la escuela por el puente (0.31.3) y el pulido completo
+  de la interfaz (ver «Cambios de Windows» y `docs/auditoria-ui.md`).
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
   Las reglas de Firebase de la 0.27 ya están publicadas.
 
@@ -387,7 +387,7 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
-### 2026-10-19 · Pulido de la interfaz (0.32, en curso)
+### 2026-10-20 · Pulido de la interfaz (0.32.0)
 
 - Qué cambió: la auditoría de `docs/auditoria-ui.md`, por tandas. Hasta ahora:
   - **arranque**: `init()` espera a que estén cargados `hostear.js` y `comunidad.js`. Antes, si los
