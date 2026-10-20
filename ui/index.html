@@ -370,38 +370,45 @@
         <section class="page hidden" id="page-friends">
           <div class="page-inner friends-page">
             <div class="fp-head">
-              <h1 class="section-title">Amigos</h1>
-              <span class="faint" id="fp-count"></span>
-            </div>
-            <div class="fp-out hidden" id="fp-signed-out"></div>
-            <div id="fp-signed-in" class="hidden">
-              <div class="fp-add">
+              <div class="fp-title">
+                <h1 class="section-title">Amigos</h1>
+                <span class="faint" id="fp-count"></span>
+              </div>
+              <div class="fp-add hidden" id="fp-add-box">
                 <div class="search grow">
                   <svg><use href="#i-user-plus"/></svg>
                   <input id="fp-add-name" maxlength="16" placeholder="Nombre de jugador de tu amigo" autocomplete="off" spellcheck="false">
                 </div>
                 <button class="btn primary" id="fp-add-button"><svg><use href="#i-send"/></svg>Enviar solicitud</button>
               </div>
-              <p class="side-note hidden" id="fp-add-message"></p>
-              <div class="fp-requests" id="fp-requests"></div>
+            </div>
+            <p class="side-note fp-add-note hidden" id="fp-add-message"></p>
+            <div class="fp-out hidden" id="fp-signed-out"></div>
+            <div id="fp-signed-in" class="hidden">
               <div class="fp-columns">
                 <div class="fp-main">
-                  <div class="fp-tools">
-                    <div class="fp-filters" id="fp-filters">
-                      <button data-filter="all" class="active">Todos <span></span></button>
-                      <button data-filter="online">En línea <span></span></button>
-                      <button data-filter="playing">Jugando <span></span></button>
+                  <section class="fp-card fp-requests-card hidden" id="fp-requests-card">
+                    <div class="fp-card-head"><h3>Solicitudes</h3><span class="fp-pill" id="fp-requests-count"></span></div>
+                    <div class="fp-requests" id="fp-requests"></div>
+                  </section>
+                  <section class="fp-card">
+                    <div class="fp-tools">
+                      <div class="fp-filters" id="fp-filters">
+                        <button data-filter="all" class="active">Todos <span></span></button>
+                        <button data-filter="online">En línea <span></span></button>
+                        <button data-filter="playing">Jugando <span></span></button>
+                      </div>
+                      <div class="search small">
+                        <svg><use href="#i-search"/></svg>
+                        <input id="fp-search" placeholder="Buscar" autocomplete="off" spellcheck="false">
+                      </div>
                     </div>
-                    <div class="search small">
-                      <svg><use href="#i-search"/></svg>
-                      <input id="fp-search" placeholder="Buscar" autocomplete="off" spellcheck="false">
-                    </div>
-                  </div>
-                  <div class="fp-list" id="fp-list"></div>
+                    <div class="fp-list" id="fp-list"></div>
+                  </section>
                 </div>
-                <aside class="fp-side">
-                  <div class="groups-head">
-                    <h5>Grupos</h5>
+                <aside class="fp-side fp-card">
+                  <div class="fp-card-head">
+                    <h3>Grupos</h3>
                     <button class="circle-btn small" id="fp-new-group" title="Nuevo grupo"><svg><use href="#i-plus"/></svg></button>
                   </div>
                   <div class="group-list" id="fp-groups"></div>
@@ -491,7 +498,7 @@
                 </div>
                 <button class="btn hidden" id="content-update-all"><svg><use href="#i-update"/></svg><span>Actualizar todo</span></button>
                 <button class="btn" id="content-favorites" title="Instalar tus favoritos en esta instancia"><svg><use href="#i-star"/></svg>Favoritos</button>
-                <button class="circle-btn" id="content-folder" title="Abrir carpeta"><svg><use href="#i-folder"/></svg></button>
+                <button class="btn icon-only" id="content-folder" title="Abrir carpeta"><svg><use href="#i-folder"/></svg></button>
                 <button class="btn primary" id="content-add"><svg><use href="#i-plus"/></svg>Agregar contenido<svg class="chev"><use href="#i-down"/></svg></button>
               </div>
               <div class="content-list" id="content-list"></div>
@@ -513,9 +520,7 @@
             </div>
 
             <div class="tab-panel hidden" id="tab-overview">
-              <div class="card-panel">
-                <dl class="details" id="detail-rows"></dl>
-              </div>
+              <div class="facts" id="detail-rows"></div>
             </div>
             <div class="tab-panel hidden" id="tab-server">
               <div class="card-panel">
@@ -792,6 +797,14 @@
             <div class="java-list" id="java-list"></div>
           </section>
           <section data-section="about" class="hidden">
+            <div class="about-hero">
+              <img src="logo.png" alt="" class="about-logo">
+              <div class="grow">
+                <b class="about-name">Parabellum</b>
+                <span class="about-tagline">Launcher de Minecraft no premium, hecho para jugar con tus amigos y en la escuela.</span>
+                <span class="about-chips"><span class="tag accent" id="about-hero-version"></span><span class="tag" id="about-hero-platform"></span></span>
+              </div>
+            </div>
             <div class="setting">
               <div class="grow"><b id="about-version">Parabellum</b><span id="about-update">Busca si hay una versión nueva de Parabellum.</span></div>
               <button class="btn" id="about-check"><svg><use href="#i-refresh"/></svg>Buscar actualizaciones</button>

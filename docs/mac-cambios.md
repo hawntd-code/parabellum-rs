@@ -397,7 +397,15 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
     y opciones son propias;
   - en las ventanas largas, la fila de botones se queda abajo a la vista (`fitModal`, clase `scrolls`);
   - el menú del clic derecho sale donde está el ratón (`contextMenu(..., { at })`);
-  - las columnas de Contenido alinean aunque un mod tenga actualización.
+  - las columnas de Contenido alinean aunque un mod tenga actualización;
+  - **Amigos** en dos columnas (solicitudes y amigos; grupos) con agregar arriba; tu tarjeta en el
+    panel con tu cabeza y la dirección de tu mundo;
+  - **Detalles** de la instancia en tarjetas; **Acerca de** con logo y versión;
+  - **servidor**: minigráficas de jugadores, TPS y procesador, y números que cuentan;
+  - **esqueletos** mientras carga (Explorar, Contenido, Proyecto, Comunidades);
+  - **cambio de tema** con un círculo (`document.startViewTransition`: en WebKit de Mac quizá no
+    exista; entonces cambia sin animación, que es lo esperado);
+  - los errores internos de la ventana ya no salen tal cual en los avisos (`friendlyError`).
 - Mac: nada distinto. Si algo se ve raro en WebKit (las casillas propias, la flecha de las listas
   desplegables), avisa en un PR.
 

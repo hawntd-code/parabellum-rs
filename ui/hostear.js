@@ -433,7 +433,7 @@ async function openHostCreate(instanceId = null) {
     return;
   }
   const select = $("#hc-instance");
-  select.innerHTML = state.instances.map((i) => `<option value="${escapeHtml(i.id)}">${escapeHtml(i.name)} · ${escapeHtml(subtitle(i))}</option>`).join("");
+  select.innerHTML = state.instances.map((i) => `<option value="${escapeHtml(i.id)}">${escapeHtml(instanceLabel(i))}</option>`).join("");
   const preferred = instanceId ?? state.instances.slice().sort((a, b) => (b.lastPlayed ?? 0) - (a.lastPlayed ?? 0))[0].id;
   select.value = preferred;
   fillOptions($("#hc-gamemode"), gamemodeNames(), "survival");
@@ -559,6 +559,68 @@ function hostedTitle(id) {
   return hostServer(id)?.name ?? t("Servidor", "Server");
 }
 
+// ---------- Cifras vivas: el historial de los últimos minutos y su minigráfica ----------
+const SAMPLE_EVERY = 2000;
+const SAMPLE_MAX = 90;
+const hostSamples = {};
+
+/** Guarda cómo va el servidor (como mucho cada 2 s) para dibujar su minigráfica. */
+function sampleServer(s) {
+  const list = (hostSamples[s.id] ??= []);
+  if (s.state === "off") {
+    list.length = 0;
+    return list;
+  }
+  // En la demostración, unos minutos inventados para que se vean las gráficas.
+  if (!tauri && !list.length) {
+    let cpu = 18;
+    for (let i = 0; i < 40; i++) {
+      cpu = Math.max(4, Math.min(85, cpu + (Math.random() - 0.5) * 14));
+      list.push({ at: Date.now() - (40 - i) * SAMPLE_EVERY, players: i > 24 ? 1 : i > 10 ? 2 : 1, cpu, tps: 19.4 + Math.random() * 0.6 });
+    }
+  }
+  const last = list[list.length - 1];
+  if (!last || Date.now() - last.at >= SAMPLE_EVERY) {
+    list.push({ at: Date.now(), players: s.players.length, cpu: s.cpu ?? 0, tps: s.tps });
+    if (list.length > SAMPLE_MAX) list.shift();
+  }
+  return list;
+}
+
+/** Minigráfica de una cifra (0..max) con su relleno degradado. */
+function sparkline(values, max, kind = "") {
+  const points = values.filter((v) => v != null && Number.isFinite(v));
+  if (points.length < 2) return "";
+  const top = Math.max(max, ...points) || 1;
+  const step = 100 / (points.length - 1);
+  const y = (v) => (26 - (v / top) * 22).toFixed(2);
+  const line = points.map((v, i) => `${i ? "L" : "M"}${(i * step).toFixed(2)} ${y(v)}`).join(" ");
+  return `<svg class="spark ${kind}" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><path class="spark-fill" d="${line} L100 28 L0 28 Z"/><path class="spark-line" d="${line}"/></svg>`;
+}
+
+/** Las cifras que cambian no saltan: cuentan hasta el valor nuevo. */
+const shownNumbers = {};
+function tweenNumbers(root) {
+  for (const element of root.querySelectorAll("[data-num]")) {
+    const key = element.dataset.num;
+    const to = Number(element.dataset.value);
+    const from = shownNumbers[key];
+    shownNumbers[key] = to;
+    if (from == null || from === to || !motionOk()) continue;
+    const decimals = Number(element.dataset.decimals ?? 0);
+    const suffix = element.dataset.suffix ?? "";
+    const started = performance.now();
+    const frame = (now) => {
+      const k = Math.min(1, (now - started) / 450);
+      const eased = 1 - Math.pow(1 - k, 3);
+      if (!element.isConnected) return;
+      element.firstChild.textContent = (from + (to - from) * eased).toFixed(decimals) + suffix;
+      if (k < 1) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }
+}
+
 function renderHosted() {
   const s = hostServer(host.id);
   if (!s) return;
@@ -592,14 +654,18 @@ function renderHosted() {
   const tpsClass = s.tps == null ? "" : s.tps >= 18.5 ? "tps-good" : s.tps >= 14 ? "tps-warn" : "tps-bad";
   const tpsText = s.state !== "ready" || s.tps == null ? "—" : paused ? t("En pausa", "Paused") : `${s.tps.toFixed(1)}`;
   const tpsTitle = t("Ticks por segundo: 20 es lo normal. Si baja, el lag es del servidor; si está en 20 y hay lag, es la conexión.", "Ticks per second: 20 is normal. If it drops, the lag comes from the server; if it is at 20 and there is lag, it is the connection.");
+  const samples = sampleServer(s);
+  const num = (key, value, decimals = 0, suffix = "") => `<span data-num="${s.id}:${key}" data-value="${value}" data-decimals="${decimals}" data-suffix="${suffix}">${Number(value).toFixed(decimals)}${suffix}</span>`;
+  const since = s.started && on ? new Date(s.started).toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" }) : null;
   $("#hosted-stats").innerHTML = `
-    <div class="stat"><span class="faint">${t("Jugadores", "Players")}</span><b>${on ? `${s.players.length} / ${s.maxPlayers}` : "—"}</b></div>
-    <div class="stat" title="${escapeHtml(tpsTitle)}"><span class="faint">TPS${s.behind ? ` · ${t("se atrasó", "fell behind")}` : ""}</span><b class="${paused ? "" : tpsClass}">${escapeHtml(tpsText)}</b>${tickLine(s, on)}</div>
-    <div class="stat"><span class="faint">${t("Encendido hace", "On for")}</span><b>${s.started && on ? uptime(s.started) : "—"}</b></div>
-    <div class="stat"><span class="faint">${t("Procesador", "CPU")}</span><b>${on ? `${Math.round(s.cpu)}%` : "—"}</b></div>
+    <div class="stat"><span class="faint">${t("Jugadores", "Players")}</span><b>${on ? `${num("players", s.players.length)} / ${s.maxPlayers}` : "—"}</b>${on ? sparkline(samples.map((x) => x.players), s.maxPlayers > 10 ? 10 : s.maxPlayers) : ""}</div>
+    <div class="stat" title="${escapeHtml(tpsTitle)}"><span class="faint">TPS${s.behind ? ` · ${t("se atrasó", "fell behind")}` : ""}</span><b class="${paused ? "" : tpsClass}">${escapeHtml(tpsText)}</b>${tickLine(s, on)}${s.state === "ready" && s.tps != null ? sparkline(samples.map((x) => x.tps), 20, `tps ${tpsClass}`) : ""}</div>
+    <div class="stat"><span class="faint">${t("Encendido hace", "On for")}</span><b>${s.started && on ? uptime(s.started) : "—"}</b>${since ? `<span class="faint stat-sub">${t(`desde las ${since}`, `since ${since}`)}</span>` : ""}</div>
+    <div class="stat"><span class="faint">${t("Procesador", "CPU")}</span><b>${on ? num("cpu", Math.round(s.cpu), 0, "%") : "—"}</b>${on ? sparkline(samples.map((x) => x.cpu), 100, "cpu") : ""}</div>
     <div class="stat"><span class="faint">${t("Memoria", "Memory")}</span><b>${on ? `${gb(s.memoryMb)} / ${s.ramGb} GB` : `${s.ramGb} GB`}</b>
       <div class="meter"><div style="width:${memoryShare.toFixed(0)}%"></div></div>
       <span class="faint">${t(`Libre en el PC: ${gb(host.view.freeMb)} GB`, `Free on the PC: ${gb(host.view.freeMb)} GB`)}</span></div>`;
+  tweenNumbers($("#hosted-stats"));
 
   // Problemas de la última vez (con sus arreglos)
   const problem = $("#hosted-problem");

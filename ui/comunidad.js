@@ -122,7 +122,7 @@ function renderCommunities() {
     .join("");
   const body = $("#cm-body");
   if (community.list === null || (community.loading && !community.detail)) {
-    body.innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
+    body.innerHTML = `<div class="cm-skeleton"><div class="cm-hero"><span class="skel cm-image large"></span><div class="grow"><span class="skel line w30 tall"></span><span class="skel line w60"></span><span class="skel line w25 thin"></span></div></div><div class="cm-grid"><div class="cm-col"><div class="cm-section"><span class="skel line w20"></span><span class="skel block"></span><span class="skel block"></span></div></div><div class="cm-col side"><div class="cm-section"><span class="skel line w40"></span><span class="skel block short"></span></div><div class="cm-section"><span class="skel line w30"></span><span class="skel line w80"></span><span class="skel line w60"></span></div></div></div></div>`;
     return;
   }
   if (!list.length) {

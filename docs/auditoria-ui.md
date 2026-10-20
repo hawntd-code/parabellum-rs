@@ -30,31 +30,39 @@ modo demostración). Se marca cada punto al corregirlo.
       las categorías de Explorar eran de la demostración: con Modrinth salen sus iconos.)
 - [x] **Cabeceras de las ventanas**: unas con X para cerrar y otras sin ella (Agregar amigo, Añadir
       cuenta, Nuevo grupo); unas con «Cerrar» y otras con «Cancelar».
-- [ ] **Botones de una fila**: «Aceptar» relleno y «Rechazar» sin fondo; botones redondos junto a
+- [x] **Botones de una fila**: «Aceptar» relleno y «Rechazar» sin fondo; botones redondos junto a
       rectangulares (carpeta en Contenido).
-- [ ] **Errores técnicos en los avisos**: algunos muestran el error de JavaScript tal cual.
+- [x] **Errores técnicos en los avisos**: algunos muestran el error de JavaScript tal cual.
 - [x] Servidor guardado: dice «Modpack» aunque sea una instancia vanilla.
 
 ## Diseño y orden
 
-- [ ] **Amigos**: el buscador flota a la mitad, la solicitud y el campo de arriba ocupan media página y
+- [x] **Amigos**: el buscador flota a la mitad, la solicitud y el campo de arriba ocupan media página y
       Grupos queda lejos; ordenar en dos columnas claras.
-- [ ] **Panel de amigos** (derecha): tu estado («Jugando… mundo abierto en…») se parte en tres líneas;
+- [x] **Panel de amigos** (derecha): tu estado («Jugando… mundo abierto en…») se parte en tres líneas;
       hacerlo una tarjeta con tu cabeza.
 - [x] **Nuevo grupo**: «Amigos» queda pegado a la foto; el nombre sin campo visible.
-- [ ] **Detalles de la instancia**: una lista de datos sola en mucho espacio vacío.
-- [ ] **Ajustes › Acerca de**: sin identidad (logo, versión, enlaces).
-- [ ] **Ajustes › Java**: filas sin contraste.
-- [ ] **Servidor hosteado**: las tarjetas de números tienen mucho vacío abajo (ahí van las minigráficas).
-- [ ] **Explorar**: «Instalar en» corta el nombre de la instancia.
+- [x] **Detalles de la instancia**: una lista de datos sola en mucho espacio vacío.
+- [x] **Ajustes › Acerca de**: sin identidad (logo, versión, enlaces).
+- [x] **Ajustes › Java**: filas sin contraste.
+- [x] **Servidor hosteado**: las tarjetas de números tienen mucho vacío abajo (ahí van las minigráficas).
+- [x] **Explorar**: «Instalar en» corta el nombre de la instancia.
 
 ## Movimiento (lo que quedaba del «Resto del pulido»)
 
-- [ ] Esqueletos mientras carga (Explorar, Proyecto, Comunidades).
+- [x] Esqueletos mientras carga (Explorar, Contenido, Proyecto, Comunidades).
 - [ ] Botones que se hunden al pulsar, igual en todos.
-- [ ] Cambio de tema con un círculo que crece desde el botón.
-- [ ] Números del servidor que cambian suave y minigráficas de jugadores, procesador y memoria.
+- [x] Cambio de tema con un círculo que crece desde el botón.
+- [x] Números del servidor que cambian suave y minigráficas de jugadores, TPS y procesador.
 - [ ] Entradas coherentes: ventanas, menús, avisos, listas y pestañas con las mismas curvas.
+
+## También salió al revisar
+
+- [x] Las listas para elegir una instancia repetían el nombre («Vanilla 1.21.1 · Vanilla 1.21.1»).
+- [x] Los grupos no salían en Amigos hasta el primer aviso de Firebase.
+- [x] Ajustes del servidor: el Pregenerar quedaba pegado a la tarjeta del nombre.
+- [x] El icono de «ocultar el panel» no se dibujaba en Edge/WebView2 sin vista previa (se ve vacío en
+      las capturas sin GPU; en la ventana real se ve). Revisar en la ventana real.
 
 ## Revisar después de corregir
 

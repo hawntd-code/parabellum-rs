@@ -247,9 +247,18 @@ function drawHead(canvas, name) {
   ctx.fillRect(3, 6, 2, 1);
 }
 
+/** Un fallo de la propia ventana (de JavaScript) no se le muestra tal cual a quien juega. */
+function friendlyError(message) {
+  const text = String(message);
+  if (!/^(Uncaught )?(TypeError|ReferenceError|SyntaxError|RangeError|InternalError)\b|Failed to execute|Cannot read properties|is not a function|is not defined/.test(text)) return text;
+  console.error(text);
+  return t("Algo falló en la ventana. Si vuelve a pasar, usa «Reportar problema» en el menú de la instancia.", "Something failed in the window. If it happens again, use «Report a problem» in the instance menu.");
+}
+
 function toast(message, kind = "info") {
   // Lo que cancelaste en Descargas no es un error que haya que avisar.
   if (kind === "error" && isCancelled(message)) return;
+  if (kind === "error") message = friendlyError(message);
   const element = document.createElement("div");
   element.className = `toast ${kind}`;
   // Los errores se anuncian de inmediato al lector de pantalla; lo demás, cuando termine de hablar.
@@ -538,6 +547,26 @@ function enterExplore() {
   selectExploreKind(e.kind);
 }
 
+/** Cambiar de tema con un círculo que crece desde el botón (si la ventana sabe hacer transiciones). */
+function switchTheme(theme, origin) {
+  const resolved = theme === "sistema" ? (matchMedia("(prefers-color-scheme: light)").matches ? "claro" : "oscuro") : theme;
+  // Sin cambio de colores (o sin transiciones), solo se marca el botón.
+  if (resolved === document.documentElement.dataset.theme || !document.startViewTransition || !motionOk()) return applyTheme(theme);
+  const transition = document.startViewTransition(() => applyTheme(theme));
+  const rect = origin.getBoundingClientRect();
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+  transition.ready
+    .then(() =>
+      document.documentElement.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+        { duration: 560, easing: "cubic-bezier(0.16, 1, 0.3, 1)", pseudoElement: "::view-transition-new(root)" },
+      ),
+    )
+    .catch(() => {});
+}
+
 function applyTheme(theme) {
   const resolved = theme === "sistema" ? (matchMedia("(prefers-color-scheme: light)").matches ? "claro" : "oscuro") : theme;
   document.documentElement.dataset.theme = resolved;
@@ -651,15 +680,26 @@ function renderInstance() {
   $("#detail-meta").innerHTML = `
     <span>${icon("cubes")}${escapeHtml(subtitle(i))}</span>
     <span>${icon("play-outline")}${escapeHtml(state.running.has(i.id) ? t("Jugando ahora", "Playing now") : ago(i.lastPlayed))}</span>`;
-  $("#detail-rows").innerHTML = `
-    <dt>${t("Versión de Minecraft", "Minecraft version")}</dt><dd>${escapeHtml(i.minecraftVersion)}</dd>
-    ${i.modpack ? `<dt>Modpack</dt><dd>${escapeHtml(i.modpack)}</dd>` : ""}
-    <dt>Loader</dt><dd>${escapeHtml(i.loader)}${i.loaderVersion ? " " + escapeHtml(i.loaderVersion) : ""}</dd>
-    <dt>${t("Versión del perfil", "Profile version")}</dt><dd>${escapeHtml(i.versionId)}</dd>
-    <dt>${t("Carpeta", "Folder")}</dt><dd>instancias\\${escapeHtml(i.id)}</dd>
-    <dt>${t("Memoria", "Memory")}</dt><dd>${i.ramGb ? t(`${i.ramGb} GB (propia de esta instancia)`, `${i.ramGb} GB (this instance's own)`) : t(`${state.settings.ramGb} GB (la general de Ajustes)`, `${state.settings.ramGb} GB (the general one from Settings)`)}</dd>
-    <dt>${t("Argumentos de Java", "Java arguments")}</dt><dd>${i.jvmArgs.length ? escapeHtml(i.jvmArgs.join(" ")) : "—"}</dd>
-    <dt>${t("Creada", "Created")}</dt><dd>${i.created ? new Date(i.created).toLocaleString(locale()) : "—"}</dd>`;
+  // Detalles: una tarjeta por dato, con su icono; la carpeta y la memoria con su atajo.
+  const fact = (glyph, label, value, action = "") =>
+    `<div class="fact"><span class="fact-icon">${icon(glyph)}</span><span class="grow"><span class="fact-label">${escapeHtml(label)}</span><b>${value}</b></span>${action}</div>`;
+  $("#detail-rows").innerHTML = [
+    fact("cubes", t("Minecraft", "Minecraft"), escapeHtml(i.minecraftVersion)),
+    fact("puzzle", "Loader", escapeHtml(i.loader) + (i.loaderVersion ? ` <span class="faint">${escapeHtml(i.loaderVersion)}</span>` : "")),
+    i.modpack ? fact("download", "Modpack", escapeHtml(i.modpack)) : "",
+    fact(
+      "gauge",
+      t("Memoria", "Memory"),
+      i.ramGb ? t(`${i.ramGb} GB <span class="faint">propia</span>`, `${i.ramGb} GB <span class="faint">own</span>`) : t(`${state.settings.ramGb} GB <span class="faint">la general</span>`, `${state.settings.ramGb} GB <span class="faint">general</span>`),
+      `<button class="circle-btn small" data-fact-edit title="${t("Ajustes de la instancia", "Instance settings")}">${icon("settings")}</button>`,
+    ),
+    fact("folder", t("Carpeta", "Folder"), `<span class="mono">instancias\\${escapeHtml(i.id)}</span>`, `<button class="circle-btn small" data-fact-folder title="${t("Abrir carpeta", "Open folder")}">${icon("external")}</button>`),
+    fact("terminal", t("Argumentos de Java", "Java arguments"), i.jvmArgs.length ? `<span class="mono">${escapeHtml(i.jvmArgs.join(" "))}</span>` : `<span class="faint">${t("Ninguno", "None")}</span>`),
+    fact("info", t("Versión del perfil", "Profile version"), `<span class="mono">${escapeHtml(i.versionId)}</span>`),
+    fact("clock", t("Creada", "Created"), i.created ? escapeHtml(new Date(i.created).toLocaleString(locale(), { dateStyle: "medium", timeStyle: "short" })) : "—"),
+  ].join("");
+  $("#detail-rows [data-fact-folder]").onclick = () => invoke("abrir_carpeta", { id: i.id });
+  $("#detail-rows [data-fact-edit]").onclick = () => openEdit(i.id);
   const running = state.running.has(i.id);
   const stop = $("#detail-stop");
   // Al empezar a jugar, «Detener» aparece con un pequeño rebote en lugar de «Jugar».
@@ -691,7 +731,7 @@ const kindIcons = { mods: "puzzle", resourcepacks: "image", shaderpacks: "sun-sp
 async function loadContent() {
   const id = state.current?.id;
   if (!id) return;
-  setHtml($("#content-list"), `<div class="content-loading"><div class="spinner"></div></div>`, { scope: "cargando" });
+  setHtml($("#content-list"), skeleton.rows(), { scope: "cargando" });
   try {
     const content = await invoke("contenido", { id });
     if (state.current?.id !== id) return;
@@ -1761,15 +1801,20 @@ function renderFriends() {
   // Tu estado
   const me = s.me ?? { state: "online" };
   const open = me.address || me.lan;
+  // Tu tarjeta: tu cabeza, a qué juegas y, si tu mundo está abierto, su dirección para copiarla.
   const myText =
     me.state !== "playing"
       ? t("En línea", "Online")
-      : open
-        ? t(`Jugando ${me.pack} · mundo abierto en ${me.address ?? me.lan}`, `Playing ${me.pack} · world open at ${me.address ?? me.lan}`)
-        : t(`Jugando ${me.pack}`, `Playing ${me.pack}`) + (me.world === "single" ? t(" · en tu mundo", " · in your world") : me.world === "server" ? t(` · en ${me.server}`, ` · on ${me.server}`) : "");
-  $("#my-status").innerHTML = `<span class="presence-dot ${me.state === "playing" ? "playing" : "online"}"></span>
-    <span class="grow"><b>${escapeHtml(s.friends?.name ?? state.settings.username)}</b> · ${escapeHtml(myText)}</span>
-    ${open ? `<button class="circle-btn small" id="copy-my-address" title="${t("Copiar la dirección de tu mundo", "Copy your world's address")}">${icon("copy")}</button>` : ""}`;
+      : t(`Jugando ${me.pack}`, `Playing ${me.pack}`) +
+        (open ? t(" · mundo abierto", " · world open") : me.world === "single" ? t(" · en tu mundo", " · in your world") : me.world === "server" ? t(` · en ${me.server}`, ` · on ${me.server}`) : "");
+  const myName = s.friends?.name ?? state.settings.username;
+  $("#my-status").innerHTML = `<div class="friend-head"><canvas width="8" height="8" class="head" data-head="${escapeHtml(myName)}"></canvas><span class="presence-dot ${me.state === "playing" ? "playing" : "online"}"></span></div>
+    <span class="grow"><b>${escapeHtml(myName)} <span class="faint">(${t("tú", "you")})</span></b><span class="me-line">${escapeHtml(myText)}</span>${
+      open
+        ? `<button class="me-address" id="copy-my-address" title="${t("Copiar la dirección de tu mundo", "Copy your world's address")}">${icon("copy")}<span>${escapeHtml(me.address ?? me.lan)}</span></button>`
+        : ""
+    }</span>`;
+  drawHead($("#my-status canvas"), myName);
   const copyButton = $("#copy-my-address");
   if (copyButton) copyButton.onclick = () => copyText(me.address ?? me.lan, t("Dirección copiada.", "Address copied."));
 
@@ -1872,6 +1917,7 @@ function renderFriendsPage() {
   const connected = !!(s?.signedIn && s.connected);
   $("#fp-signed-out").classList.toggle("hidden", connected);
   $("#fp-signed-in").classList.toggle("hidden", !connected);
+  $("#fp-add-box").classList.toggle("hidden", !connected);
   if (!connected) {
     $("#fp-count").textContent = "";
     const withButton = !$("#friends-sign-in").classList.contains("hidden");
@@ -1893,12 +1939,14 @@ function renderFriendsPage() {
         (r) => `<div class="fp-request" data-key="r:${escapeHtml(r.uid)}">
           <canvas width="8" height="8" class="head" data-head="${escapeHtml(r.name)}"></canvas>
           <div class="grow"><b>${escapeHtml(r.name)}</b><span>${t("Quiere ser tu amigo", "Wants to be your friend")}</span></div>
-          <button class="btn primary small" data-accept="${escapeHtml(r.uid)}">${t("Aceptar", "Accept")}</button>
-          <button class="btn small" data-decline="${escapeHtml(r.uid)}">${t("Rechazar", "Decline")}</button>
+          <button class="btn primary small" data-accept="${escapeHtml(r.uid)}">${icon("check")}${t("Aceptar", "Accept")}</button>
+          <button class="circle-btn small" data-decline="${escapeHtml(r.uid)}" title="${t("Rechazar", "Decline")}">${icon("close")}</button>
         </div>`,
       )
       .join(""),
   );
+  $("#fp-requests-card").classList.toggle("hidden", !view.requests.length);
+  $("#fp-requests-count").textContent = view.requests.length || "";
   const filter = state.friendsFilter ?? "all";
   const counts = { all: view.friends.length, online: online.length, playing: playing.length };
   for (const button of $$("#fp-filters [data-filter]")) {
@@ -3798,7 +3846,7 @@ function renderServers() {
   const select = $("#server-instance");
   const previous = select.value;
   select.innerHTML = state.instances.length
-    ? state.instances.map((i) => `<option value="${escapeHtml(i.id)}">${escapeHtml(i.name)} · ${escapeHtml(subtitle(i))}</option>`).join("")
+    ? state.instances.map((i) => `<option value="${escapeHtml(i.id)}">${escapeHtml(instanceLabel(i))}</option>`).join("")
     : `<option value="">${t("Primero crea una instancia", "Create an instance first")}</option>`;
   if (previous) select.value = previous;
   const servers = state.settings.servers ?? [];
@@ -4743,7 +4791,7 @@ function wireEvents() {
   $("#shortcut-start").onchange = () => toggleShortcut("inicio", $("#shortcut-start"));
   for (const button of $$("#theme button")) {
     button.onclick = () => {
-      applyTheme(button.dataset.theme);
+      switchTheme(button.dataset.theme, button);
       saveSettings({ theme: button.dataset.theme });
     };
   }
@@ -5112,6 +5160,7 @@ async function init() {
   renderFriends();
   renderFriendServers();
   state.chats = await invoke("chats").catch(() => []);
+  renderGroups();
   updateChatBadge();
   navigate("home", null, false);
   // Al volver a la ventana (o desde la bandeja) se piden los datos al momento, sin esperar avisos.
@@ -5211,14 +5260,22 @@ function modLoadersFor(instance) {
 const exploreTarget = () => state.instances.find((i) => i.id === state.explore.target) ?? null;
 
 function installLabel(instance) {
-  return `${instance.name} · ${instance.loader} ${instance.minecraftVersion}`;
+  return instanceLabel(instance);
+}
+
+/** «Nombre · Fabric 1.21.1», sin repetir cuando el nombre ya es eso (una instancia «Vanilla 1.21.1»). */
+function instanceLabel(instance) {
+  const kind = subtitle(instance);
+  return instance.name.trim().toLowerCase() === kind.toLowerCase() ? instance.name : `${instance.name} · ${kind}`;
 }
 
 function fillTargetSelect(select) {
   const target = state.explore.target;
+  // En el panel de Explorar cabe solo el nombre: debajo ya dice con qué es compatible.
+  const label = select.id === "explore-instance" ? (i) => i.name : installLabel;
   select.innerHTML =
     `<option value="">${t("Ninguna (solo ver)", "None (just browse)")}</option>` +
-    state.instances.map((i) => `<option value="${escapeHtml(i.id)}" ${i.id === target ? "selected" : ""}>${escapeHtml(installLabel(i))}</option>`).join("");
+    state.instances.map((i) => `<option value="${escapeHtml(i.id)}" ${i.id === target ? "selected" : ""}>${escapeHtml(label(i))}</option>`).join("");
 }
 
 async function setExploreTarget(id) {
@@ -5346,7 +5403,7 @@ async function runExplore(append = false) {
   const modpack = e.kind === "modpack";
   const loaders = modpack ? (e.loader ? [e.loader] : []) : e.kind !== "mod" ? [] : instance ? modLoadersFor(instance) : e.loader ? [e.loader] : [];
   const gameVersion = !modpack && instance ? instance.minecraftVersion : e.version || null;
-  if (!append) $("#explore-results").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
+  if (!append) $("#explore-results").innerHTML = skeleton.results();
   $("#explore-more").disabled = true;
   try {
     const result = await invoke("buscar_contenido", {
@@ -5414,6 +5471,17 @@ function renderExploreResults(from = 0) {
   else list.insertAdjacentHTML("beforeend", html);
   $("#explore-more").classList.toggle("hidden", e.hits.length >= e.total);
 }
+
+/** Esqueletos: la forma de lo que viene, con un brillo que pasa (mientras carga). */
+const skeleton = {
+  results: (n = 5) =>
+    Array.from(
+      { length: n },
+      (_, i) => `<div class="result skeleton-row" style="animation-delay:${i * 40}ms"><div class="result-icon skel"></div><div class="grow result-body"><span class="skel line w40"></span><span class="skel line w80"></span><span class="skel line w25 thin"></span></div><div class="r-side"><span class="skel line w60"></span><span class="skel pill"></span></div></div>`,
+    ).join(""),
+  rows: (n = 6) =>
+    Array.from({ length: n }, (_, i) => `<div class="content-item skeleton-row" style="animation-delay:${i * 30}ms"><div class="content-icon skel"></div><div class="grow"><span class="skel line w30"></span><span class="skel line w20 thin"></span></div><span class="skel line w10"></span></div>`).join(""),
+};
 
 function refreshInstallButtons() {
   for (const result of $$("#explore-results .result[data-project]")) $(".r-action", result).innerHTML = installButton(result.dataset.project);
@@ -5634,7 +5702,7 @@ async function loadProjectVersions() {
   if (!id || !p) return;
   const kind = projectKind();
   const instance = exploreKinds[kind] && kind !== "modpack" ? exploreTarget() : null;
-  $("#project-versions").innerHTML = `<div class="content-loading"><div class="spinner"></div></div>`;
+  $("#project-versions").innerHTML = `<div class="content-list">${skeleton.rows(4)}</div>`;
   $("#project-versions-note").textContent =
     kind === "modpack"
       ? t("Cada versión se instala como una instancia nueva, con su loader.", "Each version is installed as a new instance, with its loader.")
@@ -6812,6 +6880,8 @@ async function versionClicked() {
 
 async function refreshAbout() {
   $("#about-version").textContent = `Parabellum ${state.version}`;
+  $("#about-hero-version").textContent = state.version;
+  $("#about-hero-platform").textContent = document.body.dataset.platform ?? "Windows";
   renderChannel();
   if (!state.creator) return;
   const folder = await invoke("carpeta_exportar").catch(() => null);
@@ -7343,6 +7413,32 @@ function demoInvoke(command, args = {}) {
       invites: [{ code: "ABCD2345", expiresAt: Date.now() + 6 * 864e5 }],
       local: { p00000001: { state: "falta", catalogId: "parabellum-oficial", wanted: "1.0.0", instance: null, installed: null, source: false } },
       catalog: { p00000001: { icon: null, mods: 12, size: 182e6, description: "", version: "1.0.0" } },
+    });
+  if (command === "opciones_servidor")
+    return later({
+      name: "Survival con amigos",
+      motd: "§d§lSurvival §7con amigos §8· §a26.3",
+      icon: null,
+      groups: [
+        {
+          title: "Partida",
+          options: [
+            { id: "gamemode", kind: "choice", label: "Modo de juego", value: "survival", choices: [["survival", "Supervivencia"], ["creative", "Creativo"], ["adventure", "Aventura"]], source: "gamemode=survival" },
+            { id: "difficulty", kind: "choice", label: "Dificultad", value: "normal", choices: [["peaceful", "Pacífico"], ["easy", "Fácil"], ["normal", "Normal"], ["hard", "Difícil"]], source: "difficulty=normal" },
+            { id: "pvp", kind: "bool", label: "Combate entre jugadores", value: true, source: "pvp=true" },
+            { id: "max-players", kind: "number", label: "Jugadores como máximo", value: 10, min: 1, max: 100, source: "max-players=10" },
+          ],
+        },
+        {
+          title: "Mundo",
+          options: [
+            { id: "view-distance", kind: "number", label: "Distancia de visión", value: 10, min: 3, max: 32, source: "view-distance=10" },
+            { id: "spawn-protection", kind: "number", label: "Protección del spawn", value: 16, min: 0, max: 64, source: "spawn-protection=16" },
+            { id: "allow-nether", kind: "bool", label: "Nether", value: true, source: "allow-nether=true" },
+          ],
+        },
+        { title: "Servidor", options: [{ id: "ram", kind: "ram", label: "Memoria", value: 4, min: 1, max: 12, source: "-Xmx4G" }] },
+      ],
     });
   if (command === "crear_invitacion") return later({ code: "WXYZ6789", expiresAt: Date.now() + args.dias * 864e5 }, 300);
   if (command === "estado_servidores") return later(Object.fromEntries(args.direcciones.map((a) => [a.toLowerCase(), a.startsWith("creativo") ? { online: false } : { online: true, players: 7, maxPlayers: 50 }])), 400);
