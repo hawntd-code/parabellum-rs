@@ -92,6 +92,57 @@ El orden importa: cada fase usa lo que construyó la anterior.
 
 ## ⏭️ Pendiente, en orden
 
+### Plan desde el 2026-10-19 (pedido de Juan): primero la interfaz, después lo demás
+
+**1. 0.32: pulido completo de la interfaz (ahora).** Que todo se vea pulcro, tenga sentido, esté bien
+centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
+- [ ] **Inventario con capturas** de cada vista en todos sus estados (vacía, cargando, con error, llena), en tema oscuro y claro, en español e inglés, y con la ventana chica y grande
+- [ ] **Sistema de diseño**:
+  - medidas comunes de espaciado, radios, tipografía, sombras y capas;
+  - un solo componente por cosa: botones, campos, listas desplegables, segmentados, interruptores, tarjetas, chips, filas y diálogos;
+  - quitar estilos repetidos o que se contradicen.
+- [ ] **Ventanas y formularios** (21), al nivel de los de Comunidades:
+  - instancias: crear, editar, exportar, instalar, icono y versiones de Drive;
+  - servidores: crear servidor, EULA, servidor guardado y favoritos;
+  - social: grupo, imagen al chat, reportar, agregar amigo y cuenta;
+  - generales: actualización, confirmar, doctor y Ajustes.
+- [ ] **Ajustes**: sus 6 secciones (Apariencia, Comportamiento, Java, Perfil, Recursos, Acerca de)
+- [ ] **Páginas** (9) y sus pestañas:
+  - Inicio, Explorar, Proyecto, Servidores, Servidor hosteado, Comunidades, Amigos, Mensajes;
+  - Instancia, con sus 7 pestañas, y las 3 del servidor.
+- [ ] **El marco**:
+  - barra de arriba y barra lateral;
+  - paneles flotantes (descargas, juego e información), menús, avisos y pantalla de carga.
+- [ ] **Estados**: esqueletos mientras carga; vacíos que explican qué hacer; errores con una acción para resolverlos
+- [ ] **Movimiento**:
+  - entradas y transiciones coherentes y botones que se hunden;
+  - cambio de tema con un círculo;
+  - números y minigráficas vivas en el servidor (lo que quedaba del «Resto del pulido»).
+- [ ] **Forma**: iconos y textos centrados, tamaños consistentes, arte y figuras bien hechas, nada cortado ni encimado
+- [ ] **Uso**: todo con teclado y foco visible, textos claros y completos en los dos idiomas
+- [ ] Prueba final en la ventana real (WebView2), con capturas de antes y después de cada tanda
+
+**2. Después de la interfaz, en este orden:**
+- [ ] **E1, base compartida** (`docs/plan-diciembre.md`):
+  - identidad por huella: saber si el paquete oficial de alguien está alterado;
+  - servicio de ajustes;
+  - respaldos.
+- [ ] **E3, soporte**: solicitudes de ayuda en el chat que lee todo el staff, diagnóstico revisable y tarjetas de ajustes
+- [ ] **E4, mundos en Drive** (opcional antes de diciembre): copias, revisiones y restaurar con su instancia
+- [ ] **Pruebas reales pendientes**:
+  - en la escuela: Modrinth sin modo escuela;
+  - con amigos en sus casas: P2P y los «teletransportes»;
+  - el panel en 26.3;
+  - las demás *Prueba:* de abajo.
+- [ ] **Detalles**:
+  - el zip de «RETORCIDOS | EL PACK» tarda ~30 s en empezar a bajar de Drive;
+  - Mac al día con la 0.31 (Diego);
+  - una sola conexión a Firebase por persona.
+- [ ] **Sin fecha**:
+  - cuentas premium de Microsoft (depende de que Microsoft apruebe la app);
+  - CurseForge (en pausa);
+  - Forge 1.8–1.12.1, 1.13.2, 1.14.2 y 1.14.3.
+
 ### 0.25.0: que se sienta fluido (pedido de Juan)
 - [x] **Un sistema de movimiento** en `styles.css`: cuatro duraciones (respuesta al pulsar, colores, aparecer, páginas) y tres curvas (entrar frena suave, salir acelera, énfasis con un pequeño rebote) en vez de 104 valores sueltos; los interruptores y el botón de las tarjetas rebotan un poco
 - [x] **Cambio de página**: la anterior se desvanece debajo mientras entra la nueva (sin View Transitions: funciona igual en la ventana de Mac). La **portada** de una instancia (desde la Biblioteca o la barra) o de un servidor (desde Hostear) viaja de su tarjeta a la cabecera
