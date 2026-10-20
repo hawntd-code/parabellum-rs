@@ -722,6 +722,102 @@ function selectTab(tab) {
   for (const name of ["content", "logs", "server", "overview"]) $(`#tab-${name}`).classList.toggle("hidden", tab !== name);
   if (tab === "content" && !state.content) loadContent();
   if (tab === "logs") loadLog(true);
+  if (tab === "overview") loadInstanceExtras();
+}
+
+/**
+ * Detalles › si la instancia es igual al paquete del que viene (identidad.rs) y sus copias de
+ * seguridad (respaldos.rs), con «Restaurar».
+ */
+async function loadInstanceExtras() {
+  const id = state.current?.id;
+  const box = $("#detail-extra");
+  if (!id || !box) return;
+  box.innerHTML = `<section class="detail-card">${skeleton.rows(2)}</section>`;
+  const [huella, copies] = await Promise.all([invoke("huella_instancia", { id }).catch(() => null), invoke("respaldos", { id }).catch(() => [])]);
+  if (state.current?.id !== id) return;
+  const diff = huella?.diff;
+  const name = diff?.package ? escapeHtml(diff.package) : "";
+  let pack;
+  if (!diff || diff.state === "desconocida") {
+    pack = `<div class="pk-state"><span class="pk-icon">${icon("cubes")}</span><span class="grow"><b>${t("No viene de un paquete de Drive", "It does not come from a Drive package")}</b><span>${t(
+      "Al exportarla o instalarla desde un paquete, aquí verás si sigue igual.",
+      "When you export it or install it from a package, you will see here whether it is still the same.",
+    )}</span></span></div>`;
+  } else if (diff.state === "exacta") {
+    pack = `<div class="pk-state ok"><span class="pk-icon">${icon("check")}</span><span class="grow"><b>${
+      diff.origin === "publicado" ? t("Igual a lo que exportaste", "Same as what you exported") : t("Igual al paquete", "Same as the package")
+    }</b><span>${name} · ${t("versión", "version")} ${escapeHtml(diff.version ?? "")} · ${plural(huella.mods, "mod", "mods")}</span></span></div>`;
+  } else {
+    const published = diff.origin === "publicado";
+    pack = `<div class="pk-state warn"><span class="pk-icon">${icon("alert")}</span><span class="grow"><b>${
+      published ? t("Cambió desde que la exportaste", "Changed since you exported it") : t("Modificada respecto del paquete", "Modified compared to the package")
+    }</b><span>${name} · ${escapeHtml(changesSummary(diff))}</span></span>
+      <button class="btn small" data-pk-changes>${t("Ver cambios", "See changes")}</button>
+      ${published ? "" : `<button class="btn small primary" data-pk-restore>${icon("refresh")}${t("Restaurar", "Restore")}</button>`}</div>`;
+  }
+  const rows = copies.length
+    ? copies
+        .map(
+          (c) => `<div class="backup-row"><span class="pk-icon small">${icon("clock")}</span><span class="grow"><b>${escapeHtml(c.label)}</b><span>${escapeHtml(relativeDate(new Date(c.created).toISOString()))} · ${plural(
+            c.files,
+            t("archivo", "file"),
+            t("archivos", "files"),
+          )} · ${formatSize(c.bytes)}</span></span><button class="btn small" data-backup="${escapeHtml(c.id)}">${icon("refresh")}${t("Restaurar", "Restore")}</button></div>`,
+        )
+        .join("")
+    : `<p class="side-note no-top">${t("Todavía no hay copias. Se hacen solas antes de actualizar o restaurar el paquete.", "There are no backups yet. They are made automatically before updating or restoring the package.")}</p>`;
+  box.innerHTML = `<section class="detail-card"><h3>${t("Paquete", "Package")}</h3>${pack}</section>
+    <section class="detail-card"><h3>${t("Copias de seguridad", "Backups")}</h3>${rows}</section>`;
+  const changes = $("[data-pk-changes]", box);
+  if (changes)
+    changes.onclick = () =>
+      cmDialog({
+        title: t("Qué cambió", "What changed"),
+        subtitle: t(`Comparado con ${diff.package} (versión ${diff.version})`, `Compared with ${diff.package} (version ${diff.version})`),
+        glyph: "alert",
+        wide: true,
+        body: packageChangesHtml(diff),
+        cancel: t("Cerrar", "Close"),
+      });
+  const restore = $("[data-pk-restore]", box);
+  if (restore)
+    restore.onclick = async () => {
+      restore.disabled = true;
+      try {
+        toast(t("Restaurando el paquete: lo que se cambia queda en una copia.", "Restoring the package: whatever changes is kept in a backup."));
+        await invoke("instalar_de_catalogo", { id: diff.package, reparar: true, tarea: newJob() });
+        toast(t("Listo: la instancia quedó igual al paquete.", "Done: the instance matches the package again."));
+        state.content = null;
+        loadInstanceExtras();
+      } catch (error) {
+        toast(String(error), "error");
+        restore.disabled = false;
+      }
+    };
+  for (const button of $$("[data-backup]", box)) {
+    button.onclick = async () => {
+      const copy = copies.find((c) => c.id === button.dataset.backup);
+      const ok = await confirmAction({
+        title: t("Restaurar esta copia", "Restore this backup"),
+        text: t(
+          `Vuelve a poner lo que se guardó «${copy.label}». Lo que hay ahora queda en otra copia, por si quieres regresar.`,
+          `Puts back what was saved «${copy.label}». What is there now is kept in another backup, in case you want to go back.`,
+        ),
+        ok: t("Restaurar", "Restore"),
+        primary: true,
+      });
+      if (!ok) return;
+      try {
+        const count = await invoke("restaurar_respaldo", { id, respaldo: copy.id });
+        toast(t(`Copia restaurada (${plural(count, "archivo", "archivos")}).`, `Backup restored (${plural(count, "file", "files")}).`));
+        state.content = null;
+        loadInstanceExtras();
+      } catch (error) {
+        toast(String(error), "error");
+      }
+    };
+  }
 }
 
 // ---------- Contenido (mods, resource packs, shaders y mundos) ----------
@@ -5472,6 +5568,39 @@ function renderExploreResults(from = 0) {
   $("#explore-more").classList.toggle("hidden", e.hits.length >= e.total);
 }
 
+/** «2 mods de más · 1 que falta» (identidad.rs › Diff). */
+function changesSummary(diff) {
+  if (!diff) return "";
+  const parts = [];
+  if (diff.added?.length) parts.push(t(`${plural(diff.added.length, "mod", "mods")} de más`, `${plural(diff.added.length, "extra mod", "extra mods")}`));
+  if (diff.removed?.length) parts.push(t(`${diff.removed.length} que ${diff.removed.length === 1 ? "falta" : "faltan"}`, `${diff.removed.length} missing`));
+  if (diff.loader) parts.push(t("otro loader", "another loader"));
+  if (diff.minecraft) parts.push(t("otra versión de Minecraft", "another Minecraft version"));
+  return parts.join(" · ") || t("con cambios", "with changes");
+}
+
+/** La lista de lo que cambió respecto del paquete: lo que sobra y lo que falta. */
+function packageChangesHtml(diff) {
+  if (!diff) return "";
+  const group = (glyph, kind, title, files) =>
+    files?.length
+      ? `<div class="pc-group ${kind}"><div class="pc-head">${icon(glyph)}<b>${escapeHtml(title)}</b><span class="faint">${files.length}</span></div><ul>${files
+          .slice(0, 40)
+          .map((f) => `<li><code>${escapeHtml(f)}</code></li>`)
+          .join("")}${files.length > 40 ? `<li class="faint">${t(`y ${files.length - 40} más`, `and ${files.length - 40} more`)}</li>` : ""}</ul></div>`
+      : "";
+  const lines = [
+    diff.minecraft ? `<li>${t("Minecraft", "Minecraft")}: <b>${escapeHtml(diff.minecraft[1])}</b> ${t("en vez de", "instead of")} <b>${escapeHtml(diff.minecraft[0])}</b></li>` : "",
+    diff.loader ? `<li>Loader: <b>${escapeHtml(diff.loader[1])}</b> ${t("en vez de", "instead of")} <b>${escapeHtml(diff.loader[0])}</b></li>` : "",
+  ].join("");
+  return `<div class="package-changes">${lines ? `<ul class="pc-lines">${lines}</ul>` : ""}${group("plus", "added", t("De más (el paquete no los trae)", "Extra (not in the package)"), diff.added)}${group(
+    "minus",
+    "removed",
+    t("Faltan o son de otra versión", "Missing or a different version"),
+    diff.removed,
+  )}</div>`;
+}
+
 /** Esqueletos: la forma de lo que viene, con un brillo que pasa (mientras carga). */
 const skeleton = {
   results: (n = 5) =>
@@ -7413,9 +7542,22 @@ function demoInvoke(command, args = {}) {
       ],
       packages: [{ id: "p00000001", name: "Parabellum Oficial", catalogId: "parabellum-oficial", version: "1.0.0", minecraft: "26.3", loader: "Fabric", loaderVersion: "", at: Date.now() }],
       invites: [{ code: "ABCD2345", expiresAt: Date.now() + 6 * 864e5 }],
-      local: { p00000001: { state: "falta", catalogId: "parabellum-oficial", wanted: "1.0.0", instance: null, installed: null, source: false } },
+      local: { p00000001: { state: "modificada", catalogId: "parabellum-oficial", wanted: "1.0.0", instance: "Vanilla 1.21.1", installed: "1.0.0", source: false, changes: { state: "modificada", added: ["xray-ultimate-1.21.jar", "freecam-1.2.4.jar"], removed: ["sodium-fabric-0.6.0.jar"], minecraft: null, loader: null, package: "parabellum-oficial", version: "1.0.0", origin: "instalado" } } },
       catalog: { p00000001: { icon: null, mods: 12, size: 182e6, description: "", version: "1.0.0" } },
     });
+  if (command === "huella_instancia")
+    return later({
+      installationId: "7f3c2a10-5b1e-4c8a-9d2f-0a1b2c3d4e5f",
+      contentHash: "sha256:9f2c",
+      mods: 5,
+      diff: { state: "modificada", added: ["xray-ultimate-1.21.jar"], removed: ["sodium-fabric-0.6.0+mc1.21.1.jar"], minecraft: null, loader: null, package: "vanilla-1-21-1", version: "202610150930", origin: "instalado" },
+    }, 400);
+  if (command === "respaldos")
+    return later([
+      { id: "1", instance: args.id, label: "Antes de actualizar Vanilla 1.21.1", created: Date.now() - 2 * 864e5, files: 6, bytes: 18.2e6, added: ["mods/lithium.jar"] },
+      { id: "0", instance: args.id, label: "Antes de restaurar Vanilla 1.21.1 como en Drive", created: Date.now() - 6 * 864e5, files: 2, bytes: 3.1e6, added: [] },
+    ], 300);
+  if (command === "restaurar_respaldo") return later(6, 600);
   if (command === "opciones_servidor")
     return later({
       name: "Survival con amigos",

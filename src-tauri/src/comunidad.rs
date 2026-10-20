@@ -280,8 +280,14 @@ pub async fn comunidad(app: AppHandle, id: String) -> Result<Detail, String> {
         entries(&invites).into_iter().filter_map(|(code, at)| Some(Invite { code, expires_at: at.as_i64()? })).filter(|i| i.expires_at > now).collect();
     invite_list.sort_by_key(|i| std::cmp::Reverse(i.expires_at));
     let paths = app.state::<AppState>().paths.clone();
-    let instances = crate::instances::list(&paths);
-    let local = package_list.iter().map(|p| (p.id.clone(), readiness_for(p, &instances))).collect();
+    // Revisar la huella lee los mods (la primera vez, todos): fuera del hilo de la ventana.
+    let (packages_copy, paths_copy) = (package_list.clone(), paths.clone());
+    let local = tauri::async_runtime::spawn_blocking(move || {
+        let instances = crate::instances::list(&paths_copy);
+        packages_copy.iter().map(|p| (p.id.clone(), readiness_for(p, &instances))).collect::<std::collections::HashMap<_, _>>()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     let catalog = crate::catalog::current(&paths).await;
     let info = package_list
         .iter()
@@ -561,23 +567,39 @@ pub struct Readiness {
     pub installed: Option<String>,
     /// En este PC está la instancia de la que se publicó (la de quien lo publica): se juega con ella.
     pub source: bool,
+    /// Qué cambió respecto del paquete (identidad.rs): mods de más o que faltan, otro loader. En la
+    /// instancia original, lo que cambió desde que se publicó.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub changes: Option<crate::identidad::Diff>,
 }
 
 /// Cómo está un paquete en este PC: la instancia que se instaló desde él (no por su nombre) o, en el PC
 /// de quien lo publica, la instancia original (no se instala otra encima).
 fn readiness_for(package: &Package, instances: &[crate::instances::Instance]) -> Readiness {
     if let Some(source) = instances.iter().find(|i| crate::packs::installed_manifest(i).is_none() && crate::packs::slug(&i.id).eq_ignore_ascii_case(&package.catalog_id)) {
-        return Readiness { state: "lista".into(), catalog_id: Some(package.catalog_id.clone()), wanted: Some(package.version.clone()).filter(|v| !v.is_empty()), instance: Some(source.id.clone()), installed: None, source: true };
+        let changes = Some(crate::identidad::check(source)).filter(|d| d.modified());
+        return Readiness { state: "lista".into(), catalog_id: Some(package.catalog_id.clone()), wanted: Some(package.version.clone()).filter(|v| !v.is_empty()), instance: Some(source.id.clone()), installed: None, source: true, changes };
     }
     let local = instances
         .iter()
         .filter_map(|i| crate::packs::installed_manifest(i).filter(|m| m.id.eq_ignore_ascii_case(&package.catalog_id)).map(|m| (i.id.clone(), m.version)))
         .max_by(|a, b| crate::loaders::compare_versions(&a.1, &b.1));
-    let state = match &local {
+    let mut state = match &local {
         None => "falta",
         Some((_, version)) if !package.version.is_empty() && crate::loaders::compare_versions(version, &package.version) == std::cmp::Ordering::Less => "desactualizada",
         Some(_) => "lista",
     };
+    // Al día, pero con cambios: «modificada» (al jugar se ofrece restaurar el paquete oficial).
+    let mut changes = None;
+    if state == "lista" {
+        if let Some(instance) = local.as_ref().and_then(|(id, _)| instances.iter().find(|i| &i.id == id)) {
+            let diff = crate::identidad::check(instance);
+            if diff.modified() {
+                state = "modificada";
+                changes = Some(diff);
+            }
+        }
+    }
     Readiness {
         state: state.into(),
         catalog_id: Some(package.catalog_id.clone()),
@@ -585,6 +607,7 @@ fn readiness_for(package: &Package, instances: &[crate::instances::Instance]) ->
         installed: local.as_ref().map(|(_, v)| v.clone()),
         instance: local.map(|(i, _)| i),
         source: false,
+        changes,
     }
 }
 
@@ -596,11 +619,11 @@ pub async fn paquete_comunidad(app: AppHandle, id: String, servidor: String) -> 
     let (db, _) = db(&app)?;
     let server: Server = serde_json::from_value(get(&db, format!("communityServers/{id}/{servidor}")).await?).map_err(|_| t!("Ese servidor ya no está.", "That server is no longer there."))?;
     let Some(pk) = server.package.filter(|p| !p.is_empty()) else {
-        return Ok(Readiness { state: "sin-paquete".into(), catalog_id: None, wanted: None, instance: None, installed: None, source: false });
+        return Ok(Readiness { state: "sin-paquete".into(), catalog_id: None, wanted: None, instance: None, installed: None, source: false, changes: None });
     };
     let package: Package = serde_json::from_value(get(&db, format!("communityPackages/{id}/{pk}")).await?).map_err(|_| t!("El paquete oficial ya no está.", "The official package is no longer there."))?;
     let paths = app.state::<AppState>().paths.clone();
-    Ok(readiness_for(&package, &crate::instances::list(&paths)))
+    tauri::async_runtime::spawn_blocking(move || readiness_for(&package, &crate::instances::list(&paths))).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]

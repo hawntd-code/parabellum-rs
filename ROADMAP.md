@@ -125,10 +125,22 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
 - [ ] *Prueba:* Juan: recorrer la 0.32.0 en su PC (en especial el cambio de tema y las ventanas largas)
 
 **2. Después de la interfaz, en este orden:**
-- [ ] **E1, base compartida** (`docs/plan-diciembre.md`):
-  - identidad por huella: saber si el paquete oficial de alguien está alterado;
-  - servicio de ajustes;
-  - respaldos.
+- [x] **E1, base compartida (0.33.0)** (`docs/plan-diciembre.md`):
+  - **huella del paquete** (`identidad.rs`):
+    - al instalar, actualizar, reparar o exportar un paquete se guarda qué mods trae, por su contenido (SHA-1);
+    - la instancia se compara con eso: «igual» o «modificada» (mods de más, que faltan, otro loader);
+    - las instalaciones anteriores se migran solas con lo que guardó `integridad.rs`.
+  - **Comunidades**: el paquete oficial dice «Modificado» con «Restaurar», y «Jugar» ofrece «Restaurar y jugar» o «Jugar así». Quien publicó ve «Cambió desde que la publicaste».
+  - **Detalles de la instancia**: si es igual a su paquete (y qué cambió), y sus copias de seguridad.
+  - **Respaldos** (`respaldos.rs`):
+    - antes de actualizar o restaurar un paquete, lo que se reemplaza o se quita queda en `datos/respaldos/`;
+    - «Restaurar» lo vuelve a poner, y lo de ese momento queda en otra copia;
+    - se guardan 3 por instancia y 4 GB en total.
+  - **Servicio de ajustes** (`ajustes.rs`):
+    - `guardar_ajustes` y las tarjetas del soporte (E3) usan los mismos efectos;
+    - registro de los 7 ajustes compartibles con su validación;
+    - una operación se aplica solo si el valor sigue siendo el esperado, y repetirla no cambia nada.
+- [ ] *Prueba:* Juan: en la escuela o en casa, quitar un mod del paquete oficial y ver que «Jugar» lo detecta y lo restaura
 - [ ] **E3, soporte**: solicitudes de ayuda en el chat que lee todo el staff, diagnóstico revisable y tarjetas de ajustes
 - [ ] **E4, mundos en Drive** (opcional antes de diciembre): copias, revisiones y restaurar con su instancia
 - [ ] **Pruebas reales pendientes**:

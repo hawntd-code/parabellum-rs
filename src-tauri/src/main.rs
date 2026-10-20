@@ -3,9 +3,11 @@
 
 #[macro_use]
 mod idioma;
+mod identidad;
 // Notificaciones y accesos directos: cada sistema tiene los suyos (ver plataforma/).
 use plataforma::{accesos, avisos};
 mod actividad;
+mod ajustes;
 mod amigos;
 mod arranque;
 mod canal;
@@ -44,6 +46,7 @@ mod juego;
 mod p2p;
 mod puente;
 mod reporte;
+mod respaldos;
 mod packs;
 mod paths;
 mod plataforma;
@@ -172,35 +175,26 @@ fn herramientas_creador(state: State<AppState>, activar: bool) -> Result<bool, S
 }
 
 #[tauri::command]
-fn guardar_ajustes(app: AppHandle, state: State<AppState>, mut ajustes: Settings) -> Result<Settings, String> {
-    ajustes.normalize()?;
-    {
-        let current = state.settings.lock().unwrap();
-        ajustes.favorite_chats = current.favorite_chats.clone();
-        ajustes.favorite_mods = current.favorite_mods.clone();
-        ajustes.favorites_owner = current.favorites_owner.clone();
-    }
-    ajustes.ram_gb = ajustes.ram_gb.clamp(1, 64);
-    ajustes.ui_scale = if ajustes.ui_scale.is_finite() { ajustes.ui_scale.clamp(0.8, 1.5) } else { 1.0 };
-    ajustes.language = idioma::normalize(&ajustes.language);
-    let language_changed = ajustes.language != state.settings.lock().unwrap().language;
-    if (ajustes.ui_scale - state.settings.lock().unwrap().ui_scale).abs() > f64::EPSILON {
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.set_zoom(ajustes.ui_scale);
-        }
-    }
-    ajustes.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
-    *state.settings.lock().unwrap() = ajustes.clone();
-    descargas::configure(ajustes.download_parallel, ajustes.download_limit_mb);
-    espejo::set_school_mode(ajustes.school_mode);
-    canal::set(&ajustes.update_channel);
-    if language_changed {
-        idioma::set(&ajustes.language);
-        // El menú del icono junto al reloj se vuelve a crear con los textos nuevos.
-        cuenta::rebuild_tray(&app);
-    }
-    cuenta::settings_changed(&app);
-    Ok(ajustes)
+fn guardar_ajustes(app: AppHandle, ajustes: Settings) -> Result<Settings, String> {
+    // Con todos sus efectos (ver ajustes.rs: lo mismo usan las tarjetas del soporte).
+    ajustes::save_all(&app, ajustes)
+}
+
+/// Los ajustes que se pueden compartir (para las tarjetas del soporte), con su valor actual.
+#[tauri::command]
+fn ajustes_compartibles(state: State<AppState>) -> Vec<ajustes::Described> {
+    ajustes::describe(&state.settings.lock().unwrap())
+}
+
+#[tauri::command]
+fn leer_ajuste(app: AppHandle, id: String) -> Result<serde_json::Value, String> {
+    ajustes::read(&app, &id)
+}
+
+/// Cambia un ajuste compartible (se aplica solo si su valor sigue siendo el esperado).
+#[tauri::command]
+fn aplicar_ajuste(app: AppHandle, operacion: ajustes::Operation) -> Result<ajustes::Outcome, String> {
+    ajustes::apply(&app, &operacion)
 }
 
 /// Mostrar u ocultar el panel de la derecha (se guarda aparte: no hace falta subir el perfil).
@@ -831,6 +825,44 @@ async fn duplicar_instancia(state: State<'_, AppState>, id: String) -> Result<In
     let instance = instance_or_error(&state, &id)?;
     let paths = state.paths.clone();
     tauri::async_runtime::spawn_blocking(move || instances::duplicate(&instance, &paths)).await.map_err(|e| e.to_string())?
+}
+
+/// Cómo está la instancia respecto del paquete del que viene (identidad.rs).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Huella {
+    installation_id: String,
+    content_hash: String,
+    mods: usize,
+    diff: identidad::Diff,
+}
+
+#[tauri::command]
+async fn huella_instancia(state: State<'_, AppState>, id: String) -> Result<Huella, String> {
+    let instance = instance_or_error(&state, &id)?;
+    // La primera vez lee todos los mods: fuera del hilo de la ventana.
+    tauri::async_runtime::spawn_blocking(move || {
+        let content = identidad::content(&instance);
+        Huella { installation_id: identidad::installation_id(&instance), content_hash: content.content_hash, mods: content.mods.len(), diff: identidad::check(&instance) }
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Las copias de seguridad de una instancia (respaldos.rs), de la más nueva a la más vieja.
+#[tauri::command]
+fn respaldos(state: State<AppState>, id: String) -> Vec<respaldos::Info> {
+    respaldos::list(&state.paths, &id)
+}
+
+#[tauri::command]
+async fn restaurar_respaldo(state: State<'_, AppState>, id: String, respaldo: String) -> Result<usize, String> {
+    if state.games.lock().unwrap().contains_key(&id) {
+        return Err(t!("Cierra el juego antes de restaurar la copia.", "Close the game before restoring the backup."));
+    }
+    let instance = instance_or_error(&state, &id)?;
+    let paths = state.paths.clone();
+    tauri::async_runtime::spawn_blocking(move || respaldos::restore(&paths, &instance, &respaldo)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -4002,6 +4034,12 @@ fn main() {
             abrir_registro,
             listar_java,
             abrir_carpeta,
+            huella_instancia,
+            respaldos,
+            restaurar_respaldo,
+            ajustes_compartibles,
+            leer_ajuste,
+            aplicar_ajuste,
             hosting_estado,
             conectar_playit,
             cancelar_playit,

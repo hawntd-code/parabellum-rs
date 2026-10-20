@@ -382,8 +382,13 @@ El orden sigue las dependencias. Lo que se dice que «cabe» es lo razonable, no
   Se probó de punta a punta en la ventana real contra el emulador de Firebase. Faltan dos cosas de Juan:
   - publicar las reglas;
   - subir el paquete oficial (Fabric 26.3 con Sodium, Fabric API y minimapa).
-- **E1** (identidad por huella, servicio de ajustes, respaldos) va ahora. La comunidad la usará para
-  avisar si alguien cambió los mods del paquete oficial.
+- **E1 hecha (0.33.0):**
+  - `identidad.rs`: huella de contenido, referencia del paquete, diferencias y migración de lo ya
+    instalado;
+  - `respaldos.rs`: copias antes de actualizar o restaurar un paquete, con «Restaurar» y retención;
+  - `ajustes.rs`: el servicio y su registro.
+  - La comunidad ya avisa si alguien cambió los mods del paquete oficial y ofrece restaurarlo. Lo
+    siguiente es **E3** (soporte), que usará `ajustes::apply` para las tarjetas.
 
 **Antes de diciembre**: E0, E1, E2 y E3 caben si las decisiones 1–3 llegan pronto. E4 es posible en el
 canal de pruebas. E5 y E6 quedan para después. Si algo se atrasa, se recorta E3 a soporte sin tarjetas

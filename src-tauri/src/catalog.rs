@@ -819,9 +819,25 @@ fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress
     let total: u64 = wanted.iter().map(|(e, _)| e.size).sum::<u64>().max(1);
     let mut done = 0u64;
     let mut count = 0;
+    // Lo que se reemplaza o se quita queda en un respaldo recuperable (respaldos.rs): con la misma
+    // versión es una reparación (se vuelve al paquete oficial); con otra, una actualización.
+    let state = folder.join(STATE_DIR);
+    let previous = std::fs::read(state.join(packs::INSTALLED_MANIFEST)).ok().and_then(|b| serde_json::from_slice::<Manifest>(&b).ok());
+    let label = if previous.as_ref().is_some_and(|p| p.version == manifest.version) {
+        t!("Antes de restaurar {} como en Drive", "Before restoring {} as on Drive", manifest.name)
+    } else {
+        t!("Antes de actualizar {}", "Before updating {}", manifest.name)
+    };
+    let mut backup = crate::respaldos::Builder::start(paths, &folder_name, &folder, label);
+    for file in [packs::INSTALLED_MANIFEST, crate::identidad::REFERENCE_FILE, crate::integridad::RECORD] {
+        backup.keep(&state.join(file));
+    }
     let entries_only: Vec<&remote_zip::RemoteEntry> = wanted.iter().map(|(e, _)| *e).collect();
     remote.read_many(&entries_only, |index, bytes| {
         let target = &wanted[index].1;
+        if target.starts_with(&folder) {
+            backup.keep(target);
+        }
         std::fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
         let temp = PathBuf::from(format!("{}.parte", target.display()));
         std::fs::write(&temp, &bytes).map_err(|e| e.to_string())?;
@@ -843,15 +859,20 @@ fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress
         for file in packs::walk(&folder.join(dir)) {
             managed += 1;
             let relative = file.strip_prefix(&folder).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
-            if !keep.contains(&path_key(&file)) && !preserved(&relative) {
+            // Lo propio de Parabellum (.lanzador: el registro, la huella, la caché) no es contenido del paquete.
+            let own = relative.to_lowercase().starts_with(&format!("{}/", STATE_DIR.to_lowercase()));
+            if !keep.contains(&path_key(&file)) && !preserved(&relative) && !own {
                 leftovers.push(file);
             }
         }
     }
-    // Seguro: si sobrara más de la mitad, algo no cuadra y no se quita nada.
+    // Seguro: si sobrara más de la mitad, algo no cuadra y no se quita nada. Lo que se quita va al
+    // respaldo (o, si no se puede mover, a la papelera).
     if leftovers.len() * 2 <= managed.max(1) {
         for file in &leftovers {
-            let _ = trash::delete(file);
+            if !backup.take(file) {
+                let _ = trash::delete(file);
+            }
         }
     } else {
         progress(t!("Se dejaron {} archivos que el paquete no trae (eran demasiados para quitarlos sin revisar).", "{} files the package no longer has were left in place (too many to remove without checking).", leftovers.len()), 1.0);
@@ -865,6 +886,10 @@ fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress
         .collect();
     crate::integridad::save_package(&folder, &listed);
     std::fs::write(folder.join(STATE_DIR).join(packs::INSTALLED_MANIFEST), serde_json::to_vec_pretty(manifest).unwrap()).map_err(|e| e.to_string())?;
+    // La referencia de la huella: lo que trae el paquete (identidad.rs).
+    let names: Vec<String> = entries.iter().filter(|e| !e.name.ends_with('/')).map(|e| e.name.clone()).collect();
+    crate::identidad::after_package_install(paths, &folder_name, manifest, &names);
+    backup.finish(paths);
     progress(t!("Listo", "Done"), 1.0);
     Ok(DeltaStats { files: wanted.len(), bytes: done })
 }

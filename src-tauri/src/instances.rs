@@ -14,7 +14,7 @@ pub const STATE_DIR: &str = ".lanzador";
 /// Mismo nombre que en la versión anterior, para conservar los iconos.
 const ICON_FILE: &str = "icono.png";
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Instance {
     /// Nombre de la carpeta: identifica la instancia y no cambia al renombrarla.

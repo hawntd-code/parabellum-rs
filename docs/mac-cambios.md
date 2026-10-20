@@ -28,7 +28,8 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   al compilado de `main` en `52fe1d5`). Las reglas de Firebase de Comunidades ya están publicadas.
   **Mac sigue en 0.28.0**, cuatro versiones atrás: puede publicar directo la 0.32.0 (lo de «Para
   llegar a la 0.30.0», abajo, sigue valiendo).
-- **En `main`: 0.32.0**, lo mismo que está publicado.
+- **En `main`: 0.33.0**, sin publicar: E1 (huella del paquete, respaldos y servicio de ajustes; ver «Cambios
+  de Windows»).
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
   Las reglas de Firebase de la 0.27 ya están publicadas.
 
@@ -398,6 +399,32 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   iteración (2026-10-17).
 
 ## Cambios de Windows
+
+### 2026-10-20 · E1: huella del paquete, respaldos y servicio de ajustes (0.33.0)
+
+- Qué cambió (todo compartido):
+  - **`identidad.rs`** (nuevo):
+    - `content` calcula la huella de una instancia: Minecraft, loader y los mods activos por su
+      SHA-1, con caché en `.lanzador/huellas.json`;
+    - `save_reference` y `check` guardan la huella del paquete en `.lanzador/referencia.json` y
+      comparan la instancia con ella;
+    - `installation_id` vive en `.lanzador/instalacion.json`;
+    - `packs::export`, `packs::install` y `catalog::delta_update` guardan la referencia;
+    - el manifiesto de los paquetes lleva `contentHash` (las versiones viejas lo ignoran).
+  - **`respaldos.rs`** (nuevo):
+    - `Builder` (`keep`, `take`, `adopt`, `finish`), `list`, `restore` y `prune`, en `datos/respaldos/`;
+    - la actualización por partes y la completa guardan ahí lo que reemplazan. Antes la completa lo
+      borraba al terminar, y la por partes mandaba a la papelera lo que el paquete ya no traía.
+  - **`ajustes.rs`** (nuevo):
+    - `save_all`: el cuerpo de `guardar_ajustes`, que ahora lo llama;
+    - `REGISTRY`, `plan`, `apply`, `read` y `describe`;
+    - comandos `ajustes_compartibles`, `leer_ajuste` y `aplicar_ajuste`.
+  - **Comandos** `huella_instancia`, `respaldos` y `restaurar_respaldo`. En comunidad.rs,
+    `Readiness.changes` y el estado `modificada`.
+  - **Interfaz**: Comunidades («Modificado», «Restaurar y jugar») y la pestaña Detalles de la instancia.
+    `cmDialog` acepta un botón `secondary`.
+- Mac: nada distinto (no depende del sistema). Prueba las nuevas pruebas de `cargo test` en Mac (los
+  SHA-1 y las rutas deben dar lo mismo).
 
 ### 2026-10-20 · Pulido de la interfaz (0.32.0)
 

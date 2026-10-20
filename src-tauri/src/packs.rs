@@ -54,6 +54,9 @@ pub struct Manifest {
     pub archive_sha256: Option<String>,
     pub installed_size: u64,
     pub exported_at: String,
+    /// Huella del contenido del paquete (identidad.rs): Minecraft, loader y los mods por su SHA-1.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_hash: Option<String>,
 }
 
 impl Manifest {
@@ -341,6 +344,11 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
     };
     let mut entries: Vec<(PathBuf, String)> =
         instance_files.iter().filter_map(|f| Some((f.clone(), format!("instancia/{}", relative(&instance.folder, f)?)))).collect();
+    // La huella de lo que viaja (los mods activos del paquete): la llevan el manifiesto y, al terminar,
+    // la instancia original (así sabe si cambió desde que se publicó).
+    let packed_mods = crate::identidad::package_mods(instance, entries.iter().map(|(_, name)| name.as_str()));
+    let content = crate::identidad::content_of(instance, &packed_mods);
+    manifest.content_hash = Some(content.content_hash.clone());
     entries.extend(loader_files.iter().filter_map(|f| Some((f.clone(), format!("base/{}", relative(&paths.base, f)?)))));
     std::fs::create_dir_all(&pack_dir).map_err(|e| e.to_string())?;
     if icon.is_file() {
@@ -350,7 +358,9 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
         entries.push((icon, format!("instancia/{STATE_DIR}/icono.png")));
     }
     write_archive(&pack_zip, &manifest, &entries, |bytes| report(&t!("Empaquetando el modpack", "Packing the modpack"), bytes))?;
+    let (package_id, package_version) = (manifest.id.clone(), manifest.version.clone());
     write_sidecar(&pack_zip, &pack_dir.join(format!("{pack_name}.json")), manifest)?;
+    crate::identidad::save_reference(instance, &package_id, &package_version, "publicado", content);
     progress(t!("Listo", "Done"), 1.0);
     Ok(ExportResult {
         folder: version_dir.display().to_string(),
@@ -563,18 +573,27 @@ pub fn install(zip_path: &Path, paths: &Paths, progress: impl Fn(String, f64)) -
         if updated {
             let backup = paths.data.join("temporal").join(format!("respaldo-{}", chrono::Utc::now().timestamp_millis()));
             replace_keeping_player_data(&destination, &staging, &backup).map_err(|e| t!("No se pudo actualizar la instancia: {e}", "Could not update the instance: {e}"))?;
+            // Lo que quedó de la versión anterior (mods, configuración) pasa a un respaldo recuperable.
+            let mut kept = crate::respaldos::Builder::start(paths, &folder, &destination, t!("Antes de actualizar {}", "Before updating {}", manifest.name));
+            if kept.adopt(&backup, &destination).is_ok() {
+                kept.finish(paths);
+            }
+            let _ = std::fs::remove_dir_all(&backup);
         } else {
             std::fs::create_dir_all(&paths.instances).map_err(|e| e.to_string())?;
             std::fs::rename(&staging, &destination).map_err(|e| e.to_string())?;
         }
+        let names: Vec<String> = listed.iter().map(|(name, _, _)| name.clone()).collect();
+        crate::identidad::after_package_install(paths, &folder, &manifest, &names);
         Ok(Installed { kind: "modpack".into(), name: manifest.name.clone(), folder: Some(folder.clone()), updated })
     })();
     let _ = std::fs::remove_dir_all(&staging);
     result
 }
 
-/// Actualiza sin arriesgar los mundos: la carpeta vieja pasa a respaldo, sus datos del jugador se
-/// mueven a la nueva y solo al final se borra el respaldo. Si algo falla, todo vuelve como estaba.
+/// Actualiza sin arriesgar los mundos: la carpeta vieja se aparta, sus datos del jugador se mueven a la
+/// nueva y lo que queda de la vieja pasa a ser un respaldo (respaldos.rs). Si algo falla, todo vuelve
+/// como estaba.
 fn replace_keeping_player_data(destination: &Path, staging: &Path, backup: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(backup.parent().unwrap())?;
     std::fs::rename(destination, backup)?;
@@ -608,7 +627,7 @@ fn replace_keeping_player_data(destination: &Path, staging: &Path, backup: &Path
         }
         return Err(error);
     }
-    let _ = std::fs::remove_dir_all(backup);
+    // La carpeta anterior (ya sin los datos del jugador) la toma quien llama como respaldo.
     Ok(())
 }
 

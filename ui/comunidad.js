@@ -224,7 +224,9 @@ function renderCommunityServers() {
             ? t(`Al pulsar «Jugar» se instala ${pack.name}.`, `Pressing «Play» installs ${pack.name}.`)
             : ready.state === "desactualizada"
               ? t(`Al pulsar «Jugar» se actualiza ${pack.name} (tus mundos y controles se quedan).`, `Pressing «Play» updates ${pack.name} (your worlds and controls stay).`)
-              : t(`Con ${pack.name}, listo en este PC.`, `With ${pack.name}, ready on this PC.`);
+              : ready.state === "modificada"
+                ? t(`Tu ${pack.name} tiene cambios (${changesSummary(ready.changes)}): al pulsar «Jugar» se ofrece restaurarlo.`, `Your ${pack.name} has changes (${changesSummary(ready.changes)}): pressing «Play» offers to restore it.`)
+                : t(`Con ${pack.name}, listo en este PC.`, `With ${pack.name}, ready on this PC.`);
       return `<div class="cm-server ${online ? "on" : ""}">
         <div class="cm-server-main">
           <span class="cm-server-icon">${icon("server")}<i class="${online ? "on" : status ? "off" : ""}"></i></span>
@@ -239,7 +241,7 @@ function renderCommunityServers() {
           ${editable ? `<button class="circle-btn small" data-cm-edit-server="${escapeHtml(s.id)}" title="${t("Editar", "Edit")}">${icon("pencil")}</button>` : ""}
           <button class="btn primary" data-cm-play="${escapeHtml(s.id)}" ${busy ? "disabled" : ""}>${icon("play")}<span>${busy ? t("Preparando…", "Preparing…") : t("Jugar", "Play")}</span></button>
         </div>
-        ${note ? `<p class="cm-server-note">${pack ? icon(ready?.state === "lista" ? "check-circle" : "download") : ""}${escapeHtml(note)}</p>` : ""}
+        ${note ? `<p class="cm-server-note ${ready?.state === "modificada" ? "warn" : ""}">${pack ? icon(ready?.state === "lista" ? "check-circle" : ready?.state === "modificada" ? "alert" : "download") : ""}${escapeHtml(note)}</p>` : ""}
       </div>`;
     })
     .join("");
@@ -249,9 +251,16 @@ function renderCommunityServers() {
 function packageStateHtml(p) {
   const local = community.detail.local?.[p.id];
   if (!local) return "";
-  if (local.source) return `<span class="cm-chip ok">${icon("check")}${t("Tu instancia (la publicaste tú)", "Your instance (you published it)")}</span>`;
-  if (local.state === "lista") return `<span class="cm-chip ok">${icon("check")}${t("Instalado", "Installed")}</span>`;
   const busy = community.preparing.has(p.id);
+  if (local.source) {
+    return local.changes
+      ? `<span class="cm-chip warn" title="${escapeHtml(changesSummary(local.changes))}">${icon("alert")}${t("Cambió desde que la publicaste", "Changed since you published it")}</span>`
+      : `<span class="cm-chip ok">${icon("check")}${t("Tu instancia (la publicaste tú)", "Your instance (you published it)")}</span>`;
+  }
+  if (local.state === "lista") return `<span class="cm-chip ok">${icon("check")}${t("Instalado", "Installed")}</span>`;
+  if (local.state === "modificada") {
+    return `<button class="cm-chip warn as-button" data-cm-changes="${escapeHtml(p.id)}" title="${t("Ver qué cambió", "See what changed")}">${icon("alert")}${t("Modificado", "Modified")} · ${escapeHtml(changesSummary(local.changes))}</button><button class="btn small" data-cm-install="${escapeHtml(p.id)}" ${busy ? "disabled" : ""}>${icon("refresh")}${busy ? t("Restaurando…", "Restoring…") : t("Restaurar", "Restore")}</button>`;
+  }
   const label = local.state === "falta" ? t("Instalar", "Install") : t("Actualizar", "Update");
   return `<span class="cm-chip ${local.state === "falta" ? "" : "warn"}">${local.state === "falta" ? t("No instalado", "Not installed") : t("Hay versión nueva", "New version")}</span><button class="btn small primary" data-cm-install="${escapeHtml(p.id)}" ${busy ? "disabled" : ""}>${icon("download")}${busy ? t("Instalando…", "Installing…") : label}</button>`;
 }
@@ -332,7 +341,7 @@ function renderMembers(d) {
  * se muestra dentro, sin cerrar). `mount(el)` conecta lo de adentro. Devuelve una promesa que se
  * resuelve al cerrar.
  */
-function cmDialog({ title, subtitle = "", glyph = "community", wide = false, body, ok = null, danger = null, cancel = t("Cancelar", "Cancel"), onOk, onDanger, mount }) {
+function cmDialog({ title, subtitle = "", glyph = "community", wide = false, body, ok = null, danger = null, secondary = null, cancel = t("Cancelar", "Cancel"), onOk, onDanger, mount }) {
   return new Promise((resolve) => {
     const dialog = $("#cm-dialog");
     dialog.querySelector(".modal").classList.toggle("wide", wide);
@@ -348,6 +357,9 @@ function cmDialog({ title, subtitle = "", glyph = "community", wide = false, bod
     if (ok) okButton.innerHTML = ok;
     $("#cm-dialog-danger").classList.toggle("hidden", !danger);
     if (danger) $("#cm-dialog-danger").innerHTML = danger;
+    // Un segundo camino (se resuelve con "secundario"): por ejemplo, «Jugar así».
+    $("#cm-dialog-secondary").classList.toggle("hidden", !secondary);
+    if (secondary) $("#cm-dialog-secondary").innerHTML = secondary;
     $("#cm-dialog-cancel").textContent = cancel;
     const finish = (value) => {
       closeModal("#cm-dialog");
@@ -369,6 +381,7 @@ function cmDialog({ title, subtitle = "", glyph = "community", wide = false, bod
     okButton.onclick = () => run(onOk, okButton);
     $("#cm-dialog-danger").onclick = () => run(onDanger, $("#cm-dialog-danger"));
     $("#cm-dialog-cancel").onclick = () => finish(false);
+    $("#cm-dialog-secondary").onclick = () => finish("secundario");
     $("#cm-dialog-close").onclick = () => finish(false);
     community.cancelDialog = () => finish(false);
     // Cada ventana tiene su número: lo que llega tarde (como el catálogo) no pinta sobre otra.
@@ -940,16 +953,20 @@ async function installPackage(pk) {
   const local = d.local?.[pk];
   if (!local?.catalogId) return local?.instance ?? null;
   if (local.state === "lista") return local.instance;
+  const restoring = local.state === "modificada";
   community.preparing.add(pk);
   renderCommunities();
   try {
     toast(
       local.state === "falta"
         ? t("Instalando el paquete oficial: el avance está en Descargas.", "Installing the official package: the progress is in Downloads.")
-        : t("Actualizando el paquete oficial (tus mundos y controles se quedan).", "Updating the official package (your worlds and controls stay)."),
+        : restoring
+          ? t("Restaurando el paquete oficial: lo que se cambia queda en una copia (Detalles de la instancia).", "Restoring the official package: what changes is kept in a backup (instance Details).")
+          : t("Actualizando el paquete oficial (tus mundos y controles se quedan).", "Updating the official package (your worlds and controls stay)."),
     );
-    const result = await invoke("instalar_de_catalogo", { id: local.catalogId, reparar: false, tarea: newJob() });
+    const result = await invoke("instalar_de_catalogo", { id: local.catalogId, reparar: restoring, tarea: newJob() });
     await reloadInstances();
+    if (restoring) toast(t("Listo: el paquete quedó igual al oficial.", "Done: the package is the same as the official one again."));
     return result.id ?? local.instance;
   } finally {
     community.preparing.delete(pk);
@@ -1006,6 +1023,14 @@ async function playCommunityServer(sid) {
   community.preparing.add(sid);
   renderCommunityServers();
   try {
+    // Con cambios en el paquete: restaurar el oficial antes de entrar, o entrar así.
+    const local = server.package ? d.local?.[server.package] : null;
+    if (local?.state === "modificada") {
+      const pack = d.packages.find((p) => p.id === server.package);
+      const choice = await showPackageChanges(pack, local.changes, { play: true });
+      if (!choice) return;
+      if (choice === "secundario") return void (await play(local.instance, server.address));
+    }
     // Si el paquete que pide ya no está, se elige con qué instancia entrar.
     const instance = server.package && d.local?.[server.package] ? await installPackage(server.package) : await chooseInstanceFor(server);
     if (!instance) return;
@@ -1016,6 +1041,23 @@ async function playCommunityServer(sid) {
     community.preparing.delete(sid);
     loadCommunity(d.id);
   }
+}
+
+/** Qué cambió en el paquete oficial de este PC. Con `play`: «Restaurar y jugar» o «Jugar así». */
+function showPackageChanges(pack, changes, { play = false } = {}) {
+  return cmDialog({
+    title: t(`Tu ${pack?.name ?? "paquete"} tiene cambios`, `Your ${pack?.name ?? "package"} has changes`),
+    subtitle: t("Comparado con el paquete oficial de la comunidad.", "Compared with the community's official package."),
+    glyph: "alert",
+    wide: true,
+    body: `${packageChangesHtml(changes)}<p class="faint cm-hint">${t(
+      "Restaurar deja tus mods como los del paquete oficial. Lo que cambie queda en una copia que puedes recuperar en Detalles de la instancia. Tus mundos y opciones no se tocan.",
+      "Restoring makes your mods match the official package. Whatever changes is kept in a backup you can recover from the instance Details. Your worlds and options are not touched.",
+    )}</p>`,
+    ok: play ? `${icon("refresh")}${t("Restaurar y jugar", "Restore and play")}` : null,
+    secondary: play ? `${icon("play")}${t("Jugar así", "Play as is")}` : null,
+    cancel: play ? t("Cancelar", "Cancel") : t("Cerrar", "Close"),
+  });
 }
 
 /** Sin paquete oficial: con qué instancia entrar (la última que jugaste primero). */
@@ -1078,6 +1120,10 @@ function wireCommunityEvents() {
     if (target.dataset.cmEditServer) return editServer(d.servers.find((s) => s.id === target.dataset.cmEditServer));
     if (target.dataset.cmMember) return manageMember(target.dataset.cmMember);
     if (target.dataset.cmPackage) return packageMenu(target, target.dataset.cmPackage);
+    if (target.dataset.cmChanges) {
+      const pack = d.packages.find((p) => p.id === target.dataset.cmChanges);
+      return showPackageChanges(pack, d.local?.[pack?.id]?.changes);
+    }
     if (target.dataset.cmInstall) {
       return installPackage(target.dataset.cmInstall)
         .catch((error) => toast(String(error), "error"))
