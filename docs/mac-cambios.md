@@ -42,13 +42,16 @@ Lo que falta para publicar la 0.30.0 de Mac (trae lo de la 0.29.0), en este orde
 2. **Probar lo de la 0.29.0** (ver la entrada de la 0.29.0 en «Cambios de Windows»):
    - Descargas: dos modpacks seguidos (el segundo en cola), cancelar uno, reintentarlo y el límite de
      velocidad.
-   - Cmd+V en cualquier parte de Mensajes y arrastrar una imagen desde Finder.
+   - Cmd+V en cualquier parte de Mensajes y arrastrar una imagen desde Finder. Arrastrar desde el
+     Finder (Descargas), Safari y Chrome probado el 2026-10-18 (PR #16); desde «Recientes» no se puede
+     (ver el PR #16).
    - Pregenerar un servidor Fabric y «Buscar el mod culpable» en una instancia con un mod roto.
    - 0.30.0: la pantalla de carga, el botón «Modo escuela» y el chat (mandar, borrador, emojis,
      buscar, «está escribiendo…» con Juan).
 3. ~~**Código:** el `TODO(mac)` de `plataforma/macos/arrastre.rs`: `clipboard_image` con NSPasteboard
    (lo que la ventana no sabe pegar, como un archivo copiado en Finder).~~ — hecho en el PR #15, con
-   AppleScript (`osascript`). Queda arrastrar una imagen sin archivo desde Safari (`TODO(mac)`).
+   AppleScript (`osascript`). Arrastrar una imagen sin archivo desde Safari, Chrome o Discord: hecho en
+   el PR #16.
 4. **Publicar la Mac 0.30.0** cuando Juan publique la 0.30.0 de Windows (compilada de `main` en ese
    commit, como la 0.28.0).
 5. **Opcional: los paquetes de Mac en el espejo de Drive** (así una Mac también juega en la escuela).
@@ -244,6 +247,17 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   encabezado de `macos/mod.rs` y la tarea 1 de `mac.md`): resuelto en el PR #5.
 
 ## Pendientes para Windows
+
+- [ ] **PR #16 (arrastrar imágenes en Mac): nada que compilar en Windows** (solo cambia
+  `plataforma/macos/arrastre.rs` y los docs). Para saber:
+  - **Arreglo de un cierre en la Mac 0.28.0 publicada:** arrastrar a la ventana una imagen desde
+    «Recientes» del Finder cerraba Parabellum. El Finder da ahí una referencia
+    (`file:///.file/id=…`) que macOS no convierte en ruta, y wry (Tauri) hace `unwrap()` sobre esa
+    ruta en `draggingEntered:`. Ahora ese arrastre se rechaza (el cursor dice que no) y la app sigue
+    abierta. Desde la carpeta de verdad (Descargas, Escritorio…) sí se puede. Es solo de Mac: en
+    Windows, wry usa otro código.
+  - Las imágenes sin archivo (Safari, Chrome, Discord) llegan a la interfaz por el mismo evento
+    "arrastre" que en Windows; `ui/` no cambia.
 
 - [x] **PR #15 (pegar imágenes en Mac): nada que compilar en Windows** (solo cambia
   `plataforma/macos/arrastre.rs` y los docs). Hechas las dos sugerencias el 2026-10-18 (en la 0.30.0):
@@ -593,8 +607,8 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   - TODO(mac) en `plataforma/macos/arrastre.rs`: `clipboard_image` con NSPasteboard (public.png,
     public.tiff o un archivo copiado en el Finder) y, si se puede, imágenes arrastradas desde Safari.
     — `clipboard_image` hecho en el PR #15, con AppleScript (`osascript`, sin dependencias nuevas): un
-    archivo de imagen copiado en el Finder o la imagen copiada (PNG o TIFF). Arrastrar desde Safari
-    sigue pendiente: necesita un receptor de arrastre propio en la ventana.
+    archivo de imagen copiado en el Finder o la imagen copiada (PNG o TIFF). Arrastrar desde Safari,
+    Chrome o Discord: hecho en el PR #16 (delante del soltar de wry, sin cambiar `ui/`).
 
 ### 2026-10-13 · 0.28.0: el panel del juego con lo mismo que la ventana
 

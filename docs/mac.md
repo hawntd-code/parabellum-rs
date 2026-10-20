@@ -182,8 +182,14 @@ En `plataforma/macos/mod.rs`, con herramientas que trae macOS:
 - Pegar imágenes en el chat (`macos/arrastre.rs`, `clipboard_image`): lo que la ventana no pega sola
   (un `.heic` o cualquier imagen copiada en el Finder, o una imagen copiada de Vista Previa) lo lee
   Parabellum del portapapeles con AppleScript (`osascript`): la ruta del archivo (si no es un enlace y
-  sus primeros bytes son de imagen) o la imagen guardada como PNG o TIFF en `datos/temporal`. Falta
-  arrastrar una imagen desde Safari (sin archivo).
+  sus primeros bytes son de imagen) o la imagen guardada como PNG o TIFF en `datos/temporal`.
+- Arrastrar al chat una imagen sin archivo (Safari, Chrome, Discord; `macos/arrastre.rs`, `install`):
+  Tauri (wry) solo da rutas, así que `install` pone delante de su `performDragOperation:` una función
+  que, con Mensajes abierto, guarda la imagen del arrastre (PNG, JPEG, GIF, WebP o HEIC tal cual; si
+  no, el archivo prometido, y si tampoco, el TIFF) y la manda como el evento "arrastre". Safari y
+  Chrome traen la imagen en JPEG (probado el 2026-10-18). También va delante de `draggingEntered:`:
+  wry se caía (`unwrap()` en `collect_paths`) con un archivo que macOS no sabe convertir en ruta, como
+  una imagen de «Recientes» del Finder (`file:///.file/id=…`); ese arrastre ahora se rechaza.
 - Imágenes del chat en cualquier formato que abra el Mac (HEIC, TIFF, GIF, BMP…; `decode_image`):
   `sips -g` las mide, `sips` las pasa a PNG en un proceso aparte (`-Z` solo si son más grandes que
   el límite, porque también agranda) y el crate `png` las lee a RGBA. Como en Windows, no se giran
