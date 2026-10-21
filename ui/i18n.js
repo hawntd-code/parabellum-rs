@@ -379,6 +379,12 @@ const HTML_EN = {
   "Así se bajan de Google Drive en cualquier red, también donde Mojang está bloqueado. Cada versión sube con sus loaders (Fabric, Quilt, Forge y NeoForge) y sus servidores; lo que comparten las versiones se sube una sola vez.": "This way they download from Google Drive on any network, also where Mojang is blocked. Each version is uploaded with its loaders (Fabric, Quilt, Forge and NeoForge) and its servers; what versions share is uploaded only once.",
   "Las más jugadas": "Most played",
   "Ninguna": "None",
+  "Solicitud de ayuda": "Help request",
+  "Pedir ayuda": "Ask for help",
+  "Ajuste": "Setting",
+  "Enviar tarjeta": "Send card",
+  "Proponer un ajuste": "Propose a setting",
+  "El jugador ve su valor actual y el que propones, y decide si la aplica.": "The player sees their current value and the one you propose, and decides whether to apply it.",
 };
 
 /** Traduce los textos fijos de la página (y sus title, placeholder y aria-label). */

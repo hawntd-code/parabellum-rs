@@ -69,6 +69,7 @@ async function loadCommunity(id) {
   }
   renderCommunities();
   refreshCommunityStatus();
+  if (community.detail?.id === id) loadSupport(id);
 }
 
 /** El estado de los servidores (ping). */
@@ -160,12 +161,14 @@ function renderCommunities() {
         <section class="cm-section"><div class="cm-section-head"><h3>${t("Servidores", "Servers")}</h3>${
           canAdmin() || myCaps().servers ? `<button class="btn small" data-cm="add-server">${icon("plus")}${t("Agregar", "Add")}</button>` : ""
         }</div><div id="cm-servers"></div></section>
+        ${supportStaff() ? supportSectionHtml() : ""}
         <section class="cm-section"><div class="cm-section-head"><h3>${t("Anuncios", "Announcements")}</h3>${
           canAdmin() ? `<button class="btn small" data-cm="add-post">${icon("plus")}${t("Nuevo anuncio", "New announcement")}</button>` : ""
         }</div>${renderPosts(d)}</section>
       </div>
       <div class="cm-col side">
         ${renderPackages(d)}
+        ${supportStaff() ? "" : supportSectionHtml()}
         <section class="cm-section"><div class="cm-section-head"><h3>${t("Reglas", "Rules")}</h3>${
           canAdmin() ? `<button class="circle-btn small" data-cm="edit-rules" title="${t("Editar las reglas", "Edit the rules")}">${icon("pencil")}</button>` : ""
         }</div>${d.rules ? `<div class="markdown cm-markdown">${markdownHtml(d.rules)}</div>` : `<p class="side-note no-top">${t("Todavía no hay reglas.", "There are no rules yet.")}</p>`}</section>
@@ -174,6 +177,7 @@ function renderCommunities() {
       </div>
     </div>`;
   renderCommunityServers();
+  renderSupportSection();
   for (const canvas of $$("#cm-body canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
 }
 

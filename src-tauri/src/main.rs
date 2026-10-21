@@ -57,6 +57,7 @@ mod remote_zip;
 mod servidor;
 mod sesion_local;
 mod settings;
+mod soporte;
 mod sonido;
 mod version;
 
@@ -4040,6 +4041,19 @@ fn main() {
             ajustes_compartibles,
             leer_ajuste,
             aplicar_ajuste,
+            soporte::soporte,
+            soporte::soporte_abrir,
+            soporte::soporte_mensajes,
+            soporte::soporte_visto,
+            soporte::soporte_escuchar,
+            soporte::soporte_escuchar_cola,
+            soporte::soporte_enviar,
+            soporte::soporte_tomar,
+            soporte::soporte_estado,
+            soporte::soporte_tarjeta,
+            soporte::aplicar_tarjeta,
+            soporte::deshacer_tarjeta,
+            soporte::tarjetas_aplicadas,
             hosting_estado,
             conectar_playit,
             cancelar_playit,

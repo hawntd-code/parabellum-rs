@@ -28,6 +28,8 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   al compilado de `main` en `52de0a3`). Las reglas de Firebase de Comunidades ya están publicadas.
   **Mac sigue en 0.28.0**, cinco versiones atrás: puede publicar directo la 0.33.0 (lo de «Para
   llegar a la 0.30.0», abajo, sigue valiendo).
+- **En `main`: 0.34.0**, sin publicar: E3 (soporte y tarjetas de ajustes; ver «Cambios de Windows»).
+  Antes de publicarla, Juan publica las reglas nuevas de Firebase.
 - **Descargas en GitHub:** cada versión de Windows publicada tiene su release (`v<versión>`) con el zip,
   y el README las enlaza en «Versiones». Cuando publiques una de Mac, súbela también como release
   (`mac-v<versión>`) y dime para enlazarla.
@@ -407,6 +409,26 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   iteración (2026-10-17).
 
 ## Cambios de Windows
+
+### 2026-10-20 · E3: soporte y tarjetas de ajustes (0.34.0)
+
+- Qué cambió (todo compartido):
+  - **`soporte.rs`** (nuevo):
+    - comandos `soporte`, `soporte_abrir`, `soporte_mensajes`, `soporte_visto`, `soporte_enviar`,
+      `soporte_tomar`, `soporte_estado`, `soporte_tarjeta`, `aplicar_tarjeta`, `deshacer_tarjeta` y
+      `tarjetas_aplicadas`;
+    - escuchas `soporte_escuchar` (la conversación abierta, evento `soporte-mensajes`) y
+      `soporte_escuchar_cola` (la cola, evento `soporte-cola`);
+    - lo aplicado queda en `datos/tarjetas.json`.
+  - **`reporte::redact`**: la carpeta del usuario pasa a `%USERPROFILE%` (o `~` con `HOME`; también
+    `/Users/<nombre>`), y se tapan correos, tokens y claves. El resumen de «Reportar problema» ya sale así.
+  - En `comunidad.rs`, `id`, `valid_id`, `db`, `my_name`, `db_error` y `get` pasan a `pub(crate)`.
+  - **Reglas de Firebase**: `supportTickets`, `supportMessages` y `supportByUser` (con sus pruebas en
+    `docs/probar-reglas.py`). Juan las publica antes que la 0.34.0.
+  - **Interfaz**: `ui/soporte.js` (la sección de la comunidad, «Pedir ayuda», la ventana
+    `#support-dialog` y las tarjetas) y «Pedir ayuda a <comunidad>» en «Reportar problema».
+- Mac: nada distinto. Corre `cargo test` en Mac: `reporte::tests::sin_datos_personales` revisa también
+  `/Users/<nombre>`.
 
 ### 2026-10-20 · README para quien juega y descargas en GitHub
 
