@@ -1,191 +1,137 @@
-# Parabellum (Rust + Tauri)
+<div align="center">
 
-Launcher de Minecraft no premium. Motor en Rust (`src-tauri/`) e interfaz en HTML/CSS/JS sin dependencias (`ui/`).
+<img src="ui/logo.png" width="112" alt="Logo de Parabellum">
 
-## Plataformas
+# Parabellum
 
-Un solo proyecto para **Windows** (la versión que ya funciona) y **Mac con chip Apple** (en
-construcción). Casi todo es compartido; lo que cambia entre sistemas vive en `src-tauri/src/plataforma/`:
+**El launcher de Minecraft para jugar con tus amigos.**<br>Mods, modpacks, servidores propios y chat en una sola ventana, sin cuenta premium.
 
-```
-ui/                          interfaz (la misma en los dos)
-src-tauri/src/               motor compartido
-src-tauri/src/plataforma/
-  mod.rs                     el contrato: lo que cada sistema tiene que dar
-  windows/                   Windows          → guía: docs/windows.md
-  macos/                     Mac (chip Apple) → guía y lista de tareas: docs/mac.md
-.github/workflows/mac.yml    compila en una Mac de GitHub (ramas mac/… o a mano)
-```
+[![Descargar para Windows](https://img.shields.io/badge/Descargar_para_Windows-0.33.0-7f50f2?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.33.0/Parabellum-0.33.0.zip)
 
-## Compilar
+![Windows 10 y 11](https://img.shields.io/badge/Windows-10_·_11-2b2b33?style=flat-square) ![Mac con chip Apple](https://img.shields.io/badge/Mac-chip_Apple-2b2b33?style=flat-square&logo=apple&logoColor=white) ![Minecraft hasta la 26.3](https://img.shields.io/badge/Minecraft-hasta_la_26.3-2b2b33?style=flat-square) ![Español e inglés](https://img.shields.io/badge/idioma-español_·_English-2b2b33?style=flat-square)
 
-Windows (para Mac, ver [docs/mac.md](docs/mac.md)). Requiere Rust (rustup, toolchain MSVC) y las Build
-Tools de Visual Studio con C++.
+<img src="docs/capturas/inicio.png" alt="La biblioteca de instancias y la lista de amigos de Parabellum" width="900">
 
-```
-cd src-tauri
-cargo build --release
-```
+</div>
 
-Genera `src-tauri/target/release/Parabellum.exe`, un único ejecutable (la interfaz va dentro).
-Usa WebView2, que ya viene en Windows 10 y 11.
+## Qué puedes hacer
 
-Para revisar el diseño sin compilar: sirve la carpeta `ui/` con cualquier servidor estático; fuera de
-Tauri la interfaz usa datos de ejemplo.
+<table>
+  <tr>
+    <td width="50%" valign="top"><b>🎮 Jugar sin complicarte</b><br>Creas una instancia (Vanilla, Fabric, Quilt, Forge o NeoForge), pulsas <b>Jugar</b> y Parabellum baja lo que falte, también el Java correcto. Entras con tu nombre de jugador.</td>
+    <td width="50%" valign="top"><b>🧩 Mods y modpacks de Modrinth</b><br>Busca mods, resource packs, shaders, data packs y modpacks, y ve solo lo que sirve para tu instancia. Instala con sus dependencias y actualiza todo con un clic.</td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><b>🩺 El doctor</b><br>Si el juego se cierra, te dice por qué en palabras normales y lo arregla con un botón: el mod que choca, el loader que falta o la memoria que no alcanza. También puede <b>buscar el mod culpable</b> solo.</td>
+    <td width="50%" valign="top"><b>🌐 Hostear partida</b><br>Convierte una instancia en un servidor en tu PC y tus amigos entran con <b>Unirse</b>, sin abrir puertos ni pasar IPs. Los ajustes del servidor se cambian como en Aternos, sin comandos.</td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><b>💬 Amigos y mensajes</b><br>Ve a qué juega cada quien y únete a su partida. Chat y grupos con imágenes, respuestas y reacciones.</td>
+    <td width="50%" valign="top"><b>🕹️ Dentro del juego</b><br>Con la tecla <b>O</b> se abre Parabellum dentro de Minecraft: amigos, mensajes, invitaciones y capturas, sin salir del mundo (Fabric, Forge y NeoForge, de la 1.16.5 a la 26.3).</td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><b>🛡️ Comunidades</b><br>Únete con un código a la comunidad de un servidor. <b>Jugar</b> instala el paquete oficial de mods y te deja dentro del servidor. Si cambiaste mods, te avisa y lo deja como el oficial con un clic.</td>
+    <td width="50%" valign="top"><b>🏫 Modo escuela</b><br>En redes que bloquean Minecraft o Modrinth, Parabellum baja todo de Google Drive: versiones, loaders, Java y mods.</td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><b>⬇️ Descargas</b><br>Cola de descargas con avance, cancelar, reintentar y límite de velocidad. Si algo falla, al reintentar sigue donde quedó.</td>
+    <td width="50%" valign="top"><b>🔄 Se actualiza solo</b><br>Al abrirlo busca la versión nueva y se actualiza. Si una actualización no arranca, vuelve sola a la anterior.</td>
+  </tr>
+</table>
 
-## Carpeta portable
+Funciona en **español e inglés**, con tema **oscuro y claro**, y se puede usar entero con el teclado.
 
-Todo cuelga de la carpeta del .exe (o de `PARABELLUM_ROOT`):
+## Capturas
 
-```
-Parabellum.exe
-instancias/   cada una con su instancia.json
-servidores/   los de «Hostear partida» (con su mundo y su configuración)
-base/         versions, libraries, assets, java compartidos por todas las instancias
-datos/        ajustes y registros
-paquetes/     (opcional) zips de modpacks copiados de una USB
-```
+<table>
+  <tr>
+    <td width="50%"><img src="docs/capturas/explorar.png" alt="Explorar mods de Modrinth"><br><sub><b>Explorar</b>: mods de Modrinth compatibles con tu instancia.</sub></td>
+    <td width="50%"><img src="docs/capturas/instancia.png" alt="Los mods de una instancia"><br><sub><b>Instancia</b>: sus mods, packs, shaders y mundos.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/capturas/servidor.png" alt="Un servidor hosteado desde el PC"><br><sub><b>Hostear partida</b>: tu servidor, con P2P, red local y consola.</sub></td>
+    <td><img src="docs/capturas/servidores.png" alt="La lista de servidores"><br><sub><b>Servidores</b>: los tuyos, los de tus amigos y los guardados.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/capturas/comunidades.png" alt="La página de una comunidad"><br><sub><b>Comunidades</b>: servidores, paquete oficial, anuncios y reglas.</sub></td>
+    <td><img src="docs/capturas/mensajes.png" alt="Mensajes con un amigo"><br><sub><b>Mensajes</b>: chat con amigos y grupos.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/capturas/doctor.png" alt="El doctor explicando por qué se cerró el juego"><br><sub><b>El doctor</b>: por qué se cerró el juego y cómo arreglarlo.</sub></td>
+    <td><img src="docs/capturas/descargas.png" alt="El panel de descargas"><br><sub><b>Descargas</b>: la cola, el avance y la velocidad.</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="docs/capturas/detalles-claro.png" alt="Detalles de una instancia en tema claro" width="60%"><br><sub><b>Tema claro</b>: los detalles de una instancia, con sus copias de seguridad.</sub></td>
+  </tr>
+</table>
 
-### Desde la versión C# (retirada)
+## Descargar e instalar
 
-La primera versión de Parabellum, en C#, quedó retirada el 2026-10-08 (repositorio archivado
-`parabellum-launcher`). Usaba la misma organización de carpetas, así que Parabellum.exe abre una
-de sus carpetas tal cual: instancias (también las de CurseForge), bases, mundos y, si aún no hay
-`datos/ajustes.json`, el nombre, el UUID fijo y la memoria de su `datos/config.json`.
-Su actualizador acepta cualquier versión nueva del catálogo, así que al publicar Parabellum en
-Drive (`_parabellum`) quienes sigan con la versión C# reciben esta en su lugar.
+1. Baja **[Parabellum-0.33.0.zip](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.33.0/Parabellum-0.33.0.zip)** (10 MB).
+2. Descomprímelo en una carpeta tuya, por ejemplo `Escritorio\Parabellum` o una USB. Parabellum no se instala: todo lo suyo (instancias, mundos y ajustes) se queda en esa carpeta.
+3. Abre **`Parabellum.exe`**. La primera vez Windows puede mostrar «Windows protegió tu PC»: pulsa **Más información** › **Ejecutar de todas formas**. Las actualizaciones ya no muestran ese aviso.
+4. Escribe tu nombre de jugador, crea una instancia y pulsa **Jugar**.
 
-## Para quien lo usa por primera vez
+**Necesitas** Windows 10 u 11 de 64 bits. No hace falta instalar Java ni nada más.
 
-Parabellum no se instala: se descomprime en una carpeta y se abre `Parabellum.exe`. El exe no lleva
-firma de pago, así que la primera vez Windows puede mostrar «Windows protegió tu PC»: «Más
-información» › «Ejecutar de todas formas». Las actualizaciones las baja Parabellum mismo y ya no
-muestran ese aviso. Al publicar una versión (Acerca de › Publicar en la carpeta) se deja un
-`LEEME.txt` con estos pasos en `_parabellum`. Los accesos directos del Escritorio y del menú Inicio
-se crean desde Ajustes › Comportamiento.
+**¿Tienes Mac?** Hay versión para Mac con chip Apple (macOS 13 o más nuevo). Se reparte aparte: pídesela a quien te compartió Parabellum.
 
-## Idiomas y accesibilidad
+## Versiones
 
-- Español e inglés (Ajustes › Apariencia; la primera vez, el de Windows). El motor arma sus mensajes
-  con `t!("español", "English")` (`src-tauri/src/idioma.rs`) y la interfaz con `t("español", "English")`
-  (`ui/i18n.js`, donde también están los textos fijos de `index.html`). Las instancias nuevas abren
-  Minecraft en el mismo idioma (`lang:` de `options.txt`).
-- Todo se puede usar con el teclado: foco visible, diálogos que no dejan escapar el foco, menús con
-  flechas y Escape, tarjetas con Enter. Avisos anunciados al lector de pantalla, contraste suficiente
-  en los dos temas y tamaño de la interfaz de 90 a 150 % (Ctrl + / Ctrl − / Ctrl 0). El panel de la derecha se oculta y
-  se muestra con el botón de arriba o con Ctrl B.
+Parabellum **se actualiza solo**: al abrir una versión vieja, baja la más nueva. Las anteriores quedan aquí como historial.
 
-## Parabellum dentro del juego
+| Versión | Fecha | Lo nuevo | Descarga |
+|---|---|---|---|
+| [**0.33.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.33.0)<br><sub>la más nueva</sub> | 20&nbsp;oct&nbsp;2026 | El paquete oficial de una comunidad avisa si le cambiaste mods, te muestra qué cambió y lo deja como el oficial con **Restaurar**. Antes de actualizar o restaurar se guarda una **copia de seguridad** que recuperas en Detalles de la instancia. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.33.0/Parabellum-0.33.0.zip) |
+| [**0.32.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.32.0) | 20&nbsp;oct&nbsp;2026 | Mods de Modrinth en redes que bloquean Modrinth, sin modo escuela. Interfaz pulida de punta a punta: campos más claros, gráficas del servidor, animaciones al cargar y al cambiar de tema. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.32.0/Parabellum-0.32.0.zip) |
+| [**0.31.2**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.31.2) | 18&nbsp;oct&nbsp;2026 | Si Drive no entrega un paquete a la primera, se reintenta (antes, a veces no aparecía). | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.31.2/Parabellum-0.31.2.zip) |
+| [**0.31.1**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.31.1) | 18&nbsp;oct&nbsp;2026 | **Comunidades**: códigos de invitación, anuncios, reglas, servidores y el paquete oficial que se instala al pulsar Jugar. Canal de pruebas en Ajustes › Acerca de. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.31.1/Parabellum-0.31.1.zip) |
+| [**0.30.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.30.0) | 18&nbsp;oct&nbsp;2026 | Todo Minecraft desde Google Drive y el botón **Modo escuela**. Gestor de descargas, pantalla de carga, chat más completo (imágenes pegadas, emojis, buscar), «Buscar el mod culpable» y las actualizaciones que no arrancan se deshacen solas. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.30.0/Parabellum-0.30.0.zip) |
+| [**0.28.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.28.0) | 13&nbsp;oct&nbsp;2026 | Página de Amigos, mensajes con respuestas y reacciones, grupos con foto, «Reportar problema», Servidores y Hostear en una sola página, y el panel del juego igual que la ventana. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.28.0/Parabellum-0.28.0.zip) |
+| [**0.25.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.25.0) | 12&nbsp;oct&nbsp;2026 | Animaciones en toda la ventana. Dentro del juego: panel animado, botón «Parabellum» en el menú de pausa y avisos abajo a la derecha. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.25.0/Parabellum-0.25.0.zip) |
+| [**0.24.1**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.24.1) | 12&nbsp;oct&nbsp;2026 | El mod del juego gasta lo mínimo y se aparta solo si hace caer el juego. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.24.1/Parabellum-0.24.1.zip) |
 
-Con la tecla **O** dentro de Minecraft (o el botón «Parabellum» del menú de pausa) se abre el panel de
-Parabellum: tus amigos (unirte a su partida, invitarlos a la tuya, escribirles), tus mensajes y grupos, y
-tus capturas para mandarlas a un chat. Los avisos de mensajes e invitaciones salen abajo a la derecha; la
-primera vez que entras a un mundo, uno te dice cómo abrirlo. Funciona en Fabric, Forge y NeoForge de
-la 1.16.5 a la 26.3 (las versiones más usadas); Parabellum pone el mod solo al jugar. Se apaga en
-Ajustes › Comportamiento. El código y cómo compilarlo: [mod/README.md](mod/README.md).
+Todas las versiones, con sus notas completas: [Releases](https://github.com/juanrojasgarcialin/parabellum-rs/releases).
 
-## Hostear partida
+## Preguntas frecuentes
 
-Juega con amigos desde tu PC sin abrir puertos ni pagar: un **servidor** hecho a partir de una
-instancia (vanilla, Fabric, Quilt, Forge o NeoForge, sin los mods que solo son de cliente) o **tu
-mundo abierto en LAN**. Lo creas, lo enciendes e invitas a tus amigos: a ellos les aparece en
-Servidores y pulsan **Unirse**. Nadie ve ni copia una IP. El EULA de Minecraft se acepta marcándolo al
-crear o encender el servidor.
+<details>
+<summary><b>Windows dice que «protegió tu PC». ¿Es seguro?</b></summary>
 
-Cada servidor tiene sus **Conexiones**:
+Sale porque `Parabellum.exe` no tiene una firma de pago, no porque haya algo malo. Pulsa **Más información** › **Ejecutar de todas formas**. Pasa solo la primera vez: las actualizaciones las baja Parabellum mismo.
+</details>
 
-- **P2P** (activada): conexión directa entre las dos PCs, sin túnel. QUIC con perforación de NAT
-  (biblioteca [iroh](https://iroh.computer)) y, si las redes no lo permiten, un relevo. Solo pasan tus
-  amigos y solo a lo que está encendido.
-- **Red local** (activada): para quien está en tu casa o en tu escuela.
-- **[playit.gg](https://playit.gg)** (desactivada): una dirección pública fija para quien no usa
-  Parabellum. Se vincula una vez (Parabellum abre su página para aceptar y baja su agente oficial).
+<details>
+<summary><b>¿Dónde quedan mis mundos y mis mods?</b></summary>
 
-Al unirse, Parabellum prueba las rutas activas a la vez y usa la más rápida. El mundo abierto en LAN se
-comparte solo con tus amigos; por playit.gg, si se elige en Ajustes.
+En la carpeta donde descomprimiste Parabellum: cada instancia está en `instancias\<nombre>`, con sus mundos en `saves`. Puedes copiar la carpeta entera a una USB y seguir en otra PC.
+</details>
 
-Los invitados se siguen por su cuenta de Google: si alguien se cambia el nombre, la lista blanca, el
-permiso de administrador y sus cosas en el mundo pasan al nombre nuevo. Y quien entra con el nombre de
-un invitado tiene que estar jugando desde Parabellum con esa cuenta (si no, el servidor lo saca).
+<details>
+<summary><b>En mi escuela no carga Minecraft o Modrinth.</b></summary>
 
-En **Ajustes** de cada servidor, todo se cambia sin comandos, como en Aternos: cada opción de
-server.properties y las reglas del juego (conservar el inventario, ciclo de día, phantoms, fuego…) en
-tarjetas con su nombre claro y, debajo, el nombre real (`max-players=20`, `gamerule keepInventory true`).
-Se guarda al cambiarla. Con el servidor encendido, las reglas, la dificultad, el modo de juego y la lista
-blanca se aplican al momento; lo demás pide «Reiniciar». Arriba se ve como en la lista de servidores de
-Minecraft: icono (cualquier imagen, se recorta a 64×64), nombre y mensaje con colores (§).
+Pulsa **Modo escuela** arriba en la ventana: Parabellum baja Minecraft, los loaders y Java de Google Drive. Los mods de Modrinth funcionan aunque la red los bloquee, sin hacer nada.
+</details>
 
-## Actualizaciones
+<details>
+<summary><b>¿Cómo juego con mis amigos?</b></summary>
 
-Al abrir Parabellum (y cada media hora) se busca una versión nueva en el catálogo de Drive o en la
-carpeta `paquetes`. Si la hay, hay que actualizar para seguir usándolo: se descarga, reemplaza el
-.exe y se reinicia solo (los juegos abiertos siguen; con un servidor encendido, espera a que se apague).
+Agréguense en **Amigos** (con su cuenta de Google). Después, uno crea un servidor en **Servidores** › **Crear servidor** o abre su mundo en LAN, y a los demás les aparece con **Unirse**. No hay que abrir puertos ni pasar IPs.
+</details>
 
-## Publicar en Drive
+<details>
+<summary><b>El juego se cierra al abrir. ¿Qué hago?</b></summary>
 
-Quien mantiene el catálogo conecta Drive una vez en Ajustes › Acerca de (Google pide el permiso de
-escribir en Drive; los demás jugadores nunca lo ven). Después, «Subir a Drive» al exportar un modpack y
-«Publicar en Drive» con una versión nueva de Parabellum suben los paquetes a la carpeta del catálogo con
-la misma estructura que la carpeta local; lo que ya está igual no se vuelve a subir. La cuenta tiene
-que poder editar esa carpeta.
+Parabellum abre **el doctor** solo: te dice qué pasó y te ofrece el arreglo. Si no se resuelve, usa **Reportar problema** (en el menú ⋮ de la instancia) y manda el resumen por chat a quien te ayuda.
+</details>
 
-## Configuración
+<details>
+<summary><b>¿Cómo lo actualizo?</b></summary>
 
-La carpeta de Drive y las claves de Google y Firebase se integran al compilar desde
-`config-integrada.json` en la raíz del proyecto (no está en el repositorio): `driveFolderId`,
-`driveApiKey`, `googleClientId`, `googleClientSecret`, `firebaseApiKey` y `firebaseDatabaseUrl`.
-Sin ese archivo se compila igual, sin catálogo de Drive. Un `lanzador-config.json` junto al exe
-sustituye los valores que traiga. Las reglas de la base de datos de Firebase están en
-`firebase-reglas.json`.
+No tienes que hacer nada: al abrirlo busca la versión nueva, la baja y se reinicia. Los juegos abiertos siguen; si tienes un servidor encendido, espera a que lo apagues.
+</details>
 
-## Diagnóstico
+---
 
-Sin ventana, con el resultado en `datos/logs/comando.txt`:
-
-| Comando | Qué hace |
-|---|---|
-| `--comprobar <instancia>` | Qué falta para poder jugar |
-| `--crear <nombre> <versión> [fabric\|quilt\|forge\|neoforge] [versión del loader]` | Descarga y crea la instancia (Forge y NeoForge con su instalador oficial) |
-| `--cambiar-loader <instancia> <versión>` | Cambia la versión del loader |
-| `--agregar <instancia> <archivo>...` | Agrega mods, resource packs, shaders o mundos |
-| `--jugar <instancia> [servidor]` | Abre el juego (y entra al servidor) |
-| `--probar-juego <instancia> [segundos]` | Abre el juego, espera al menú principal, lo cierra y resume los mods cargados |
-| `--contenido <instancia>` | Lista los mods, packs y mundos |
-| `--buscar <texto> [mod\|resourcepack\|shader] [loader] [versión]` | Busca en Modrinth |
-| `--instalar <instancia> <proyecto> [versión]` | Instala de Modrinth con dependencias compatibles |
-| `--actualizaciones <instancia> [aplicar]` | Lista (o aplica) las actualizaciones seguras |
-| `--exportar <instancia> <carpeta> [con-mundos]` | Paquete para Drive o USB (modpack + base de Minecraft) |
-| `--exportar-mrpack <instancia> <archivo.mrpack>` | Modpack en formato de Modrinth |
-| `--importar <archivo> [nombre]` | Instala un .mrpack o un paquete de Parabellum |
-| `--externas` | Instancias de CurseForge, Prism y MultiMC en este PC |
-| `--importar-externa <carpeta>` | Copia una de ellas a Parabellum, con su loader |
-| `--instalar-modpack <proyecto> [versión]` | Instala un modpack de Modrinth como instancia nueva |
-| `--instalar-datapack <instancia> <mundo> <proyecto>` | Instala un data pack de Modrinth en un mundo |
-| `--revisar <instancia>` | La revisión de antes de jugar (lo que abriría el doctor) |
-| `--diagnosticar <instancia>` | Qué falla: revisión de mods (dependencias, loader, versión del juego, repetidos) y el último informe de fallo, con sus arreglos |
-| `--arreglar <instancia>` | Probar y arreglar: abre el juego hasta el menú principal y, si no llega, aplica los arreglos recomendados y repite (hasta 5 veces) |
-| `--verificar <instancia> [rapido]` | Comprueba la huella de cada archivo del modpack y repone lo que falte o esté dañado (`rapido`: solo lo que falte) |
-| `--crear-servidor <instancia> [nombre] [mundo]` | Servidor dedicado a partir de la instancia (sin aceptar el EULA) |
-| `--probar-servidor <servidor> [segundos]` | Lo enciende, espera a que esté listo y lo apaga; si no arranca, explica por qué |
-| `--playit` | Estado de la cuenta y del túnel de playit.gg |
-| `--probar-receta <instancia>` | Comparte la instancia como por el chat y la vuelve a armar como otra instancia (compara los archivos) |
-| `--probar-sonido [archivo.wav]` | Toca el sonido de mensaje nuevo (y lo guarda si se da un archivo) |
-| `--ping <dirección>` | Estado de un servidor como en la lista de Multijugador: icono, mensaje, jugadores, versión (con SRV) |
-| `--abrir-juego <instancia> [segundos] [con-mod\|sin-mod] [servidor]` | Abre el juego con el mod de Parabellum y lo deja abierto ese tiempo (para probar el panel dentro del juego; ver `mod/README.md`). Con un servidor, entra directo a él |
-| `--probar-p2p <puerto> [segundos]` | Abre un túnel P2P en este PC hacia un servidor encendido y le hace ping; con segundos lo deja abierto (puerto en `datos/logs/p2p-puerto.txt`) |
-| `--convertir-imagen <entrada> <salida.png>` | Abre una imagen con Windows (HEIC, TIFF…) y la guarda como PNG |
-| `--probar-favoritos` | Con la sesión guardada: lee los favoritos de la cuenta, escribe uno de prueba (y lo borra) y comprueba las reglas de Firebase |
-| `--probar-tiempo-real [veces]` | Con la sesión de Google guardada: cuánto tarda en llegar por la escucha de Firebase algo recién escrito |
-| `--catalogo` | Modpacks y versiones de Drive y de la carpeta paquetes, con su estado |
-| `--espejo [filtro]` | Qué tiene el espejo de Minecraft en Drive (paquetes, capas y el espacio del Drive) |
-| `--espejo-subir <todo\|1.20.1,1.21.1…> [sin-loaders] [sin-servidores]` | Arma y sube el espejo (quien publica, con «Conectar Drive»); el avance va a `datos/logs/espejo.txt` |
-| `--instalar-catalogo <id> [reparar]` | Instala, actualiza o repara un paquete (bajando solo lo que cambió) |
-| `--publicar-launcher <carpeta> [notas]` | Prepara _parabellum con esta versión para subirla a Drive |
-
-## Hoja de ruta
-
-Ver [ROADMAP.md](ROADMAP.md).
-
-## Créditos
-
-Fuente [Inter](https://github.com/rsms/inter) bajo la SIL Open Font License (`ui/fonts/OFL.txt`).
+<p align="center"><sub>¿Quieres compilarlo o colaborar? Está en <a href="docs/desarrollo.md">docs/desarrollo.md</a>.</sub></p>
+<p align="center"><sub>Fuente <a href="https://github.com/rsms/inter">Inter</a> bajo la SIL Open Font License. Parabellum no es un producto oficial de Minecraft: no está aprobado por Mojang ni por Microsoft, ni asociado con ellos.</sub></p>

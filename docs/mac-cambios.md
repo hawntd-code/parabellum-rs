@@ -24,12 +24,13 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 ## Estado
 
 - Última revisión de los PR de Mac en Windows: 2026-10-18, PR #1 a #15 (todos mezclados).
-- **Publicado en Drive:** Windows **0.32.0** desde el 2026-10-20 (Juan; el exe publicado es idéntico
-  al compilado de `main` en `52fe1d5`). Las reglas de Firebase de Comunidades ya están publicadas.
-  **Mac sigue en 0.28.0**, cuatro versiones atrás: puede publicar directo la 0.32.0 (lo de «Para
+- **Publicado en Drive:** Windows **0.33.0** desde el 2026-10-20 (Juan; el exe publicado es idéntico
+  al compilado de `main` en `52de0a3`). Las reglas de Firebase de Comunidades ya están publicadas.
+  **Mac sigue en 0.28.0**, cinco versiones atrás: puede publicar directo la 0.33.0 (lo de «Para
   llegar a la 0.30.0», abajo, sigue valiendo).
-- **En `main`: 0.33.0**, sin publicar: E1 (huella del paquete, respaldos y servicio de ajustes; ver «Cambios
-  de Windows»).
+- **Descargas en GitHub:** cada versión de Windows publicada tiene su release (`v<versión>`) con el zip,
+  y el README las enlaza en «Versiones». Cuando publiques una de Mac, súbela también como release
+  (`mac-v<versión>`) y dime para enlazarla.
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
   Las reglas de Firebase de la 0.27 ya están publicadas.
 
@@ -103,6 +104,13 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
 
+- **0.33.0** · 2026-10-20 · E1. Publicada por Juan, compilada de `main` en `52de0a3`:
+  - **El paquete oficial avisa si lo cambiaste**: en Comunidades sale «Modificado» con qué mods sobran o
+    faltan, y «Restaurar» lo deja como el oficial. Antes de jugar en el servidor con el paquete cambiado,
+    pregunta: «Restaurar y jugar» o «Jugar así».
+  - **Copias de seguridad**: al actualizar o restaurar un paquete se guarda lo que cambia (3 por
+    instancia). Se recuperan en Detalles de la instancia.
+  - Detalles de la instancia muestra de qué paquete viene y si cambió.
 - **0.32.0** · 2026-10-20 · trae lo de la 0.31.3 y la 0.32.0. Publicada por Juan, compilada de `main`
   en `52fe1d5`:
   - **Modrinth en la escuela sin modo escuela**: si la red lo bloquea, Parabellum pregunta por el
@@ -399,6 +407,18 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   iteración (2026-10-17).
 
 ## Cambios de Windows
+
+### 2026-10-20 · README para quien juega y descargas en GitHub
+
+- Qué cambió (solo documentación):
+  - **`README.md`** es ahora para quien juega: qué hace, capturas (`docs/capturas/`), descargar e
+    instalar, la tabla de versiones con su descarga y preguntas frecuentes.
+  - Lo técnico que tenía (compilar, carpetas, configuración, comandos `--…`) pasó a
+    **`docs/desarrollo.md`**, con una sección nueva: «Publicar una versión» (Drive y GitHub).
+  - **Releases de GitHub** `v0.24.1` a `v0.33.0`, una por versión publicada en Drive, con el zip. La
+    0.33.0 es el zip exacto de Drive; las anteriores se recompilaron de su commit (las de Drive ya
+    estaban en la papelera).
+- Mac: nada que compilar. Si publicas una versión de Mac, súbela como release `mac-v<versión>`.
 
 ### 2026-10-20 · E1: huella del paquete, respaldos y servicio de ajustes (0.33.0)
 

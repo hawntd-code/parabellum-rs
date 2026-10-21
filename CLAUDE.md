@@ -29,8 +29,14 @@ en `ui/`.
 - **Si se publica una versión de Windows en Drive** (la publique Juan o su agente): en ese momento,
   agrega arriba en `docs/mac-cambios.md` › «Versiones publicadas en Drive» el número, la fecha y qué
   cambió para quien juega, y súbelo a `main`. Lo pidió Diego.
+- **Y en GitHub, a la par:** una release `v<versión>` con el zip **exacto** de `_parabellum`, y su fila
+  arriba en la tabla «Versiones» del [README](README.md), con el botón de descarga y los distintivos al
+  día. Cómo: [docs/desarrollo.md](docs/desarrollo.md) › «Publicar una versión».
+- **El README es para quien juega** (qué hace, capturas, descargar e instalar, versiones, preguntas).
+  Lo técnico (compilar, carpetas, comandos `--…`, configuración) va en `docs/desarrollo.md`. Las
+  capturas están en `docs/capturas/` y salen de la interfaz en modo demostración.
 - **Si terminas un PR de Mac:** marca en `docs/mac-cambios.md` los pendientes que resolviste. Si
   Windows tiene que compilar o probar algo, ponlo en el PR y en «Pendientes para Windows».
 - Nunca subas `config-integrada.json` (las claves), sesiones ni datos de usuarios. El repo es privado.
-- Para probar: `cargo test --release` en `src-tauri`. Los comandos `--…` (ver README) se corren con
+- Para probar: `cargo test --release` en `src-tauri`. Los comandos `--…` (ver `docs/desarrollo.md`) se corren con
   `PARABELLUM_ROOT` apuntando a una carpeta de prueba, nunca a la carpeta real de nadie.
