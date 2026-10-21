@@ -1141,6 +1141,7 @@
         <p class="side-note hidden" id="report-hint"></p>
         <div class="modal-actions">
           <button class="btn" id="report-copy"><svg><use href="#i-copy"/></svg>Copiar</button>
+          <button class="btn hidden" id="report-support"><svg><use href="#i-community"/></svg><span>Pedir ayuda</span></button>
           <span class="grow"></span>
           <button class="btn primary" id="report-send"><svg><use href="#i-send"/></svg>Enviar</button>
         </div>
@@ -1316,6 +1317,32 @@
     </div>
   </div>
 
+  <!-- Una solicitud de ayuda (ui/soporte.js): la conversación con el equipo de soporte y sus tarjetas -->
+  <div class="overlay hidden" id="support-dialog">
+    <div class="modal support-modal">
+      <div class="modal-head cm-dialog-head">
+        <span class="cm-dialog-icon"><svg><use href="#i-chat"/></svg></span>
+        <div class="grow"><h2 id="sp-title">Solicitud de ayuda</h2><p class="faint sp-subtitle" id="sp-subtitle"></p></div>
+        <div class="sp-actions" id="sp-actions"></div>
+        <button class="circle-btn" id="sp-close" title="Cerrar"><svg><use href="#i-close"/></svg></button>
+      </div>
+      <div class="sp-messages" id="sp-messages"></div>
+      <div class="sp-card-form hidden" id="sp-card-form">
+        <span class="sp-card-icon"><svg><use href="#i-sliders"/></svg></span>
+        <select id="sp-card-setting" aria-label="Ajuste"></select>
+        <span id="sp-card-value"></span>
+        <button class="btn small primary" id="sp-card-send"><svg><use href="#i-send"/></svg>Enviar tarjeta</button>
+        <button class="circle-btn small" id="sp-card-cancel" title="Cancelar"><svg><use href="#i-close"/></svg></button>
+        <p class="faint">El jugador ve su valor actual y el que propones, y decide si la aplica.</p>
+      </div>
+      <div class="chat-composer sp-composer">
+        <button class="circle-btn hidden" id="sp-card-toggle" title="Proponer un ajuste"><svg><use href="#i-sliders"/></svg></button>
+        <div class="chat-input-wrap"><textarea id="sp-input" rows="1" maxlength="2000" placeholder="Escribe un mensaje…" spellcheck="true"></textarea></div>
+        <button class="btn primary" id="sp-send"><svg><use href="#i-send"/></svg>Enviar</button>
+      </div>
+    </div>
+  </div>
+
   <div class="overlay hidden" id="confirm-dialog">
     <div class="modal small">
       <div class="modal-head">
@@ -1480,5 +1507,6 @@
   <script src="app.js"></script>
   <script src="hostear.js"></script>
   <script src="comunidad.js"></script>
+  <script src="soporte.js"></script>
 </body>
 </html>

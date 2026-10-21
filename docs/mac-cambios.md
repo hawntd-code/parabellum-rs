@@ -31,6 +31,13 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   0.30.0», abajo, quedan las pruebas a mano.
 - **En `main`: 0.33.0**, sin publicar: E1 (huella del paquete, respaldos y servicio de ajustes; ver «Cambios
   de Windows»).
+- **Publicado en Drive:** Windows **0.34.0** desde el 2026-10-20 (Juan; el exe publicado es idéntico
+  al compilado de `main` en `6379499`), con las reglas de Firebase del soporte ya publicadas.
+  **Mac 0.33.0** desde el 2026-10-20 (Diego; su entrada está en el PR #17). Le falta solo la 0.34.0
+  (E3), que no tiene nada propio de Mac.
+- **Descargas en GitHub:** cada versión de Windows publicada tiene su release (`v<versión>`) con el zip,
+  y el README las enlaza en «Versiones». Cuando publiques una de Mac, súbela también como release
+  (`mac-v<versión>`) y dime para enlazarla.
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
   Las reglas de Firebase de la 0.27 ya están publicadas.
 
@@ -113,6 +120,23 @@ Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_para
   una actualización no arranca (desde esta; la 0.28.0 no la trae). Antes de publicarla, en Mac: las
   117 pruebas, el vigía de la actualización (ver «Una actualización que no arranca se deshace sola»)
   y, de las de a mano, lo del chat con imágenes del 2026-10-18.
+- **0.34.0** · 2026-10-20 · E3. Publicada por Juan, compilada de `main` en `6379499`, con las reglas
+  de Firebase del soporte publicadas antes:
+  - **Pedir ayuda** al equipo de soporte de la comunidad, desde la comunidad o desde «Reportar
+    problema», con el diagnóstico de la instancia (se ve antes de mandarlo, sin la carpeta del usuario,
+    correos ni claves).
+  - **El equipo de soporte** ve la cola, toma las solicitudes, contesta y las cierra. A quien pidió
+    ayuda le sale un punto y un aviso cuando le responden.
+  - **Tarjetas de ajustes**: el equipo propone uno de los 7 ajustes con su valor; el jugador ve el de su
+    PC y el recomendado, y lo aplica con un clic (con «Deshacer»).
+  - «Reportar problema» ya sale sin la carpeta del usuario, correos ni claves.
+- **0.33.0** · 2026-10-20 · E1. Publicada por Juan, compilada de `main` en `52de0a3`:
+  - **El paquete oficial avisa si lo cambiaste**: en Comunidades sale «Modificado» con qué mods sobran o
+    faltan, y «Restaurar» lo deja como el oficial. Antes de jugar en el servidor con el paquete cambiado,
+    pregunta: «Restaurar y jugar» o «Jugar así».
+  - **Copias de seguridad**: al actualizar o restaurar un paquete se guarda lo que cambia (3 por
+    instancia). Se recuperan en Detalles de la instancia.
+  - Detalles de la instancia muestra de qué paquete viene y si cambió.
 - **0.32.0** · 2026-10-20 · trae lo de la 0.31.3 y la 0.32.0. Publicada por Juan, compilada de `main`
   en `52fe1d5`:
   - **Modrinth en la escuela sin modo escuela**: si la red lo bloquea, Parabellum pregunta por el
@@ -409,6 +433,38 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   iteración (2026-10-17).
 
 ## Cambios de Windows
+
+### 2026-10-20 · E3: soporte y tarjetas de ajustes (0.34.0)
+
+- Qué cambió (todo compartido):
+  - **`soporte.rs`** (nuevo):
+    - comandos `soporte`, `soporte_abrir`, `soporte_mensajes`, `soporte_visto`, `soporte_enviar`,
+      `soporte_tomar`, `soporte_estado`, `soporte_tarjeta`, `aplicar_tarjeta`, `deshacer_tarjeta` y
+      `tarjetas_aplicadas`;
+    - escuchas `soporte_escuchar` (la conversación abierta, evento `soporte-mensajes`) y
+      `soporte_escuchar_cola` (la cola, evento `soporte-cola`);
+    - lo aplicado queda en `datos/tarjetas.json`.
+  - **`reporte::redact`**: la carpeta del usuario pasa a `%USERPROFILE%` (o `~` con `HOME`; también
+    `/Users/<nombre>`), y se tapan correos, tokens y claves. El resumen de «Reportar problema» ya sale así.
+  - En `comunidad.rs`, `id`, `valid_id`, `db`, `my_name`, `db_error` y `get` pasan a `pub(crate)`.
+  - **Reglas de Firebase**: `supportTickets`, `supportMessages` y `supportByUser` (con sus pruebas en
+    `docs/probar-reglas.py`). Juan las publica antes que la 0.34.0.
+  - **Interfaz**: `ui/soporte.js` (la sección de la comunidad, «Pedir ayuda», la ventana
+    `#support-dialog` y las tarjetas) y «Pedir ayuda a <comunidad>» en «Reportar problema».
+- Mac: nada distinto. Corre `cargo test` en Mac: `reporte::tests::sin_datos_personales` revisa también
+  `/Users/<nombre>`.
+
+### 2026-10-20 · README para quien juega y descargas en GitHub
+
+- Qué cambió (solo documentación):
+  - **`README.md`** es ahora para quien juega: qué hace, capturas (`docs/capturas/`), descargar e
+    instalar, la tabla de versiones con su descarga y preguntas frecuentes.
+  - Lo técnico que tenía (compilar, carpetas, configuración, comandos `--…`) pasó a
+    **`docs/desarrollo.md`**, con una sección nueva: «Publicar una versión» (Drive y GitHub).
+  - **Releases de GitHub** `v0.24.1` a `v0.33.0`, una por versión publicada en Drive, con el zip. La
+    0.33.0 es el zip exacto de Drive; las anteriores se recompilaron de su commit (las de Drive ya
+    estaban en la papelera).
+- Mac: nada que compilar. Si publicas una versión de Mac, súbela como release `mac-v<versión>`.
 
 ### 2026-10-20 · E1: huella del paquete, respaldos y servicio de ajustes (0.33.0)
 

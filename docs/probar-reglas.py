@@ -210,5 +210,59 @@ check("A (dueño) no puede salir", False, "DELETE", f"communityMembers/{CID}/A",
 check("A saca a B y lo quita de su lista", True, "PATCH", "", "A", {f"communityMembers/{CID}/B": None, f"userCommunities/B/{CID}": None})
 check("B (fuera) ya no ve los anuncios", False, "GET", f"communityPosts/{CID}", "B")
 
+# ---------- Soporte (docs/plan-diciembre.md, sección 7)
+# E pide ayuda; F es del equipo de soporte; G es otro miembro; D está fuera.
+for uid, data in {"E": member("member", "E"), "F": member("member", "F", caps={"support": True}), "G": member("member", "G")}.items():
+    req("PUT", f"communityMembers/{CID}/{uid}", "owner", data | {"joinedAt": NOW})
+TID = "t0000000001"
+ticket = lambda **extra: {"by": "E", "byName": "E", "topic": "No me deja entrar", "state": "abierto", "at": TS, "updated": TS, "last": "Se cierra al entrar", "lastAt": TS, "lastFrom": "E"} | extra
+msg = lambda frm, kind="texto", **extra: {"from": frm, "name": frm, "text": "hola", "at": TS, "kind": kind} | extra
+card = lambda **extra: {"v": 1, "op": "o000000000001", "kind": "setting", "setting": "launcher.ram_gb", "value": 6, "scope": "launcher", "official": CID} | extra
+check("D (fuera) no abre una solicitud", False, "PATCH", "", "D", {f"supportTickets/{CID}/t0000000009": ticket(by="D", byName="D")})
+check("E no la abre ya asignada", False, "PATCH", "", "E", {f"supportTickets/{CID}/{TID}": ticket(assignee="F", assigneeName="F")})
+check("E no la abre a nombre de G", False, "PATCH", "", "E", {f"supportTickets/{CID}/{TID}": ticket(by="G", byName="G")})
+check("E abre una solicitud con su diagnóstico", True, "PATCH", "", "E", {
+    f"supportTickets/{CID}/{TID}": ticket(), f"supportByUser/{CID}/E/{TID}": NOW,
+    f"supportMessages/{CID}/{TID}/m000000000001": msg("E", text="Se cierra al entrar"),
+    f"supportMessages/{CID}/{TID}/m000000000002": msg("E", "diagnostico", text="Parabellum 0.34.0 · Windows")})
+check("G (otro miembro) no ve la solicitud de E", False, "GET", f"supportTickets/{CID}/{TID}", "G")
+check("G no lee sus mensajes", False, "GET", f"supportMessages/{CID}/{TID}", "G")
+check("G no ve la cola", False, "GET", f"supportTickets/{CID}", "G")
+check("E no ve la cola entera", False, "GET", f"supportTickets/{CID}", "E")
+check("E ve su solicitud", True, "GET", f"supportTickets/{CID}/{TID}", "E")
+check("F (soporte) ve la cola", True, "GET", f"supportTickets/{CID}", "F")
+check("F lee los mensajes", True, "GET", f"supportMessages/{CID}/{TID}", "F")
+check("A (dueño) ve la cola", True, "GET", f"supportTickets/{CID}", "A")
+check("F toma la solicitud", True, "PATCH", "", "F", {f"supportTickets/{CID}/{TID}/assignee": "F", f"supportTickets/{CID}/{TID}/assigneeName": "F", f"supportTickets/{CID}/{TID}/state": "atendido"})
+check("E no se la asigna a G", False, "PUT", f"supportTickets/{CID}/{TID}/assignee", "E", "G")
+check("F no se la asigna a G (no es de soporte)", False, "PUT", f"supportTickets/{CID}/{TID}/assignee", "F", "G")
+check("F contesta", True, "PATCH", "", "F", {f"supportMessages/{CID}/{TID}/m000000000003": msg("F", text="¿Qué mods agregaste?"), f"supportTickets/{CID}/{TID}/last": "¿Qué mods agregaste?", f"supportTickets/{CID}/{TID}/lastFrom": "F", f"supportTickets/{CID}/{TID}/lastAt": TS})
+check("G no escribe en la solicitud de E", False, "PUT", f"supportMessages/{CID}/{TID}/m000000000004", "G", msg("G"))
+check("E no escribe a nombre de F", False, "PUT", f"supportMessages/{CID}/{TID}/m000000000004", "E", msg("F"))
+check("E no manda una tarjeta", False, "PUT", f"supportMessages/{CID}/{TID}/m000000000004", "E", msg("E", "tarjeta", card=card()))
+check("F manda una tarjeta (memoria 6 GB)", True, "PUT", f"supportMessages/{CID}/{TID}/m000000000005", "F", msg("F", "tarjeta", text="Ajuste propuesto: memoria 6 GB", card=card()))
+check("F no manda memoria 99 GB", False, "PUT", f"supportMessages/{CID}/{TID}/m000000000006", "F", msg("F", "tarjeta", card=card(value=99)))
+check("F no manda memoria 2.5 GB", False, "PUT", f"supportMessages/{CID}/{TID}/m000000000006", "F", msg("F", "tarjeta", card=card(value=2.5)))
+check("F no manda un sí/no a la memoria", False, "PUT", f"supportMessages/{CID}/{TID}/m000000000006", "F", msg("F", "tarjeta", card=card(value=True)))
+check("F no manda un ajuste que no está en la lista", False, "PUT", f"supportMessages/{CID}/{TID}/m000000000006", "F", msg("F", "tarjeta", card=card(setting="launcher.jvm_args", value="-Xmx99G")))
+check("F no mete un comando en la tarjeta", False, "PUT", f"supportMessages/{CID}/{TID}/m000000000006", "F", msg("F", "tarjeta", card=card(command="del C:\\")))
+check("F no manda una tarjeta de otra comunidad", False, "PUT", f"supportMessages/{CID}/{TID}/m000000000006", "F", msg("F", "tarjeta", card=card(official="c0000000000x1")))
+check("F no manda una tarjeta sin la tarjeta", False, "PUT", f"supportMessages/{CID}/{TID}/m000000000006", "F", msg("F", "tarjeta"))
+check("F manda límite de descarga 5 MB/s", True, "PUT", f"supportMessages/{CID}/{TID}/m000000000007", "F", msg("F", "tarjeta", card=card(op="o000000000002", setting="launcher.download_limit_mb", value=5)))
+check("F no manda límite de descarga 3 MB/s", False, "PUT", f"supportMessages/{CID}/{TID}/m000000000008", "F", msg("F", "tarjeta", card=card(op="o000000000003", setting="launcher.download_limit_mb", value=3)))
+check("F manda modo escuela sí", True, "PUT", f"supportMessages/{CID}/{TID}/m000000000009", "F", msg("F", "tarjeta", card=card(op="o000000000004", setting="launcher.school_mode", value=True)))
+check("Nadie edita una tarjeta", False, "PUT", f"supportMessages/{CID}/{TID}/m000000000005/text", "F", "otra cosa")
+check("Nadie borra un mensaje", False, "DELETE", f"supportMessages/{CID}/{TID}/m000000000003", "F")
+check("E manda el acuse", True, "PUT", f"supportMessages/{CID}/{TID}/m000000000010", "E", msg("E", "acuse", text="Aplicado en mi PC", ack={"op": "o000000000001", "result": "aplicada"}))
+check("E no cambia el tema", False, "PUT", f"supportTickets/{CID}/{TID}/topic", "E", "Otra cosa")
+check("E cierra su solicitud", True, "PUT", f"supportTickets/{CID}/{TID}/state", "E", "cerrado")
+check("G no la reabre", False, "PUT", f"supportTickets/{CID}/{TID}/state", "G", "abierto")
+check("E guarda hasta dónde leyó", True, "PUT", f"supportByUser/{CID}/E/{TID}", "E", NOW)
+check("G no toca la lista de E", False, "PUT", f"supportByUser/{CID}/E/{TID}", "G", NOW)
+check("G no lee la lista de E", False, "GET", f"supportByUser/{CID}/E", "G")
+req("DELETE", f"communityMembers/{CID}/F/caps", "owner")
+check("F sin soporte ya no ve la cola", False, "GET", f"supportTickets/{CID}", "F")
+check("F sin soporte ya no lee los mensajes", False, "GET", f"supportMessages/{CID}/{TID}", "F")
+
 print("\nTODO BIEN" if not fails else f"\n{fails} MAL")
 sys.exit(1 if fails else 0)

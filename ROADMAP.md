@@ -141,7 +141,23 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     - registro de los 7 ajustes compartibles con su validación;
     - una operación se aplica solo si el valor sigue siendo el esperado, y repetirla no cambia nada.
 - [ ] *Prueba:* Juan: en la escuela o en casa, quitar un mod del paquete oficial y ver que «Jugar» lo detecta y lo restaura
-- [ ] **E3, soporte**: solicitudes de ayuda en el chat que lee todo el staff, diagnóstico revisable y tarjetas de ajustes
+- [x] **E3, soporte y tarjetas (0.34.0)** (`soporte.rs`, `ui/soporte.js`):
+  - **Pedir ayuda** desde la comunidad o desde «Reportar problema»: tema, qué pasó, la instancia y su
+    diagnóstico, que se ve antes de mandarlo y va sin la carpeta del usuario, correos ni claves.
+  - **Lo lee todo el equipo de soporte** (dueño, administradores y quien tenga «Soporte»), en su propio
+    espacio de Firebase (`supportTickets`, `supportMessages`, `supportByUser`), no en el chat.
+  - El equipo ve **la cola** con filtros (abiertas, mías, cerradas), la toma, contesta y la cierra; el
+    jugador ve sus solicitudes con un punto si le respondieron. Todo llega solo, sin recargar.
+  - **Tarjetas de ajustes**: el equipo propone uno de los 7 ajustes compartibles con su valor. El
+    jugador ve el valor de su PC y el recomendado, y decide si lo aplica:
+    - se vuelve a comprobar todo al aplicarla (que la solicitud sea suya y que quien la mandó siga en el
+      equipo de esa comunidad);
+    - se aplica con `ajustes::apply`; repetirla no cambia nada;
+    - queda en `datos/tarjetas.json`, con **Deshacer**, que no pisa un cambio hecho después;
+    - el equipo ve el acuse: «la aplicó en su PC».
+  - Las reglas de Firebase validan cada tarjeta (de la lista, con un valor de su tipo y solo del equipo)
+    y no dejan editar ni borrar mensajes. Probadas en el emulador (`docs/probar-reglas.py`).
+- [ ] *Prueba:* Juan: pedir ayuda desde otra cuenta en su comunidad y mandarle una tarjeta (la 0.34.0 y sus reglas ya están publicadas)
 - [ ] **E4, mundos en Drive** (opcional antes de diciembre): copias, revisiones y restaurar con su instancia
 - [ ] **Pruebas reales pendientes**:
   - en la escuela: Modrinth sin modo escuela;
@@ -152,6 +168,12 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
   - el zip de «RETORCIDOS | EL PACK» tarda ~30 s en empezar a bajar de Drive;
   - Mac al día con la 0.31 (Diego);
   - una sola conexión a Firebase por persona.
+- [ ] **P2P desde la escuela** (después de E3, pedido de Juan el 2026-10-20). Medido en la UABC:
+  - el filtro bloquea los 4 relevos de n0;
+  - la red deja salir UDP con un NAT que conserva el puerto, y TCP a cualquier puerto. Los servidores
+    públicos de Minecraft responden, así que el servidor oficial se podrá jugar desde la escuela.
+  - Hace falta un relevo propio en un dominio que no esté bloqueado, idealmente en la nube del
+    servidor de Juan.
 - [ ] **Sin fecha**:
   - cuentas premium de Microsoft (depende de que Microsoft apruebe la app);
   - CurseForge (en pausa);
@@ -244,7 +266,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
 ### 0.30.0: todo Minecraft en Drive, modo escuela, pantalla de carga y chat (pedido de Juan) — publicada el 2026-10-18
 - [x] **Espejo de Minecraft en Google Drive** (`espejo.rs`, carpeta `_espejo` del catálogo): las 75 versiones que abre Parabellum (1.8 a 26.3), 155 loaders (Fabric, Quilt, Forge y NeoForge, su versión recomendada) y 248 servidores (vanilla y con cada loader, más los de los modpacks del catálogo con su versión exacta), con sus Java. Cada archivo se guarda **una sola vez** por su SHA-1 en capas de ~2 GB: todo ocupa **12.8 GB** (un zip por versión habrían sido más de 50). Cada PC baja por partes solo lo que le falta
 - [x] Al crear una instancia, cambiar de loader, instalar un modpack de Drive sin su base o crear un servidor, si no hay Mojang (o con el modo escuela) todo sale del espejo. Probado con un proxy que solo deja pasar Google (como la escuela) y una carpeta vacía: Fabric 1.20.1 en 53 s (al menú en 27 s), su servidor en 24 s (listo en 45 s), Forge 1.20.1 desde la ventana en 63 s y el modpack «Fabric 26.3» con su Minecraft en 70 s
-- [x] **«Subir versiones de Minecraft»** (quien publica) ahora sube al espejo, con sus loaders y servidores, y tiene «Todas». También `--espejo` y `--espejo-subir` (README)
+- [x] **«Subir versiones de Minecraft»** (quien publica) ahora sube al espejo, con sus loaders y servidores, y tiene «Todas». También `--espejo` y `--espejo-subir` (`docs/desarrollo.md`)
 - [x] **Modo escuela** (botón de arriba, junto a Descargas): todo se baja de Google Drive y no se intenta Mojang ni los servidores de los loaders (cada intento bloqueado tardaba en fallar); la lista de versiones y de loaders es la del espejo, y Explorar abre en los paquetes de Drive. Desactivado: Mojang y cada loader, y Drive solo si no responden
 - [x] **Pantalla de carga**: al abrir, primero busca una versión nueva (si la hay, pide actualizar antes de mostrar lo demás) y después espera a tu sesión de Google hasta que llegan tus amigos y tus mensajes (15 s como mucho; a los 6 s, «Entrar sin esperar»). Medido: ~5 s en total. La sesión de Google ya no espera a la conexión directa (P2P)
 - [x] El catálogo de Drive se lee con las carpetas y los .json de cada nivel a la vez: de ~15 s a 3–5 s; buscar la versión nueva al abrir mira solo la carpeta del launcher (~1.4 s)

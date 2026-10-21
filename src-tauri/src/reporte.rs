@@ -97,12 +97,85 @@ pub fn summary(paths: &Paths, instance: Option<&Instance>, ram_gb: u32, system_r
     if !p2p.is_empty() {
         lines.push(format!("P2P:\n{}", p2p.join("\n")));
     }
-    cut(&lines.join("\n"), MAX)
+    cut(&redact(&lines.join("\n")), MAX)
+}
+
+/// Sin datos personales (docs/plan-diciembre.md, 7.1): la carpeta del usuario pasa a %USERPROFILE% (o ~),
+/// y los correos, tokens y claves se tapan. Lo usa el resumen y lo que se manda al soporte.
+pub fn redact(text: &str) -> String {
+    use std::sync::OnceLock;
+    static PATTERNS: OnceLock<Vec<(regex::Regex, &'static str)>> = OnceLock::new();
+    let mut out = text.to_string();
+    let patterns = PATTERNS.get_or_init(|| {
+        vec![
+            // X:\Users\<nombre> (cualquier unidad o usuario; el nombre puede tener espacios, no lo que Windows
+            // prohíbe) y la carpeta de usuario de Mac.
+            (regex::Regex::new(r#"(?i)\b[a-z]:[\\/]+users[\\/]+[^\\/:*?"<>|\r\n]+?([\\/])"#).unwrap(), "%USERPROFILE%${1}"),
+            // Sin barra al final, la puntuación ya es de la frase.
+            (regex::Regex::new(r#"(?i)\b[a-z]:[\\/]+users[\\/]+[^\\/:*?"<>|\s,;)\]]+"#).unwrap(), "%USERPROFILE%"),
+            (regex::Regex::new(r"/Users/[^/\s]+").unwrap(), "~"),
+            (regex::Regex::new(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}").unwrap(), "[correo]"),
+            // Tokens (JWT, Google) y claves
+            (regex::Regex::new(r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*").unwrap(), "[oculto]"),
+            (regex::Regex::new(r"ya29\.[A-Za-z0-9_-]{10,}").unwrap(), "[oculto]"),
+            (regex::Regex::new(r"AIza[0-9A-Za-z_-]{20,}").unwrap(), "[oculto]"),
+            (regex::Regex::new(r"(?i)\b((?:access_|refresh_|id_)?token|auth|key|password|secret)=([^&\s]+)").unwrap(), "$1=[oculto]"),
+        ]
+    });
+    for (pattern, replacement) in patterns {
+        out = pattern.replace_all(&out, *replacement).into_owned();
+    }
+    // La carpeta del usuario si no está en X:\Users (otra unidad, Linux), como venga escrita.
+    for (var, label) in [("USERPROFILE", "%USERPROFILE%"), ("HOME", "~")] {
+        if let Some(home) = std::env::var_os(var).map(|h| h.to_string_lossy().into_owned()).filter(|h| h.len() > 3) {
+            for form in [home.clone(), home.replace('\\', "/"), home.replace('\\', "\\\\")] {
+                out = replace_ignore_case(&out, &form, label);
+            }
+        }
+    }
+    out
+}
+
+/// Reemplaza sin distinguir mayúsculas (las rutas de Windows vienen de cualquier forma).
+fn replace_ignore_case(text: &str, needle: &str, replacement: &str) -> String {
+    let (lower, needle_lower) = (text.to_lowercase(), needle.to_lowercase());
+    // Si pasar a minúsculas cambia el largo (letras raras), uno exacto.
+    if needle.is_empty() || lower.len() != text.len() || needle_lower.len() != needle.len() {
+        return text.replace(needle, replacement);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = 0;
+    while let Some(found) = lower[rest..].find(&needle_lower) {
+        let end = rest + found + needle.len();
+        // Solo si la carpeta termina ahí (C:\Users\Juan no tapa la mitad de C:\Users\Juana).
+        let whole = !text[end..].starts_with(|c: char| c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | ' '));
+        out.push_str(&text[rest..rest + found]);
+        out.push_str(if whole { replacement } else { &text[rest + found..end] });
+        rest = end;
+    }
+    out.push_str(&text[rest..]);
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sin_datos_personales() {
+        let text = redact(r"Error en C:\Users\Juan Perez\AppData\x.jar y c:/users/otro/minecraft · juan@uabc.edu.mx · auth=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTYifQ.abc · key=AIzaSyA1234567890abcdefghijk · /Users/diego/Library");
+        assert!(!text.contains("Juan Perez"), "{text}");
+        assert!(!text.contains("otro"), "{text}");
+        assert!(!text.contains("juan@uabc"), "{text}");
+        assert!(!text.contains("eyJ"), "{text}");
+        assert!(!text.contains("AIza"), "{text}");
+        assert!(!text.contains("diego"), "{text}");
+        assert!(text.contains(r"%USERPROFILE%\AppData\x.jar"), "{text}");
+        assert!(text.contains("[correo]"), "{text}");
+        assert!(text.contains("%USERPROFILE%/minecraft"), "{text}");
+        assert_eq!(redact(r"en C:\Users\Ana, ver"), "en %USERPROFILE%, ver");
+        assert_eq!(replace_ignore_case(r"C:\Users\Juana y c:\users\juan\x", r"C:\Users\Juan", "~"), r"C:\Users\Juana y ~\x");
+    }
 
     #[test]
     fn resumen_corto() {

@@ -471,6 +471,134 @@
           }
         }
       }
+    },
+    "supportTickets": {
+      "$cid": {
+        ".read": "auth != null && (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin' || root.child('communityMembers').child($cid).child(auth.uid).child('caps').child('support').val() === true)",
+        "$tid": {
+          ".read": "auth != null && (data.child('by').val() === auth.uid || (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin' || root.child('communityMembers').child($cid).child(auth.uid).child('caps').child('support').val() === true))",
+          ".write": "auth != null && newData.exists() && ((!data.exists() && newData.child('by').val() === auth.uid && root.child('communityMembers').child($cid).child(auth.uid).exists() && newData.child('state').val() === 'abierto' && !newData.child('assignee').exists()) || (data.exists() && data.child('by').val() === auth.uid && root.child('communityMembers').child($cid).child(auth.uid).exists() && newData.child('by').val() === data.child('by').val() && newData.child('topic').val() === data.child('topic').val() && newData.child('assignee').val() === data.child('assignee').val() && (newData.child('state').val() === data.child('state').val() || newData.child('state').val() === 'abierto' || newData.child('state').val() === 'cerrado')) || (data.exists() && (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin' || root.child('communityMembers').child($cid).child(auth.uid).child('caps').child('support').val() === true) && newData.child('by').val() === data.child('by').val() && newData.child('topic').val() === data.child('topic').val()))",
+          ".validate": "$tid.matches(/^t[0-9a-z]{10}$/) && newData.hasChildren(['by', 'byName', 'topic', 'state', 'at'])",
+          "by": {
+            ".validate": "newData.isString()"
+          },
+          "byName": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 16"
+          },
+          "topic": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 80"
+          },
+          "state": {
+            ".validate": "newData.val() === 'abierto' || newData.val() === 'atendido' || newData.val() === 'cerrado'"
+          },
+          "at": {
+            ".validate": "newData.isNumber()"
+          },
+          "updated": {
+            ".validate": "newData.isNumber()"
+          },
+          "assignee": {
+            ".validate": "newData.isString() && (root.child('communityMembers').child($cid).child(newData.val()).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(newData.val()).child('role').val() === 'admin' || root.child('communityMembers').child($cid).child(newData.val()).child('caps').child('support').val() === true)"
+          },
+          "assigneeName": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 16"
+          },
+          "instance": {
+            ".validate": "newData.isString() && newData.val().length >= 0 && newData.val().length <= 60"
+          },
+          "last": {
+            ".validate": "newData.isString() && newData.val().length >= 0 && newData.val().length <= 140"
+          },
+          "lastAt": {
+            ".validate": "newData.isNumber()"
+          },
+          "lastFrom": {
+            ".validate": "newData.isString()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "supportMessages": {
+      "$cid": {
+        "$tid": {
+          ".read": "auth != null && (root.child('supportTickets').child($cid).child($tid).child('by').val() === auth.uid || (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin' || root.child('communityMembers').child($cid).child(auth.uid).child('caps').child('support').val() === true))",
+          "$mid": {
+            ".write": "auth != null && !data.exists() && newData.exists() && newData.child('from').val() === auth.uid && ((newData.parent().parent().parent().parent().child('supportTickets').child($cid).child($tid).child('by').val() === auth.uid) && root.child('communityMembers').child($cid).child(auth.uid).exists() || (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin' || root.child('communityMembers').child($cid).child(auth.uid).child('caps').child('support').val() === true))",
+            ".validate": "$mid.matches(/^m[0-9a-z]{12}$/) && newData.hasChildren(['from', 'name', 'text', 'at', 'kind']) && (newData.child('kind').val() !== 'tarjeta' || newData.hasChild('card')) && (newData.child('kind').val() !== 'acuse' || newData.hasChild('ack'))",
+            "from": {
+              ".validate": "newData.isString()"
+            },
+            "name": {
+              ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 16"
+            },
+            "text": {
+              ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 4000"
+            },
+            "at": {
+              ".validate": "newData.isNumber()"
+            },
+            "kind": {
+              ".validate": "newData.val() === 'texto' || newData.val() === 'diagnostico' || newData.val() === 'tarjeta' || newData.val() === 'acuse'"
+            },
+            "card": {
+              ".validate": "newData.parent().child('kind').val() === 'tarjeta' && (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin' || root.child('communityMembers').child($cid).child(auth.uid).child('caps').child('support').val() === true) && newData.hasChildren(['v', 'op', 'kind', 'setting', 'value', 'scope', 'official'])",
+              "v": {
+                ".validate": "newData.val() === 1"
+              },
+              "op": {
+                ".validate": "newData.isString() && newData.val().matches(/^o[0-9a-z]{12}$/)"
+              },
+              "kind": {
+                ".validate": "newData.val() === 'setting'"
+              },
+              "setting": {
+                ".validate": "newData.val() === \"launcher.message_sound\" || newData.val() === \"launcher.notifications\" || newData.val() === \"launcher.game_panel\" || newData.val() === \"launcher.school_mode\" || newData.val() === \"launcher.ram_gb\" || newData.val() === \"launcher.download_parallel\" || newData.val() === \"launcher.download_limit_mb\""
+              },
+              "value": {
+                ".validate": "((newData.parent().child('setting').val() === \"launcher.message_sound\" || newData.parent().child('setting').val() === \"launcher.notifications\" || newData.parent().child('setting').val() === \"launcher.game_panel\" || newData.parent().child('setting').val() === \"launcher.school_mode\") && newData.isBoolean()) || (newData.parent().child('setting').val() === 'launcher.ram_gb' && newData.isNumber() && newData.val() >= 1 && newData.val() <= 64 && newData.val() % 1 === 0) || (newData.parent().child('setting').val() === 'launcher.download_parallel' && newData.isNumber() && newData.val() >= 1 && newData.val() <= 3 && newData.val() % 1 === 0) || (newData.parent().child('setting').val() === 'launcher.download_limit_mb' && (newData.val() === 0 || newData.val() === 1 || newData.val() === 2 || newData.val() === 5 || newData.val() === 10 || newData.val() === 20))"
+              },
+              "scope": {
+                ".validate": "newData.val() === 'launcher'"
+              },
+              "official": {
+                ".validate": "newData.val() === $cid"
+              },
+              "$other": {
+                ".validate": false
+              }
+            },
+            "ack": {
+              ".validate": "newData.parent().child('kind').val() === 'acuse' && newData.hasChildren(['op', 'result'])",
+              "op": {
+                ".validate": "newData.isString() && newData.val().matches(/^o[0-9a-z]{12}$/)"
+              },
+              "result": {
+                ".validate": "newData.val() === 'aplicada' || newData.val() === 'ya-estaba' || newData.val() === 'deshecha'"
+              },
+              "$other": {
+                ".validate": false
+              }
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        }
+      }
+    },
+    "supportByUser": {
+      "$cid": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          "$tid": {
+            ".write": "auth != null && auth.uid === $uid",
+            ".validate": "$tid.matches(/^t[0-9a-z]{10}$/) && newData.isNumber()"
+          }
+        }
+      }
     }
   }
 }

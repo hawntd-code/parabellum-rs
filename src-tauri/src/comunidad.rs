@@ -25,11 +25,11 @@ fn random(prefix: &str, len: usize, letters: &[u8]) -> String {
     format!("{prefix}{body}")
 }
 
-fn id(prefix: &str, len: usize) -> String {
+pub(crate) fn id(prefix: &str, len: usize) -> String {
     random(prefix, len, b"0123456789abcdefghijklmnopqrstuvwxyz")
 }
 
-fn valid_id(prefix: char, len: usize, text: &str) -> bool {
+pub(crate) fn valid_id(prefix: char, len: usize, text: &str) -> bool {
     text.len() == len + 1 && text.starts_with(prefix) && text[1..].chars().all(|c| c.is_ascii_digit() || c.is_ascii_lowercase())
 }
 
@@ -149,7 +149,7 @@ pub struct PackageInfo {
     pub version: String,
 }
 
-fn db(app: &AppHandle) -> Result<(Arc<Database>, String), String> {
+pub(crate) fn db(app: &AppHandle) -> Result<(Arc<Database>, String), String> {
     let social = crate::cuenta::social_handle(app).ok_or(t!("Primero inicia sesión con Google.", "Sign in with Google first."))?;
     let db = social.database();
     let uid = db.session.uid.clone();
@@ -157,7 +157,7 @@ fn db(app: &AppHandle) -> Result<(Arc<Database>, String), String> {
 }
 
 /// Tu nombre en la comunidad: el de Parabellum (o el de Minecraft si todavía no tienes).
-fn my_name(app: &AppHandle) -> String {
+pub(crate) fn my_name(app: &AppHandle) -> String {
     let social = crate::cuenta::social_handle(app);
     let name = social.and_then(|s| s.name()).unwrap_or_else(|| app.state::<AppState>().settings.lock().unwrap().username.clone());
     name.chars().take(16).collect()
@@ -187,14 +187,14 @@ fn summary(id: &str, community: &Value, me: &Value) -> Summary {
 }
 
 /// Los errores de Firebase, con uno claro cuando las reglas no lo permiten.
-fn db_error(error: firebase::DbError) -> String {
+pub(crate) fn db_error(error: firebase::DbError) -> String {
     match error {
         firebase::DbError::Permission(_) => t!("No tienes permiso para hacer eso en esta comunidad.", "You do not have permission to do that in this community."),
         other => other.to_string(),
     }
 }
 
-async fn get(db: &Database, path: String) -> Result<Value, String> {
+pub(crate) async fn get(db: &Database, path: String) -> Result<Value, String> {
     db.get(&path).await.map_err(db_error)
 }
 

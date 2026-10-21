@@ -2830,8 +2830,21 @@ async function openReport(id = null) {
   $("#report-send").disabled = true;
   $("#report-copy").disabled = true;
   renderReportTargets();
+  $("#report-support").classList.add("hidden");
   openModal("#report-dialog");
   setTimeout(() => $("#report-note").focus(), 60);
+  // En una comunidad: se le puede pedir ayuda a su equipo de soporte (soporte.js), con este diagnóstico.
+  if (state.social?.connected) {
+    invoke("comunidades")
+      .then((list) => {
+        const target = list?.find((c) => c.id === community.id) ?? list?.[0];
+        if (!target || state.report?.id !== id) return;
+        state.report.community = target.id;
+        $("#report-support span").textContent = t(`Pedir ayuda a ${target.name}`, `Ask ${target.name} for help`);
+        $("#report-support").classList.remove("hidden");
+      })
+      .catch(() => {});
+  }
   try {
     const report = await invoke("reporte_problema", { id });
     if (state.report?.id !== id) return;
@@ -2891,6 +2904,14 @@ async function sendReport() {
 
 function wireReportEvents() {
   $("#report-close").onclick = () => closeModal("#report-dialog");
+  $("#report-support").onclick = () => {
+    const { community: cid, id } = state.report ?? {};
+    if (!cid) return;
+    const note = $("#report-note").value.trim();
+    closeModal("#report-dialog");
+    navigate("communities", cid);
+    askForHelp({ cid, instance: id, note });
+  };
   $("#report-send").onclick = sendReport;
   $("#report-to").onchange = () => state.report && (state.report.picked = $("#report-to").value);
   $("#report-copy").onclick = () => state.report?.text && copyText(reportMessage(), t("Reporte copiado.", "Report copied."));
@@ -4956,6 +4977,7 @@ function wireEvents() {
     }
     if (event.key === "Escape") {
       if (topModal()?.id === "cm-dialog") community.cancelDialog?.();
+      else if (topModal()?.id === "support-dialog") closeSupportTicket();
       closeModal("#create-dialog");
       closeModal("#settings-dialog");
       closeModal("#edit-dialog");
@@ -7392,8 +7414,15 @@ function demoInvoke(command, args = {}) {
         message: null,
       }), 300),
     );
-  // Modrinth de ejemplo
+  // Modrinth de ejemplo (con los iconos reales del CDN de Modrinth)
   const later = (value, ms = 350) => new Promise((resolve) => setTimeout(() => resolve(value), ms));
+  const demoIcons = {
+    AANobbMI: "https://cdn.modrinth.com/data/AANobbMI/295862f4724dc3f78df3447ad6072b2dcd3ef0c9_96.webp",
+    YL57xq9U: "https://cdn.modrinth.com/data/YL57xq9U/18d0e7f076d3d6ed5bedd472b853909aac5da202_96.webp",
+    P7dR8mSH: "https://cdn.modrinth.com/data/P7dR8mSH/icon.png",
+    mOgUt4GM: "https://cdn.modrinth.com/data/mOgUt4GM/5a20ed1450a0e1e79a1fe04e61bb4e5878bf1d20.png",
+    gvQqBUqZ: "https://cdn.modrinth.com/data/gvQqBUqZ/bcc8686c13af0143adf4285d741256af824f70b7_96.webp",
+  };
   if (command === "buscar_contenido") {
     const names = [
       ["AANobbMI", "Sodium", "jellysquid3", "Un motor de renderizado que mejora muchísimo los FPS y reduce los tirones.", ["fabric", "optimization"], 238896364, 41530],
@@ -7404,7 +7433,7 @@ function demoInvoke(command, args = {}) {
     ];
     const hits = names.map(([id, title, author, description, categories, downloads, follows]) => ({
       id, slug: title.toLowerCase().replace(/\W+/g, "-"), title, author, description, categories, downloads, follows,
-      iconUrl: null, updated: new Date(now - 86400e3 * 9).toISOString(), clientSide: "required", serverSide: "optional",
+      iconUrl: demoIcons[id] ?? null, updated: new Date(now - 86400e3 * 9).toISOString(), clientSide: "required", serverSide: "optional",
     }));
     const query = args.busqueda.query.toLowerCase();
     return later({ hits: hits.filter((h) => !query || h.title.toLowerCase().includes(query)), total: hits.length });
@@ -7493,7 +7522,13 @@ function demoInvoke(command, args = {}) {
   if (command === "contenido") {
     const mod = (name, version, authors, enabled = true) => ({ file: `${name.toLowerCase().replace(/\W+/g, "-")}-${version}.jar${enabled ? "" : ".disabled"}`, name, version, authors, enabled, size: 1e6, modified: now - 86400e3, icon: null });
     return new Promise((r) => setTimeout(() => r({
-      mods: [Object.assign(mod("Sodium", "0.6.0", "jellysquid3, IMS"), { file: "sodium-0.6.0.jar", projectId: "AANobbMI" }), mod("Fabric API", "0.102.0", "FabricMC"), mod("Iris Shaders", "1.8.0", "coderbot, IMS"), mod("Mod Menu", "11.0.1", "Prospector", false), mod("Lithium", "0.13.0", "jellysquid3")],
+      mods: [
+        Object.assign(mod("Sodium", "0.6.0", "jellysquid3, IMS"), { file: "sodium-0.6.0.jar", projectId: "AANobbMI", icon: demoIcons.AANobbMI }),
+        Object.assign(mod("Fabric API", "0.102.0", "FabricMC"), { icon: demoIcons.P7dR8mSH }),
+        Object.assign(mod("Iris Shaders", "1.8.0", "coderbot, IMS"), { icon: demoIcons.YL57xq9U }),
+        Object.assign(mod("Mod Menu", "11.0.1", "Prospector", false), { icon: demoIcons.mOgUt4GM }),
+        Object.assign(mod("Lithium", "0.13.0", "jellysquid3"), { icon: demoIcons.gvQqBUqZ }),
+      ],
       resourcepacks: [{ file: "Faithful 32x.zip", name: "Faithful 32x", version: null, authors: null, enabled: true, size: 3e7, modified: now, icon: null }],
       shaderpacks: [],
       worlds: [{ file: "Mi mundo", name: "Mi mundo", enabled: true, size: 0, modified: now - 7200e3, icon: null }, { file: "Creativo", name: "Creativo", enabled: true, size: 0, modified: now - 86400e3 * 3, icon: null }],
@@ -7522,14 +7557,68 @@ function demoInvoke(command, args = {}) {
   if (command === "buscar_culpable") return later({ file: "entityculling-fabric-1.6.2.jar", name: "Entity Culling", dependents: [], dependentFiles: [], launches: 6, notAMod: false, suspects: [] }, 2500);
   if (command === "detener_busqueda") return Promise.resolve(null);
   if (command === "escribiendo" || command === "confirmar_arranque") return Promise.resolve(null);
-  if (command === "comunidades") return Promise.resolve([{ id: "c0000000000a1", name: "Parabellum", description: "El servidor de Parabellum", image: null, role: "owner", caps: {} }]);
+  // Soporte (soporte.js): la vista del equipo; con ?jugador, la de quien pidió ayuda (Dani).
+  const player = new URLSearchParams(location.search).has("jugador");
+  window.demoSupport ??= {
+    settings: [
+      { id: "launcher.message_sound", label: "Sonido de mensajes", kind: "bool", min: null, max: null, options: [], since: "0.33.0", value: true },
+      { id: "launcher.notifications", label: "Avisos de amigos", kind: "bool", min: null, max: null, options: [], since: "0.33.0", value: true },
+      { id: "launcher.ram_gb", label: "Memoria para el juego (GB)", kind: "range", min: 1, max: 64, options: [], since: "0.33.0", value: 4 },
+      { id: "launcher.download_limit_mb", label: "Límite de descarga (MB/s, 0 sin límite)", kind: "choice", min: null, max: null, options: [0, 1, 2, 5, 10, 20], since: "0.33.0", value: 0 },
+      { id: "launcher.download_parallel", label: "Descargas a la vez", kind: "range", min: 1, max: 3, options: [], since: "0.33.0", value: 2 },
+      { id: "launcher.game_panel", label: "Parabellum dentro del juego", kind: "bool", min: null, max: null, options: [], since: "0.33.0", value: true },
+      { id: "launcher.school_mode", label: "Modo escuela", kind: "bool", min: null, max: null, options: [], since: "0.33.0", value: false },
+    ],
+    applied: {},
+    tickets: [
+      { id: "t0000000001", by: "f3", byName: "Dani", topic: "Se cierra al entrar al servidor", state: "atendido", at: now - 3.6e6, updated: now - 12e5, assignee: "f2", assigneeName: "Alex_mx", instance: "Parabellum Oficial", last: "Prueba con este ajuste y me dices.", lastAt: now - 14e5, lastFrom: "f2", unread: player },
+      { id: "t0000000002", by: "f4", byName: "Pau", topic: "No me descarga el paquete en la escuela", state: "abierto", at: now - 3e5, updated: now - 3e5, assignee: null, assigneeName: null, instance: "Parabellum Oficial", last: "Se queda en 0 % desde hace rato", lastAt: now - 3e5, lastFrom: "f4", unread: false },
+      { id: "t0000000003", by: "f5", byName: "Leo", topic: "¿Cómo pongo shaders?", state: "cerrado", at: now - 2 * 864e5, updated: now - 1.5 * 864e5, assignee: "yo", assigneeName: "Hawntd", instance: null, last: "¡Gracias, ya quedó!", lastAt: now - 1.5 * 864e5, lastFrom: "f5", unread: false },
+    ],
+  };
+  const sd = window.demoSupport;
+  const supportMessages = (tid) => {
+    const me = player ? "f3" : "yo";
+    const m = (id, from, name, kind, text, at, extra = {}) => ({ id, from, name, kind, text, at, card: null, ack: null, mine: from === me, ...extra });
+    const card = (op, setting, value) => ({ v: 1, op, kind: "setting", setting, value, scope: "launcher", official: "c0000000000a1" });
+    if (tid !== "t0000000001") return [m("m000000000001", "f4", "Pau", "texto", "Se queda en 0 % desde hace rato", now - 3e5)];
+    return [
+      m("m000000000001", "f3", "Dani", "texto", "Cuando entro a Survival se cierra el juego. Lo demás funciona bien.", now - 3.6e6),
+      m("m000000000002", "f3", "Dani", "diagnostico", "🛠 Parabellum 0.34.0 · Windows (x86_64) · 8 GB de RAM\nInstancia: Parabellum Oficial · Minecraft 26.3 · Fabric 0.17.2 · 4 GB\nSe abrió hace 3 min\nError:\njava.lang.OutOfMemoryError: Java heap space\nDoctor: Le falta memoria al juego\n  Tiene 4 GB y el paquete pide 6 GB", now - 3.59e6),
+      m("m000000000003", "f2", "Alex_mx", "texto", "Hola Dani, al paquete le falta memoria. Prueba con este ajuste y me dices.", now - 14e5),
+      m("m000000000004", "f2", "Alex_mx", "tarjeta", "🛠 Ajuste propuesto: Memoria para el juego (GB) → 6", now - 13.9e5, { card: card("o000000000001", "launcher.ram_gb", 6) }),
+      ...(player ? [] : [m("m000000000005", "f3", "Dani", "acuse", "✓ Ajuste aplicado en mi PC", now - 12e5, { ack: { op: "o000000000001", result: "aplicada" } }), m("m000000000006", "f2", "Alex_mx", "tarjeta", "🛠 Ajuste propuesto: Modo escuela → Activado", now - 6e5, { card: card("o000000000002", "launcher.school_mode", true) })]),
+    ];
+  };
+  if (command === "soporte") return later({ staff: !player, tickets: player ? sd.tickets.filter((x) => x.by === "f3") : sd.tickets }, 300);
+  if (command === "soporte_mensajes") return later(supportMessages(args.solicitud), 300);
+  if (command === "ajustes_compartibles") return later(sd.settings.map((s) => ({ ...s })), 100);
+  if (command === "tarjetas_aplicadas") return Promise.resolve({ ...sd.applied });
+  if (command === "aplicar_tarjeta") {
+    const message = supportMessages(args.solicitud).find((x) => x.id === args.mensaje);
+    const setting = sd.settings.find((s) => s.id === message.card.setting);
+    const result = { result: setting.value === message.card.value ? "ya-estaba" : "aplicada", previous: setting.value, value: message.card.value };
+    setting.value = message.card.value;
+    sd.applied[message.card.op] = result;
+    return later(result, 600);
+  }
+  if (command === "deshacer_tarjeta") {
+    const record = sd.applied[args.op];
+    const setting = sd.settings.find((s) => sameValue(s.value, record.value) && s.id === "launcher.ram_gb") ?? sd.settings.find((s) => s.id === "launcher.ram_gb");
+    setting.value = record.previous;
+    Object.assign(record, { result: "deshecha" });
+    return later({ ...record }, 500);
+  }
+  if (command === "soporte_abrir") return later("t0000000002", 700);
+  if (["soporte_enviar", "soporte_tomar", "soporte_estado", "soporte_tarjeta", "soporte_escuchar", "soporte_escuchar_cola", "soporte_visto"].includes(command)) return later(null, 200);
+  if (command === "comunidades") return Promise.resolve([{ id: "c0000000000a1", name: "Parabellum", description: "El servidor de Parabellum", image: null, role: player ? "member" : "owner", caps: {} }]);
   if (command === "comunidad")
     return Promise.resolve({
-      id: "c0000000000a1", name: "Parabellum", description: "El servidor de Parabellum: survival con amigos, 26.3.", image: null, role: "owner", caps: {}, owner: "yo",
+      id: "c0000000000a1", name: "Parabellum", description: "El servidor de Parabellum: survival con amigos, 26.3.", image: null, role: player ? "member" : "owner", caps: {}, owner: "yo",
       members: [
-        { uid: "yo", name: "Hawntd", role: "owner", caps: {}, joinedAt: Date.now() - 864e5, you: true },
+        { uid: "yo", name: "Hawntd", role: "owner", caps: {}, joinedAt: Date.now() - 864e5, you: !player },
         { uid: "f2", name: "Alex_mx", role: "admin", caps: { support: true }, joinedAt: Date.now() - 6e7, you: false },
-        { uid: "f3", name: "Dani", role: "member", caps: {}, joinedAt: Date.now() - 3e7, you: false },
+        { uid: "f3", name: "Dani", role: "member", caps: {}, joinedAt: Date.now() - 3e7, you: player },
       ],
       posts: [
         { id: "a1", title: "¡Abrimos el 1 de diciembre!", text: "Entren con **Parabellum** para tener el paquete oficial:\n- Sodium y Fabric API\n- Minimapa", authorName: "Hawntd", at: Date.now() - 36e5 },
