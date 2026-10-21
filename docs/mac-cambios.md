@@ -24,6 +24,13 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 ## Estado
 
 - Última revisión de los PR de Mac en Windows: 2026-10-18, PR #1 a #15 (todos mezclados).
+- **Publicado en Drive:** Windows **0.32.0** desde el 2026-10-20 (Juan; el exe publicado es idéntico
+  al compilado de `main` en `52fe1d5`). Las reglas de Firebase de Comunidades ya están publicadas.
+  **Mac 0.33.0** desde el 2026-10-20 (Diego, compilada de `main` en `52de0a3`; ver «Versiones
+  publicadas en Drive»): las Mac con la 0.28.0 se actualizan directo a ella. De «Para llegar a la
+  0.30.0», abajo, quedan las pruebas a mano.
+- **En `main`: 0.33.0**, sin publicar: E1 (huella del paquete, respaldos y servicio de ajustes; ver «Cambios
+  de Windows»).
 - **Publicado en Drive:** Windows **0.34.0** desde el 2026-10-20 (Juan; el exe publicado es idéntico
   al compilado de `main` en `6379499`), con las reglas de Firebase del soporte ya publicadas.
   **Mac 0.33.0** desde el 2026-10-20 (Diego; su entrada está en el PR #17). Le falta solo la 0.34.0
@@ -104,6 +111,15 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
 
+- **Mac 0.33.0** · 2026-10-20 · en `_parabellum-mac`, publicada por Diego con `--publicar-launcher` y
+  `--subir-launcher-drive`, compilada de `main` en `52de0a3`. Zip de 9641615 bytes, SHA-256
+  `520fd991…9a3f`; se baja sin iniciar sesión. Para quien juega en Mac trae todo lo de la 0.29.0 a la
+  0.33.0 de Windows (de la 0.28.0 a esta no hubo otra de Mac): Comunidades, la interfaz pulida, el
+  gestor de Descargas, el modo escuela y el espejo, la pantalla de carga, el chat nuevo, imágenes al
+  chat (pegar, y arrastrar desde Finder, Safari o Chrome) y la vuelta sola a la versión anterior si
+  una actualización no arranca (desde esta; la 0.28.0 no la trae). Antes de publicarla, en Mac: las
+  117 pruebas, el vigía de la actualización (ver «Una actualización que no arranca se deshace sola»)
+  y, de las de a mano, lo del chat con imágenes del 2026-10-18.
 - **0.34.0** · 2026-10-20 · E3. Publicada por Juan, compilada de `main` en `6379499`, con las reglas
   de Firebase del soporte publicadas antes:
   - **Pedir ayuda** al equipo de soporte de la comunidad, desde la comunidad o desde «Reportar
@@ -474,7 +490,7 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   - **Interfaz**: Comunidades («Modificado», «Restaurar y jugar») y la pestaña Detalles de la instancia.
     `cmDialog` acepta un botón `secondary`.
 - Mac: nada distinto (no depende del sistema). Prueba las nuevas pruebas de `cargo test` en Mac (los
-  SHA-1 y las rutas deben dar lo mismo).
+  SHA-1 y las rutas deben dar lo mismo). — 2026-10-20: en Mac compila sin advertencias y pasan las 117.
 
 ### 2026-10-20 · Pulido de la interfaz (0.32.0)
 
@@ -615,6 +631,7 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   vez que abre cada versión).
 - Mac: `refresh_icons` es una función vacía en `macos/accesos.rs`. La `.app` toma el logo de
   `ui/logo.png` al empaquetarla (`empaquetar.sh`). Revisa que el `.icns` salga con el logo nuevo.
+  — Revisado el 2026-10-20 con la 0.33.0: el `.icns` de la `.app` es el logo nuevo.
 
 ### 2026-10-18 · Firebase medido, pruebas de Windows en los PR y sugerir el modo escuela
 
@@ -650,6 +667,17 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 - Mac: probarlo con una `.app` de versión falsa que no arranque. Se puede acortar la espera con
   `PARABELLUM_ESPERA_ARRANQUE=10`. En Windows lo probé así con `whoami.exe` en lugar de la versión
   nueva (`scratchpad/f57_vigia.py`).
+  — **Probado en Mac el 2026-10-20** con la 0.33.0 empaquetada, en una carpeta de prueba
+  (`PARABELLUM_ROOT`), haciendo lo mismo que `hand_over`: `pendiente.json` y el programa de
+  `Parabellum.app.old` con `--vigilar-actualizacion`. Los tres casos salen bien:
+  - **No arranca** (el programa de la `.app` nueva es un `exit 1`, como tu `whoami.exe`): a los 10 s,
+    «no confirmó su arranque» y «se volvió a la versión 0.33.0». La `.app` buena vuelve a su lugar y se
+    abre, muestra el aviso una vez (`"shown": true`) y borra la `.fallida`.
+  - **Se traba** (la nueva, congelada con `SIGSTOP` en cuanto anota su proceso): a los 15 s el vigía la
+    cierra (`kill_tree`), vuelve a la anterior y la abre.
+  - **Arranca bien**: confirma a los ~3 s, el vigía termina y la `.app.old` se borra a los 6 s.
+  Falta verlo con una actualización de verdad desde la ventana: será la primera vez que una Mac pase de
+  una versión con vigía a la siguiente (la 0.28.0 publicada todavía no lo trae).
 
 ### 2026-10-18 · Logo nuevo y plan hacia diciembre
 
