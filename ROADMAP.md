@@ -166,7 +166,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
   - las demás *Prueba:* de abajo.
 - [ ] **Detalles**:
   - el zip de «RETORCIDOS | EL PACK» tarda ~30 s en empezar a bajar de Drive;
-  - Mac al día con la 0.31 (Diego);
+  - Mac al día con la 0.34 (Diego; la Mac 0.33.0 ya está publicada);
   - una sola conexión a Firebase por persona.
 - [ ] **P2P desde la escuela** (después de E3, pedido de Juan el 2026-10-20). Medido en la UABC:
   - el filtro bloquea los 4 relevos de n0;

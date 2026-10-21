@@ -23,27 +23,23 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
-- Última revisión de los PR de Mac en Windows: 2026-10-18, PR #1 a #15 (todos mezclados).
-- **Publicado en Drive:** Windows **0.32.0** desde el 2026-10-20 (Juan; el exe publicado es idéntico
-  al compilado de `main` en `52fe1d5`). Las reglas de Firebase de Comunidades ya están publicadas.
-  **Mac 0.33.0** desde el 2026-10-20 (Diego, compilada de `main` en `52de0a3`; ver «Versiones
-  publicadas en Drive»): las Mac con la 0.28.0 se actualizan directo a ella. De «Para llegar a la
-  0.30.0», abajo, quedan las pruebas a mano.
-- **En `main`: 0.33.0**, sin publicar: E1 (huella del paquete, respaldos y servicio de ajustes; ver «Cambios
-  de Windows»).
+- Última revisión de los PR de Mac en Windows: 2026-10-20, PR #1 a #17 (todos mezclados).
 - **Publicado en Drive:** Windows **0.34.0** desde el 2026-10-20 (Juan; el exe publicado es idéntico
   al compilado de `main` en `6379499`), con las reglas de Firebase del soporte ya publicadas.
-  **Mac 0.33.0** desde el 2026-10-20 (Diego; su entrada está en el PR #17). Le falta solo la 0.34.0
-  (E3), que no tiene nada propio de Mac.
+  **Mac 0.33.0** desde el 2026-10-20 (Diego, compilada de `main` en `52de0a3`; ver «Versiones
+  publicadas en Drive»): las Mac con la 0.28.0 se actualizan directo a ella. Le falta solo la 0.34.0
+  (E3), que no tiene nada propio de Mac. Quedan las pruebas a mano de «Lo que queda por probar en
+  Mac», abajo.
 - **Descargas en GitHub:** cada versión de Windows publicada tiene su release (`v<versión>`) con el zip,
   y el README las enlaza en «Versiones». Cuando publiques una de Mac, súbela también como release
   (`mac-v<versión>`) y dime para enlazarla.
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
   Las reglas de Firebase de la 0.27 ya están publicadas.
 
-## Para llegar a la 0.30.0 (Mac)
+## Lo que queda por probar en Mac
 
-Lo que falta para publicar la 0.30.0 de Mac (trae lo de la 0.29.0), en este orden:
+La Mac 0.33.0 ya está publicada (trae lo de la 0.29.0 a la 0.33.0). Lo que falta probar a mano, en este
+orden:
 
 1. **Lo que quedó de la 0.28.0** (abajo, paso 3): dentro del juego (pestañas, escribir, emojis,
    capturas) y lo de con un amigo. Juan puede ser el amigo. El panel ya abre con la O en «Fabric 26.3»
@@ -61,8 +57,8 @@ Lo que falta para publicar la 0.30.0 de Mac (trae lo de la 0.29.0), en este orde
    (lo que la ventana no sabe pegar, como un archivo copiado en Finder).~~ — hecho en el PR #15, con
    AppleScript (`osascript`). Arrastrar una imagen sin archivo desde Safari, Chrome o Discord: hecho en
    el PR #16.
-4. **Publicar la Mac 0.30.0** cuando Juan publique la 0.30.0 de Windows (compilada de `main` en ese
-   commit, como la 0.28.0).
+4. ~~**Publicar la Mac 0.30.0** cuando Juan publique la 0.30.0 de Windows~~ — se publicó directo la
+   Mac 0.33.0 (2026-10-20, compilada de `main` en `52de0a3`).
 5. **Opcional: los paquetes de Mac en el espejo de Drive** (así una Mac también juega en la escuela).
    El espejo ya tiene lo que sirve en los dos sistemas (sonidos, bibliotecas, loaders, servidores);
    a Mac le faltan solo su Minecraft (los nativos) y su Java, que van con el sistema en el nombre
@@ -111,15 +107,6 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
 
-- **Mac 0.33.0** · 2026-10-20 · en `_parabellum-mac`, publicada por Diego con `--publicar-launcher` y
-  `--subir-launcher-drive`, compilada de `main` en `52de0a3`. Zip de 9641615 bytes, SHA-256
-  `520fd991…9a3f`; se baja sin iniciar sesión. Para quien juega en Mac trae todo lo de la 0.29.0 a la
-  0.33.0 de Windows (de la 0.28.0 a esta no hubo otra de Mac): Comunidades, la interfaz pulida, el
-  gestor de Descargas, el modo escuela y el espejo, la pantalla de carga, el chat nuevo, imágenes al
-  chat (pegar, y arrastrar desde Finder, Safari o Chrome) y la vuelta sola a la versión anterior si
-  una actualización no arranca (desde esta; la 0.28.0 no la trae). Antes de publicarla, en Mac: las
-  117 pruebas, el vigía de la actualización (ver «Una actualización que no arranca se deshace sola»)
-  y, de las de a mano, lo del chat con imágenes del 2026-10-18.
 - **0.34.0** · 2026-10-20 · E3. Publicada por Juan, compilada de `main` en `6379499`, con las reglas
   de Firebase del soporte publicadas antes:
   - **Pedir ayuda** al equipo de soporte de la comunidad, desde la comunidad o desde «Reportar
@@ -130,6 +117,15 @@ Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_para
   - **Tarjetas de ajustes**: el equipo propone uno de los 7 ajustes con su valor; el jugador ve el de su
     PC y el recomendado, y lo aplica con un clic (con «Deshacer»).
   - «Reportar problema» ya sale sin la carpeta del usuario, correos ni claves.
+- **Mac 0.33.0** · 2026-10-20 · en `_parabellum-mac`, publicada por Diego con `--publicar-launcher` y
+  `--subir-launcher-drive`, compilada de `main` en `52de0a3`. Zip de 9641615 bytes, SHA-256
+  `520fd991…9a3f`; se baja sin iniciar sesión. Para quien juega en Mac trae todo lo de la 0.29.0 a la
+  0.33.0 de Windows (de la 0.28.0 a esta no hubo otra de Mac): Comunidades, la interfaz pulida, el
+  gestor de Descargas, el modo escuela y el espejo, la pantalla de carga, el chat nuevo, imágenes al
+  chat (pegar, y arrastrar desde Finder, Safari o Chrome) y la vuelta sola a la versión anterior si
+  una actualización no arranca (desde esta; la 0.28.0 no la trae). Antes de publicarla, en Mac: las
+  117 pruebas, el vigía de la actualización (ver «Una actualización que no arranca se deshace sola»)
+  y, de las de a mano, lo del chat con imágenes del 2026-10-18.
 - **0.33.0** · 2026-10-20 · E1. Publicada por Juan, compilada de `main` en `52de0a3`:
   - **El paquete oficial avisa si lo cambiaste**: en Comunidades sale «Modificado» con qué mods sobran o
     faltan, y «Restaurar» lo deja como el oficial. Antes de jugar en el servidor con el paquete cambiado,
@@ -298,7 +294,11 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Pendientes para Windows
 
-- [ ] **PR #16 (arrastrar imágenes en Mac): nada que compilar en Windows** (solo cambia
+- [x] **PR #17 (el vigía de la actualización probado en Mac y la Mac 0.33.0 publicada): nada que
+  compilar en Windows** (solo cambia un comentario de `plataforma/macos/lanzador.rs` y los docs).
+  Mezclado el 2026-10-20. Lo que pedía (anotar la 0.33.0 de Windows como publicada) ya estaba hecho.
+
+- [x] **PR #16 (arrastrar imágenes en Mac): nada que compilar en Windows** (solo cambia
   `plataforma/macos/arrastre.rs` y los docs). Para saber:
   - **Arreglo de un cierre en la Mac 0.28.0 publicada:** arrastrar a la ventana una imagen desde
     «Recientes» del Finder cerraba Parabellum. El Finder da ahí una referencia
@@ -713,7 +713,7 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   - Lo del PR #15: `juego::free_panel_key` (la O en 26.x), `packs::without_panel_key` e
     `imagen::is_image` en `cuenta::leer_imagen` (ver «Pendientes para Windows»).
 - Mac: compila y prueba lo de arriba. Nada de código obligatorio. Opcional: tus paquetes en el espejo
-  («Para llegar a la 0.30.0», paso 5).
+  («Lo que queda por probar en Mac», paso 5).
 
 ### 2026-10-17 · Un Java completado desde Drive vuelve a contar, y la base pide su propio Java
 
