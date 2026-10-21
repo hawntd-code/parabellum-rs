@@ -13,7 +13,7 @@ escuela, el puente desde el principio). La dirección del puente está en `PUENT
 
 ## Publicarlo (desde el navegador, sin instalar nada)
 
-1. Abre <https://console.cloud.google.com/run?project=parabellum52> con la cuenta de Firebase.
+1. Abre consola con la cuenta de Firebase.
 2. **Escribir una función** (*Write a function*). Si pide habilitar APIs (Cloud Run, Cloud Build,
    Artifact Registry), acepta.
 3. Llénalo así:
