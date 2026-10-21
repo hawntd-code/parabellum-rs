@@ -434,6 +434,16 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-20 · El repo es público
+
+- Juan hizo público el repo para que cualquiera vea el README y baje las releases. Lo que subas lo ve
+  cualquiera: nunca `config-integrada.json`, sesiones ni datos de usuarios (revisado: no hay claves en la
+  historia).
+- El README toma solo la versión más nueva para el botón de descarga; las capturas de `docs/capturas/`
+  llevan las esquinas redondeadas, y la de Inicio va en tema claro u oscuro según el tema de quien visita.
+- Las Actions (también `mac.yml`) ya no gastan minutos de pago (`docs/mac.md` al día).
+- Mac: nada que compilar.
+
 ### 2026-10-20 · E3: soporte y tarjetas de ajustes (0.34.0)
 
 - Qué cambió (todo compartido):

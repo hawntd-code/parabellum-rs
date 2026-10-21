@@ -6,11 +6,16 @@
 
 **El launcher de Minecraft para jugar con tus amigos.**<br>Mods, modpacks, servidores propios y chat en una sola ventana, sin cuenta premium.
 
-[![Descargar para Windows](https://img.shields.io/badge/Descargar_para_Windows-0.34.0-7f50f2?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.34.0/Parabellum-0.34.0.zip)
+[![Descargar para Windows](https://img.shields.io/github/v/release/juanrojasgarcialin/parabellum-rs?filter=v*&label=Descargar%20para%20Windows&style=for-the-badge&logo=windows&logoColor=white&color=7f50f2)](https://github.com/juanrojasgarcialin/parabellum-rs/releases/latest)
 
 ![Windows 10 y 11](https://img.shields.io/badge/Windows-10_·_11-2b2b33?style=flat-square) ![Mac con chip Apple](https://img.shields.io/badge/Mac-chip_Apple-2b2b33?style=flat-square&logo=apple&logoColor=white) ![Minecraft hasta la 26.3](https://img.shields.io/badge/Minecraft-hasta_la_26.3-2b2b33?style=flat-square) ![Español e inglés](https://img.shields.io/badge/idioma-español_·_English-2b2b33?style=flat-square)
 
-<img src="docs/capturas/inicio.png" alt="La biblioteca de instancias y la lista de amigos de Parabellum" width="900">
+**[Qué hace](#qué-puedes-hacer)** · **[Capturas](#capturas)** · **[Instalar](#descargar-e-instalar)** · **[Versiones](#versiones)** · **[Preguntas](#preguntas-frecuentes)**
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/capturas/inicio-claro.png">
+  <img src="docs/capturas/inicio.png" alt="La biblioteca de instancias y la lista de amigos de Parabellum" width="900">
+</picture>
 
 </div>
 

@@ -146,8 +146,8 @@ que poder editar esa carpeta.
    ```
 
    Las notas, para quien juega (lo mismo que se anota en `docs/mac-cambios.md`), con el SHA-256 del zip.
-3. **README**: una fila nueva arriba en «Versiones», el botón de descarga y los distintivos con la versión
-   nueva.
+3. **README**: una fila nueva arriba en «Versiones» y el enlace del paso 1 de «Descargar e instalar».
+   El botón de descarga de arriba se pone al día solo (toma la release `v*` más nueva).
 4. **`docs/mac-cambios.md`** › «Versiones publicadas en Drive»: número, fecha, commit y qué cambió.
 
 La versión de Mac (`_parabellum-mac`) la publica Diego desde su Mac; su zip también va como release

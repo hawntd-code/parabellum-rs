@@ -251,8 +251,8 @@ actualiza la próxima vez que lo abra.
 Hace `cargo check` (rápido; avisa si algo no compila). Con «build» en la entrada del workflow, además
 arma `Parabellum.app` (`mac/empaquetar.sh`) y deja el `.dmg` para descargar en la página de esa ejecución.
 
-Ojo: en repos privados, los minutos de Mac en GitHub cuentan 10 veces. Úsalo cuando haga falta, no en
-cada cambio pequeño.
+El repo es público desde el 2026-10-20, así que estas ejecuciones (también las de Mac) ya no gastan minutos
+de pago. Aun así, úsalo cuando haga falta, no en cada cambio pequeño.
 
 Ya no quedan pruebas ignoradas en Mac por tareas pendientes. Si agregas una que todavía no puede pasar
 en Mac, márcala con `#[cfg_attr(target_os = "macos", ignore = "TODO(mac): …")]` y quítalo al terminar
