@@ -150,8 +150,12 @@ que poder editar esa carpeta.
    El botón de descarga de arriba se pone al día solo (toma la release `v*` más nueva).
 4. **`docs/mac-cambios.md`** › «Versiones publicadas en Drive»: número, fecha, commit y qué cambió.
 
-La versión de Mac (`_parabellum-mac`) la publica Diego desde su Mac; su zip también va como release
-(`mac-v<versión>`) cuando la haya.
+**Mac** (`_parabellum-mac`, la publica Diego desde su Mac): el mismo zip de Drive va como release
+`mac-v<versión>` con el nombre `Parabellum-Mac-<versión>.zip` (así no se confunde con el de Windows),
+título «Parabellum para Mac <versión>» y `--latest=false`, para que «la más nueva» siga siendo la de
+Windows (de ella sale solo el botón de Windows). Las de Windows se titulan «Parabellum para Windows
+<versión>». En el README, a mano: el botón «Descargar para Mac» de arriba, el de la tarjeta de Mac en
+«Descargar» y su fila en «Versiones › Mac».
 
 ## Configuración
 

@@ -30,9 +30,11 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   publicadas en Drive»): las Mac con la 0.28.0 se actualizan directo a ella. Le falta solo la 0.34.0
   (E3), que no tiene nada propio de Mac. Quedan las pruebas a mano de «Lo que queda por probar en
   Mac», abajo.
-- **Descargas en GitHub:** cada versión de Windows publicada tiene su release (`v<versión>`) con el zip,
-  y el README las enlaza en «Versiones». Cuando publiques una de Mac, súbela también como release
-  (`mac-v<versión>`) y dime para enlazarla.
+- **Descargas en GitHub:** cada versión publicada tiene su release con el zip, y el README las enlaza:
+  Windows como `v<versión>` y Mac como `mac-v<versión>` (la Mac 0.33.0 ya está, con tu zip de Drive tal
+  cual, como `Parabellum-Mac-0.33.0.zip`). Arriba hay un botón para cada sistema y «Descargar» los
+  muestra lado a lado. Cuando publiques una de Mac, súbela como release igual que la 0.33.0 (ver
+  `docs/desarrollo.md` › «Publicar una versión») o avísale a Juan.
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
   Las reglas de Firebase de la 0.27 ya están publicadas.
 

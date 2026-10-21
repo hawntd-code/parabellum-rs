@@ -6,11 +6,12 @@
 
 **El launcher de Minecraft para jugar con tus amigos.**<br>Mods, modpacks, servidores propios y chat en una sola ventana, sin cuenta premium.
 
-[![Descargar para Windows](https://img.shields.io/github/v/release/juanrojasgarcialin/parabellum-rs?filter=v*&label=Descargar%20para%20Windows&style=for-the-badge&logo=windows&logoColor=white&color=7f50f2)](https://github.com/juanrojasgarcialin/parabellum-rs/releases/latest)
+<a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/latest"><img alt="Descargar para Windows" src="https://img.shields.io/github/v/release/juanrojasgarcialin/parabellum-rs?filter=v*&label=Descargar%20para%20Windows&style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D&color=7f50f2"></a>
+<a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/mac-v0.33.0"><img alt="Descargar para Mac" src="https://img.shields.io/badge/Descargar_para_Mac-v0.33.0-7f50f2?style=for-the-badge&logo=apple&logoColor=white"></a>
 
 ![Windows 10 y 11](https://img.shields.io/badge/Windows-10_·_11-2b2b33?style=flat-square) ![Mac con chip Apple](https://img.shields.io/badge/Mac-chip_Apple-2b2b33?style=flat-square&logo=apple&logoColor=white) ![Minecraft hasta la 26.3](https://img.shields.io/badge/Minecraft-hasta_la_26.3-2b2b33?style=flat-square) ![Español e inglés](https://img.shields.io/badge/idioma-español_·_English-2b2b33?style=flat-square)
 
-**[Qué hace](#qué-puedes-hacer)** · **[Capturas](#capturas)** · **[Instalar](#descargar-e-instalar)** · **[Versiones](#versiones)** · **[Preguntas](#preguntas-frecuentes)**
+**[Qué hace](#qué-puedes-hacer)** · **[Descargar](#descargar)** · **[Capturas](#capturas)** · **[Versiones](#versiones)** · **[Preguntas](#preguntas-frecuentes)**
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/capturas/inicio-claro.png">
@@ -50,6 +51,48 @@
 
 Funciona en **español e inglés**, con tema **oscuro y claro**, y se puede usar entero con el teclado.
 
+## Descargar
+
+<table>
+<tr>
+<th width="50%">🪟&nbsp;Parabellum para Windows</th>
+<th width="50%">🍎&nbsp;Parabellum para Mac</th>
+</tr>
+<tr>
+<td align="center" valign="top">
+<br>
+<a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.34.0/Parabellum-0.34.0.zip"><img alt="Descargar Parabellum 0.34.0 para Windows" src="https://img.shields.io/badge/Descargar-v0.34.0-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
+<br><br>
+<sub>Windows 10 u 11 de 64 bits · zip de 10 MB<br><a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.34.0">Qué trae la 0.34.0</a></sub>
+<br><br>
+</td>
+<td align="center" valign="top">
+<br>
+<a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/mac-v0.33.0/Parabellum-Mac-0.33.0.zip"><img alt="Descargar Parabellum 0.33.0 para Mac" src="https://img.shields.io/badge/Descargar-v0.33.0-7f50f2?style=for-the-badge&logo=apple&logoColor=white"></a>
+<br><br>
+<sub>Mac con chip Apple (M1 o más nueva) y macOS 13 o más nuevo · zip de 9.6 MB<br><a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/mac-v0.33.0">Qué trae la 0.33.0</a></sub>
+<br><br>
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+1. Descomprime el zip en una carpeta tuya, por ejemplo `Escritorio\Parabellum` o una USB. No se instala nada: tus instancias, mundos y ajustes se quedan en esa carpeta.
+2. Abre **`Parabellum.exe`**. Si Windows muestra «Windows protegió tu PC», pulsa **Más información** › **Ejecutar de todas formas** (solo la primera vez).
+
+</td>
+<td valign="top">
+
+1. Abre el zip con doble clic: sale **Parabellum.app**.
+2. Arrástrala a tu carpeta **Aplicaciones** (desde otra carpeta no se puede actualizar sola).
+3. Ábrela. Si macOS dice que no puede comprobar la app, ve a **Ajustes del Sistema** › **Privacidad y seguridad** y pulsa **Abrir de todas formas** (solo la primera vez).
+
+</td>
+</tr>
+</table>
+
+Después escribe tu nombre de jugador, crea una instancia y pulsa **Jugar**. No hace falta instalar Java ni nada más, y Parabellum se actualiza solo.
+
 ## Capturas
 
 <table>
@@ -75,20 +118,11 @@ Funciona en **español e inglés**, con tema **oscuro y claro**, y se puede usar
   </tr>
 </table>
 
-## Descargar e instalar
-
-1. Baja **[Parabellum-0.34.0.zip](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.34.0/Parabellum-0.34.0.zip)** (10 MB).
-2. Descomprímelo en una carpeta tuya, por ejemplo `Escritorio\Parabellum` o una USB. Parabellum no se instala: todo lo suyo (instancias, mundos y ajustes) se queda en esa carpeta.
-3. Abre **`Parabellum.exe`**. La primera vez Windows puede mostrar «Windows protegió tu PC»: pulsa **Más información** › **Ejecutar de todas formas**. Las actualizaciones ya no muestran ese aviso.
-4. Escribe tu nombre de jugador, crea una instancia y pulsa **Jugar**.
-
-**Necesitas** Windows 10 u 11 de 64 bits. No hace falta instalar Java ni nada más.
-
-**¿Tienes Mac?** Hay versión para Mac con chip Apple (macOS 13 o más nuevo). Se reparte aparte: pídesela a quien te compartió Parabellum.
-
 ## Versiones
 
 Parabellum **se actualiza solo**: al abrir una versión vieja, baja la más nueva. Las anteriores quedan aquí como historial.
+
+### 🪟 Windows
 
 | Versión | Fecha | Lo nuevo | Descarga |
 |---|---|---|---|
@@ -102,20 +136,33 @@ Parabellum **se actualiza solo**: al abrir una versión vieja, baja la más nuev
 | [**0.25.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.25.0) | 12&nbsp;oct&nbsp;2026 | Animaciones en toda la ventana. Dentro del juego: panel animado, botón «Parabellum» en el menú de pausa y avisos abajo a la derecha. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.25.0/Parabellum-0.25.0.zip) |
 | [**0.24.1**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.24.1) | 12&nbsp;oct&nbsp;2026 | El mod del juego gasta lo mínimo y se aparta solo si hace caer el juego. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.24.1/Parabellum-0.24.1.zip) |
 
+### 🍎 Mac
+
+La de Mac la compila Diego en su Mac, así que puede salir unos días después que la de Windows.
+
+| Versión | Fecha | Lo nuevo | Descarga |
+|---|---|---|---|
+| [**0.33.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/mac-v0.33.0)<br><sub>la&nbsp;más&nbsp;nueva</sub> | 20&nbsp;oct&nbsp;2026 | Trae todo lo de Windows hasta la 0.33.0: **comunidades**, la interfaz pulida, descargas con cola, **modo escuela**, el chat nuevo (con imágenes desde Finder, Safari o Chrome) y copias de seguridad. Desde esta, una actualización que no arranca **se deshace sola**. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/mac-v0.33.0/Parabellum-Mac-0.33.0.zip) |
+| **0.28.0** | 13&nbsp;oct&nbsp;2026 | La primera para Mac con chip Apple: todo lo de la 0.28.0 de Windows. | <sub>Ya no está: se actualiza sola a la 0.33.0.</sub> |
+
 Todas las versiones, con sus notas completas: [Releases](https://github.com/juanrojasgarcialin/parabellum-rs/releases).
 
 ## Preguntas frecuentes
 
 <details>
-<summary><b>Windows dice que «protegió tu PC». ¿Es seguro?</b></summary>
+<summary><b>Windows dice que «protegió tu PC» (o macOS, que no puede comprobar la app). ¿Es seguro?</b></summary>
 
-Sale porque `Parabellum.exe` no tiene una firma de pago, no porque haya algo malo. Pulsa **Más información** › **Ejecutar de todas formas**. Pasa solo la primera vez: las actualizaciones las baja Parabellum mismo.
+Sale porque Parabellum no tiene una firma de pago, no porque haya algo malo. Pasa solo la primera vez: las actualizaciones las baja Parabellum mismo.
+
+- **Windows:** pulsa **Más información** › **Ejecutar de todas formas**.
+- **Mac:** ve a **Ajustes del Sistema** › **Privacidad y seguridad** y pulsa **Abrir de todas formas**.
 </details>
 
 <details>
 <summary><b>¿Dónde quedan mis mundos y mis mods?</b></summary>
 
-En la carpeta donde descomprimiste Parabellum: cada instancia está en `instancias\<nombre>`, con sus mundos en `saves`. Puedes copiar la carpeta entera a una USB y seguir en otra PC.
+- **Windows:** en la carpeta donde descomprimiste Parabellum. Cada instancia está en `instancias\<nombre>`, con sus mundos en `saves`. Puedes copiar la carpeta entera a una USB y seguir en otra PC.
+- **Mac:** en `~/Library/Application Support/Parabellum` (en Finder: **Ir** › **Ir a la carpeta**), con la misma organización.
 </details>
 
 <details>

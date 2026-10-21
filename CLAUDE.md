@@ -31,8 +31,9 @@ en `ui/`.
   cambió para quien juega, y súbelo a `main`. Lo pidió Diego.
 - **Y en GitHub, a la par:** una release `v<versión>` con el zip **exacto** de `_parabellum`, y su fila
   arriba en la tabla «Versiones» del [README](README.md) y el enlace del paso 1 de «Descargar e
-  instalar» (el botón de arriba toma solo la release más nueva). Cómo:
-  [docs/desarrollo.md](docs/desarrollo.md) › «Publicar una versión».
+  instalar» (el botón de arriba toma solo la release más nueva). Las de Mac van como `mac-v<versión>`
+  y sus botones se cambian a mano. Cómo: [docs/desarrollo.md](docs/desarrollo.md) › «Publicar una
+  versión».
 - **El README es para quien juega** (qué hace, capturas, descargar e instalar, versiones, preguntas).
   Lo técnico (compilar, carpetas, comandos `--…`, configuración) va en `docs/desarrollo.md`. Las
   capturas están en `docs/capturas/`: salen de la interfaz en modo demostración, con las esquinas
