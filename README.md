@@ -11,7 +11,7 @@
 
 ![Windows 10 y 11](https://img.shields.io/badge/Windows-10_·_11-2b2b33?style=flat-square) ![Mac con chip Apple](https://img.shields.io/badge/Mac-chip_Apple-2b2b33?style=flat-square&logo=apple&logoColor=white) ![Minecraft hasta la 26.3](https://img.shields.io/badge/Minecraft-hasta_la_26.3-2b2b33?style=flat-square) ![Español e inglés](https://img.shields.io/badge/idioma-español_·_English-2b2b33?style=flat-square)
 
-**[Qué hace](#qué-puedes-hacer)** · **[Descargar](#descargar)** · **[Capturas](#capturas)** · **[Versiones](#versiones)** · **[Preguntas](#preguntas-frecuentes)**
+**[Qué hace](#qué-puedes-hacer)** · **[Descargar](#descargar)** · **[Capturas](#capturas)** · **[Preguntas](#preguntas-frecuentes)**
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/capturas/inicio-claro.png">
@@ -53,6 +53,8 @@ Funciona en **español e inglés**, con tema **oscuro y claro**, y se puede usar
 
 ## Descargar
 
+Baja la versión más nueva para tu computadora. Después Parabellum se actualiza solo.
+
 <table>
 <tr>
 <th width="50%">🪟&nbsp;Parabellum para Windows</th>
@@ -63,25 +65,54 @@ Funciona en **español e inglés**, con tema **oscuro y claro**, y se puede usar
 <br>
 <a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.34.0/Parabellum-0.34.0.zip"><img alt="Descargar Parabellum 0.34.0 para Windows" src="https://img.shields.io/badge/Descargar-v0.34.0-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
 <br><br>
-<sub>Windows 10 u 11 de 64 bits · zip de 10 MB<br><a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.34.0">Qué trae la 0.34.0</a></sub>
+<sub>Windows 10 u 11 de 64 bits · zip de 10 MB · 20 oct 2026</sub>
 <br><br>
 </td>
 <td align="center" valign="top">
 <br>
 <a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/mac-v0.33.0/Parabellum-Mac-0.33.0.zip"><img alt="Descargar Parabellum 0.33.0 para Mac" src="https://img.shields.io/badge/Descargar-v0.33.0-7f50f2?style=for-the-badge&logo=apple&logoColor=white"></a>
 <br><br>
-<sub>Mac con chip Apple y macOS 13 o más nuevo · zip de 9.6 MB<br><a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/mac-v0.33.0">Qué trae la 0.33.0</a></sub>
+<sub>Mac con chip Apple y macOS 13 o más nuevo · zip de 9.6 MB · 20 oct 2026</sub>
 <br><br>
 </td>
 </tr>
 <tr>
 <td valign="top">
 
+**Lo nuevo en la 0.34.0**
+
+- **Pide ayuda** al equipo de soporte de tu comunidad, con el diagnóstico de tu instancia (sin tu carpeta de usuario, correos ni claves).
+- **Tarjetas de ajustes:** el equipo te propone un ajuste y lo aplicas con un clic; si no te gusta, lo deshaces igual.
+- «Reportar problema» ya no incluye tus datos personales.
+
+<sub>[Notas completas](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.34.0)</sub>
+
+</td>
+<td valign="top">
+
+**Lo nuevo en la 0.33.0**
+
+- **Comunidades:** únete con un código y pulsa **Jugar** para entrar con el paquete oficial.
+- Interfaz pulida, **descargas con cola** y **modo escuela** para redes que bloquean Minecraft.
+- Chat nuevo, con imágenes desde Finder, Safari o Chrome.
+- Si una actualización no arranca, **vuelve sola** a la anterior.
+
+<sub>[Notas completas](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/mac-v0.33.0)</sub>
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**Instalar**
+
 1. Descomprime el zip en una carpeta tuya, por ejemplo `Escritorio\Parabellum` o una USB. No se instala nada: tus instancias, mundos y ajustes se quedan en esa carpeta.
 2. Abre **`Parabellum.exe`**. Si Windows muestra «Windows protegió tu PC», pulsa **Más información** › **Ejecutar de todas formas** (solo la primera vez).
 
 </td>
 <td valign="top">
+
+**Instalar**
 
 1. Abre el zip con doble clic: sale **Parabellum.app**.
 2. Arrástrala a tu carpeta **Aplicaciones** (desde otra carpeta no se puede actualizar sola).
@@ -91,7 +122,7 @@ Funciona en **español e inglés**, con tema **oscuro y claro**, y se puede usar
 </tr>
 </table>
 
-Después escribe tu nombre de jugador, crea una instancia y pulsa **Jugar**. No hace falta instalar Java ni nada más, y Parabellum se actualiza solo.
+Después escribe tu nombre de jugador, crea una instancia y pulsa **Jugar**. No hace falta instalar Java ni nada más.
 
 ## Capturas
 
@@ -117,35 +148,6 @@ Después escribe tu nombre de jugador, crea una instancia y pulsa **Jugar**. No 
     <td><img src="docs/capturas/detalles-claro.png" alt="Detalles de una instancia en tema claro"><br><sub><b>Tema claro</b>: los detalles de una instancia, con sus copias de seguridad.</sub></td>
   </tr>
 </table>
-
-## Versiones
-
-Parabellum **se actualiza solo**: al abrir una versión vieja, baja la más nueva. Las anteriores quedan aquí como historial.
-
-### 🪟 Windows
-
-| Versión | Fecha | Lo nuevo | Descarga |
-|---|---|---|---|
-| [**0.34.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.34.0)<br><sub>la&nbsp;más&nbsp;nueva</sub> | 20&nbsp;oct&nbsp;2026 | **Soporte en las comunidades**: pide ayuda con el diagnóstico de tu instancia (sin tu carpeta de usuario, correos ni claves) y el equipo de soporte te contesta. Te pueden mandar **tarjetas de ajustes** que aplicas con un clic y deshaces igual. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.34.0/Parabellum-0.34.0.zip) |
-| [**0.33.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.33.0) | 20&nbsp;oct&nbsp;2026 | El paquete oficial de una comunidad avisa si le cambiaste mods, te muestra qué cambió y lo deja como el oficial con **Restaurar**. Antes de actualizar o restaurar se guarda una **copia de seguridad** que recuperas en Detalles de la instancia. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.33.0/Parabellum-0.33.0.zip) |
-| [**0.32.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.32.0) | 20&nbsp;oct&nbsp;2026 | Mods de Modrinth en redes que bloquean Modrinth, sin modo escuela. Interfaz pulida de punta a punta: campos más claros, gráficas del servidor, animaciones al cargar y al cambiar de tema. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.32.0/Parabellum-0.32.0.zip) |
-| [**0.31.2**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.31.2) | 18&nbsp;oct&nbsp;2026 | Si Drive no entrega un paquete a la primera, se reintenta (antes, a veces no aparecía). | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.31.2/Parabellum-0.31.2.zip) |
-| [**0.31.1**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.31.1) | 18&nbsp;oct&nbsp;2026 | **Comunidades**: códigos de invitación, anuncios, reglas, servidores y el paquete oficial que se instala al pulsar Jugar. Canal de pruebas en Ajustes › Acerca de. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.31.1/Parabellum-0.31.1.zip) |
-| [**0.30.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.30.0) | 18&nbsp;oct&nbsp;2026 | Todo Minecraft desde Google Drive y el botón **Modo escuela**. Gestor de descargas, pantalla de carga, chat más completo (imágenes pegadas, emojis, buscar), «Buscar el mod culpable» y las actualizaciones que no arrancan se deshacen solas. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.30.0/Parabellum-0.30.0.zip) |
-| [**0.28.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.28.0) | 13&nbsp;oct&nbsp;2026 | Página de Amigos, mensajes con respuestas y reacciones, grupos con foto, «Reportar problema», Servidores y Hostear en una sola página, y el panel del juego igual que la ventana. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.28.0/Parabellum-0.28.0.zip) |
-| [**0.25.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.25.0) | 12&nbsp;oct&nbsp;2026 | Animaciones en toda la ventana. Dentro del juego: panel animado, botón «Parabellum» en el menú de pausa y avisos abajo a la derecha. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.25.0/Parabellum-0.25.0.zip) |
-| [**0.24.1**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.24.1) | 12&nbsp;oct&nbsp;2026 | El mod del juego gasta lo mínimo y se aparta solo si hace caer el juego. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.24.1/Parabellum-0.24.1.zip) |
-
-### 🍎 Mac
-
-La de Mac la compila Diego en su Mac, así que puede salir unos días después que la de Windows.
-
-| Versión | Fecha | Lo nuevo | Descarga |
-|---|---|---|---|
-| [**0.33.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/mac-v0.33.0)<br><sub>la&nbsp;más&nbsp;nueva</sub> | 20&nbsp;oct&nbsp;2026 | Trae todo lo de Windows hasta la 0.33.0: **comunidades**, la interfaz pulida, descargas con cola, **modo escuela**, el chat nuevo (con imágenes desde Finder, Safari o Chrome) y copias de seguridad. Desde esta, una actualización que no arranca **se deshace sola**. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/mac-v0.33.0/Parabellum-Mac-0.33.0.zip) |
-| **0.28.0** | 13&nbsp;oct&nbsp;2026 | La primera para Mac con chip Apple: todo lo de la 0.28.0 de Windows. | <sub>Ya no está: se actualiza sola a la 0.33.0.</sub> |
-
-Todas las versiones, con sus notas completas: [Releases](https://github.com/juanrojasgarcialin/parabellum-rs/releases).
 
 ## Preguntas frecuentes
 

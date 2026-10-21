@@ -142,20 +142,21 @@ que poder editar esa carpeta.
    tabla de versiones del README tenga su enlace. Desde la raíz del repo:
 
    ```
-   gh release create v<versión> ../_parabellum/Parabellum-<versión>.zip --target <commit> --title "Parabellum <versión>" --notes-file <notas.md> --latest
+   gh release create v<versión> ../_parabellum/Parabellum-<versión>.zip --target <commit> --title "Parabellum para Windows <versión>" --notes-file <notas.md> --latest
    ```
 
    Las notas, para quien juega (lo mismo que se anota en `docs/mac-cambios.md`), con el SHA-256 del zip.
-3. **README**: una fila nueva arriba en «Versiones» y el enlace del paso 1 de «Descargar e instalar».
-   El botón de descarga de arriba se pone al día solo (toma la release `v*` más nueva).
+3. **README**: en «Descargar», la tarjeta de Windows (el botón, la fecha, el tamaño y «Lo nuevo en la
+   <versión>»). El README muestra solo la última versión de cada sistema. El botón de descarga de arriba
+   se pone al día solo (toma la release `v*` más nueva).
 4. **`docs/mac-cambios.md`** › «Versiones publicadas en Drive»: número, fecha, commit y qué cambió.
 
 **Mac** (`_parabellum-mac`, la publica Diego desde su Mac): el mismo zip de Drive va como release
 `mac-v<versión>` con el nombre `Parabellum-Mac-<versión>.zip` (así no se confunde con el de Windows),
 título «Parabellum para Mac <versión>» y `--latest=false`, para que «la más nueva» siga siendo la de
 Windows (de ella sale solo el botón de Windows). Las de Windows se titulan «Parabellum para Windows
-<versión>». En el README, a mano: el botón «Descargar para Mac» de arriba, el de la tarjeta de Mac en
-«Descargar» y su fila en «Versiones › Mac».
+<versión>». En el README, a mano: el botón «Descargar para Mac» de arriba y la tarjeta de Mac en
+«Descargar» (botón, fecha, tamaño y «Lo nuevo»).
 
 ## Configuración
 

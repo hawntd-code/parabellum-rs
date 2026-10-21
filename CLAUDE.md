@@ -29,10 +29,11 @@ en `ui/`.
 - **Si se publica una versión de Windows en Drive** (la publique Juan o su agente): en ese momento,
   agrega arriba en `docs/mac-cambios.md` › «Versiones publicadas en Drive» el número, la fecha y qué
   cambió para quien juega, y súbelo a `main`. Lo pidió Diego.
-- **Y en GitHub, a la par:** una release `v<versión>` con el zip **exacto** de `_parabellum`, y su fila
-  arriba en la tabla «Versiones» del [README](README.md) y el enlace del paso 1 de «Descargar e
-  instalar» (el botón de arriba toma solo la release más nueva). Las de Mac van como `mac-v<versión>`
-  y sus botones se cambian a mano. Cómo: [docs/desarrollo.md](docs/desarrollo.md) › «Publicar una
+- **Y en GitHub, a la par:** una release `v<versión>` con el zip **exacto** de `_parabellum`, y en el
+  [README](README.md) la tarjeta de Windows de «Descargar» al día (botón, fecha, tamaño y «Lo nuevo»).
+  El README lista **solo la última versión** de cada sistema: las viejas se actualizan solas y no se
+  enlazan. El botón de arriba toma solo la release más nueva. Las de Mac van como `mac-v<versión>` y su
+  tarjeta y su botón se cambian a mano. Cómo: [docs/desarrollo.md](docs/desarrollo.md) › «Publicar una
   versión».
 - **El README es para quien juega** (qué hace, capturas, descargar e instalar, versiones, preguntas).
   Lo técnico (compilar, carpetas, comandos `--…`, configuración) va en `docs/desarrollo.md`. Las
