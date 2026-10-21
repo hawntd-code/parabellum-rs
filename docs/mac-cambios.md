@@ -26,8 +26,9 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 - Última revisión de los PR de Mac en Windows: 2026-10-18, PR #1 a #15 (todos mezclados).
 - **Publicado en Drive:** Windows **0.32.0** desde el 2026-10-20 (Juan; el exe publicado es idéntico
   al compilado de `main` en `52fe1d5`). Las reglas de Firebase de Comunidades ya están publicadas.
-  **Mac sigue en 0.28.0**, cuatro versiones atrás: puede publicar directo la 0.32.0 (lo de «Para
-  llegar a la 0.30.0», abajo, sigue valiendo).
+  **Mac 0.33.0** desde el 2026-10-20 (Diego, compilada de `main` en `52de0a3`; ver «Versiones
+  publicadas en Drive»): las Mac con la 0.28.0 se actualizan directo a ella. De «Para llegar a la
+  0.30.0», abajo, quedan las pruebas a mano.
 - **En `main`: 0.33.0**, sin publicar: E1 (huella del paquete, respaldos y servicio de ajustes; ver «Cambios
   de Windows»).
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
@@ -103,6 +104,15 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
 
+- **Mac 0.33.0** · 2026-10-20 · en `_parabellum-mac`, publicada por Diego con `--publicar-launcher` y
+  `--subir-launcher-drive`, compilada de `main` en `52de0a3`. Zip de 9641615 bytes, SHA-256
+  `520fd991…9a3f`; se baja sin iniciar sesión. Para quien juega en Mac trae todo lo de la 0.29.0 a la
+  0.33.0 de Windows (de la 0.28.0 a esta no hubo otra de Mac): Comunidades, la interfaz pulida, el
+  gestor de Descargas, el modo escuela y el espejo, la pantalla de carga, el chat nuevo, imágenes al
+  chat (pegar, y arrastrar desde Finder, Safari o Chrome) y la vuelta sola a la versión anterior si
+  una actualización no arranca (desde esta; la 0.28.0 no la trae). Antes de publicarla, en Mac: las
+  117 pruebas, el vigía de la actualización (ver «Una actualización que no arranca se deshace sola»)
+  y, de las de a mano, lo del chat con imágenes del 2026-10-18.
 - **0.32.0** · 2026-10-20 · trae lo de la 0.31.3 y la 0.32.0. Publicada por Juan, compilada de `main`
   en `52fe1d5`:
   - **Modrinth en la escuela sin modo escuela**: si la red lo bloquea, Parabellum pregunta por el
