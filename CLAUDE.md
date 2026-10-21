@@ -18,6 +18,7 @@ en `ui/`.
 3. La guía de cada sistema: [docs/mac.md](docs/mac.md) y [docs/windows.md](docs/windows.md). La
    historia y los planes están en [ROADMAP.md](ROADMAP.md). Hacia dónde va Parabellum (cliente oficial
    del servidor, comunidades, soporte, mundos en Drive) y en qué orden: [docs/plan-diciembre.md](docs/plan-diciembre.md).
+   Lo que se está haciendo ahora, punto por punto: [docs/plan-noviembre.md](docs/plan-noviembre.md).
 
 ## Reglas
 

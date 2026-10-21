@@ -158,17 +158,25 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
   - Las reglas de Firebase validan cada tarjeta (de la lista, con un valor de su tipo y solo del equipo)
     y no dejan editar ni borrar mensajes. Probadas en el emulador (`docs/probar-reglas.py`).
 - [ ] *Prueba:* Juan: pedir ayuda desde otra cuenta en su comunidad y mandarle una tarjeta (la 0.34.0 y sus reglas ya están publicadas)
-- [ ] **E4, mundos en Drive** (opcional antes de diciembre): copias, revisiones y restaurar con su instancia
+- [ ] **Plan de noviembre** ([docs/plan-noviembre.md](docs/plan-noviembre.md), pedido de Juan el 2026-10-20), en este orden:
+  - [ ] **0.35.0:** el zip del paquete sin la espera de ~30 s (el revisor de virus de Google; los mods del
+    paquete pasan a bajar del CDN de Modrinth) y avisos de soporte desde que se abre Parabellum
+    (`supportNotify` y el número en el botón del escudo);
+  - [ ] **0.36.0 y 0.37.0:** una sola conexión a Firebase por persona (menos escuchas, y después el
+    WebSocket de Firebase con respaldo SSE);
+  - [ ] **0.38.0:** errores con una acción para resolverlos, y la O justo después de F2 abre esa captura;
+  - [ ] **0.39.0 y 0.40.0, E4, mundos en Drive:** copias, revisiones, conflictos y restaurar con su instancia;
+  - [ ] **0.41.0, E5, tarjetas de Minecraft:** ajustes de `options.txt` por versión, pendientes hasta
+    cerrar el juego;
+  - [ ] **Después, E6:** subir solo lo que cambió de un mundo, configuraciones de mods, aplicar en vivo con
+    el mod, eventos de la comunidad y lo que quede de Firebase.
 - [ ] **Pruebas reales pendientes**:
   - en la escuela: Modrinth sin modo escuela;
   - con amigos en sus casas: P2P y los «teletransportes»;
   - el panel en 26.3;
   - las demás *Prueba:* de abajo.
-- [ ] **Detalles**:
-  - el zip de «RETORCIDOS | EL PACK» tarda ~30 s en empezar a bajar de Drive;
-  - Mac al día con la 0.34 (Diego; la Mac 0.33.0 ya está publicada);
-  - una sola conexión a Firebase por persona.
-- [ ] **P2P desde la escuela** (después de E3, pedido de Juan el 2026-10-20). Medido en la UABC:
+- [ ] **Mac al día con la 0.34** (Diego; la Mac 0.33.0 ya está publicada)
+- [ ] **P2P desde la escuela** (en pausa por decisión de Juan, 2026-10-20). Medido en la UABC:
   - el filtro bloquea los 4 relevos de n0;
   - la red deja salir UDP con un NAT que conserva el puerto, y TCP a cualquier puerto. Los servidores
     públicos de Minecraft responden, así que el servidor oficial se podrá jugar desde la escuela.

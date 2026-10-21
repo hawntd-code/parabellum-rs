@@ -431,8 +431,14 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Próximo en Windows
 
-- La 0.29.0 está lista para que Juan la publique. Después: la lista de cambios de Juan para la siguiente
-  iteración (2026-10-17).
+- **[plan-noviembre.md](plan-noviembre.md)** (2026-10-20). Por versión:
+  - 0.35.0, el paquete oficial baja sus mods del CDN de Modrinth y hay avisos de soporte desde el inicio;
+  - 0.36.0 y 0.37.0, una sola conexión a Firebase (WebSocket);
+  - 0.38.0, errores con acción y la O después de F2;
+  - 0.39.0 a 0.41.0, E4 (mundos en Drive) y E5 (tarjetas de Minecraft).
+
+  Todo es compartido. Lo de sistema: las notificaciones del vigía de soporte (`plataforma::avisos`, ya existe
+  en Mac) y un vigía de la carpeta de capturas.
 
 ## Cambios de Windows
 
