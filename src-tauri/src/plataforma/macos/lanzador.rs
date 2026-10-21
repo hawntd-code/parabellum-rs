@@ -148,8 +148,8 @@ pub fn cleanup() {
     }
 }
 
-/// Lo que se abre como vigía de la actualización (arranque.rs): el programa de la .app anterior.
-/// TODO(mac): probarlo con una versión que no arranca (docs/mac-cambios.md).
+/// Lo que se abre como vigía de la actualización (arranque.rs): el programa de la .app anterior. Probado
+/// en Mac el 2026-10-20 (docs/mac-cambios.md): una versión que no arranca, una que se traba y una buena.
 pub fn previous_executable(installed: &Path) -> Option<PathBuf> {
     let program = PathBuf::from(format!("{}.old", installed.display())).join("Contents").join("MacOS").join("Parabellum");
     program.exists().then_some(program)

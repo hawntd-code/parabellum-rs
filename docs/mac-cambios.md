@@ -424,7 +424,7 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   - **Interfaz**: Comunidades («Modificado», «Restaurar y jugar») y la pestaña Detalles de la instancia.
     `cmDialog` acepta un botón `secondary`.
 - Mac: nada distinto (no depende del sistema). Prueba las nuevas pruebas de `cargo test` en Mac (los
-  SHA-1 y las rutas deben dar lo mismo).
+  SHA-1 y las rutas deben dar lo mismo). — 2026-10-20: en Mac compila sin advertencias y pasan las 117.
 
 ### 2026-10-20 · Pulido de la interfaz (0.32.0)
 
@@ -565,6 +565,7 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   vez que abre cada versión).
 - Mac: `refresh_icons` es una función vacía en `macos/accesos.rs`. La `.app` toma el logo de
   `ui/logo.png` al empaquetarla (`empaquetar.sh`). Revisa que el `.icns` salga con el logo nuevo.
+  — Revisado el 2026-10-20 con la 0.33.0: el `.icns` de la `.app` es el logo nuevo.
 
 ### 2026-10-18 · Firebase medido, pruebas de Windows en los PR y sugerir el modo escuela
 
@@ -600,6 +601,17 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 - Mac: probarlo con una `.app` de versión falsa que no arranque. Se puede acortar la espera con
   `PARABELLUM_ESPERA_ARRANQUE=10`. En Windows lo probé así con `whoami.exe` en lugar de la versión
   nueva (`scratchpad/f57_vigia.py`).
+  — **Probado en Mac el 2026-10-20** con la 0.33.0 empaquetada, en una carpeta de prueba
+  (`PARABELLUM_ROOT`), haciendo lo mismo que `hand_over`: `pendiente.json` y el programa de
+  `Parabellum.app.old` con `--vigilar-actualizacion`. Los tres casos salen bien:
+  - **No arranca** (el programa de la `.app` nueva es un `exit 1`, como tu `whoami.exe`): a los 10 s,
+    «no confirmó su arranque» y «se volvió a la versión 0.33.0». La `.app` buena vuelve a su lugar y se
+    abre, muestra el aviso una vez (`"shown": true`) y borra la `.fallida`.
+  - **Se traba** (la nueva, congelada con `SIGSTOP` en cuanto anota su proceso): a los 15 s el vigía la
+    cierra (`kill_tree`), vuelve a la anterior y la abre.
+  - **Arranca bien**: confirma a los ~3 s, el vigía termina y la `.app.old` se borra a los 6 s.
+  Falta verlo con una actualización de verdad desde la ventana: será la primera vez que una Mac pase de
+  una versión con vigía a la siguiente (la 0.28.0 publicada todavía no lo trae).
 
 ### 2026-10-18 · Logo nuevo y plan hacia diciembre
 
