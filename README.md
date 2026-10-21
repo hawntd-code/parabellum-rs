@@ -70,7 +70,7 @@ Funciona en **español e inglés**, con tema **oscuro y claro**, y se puede usar
 <br>
 <a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/mac-v0.33.0/Parabellum-Mac-0.33.0.zip"><img alt="Descargar Parabellum 0.33.0 para Mac" src="https://img.shields.io/badge/Descargar-v0.33.0-7f50f2?style=for-the-badge&logo=apple&logoColor=white"></a>
 <br><br>
-<sub>Mac con chip Apple (M1 o más nueva) y macOS 13 o más nuevo · zip de 9.6 MB<br><a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/mac-v0.33.0">Qué trae la 0.33.0</a></sub>
+<sub>Mac con chip Apple y macOS 13 o más nuevo · zip de 9.6 MB<br><a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/mac-v0.33.0">Qué trae la 0.33.0</a></sub>
 <br><br>
 </td>
 </tr>
