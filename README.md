@@ -6,7 +6,7 @@
 
 **El launcher de Minecraft para jugar con tus amigos.**<br>Mods, modpacks, servidores propios y chat en una sola ventana, sin cuenta premium.
 
-[![Descargar para Windows](https://img.shields.io/badge/Descargar_para_Windows-0.33.0-7f50f2?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.33.0/Parabellum-0.33.0.zip)
+[![Descargar para Windows](https://img.shields.io/badge/Descargar_para_Windows-0.34.0-7f50f2?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.34.0/Parabellum-0.34.0.zip)
 
 ![Windows 10 y 11](https://img.shields.io/badge/Windows-10_·_11-2b2b33?style=flat-square) ![Mac con chip Apple](https://img.shields.io/badge/Mac-chip_Apple-2b2b33?style=flat-square&logo=apple&logoColor=white) ![Minecraft hasta la 26.3](https://img.shields.io/badge/Minecraft-hasta_la_26.3-2b2b33?style=flat-square) ![Español e inglés](https://img.shields.io/badge/idioma-español_·_English-2b2b33?style=flat-square)
 
@@ -37,6 +37,10 @@
     <td width="50%" valign="top"><b>⬇️ Descargas</b><br>Cola de descargas con avance, cancelar, reintentar y límite de velocidad. Si algo falla, al reintentar sigue donde quedó.</td>
     <td width="50%" valign="top"><b>🔄 Se actualiza solo</b><br>Al abrirlo busca la versión nueva y se actualiza. Si una actualización no arranca, vuelve sola a la anterior.</td>
   </tr>
+  <tr>
+    <td width="50%" valign="top"><b>🛟 Soporte de tu comunidad</b><br>¿Algo no funciona? <b>Pide ayuda</b> y el equipo de soporte ve tu problema con el diagnóstico de tu instancia. Te pueden mandar un ajuste que aplicas con un clic (y deshaces igual).</td>
+    <td width="50%" valign="top"><b>🗂️ Copias de seguridad</b><br>Antes de actualizar o restaurar un modpack, Parabellum guarda lo que cambia. Si algo sale mal, lo recuperas desde los detalles de la instancia.</td>
+  </tr>
 </table>
 
 Funciona en **español e inglés**, con tema **oscuro y claro**, y se puede usar entero con el teclado.
@@ -53,21 +57,22 @@ Funciona en **español e inglés**, con tema **oscuro y claro**, y se puede usar
     <td><img src="docs/capturas/servidores.png" alt="La lista de servidores"><br><sub><b>Servidores</b>: los tuyos, los de tus amigos y los guardados.</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/capturas/comunidades.png" alt="La página de una comunidad"><br><sub><b>Comunidades</b>: servidores, paquete oficial, anuncios y reglas.</sub></td>
+    <td><img src="docs/capturas/comunidades.png" alt="La página de una comunidad"><br><sub><b>Comunidades</b>: servidores, paquete oficial y las solicitudes de ayuda.</sub></td>
+    <td><img src="docs/capturas/soporte.png" alt="Una solicitud de ayuda con su diagnóstico y una tarjeta de ajuste"><br><sub><b>Soporte</b>: tu diagnóstico y el ajuste que te proponen.</sub></td>
+  </tr>
+  <tr>
     <td><img src="docs/capturas/mensajes.png" alt="Mensajes con un amigo"><br><sub><b>Mensajes</b>: chat con amigos y grupos.</sub></td>
-  </tr>
-  <tr>
     <td><img src="docs/capturas/doctor.png" alt="El doctor explicando por qué se cerró el juego"><br><sub><b>El doctor</b>: por qué se cerró el juego y cómo arreglarlo.</sub></td>
-    <td><img src="docs/capturas/descargas.png" alt="El panel de descargas"><br><sub><b>Descargas</b>: la cola, el avance y la velocidad.</sub></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><img src="docs/capturas/detalles-claro.png" alt="Detalles de una instancia en tema claro" width="60%"><br><sub><b>Tema claro</b>: los detalles de una instancia, con sus copias de seguridad.</sub></td>
+    <td><img src="docs/capturas/descargas.png" alt="El panel de descargas"><br><sub><b>Descargas</b>: la cola, el avance y la velocidad.</sub></td>
+    <td><img src="docs/capturas/detalles-claro.png" alt="Detalles de una instancia en tema claro"><br><sub><b>Tema claro</b>: los detalles de una instancia, con sus copias de seguridad.</sub></td>
   </tr>
 </table>
 
 ## Descargar e instalar
 
-1. Baja **[Parabellum-0.33.0.zip](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.33.0/Parabellum-0.33.0.zip)** (10 MB).
+1. Baja **[Parabellum-0.34.0.zip](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.34.0/Parabellum-0.34.0.zip)** (10 MB).
 2. Descomprímelo en una carpeta tuya, por ejemplo `Escritorio\Parabellum` o una USB. Parabellum no se instala: todo lo suyo (instancias, mundos y ajustes) se queda en esa carpeta.
 3. Abre **`Parabellum.exe`**. La primera vez Windows puede mostrar «Windows protegió tu PC»: pulsa **Más información** › **Ejecutar de todas formas**. Las actualizaciones ya no muestran ese aviso.
 4. Escribe tu nombre de jugador, crea una instancia y pulsa **Jugar**.
@@ -82,7 +87,8 @@ Parabellum **se actualiza solo**: al abrir una versión vieja, baja la más nuev
 
 | Versión | Fecha | Lo nuevo | Descarga |
 |---|---|---|---|
-| [**0.33.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.33.0)<br><sub>la más nueva</sub> | 20&nbsp;oct&nbsp;2026 | El paquete oficial de una comunidad avisa si le cambiaste mods, te muestra qué cambió y lo deja como el oficial con **Restaurar**. Antes de actualizar o restaurar se guarda una **copia de seguridad** que recuperas en Detalles de la instancia. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.33.0/Parabellum-0.33.0.zip) |
+| [**0.34.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.34.0)<br><sub>la&nbsp;más&nbsp;nueva</sub> | 20&nbsp;oct&nbsp;2026 | **Soporte en las comunidades**: pide ayuda con el diagnóstico de tu instancia (sin tu carpeta de usuario, correos ni claves) y el equipo de soporte te contesta. Te pueden mandar **tarjetas de ajustes** que aplicas con un clic y deshaces igual. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.34.0/Parabellum-0.34.0.zip) |
+| [**0.33.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.33.0) | 20&nbsp;oct&nbsp;2026 | El paquete oficial de una comunidad avisa si le cambiaste mods, te muestra qué cambió y lo deja como el oficial con **Restaurar**. Antes de actualizar o restaurar se guarda una **copia de seguridad** que recuperas en Detalles de la instancia. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.33.0/Parabellum-0.33.0.zip) |
 | [**0.32.0**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.32.0) | 20&nbsp;oct&nbsp;2026 | Mods de Modrinth en redes que bloquean Modrinth, sin modo escuela. Interfaz pulida de punta a punta: campos más claros, gráficas del servidor, animaciones al cargar y al cambiar de tema. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.32.0/Parabellum-0.32.0.zip) |
 | [**0.31.2**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.31.2) | 18&nbsp;oct&nbsp;2026 | Si Drive no entrega un paquete a la primera, se reintenta (antes, a veces no aparecía). | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.31.2/Parabellum-0.31.2.zip) |
 | [**0.31.1**](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.31.1) | 18&nbsp;oct&nbsp;2026 | **Comunidades**: códigos de invitación, anuncios, reglas, servidores y el paquete oficial que se instala al pulsar Jugar. Canal de pruebas en Ajustes › Acerca de. | [⬇&nbsp;Descargar](https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.31.1/Parabellum-0.31.1.zip) |
@@ -122,7 +128,7 @@ Agréguense en **Amigos** (con su cuenta de Google). Después, uno crea un servi
 <details>
 <summary><b>El juego se cierra al abrir. ¿Qué hago?</b></summary>
 
-Parabellum abre **el doctor** solo: te dice qué pasó y te ofrece el arreglo. Si no se resuelve, usa **Reportar problema** (en el menú ⋮ de la instancia) y manda el resumen por chat a quien te ayuda.
+Parabellum abre **el doctor** solo: te dice qué pasó y te ofrece el arreglo. Si no se resuelve, en tu comunidad pulsa **Pedir ayuda**: el equipo de soporte ve tu problema con el diagnóstico de la instancia. Si no estás en una comunidad, usa **Reportar problema** (en el menú ⋮ de la instancia) y manda el resumen por chat a quien te ayuda.
 </details>
 
 <details>

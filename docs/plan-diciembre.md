@@ -393,7 +393,7 @@ El orden sigue las dependencias. Lo que se dice que «cabe» es lo razonable, no
     conversación y las tarjetas de los 7 ajustes (aplicar, repetir sin efecto, deshacer y acuse);
   - `reporte::redact` quita la carpeta del usuario, correos, tokens y claves;
   - reglas de `supportTickets`, `supportMessages` y `supportByUser`, con sus pruebas en el emulador.
-  - Juan tiene que publicar las reglas antes que la 0.34.0. Lo siguiente es **E4** (mundos en Drive).
+  - Juan publicó las reglas y la 0.34.0 el 2026-10-20. Lo siguiente es **E4** (mundos en Drive).
 
 **Antes de diciembre**: E0, E1, E2 y E3 caben si las decisiones 1–3 llegan pronto. E4 es posible en el
 canal de pruebas. E5 y E6 quedan para después. Si algo se atrasa, se recorta E3 a soporte sin tarjetas

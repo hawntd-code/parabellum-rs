@@ -24,12 +24,10 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 ## Estado
 
 - Última revisión de los PR de Mac en Windows: 2026-10-18, PR #1 a #15 (todos mezclados).
-- **Publicado en Drive:** Windows **0.33.0** desde el 2026-10-20 (Juan; el exe publicado es idéntico
-  al compilado de `main` en `52de0a3`). Las reglas de Firebase de Comunidades ya están publicadas.
-  **Mac sigue en 0.28.0**, cinco versiones atrás: puede publicar directo la 0.33.0 (lo de «Para
-  llegar a la 0.30.0», abajo, sigue valiendo).
-- **En `main`: 0.34.0**, sin publicar: E3 (soporte y tarjetas de ajustes; ver «Cambios de Windows»).
-  Antes de publicarla, Juan publica las reglas nuevas de Firebase.
+- **Publicado en Drive:** Windows **0.34.0** desde el 2026-10-20 (Juan; el exe publicado es idéntico
+  al compilado de `main` en `6379499`), con las reglas de Firebase del soporte ya publicadas.
+  **Mac 0.33.0** desde el 2026-10-20 (Diego; su entrada está en el PR #17). Le falta solo la 0.34.0
+  (E3), que no tiene nada propio de Mac.
 - **Descargas en GitHub:** cada versión de Windows publicada tiene su release (`v<versión>`) con el zip,
   y el README las enlaza en «Versiones». Cuando publiques una de Mac, súbela también como release
   (`mac-v<versión>`) y dime para enlazarla.
@@ -106,6 +104,16 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
 
+- **0.34.0** · 2026-10-20 · E3. Publicada por Juan, compilada de `main` en `6379499`, con las reglas
+  de Firebase del soporte publicadas antes:
+  - **Pedir ayuda** al equipo de soporte de la comunidad, desde la comunidad o desde «Reportar
+    problema», con el diagnóstico de la instancia (se ve antes de mandarlo, sin la carpeta del usuario,
+    correos ni claves).
+  - **El equipo de soporte** ve la cola, toma las solicitudes, contesta y las cierra. A quien pidió
+    ayuda le sale un punto y un aviso cuando le responden.
+  - **Tarjetas de ajustes**: el equipo propone uno de los 7 ajustes con su valor; el jugador ve el de su
+    PC y el recomendado, y lo aplica con un clic (con «Deshacer»).
+  - «Reportar problema» ya sale sin la carpeta del usuario, correos ni claves.
 - **0.33.0** · 2026-10-20 · E1. Publicada por Juan, compilada de `main` en `52de0a3`:
   - **El paquete oficial avisa si lo cambiaste**: en Comunidades sale «Modificado» con qué mods sobran o
     faltan, y «Restaurar» lo deja como el oficial. Antes de jugar en el servidor con el paquete cambiado,

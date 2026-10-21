@@ -157,7 +157,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     - el equipo ve el acuse: «la aplicó en su PC».
   - Las reglas de Firebase validan cada tarjeta (de la lista, con un valor de su tipo y solo del equipo)
     y no dejan editar ni borrar mensajes. Probadas en el emulador (`docs/probar-reglas.py`).
-- [ ] *Prueba:* Juan: publicar las reglas de Firebase y pedir ayuda desde otra cuenta en su comunidad
+- [ ] *Prueba:* Juan: pedir ayuda desde otra cuenta en su comunidad y mandarle una tarjeta (la 0.34.0 y sus reglas ya están publicadas)
 - [ ] **E4, mundos en Drive** (opcional antes de diciembre): copias, revisiones y restaurar con su instancia
 - [ ] **Pruebas reales pendientes**:
   - en la escuela: Modrinth sin modo escuela;
