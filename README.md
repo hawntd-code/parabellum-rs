@@ -11,7 +11,7 @@
 
 ![Windows 10 y 11](https://img.shields.io/badge/Windows-10_·_11-2b2b33?style=flat-square) ![Mac con chip Apple](https://img.shields.io/badge/Mac-chip_Apple-2b2b33?style=flat-square&logo=apple&logoColor=white) ![Minecraft hasta la 26.3](https://img.shields.io/badge/Minecraft-hasta_la_26.3-2b2b33?style=flat-square) ![Español e inglés](https://img.shields.io/badge/idioma-español_·_English-2b2b33?style=flat-square)
 
-**[Qué hace](#qué-puedes-hacer)** · **[Descargar](#descargar)** · **[Capturas](#capturas)** · **[Preguntas](#preguntas-frecuentes)**
+**[Qué hace](#qué-puedes-hacer)** · **[Descargar](#descargar)** · **[Capturas](#capturas)** · **[Preguntas](#preguntas-frecuentes)** · **[Sitio web ↗](https://parabellum-roan.vercel.app)**
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/capturas/inicio-claro.png">

@@ -36,6 +36,10 @@ en `ui/`.
   enlazan. El botón de arriba toma solo la release más nueva. Las de Mac van como `mac-v<versión>` y su
   tarjeta y su botón se cambian a mano. Cómo: [docs/desarrollo.md](docs/desarrollo.md) › «Publicar una
   versión».
+- **La web de Parabellum:** [parabellum-roan.vercel.app](https://parabellum-roan.vercel.app). Vive fuera del
+  repo, en `../landing-servidor` (Astro), y Juan la publica en Vercel. Sus botones de descarga toman la
+  release más nueva de GitHub (al compilar y en el navegador, con una hora de caché): una versión nueva
+  aparece sola, sin volver a publicar la web.
 - **El README es para quien juega** (qué hace, capturas, descargar e instalar, versiones, preguntas).
   Lo técnico (compilar, carpetas, comandos `--…`, configuración) va en `docs/desarrollo.md`. Las
   capturas están en `docs/capturas/`: salen de la interfaz en modo demostración, con las esquinas
