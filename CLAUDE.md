@@ -39,7 +39,8 @@ en `ui/`.
 - **La web de Parabellum:** [parabellum-roan.vercel.app](https://parabellum-roan.vercel.app). Vive fuera del
   repo, en `../landing-servidor` (Astro), y Juan la publica en Vercel. Sus botones de descarga toman la
   release más nueva de GitHub (al compilar y en el navegador, con una hora de caché): una versión nueva
-  aparece sola, sin volver a publicar la web.
+  aparece sola, sin volver a publicar la web. Las capturas de `docs/capturas/originales/` (sin esquinas
+  redondeadas) las baja la web al compilar: no las borres ni las renombres.
 - **El README es para quien juega** (qué hace, capturas, descargar e instalar, versiones, preguntas).
   Lo técnico (compilar, carpetas, comandos `--…`, configuración) va en `docs/desarrollo.md`. Las
   capturas están en `docs/capturas/`: salen de la interfaz en modo demostración, con las esquinas
