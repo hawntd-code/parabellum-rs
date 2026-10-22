@@ -64,6 +64,11 @@ pub struct Manifest {
     /// `archive`, que lo trae todo.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lite_archive: Option<String>,
+    /// El ligero cuando tampoco trae las bibliotecas del loader (`remote_base`, desde la 0.35.1). Va aparte
+    /// porque la 0.35.0 no las sabe bajar: con `lite_archive` lo instalaría sin ellas y el juego no abriría.
+    /// Así sigue con el completo.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lite_zip: Option<String>,
     /// Solo en el .json de al lado, como `archive_size` y `archive_sha256`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lite_size: Option<u64>,
@@ -73,19 +78,32 @@ pub struct Manifest {
     /// (rápido y pasa el filtro de la escuela).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub remote: Vec<RemoteFile>,
+    /// Las bibliotecas del loader que están en el maven de Fabric (rutas dentro de `base/`): el ligero
+    /// tampoco las trae. Eran los 7 jars que Drive todavía revisaba.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub remote_base: Vec<RemoteFile>,
 }
 
 impl Manifest {
     pub fn is_base(&self) -> bool {
         self.kind == "base"
     }
+
+    /// El nombre del paquete ligero, sea cual sea su forma.
+    pub fn lite(&self) -> Option<&String> {
+        self.lite_zip.as_ref().or(self.lite_archive.as_ref())
+    }
 }
 
-/// Un archivo del paquete que está en Modrinth.
+/// El maven de Fabric: pasa el filtro de la escuela (ver docs/plan-noviembre.md).
+const FABRIC_MAVEN: &str = "https://maven.fabricmc.net/";
+
+/// Un archivo del paquete que está en Modrinth (o, en `remote_base`, en el maven de Fabric).
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct RemoteFile {
-    /// Ruta dentro de la instancia, con "/" ("mods/sodium.jar"), como en el zip sin «instancia/».
+    /// Ruta dentro de la instancia, con "/" ("mods/sodium.jar"), como en el zip sin «instancia/». En
+    /// `remote_base`, dentro de base ("libraries/net/fabricmc/…").
     pub path: String,
     pub url: String,
     pub sha1: String,
@@ -96,11 +114,16 @@ pub struct RemoteFile {
 impl RemoteFile {
     /// Solo del CDN de Modrinth, con huella y una ruta que no sale de la instancia.
     pub fn valid(&self) -> bool {
-        self.url.starts_with("https://cdn.modrinth.com/")
-            && self.sha1.len() == 40
-            && self.sha1.chars().all(|c| c.is_ascii_hexdigit())
-            && self.size > 0
-            && crate::mrpack::safe_relative(&self.path).is_some()
+        self.url.starts_with("https://cdn.modrinth.com/") && self.well_formed()
+    }
+
+    /// Una biblioteca del loader: del maven de Fabric y dentro de base/libraries.
+    pub fn valid_library(&self) -> bool {
+        self.url.starts_with(FABRIC_MAVEN) && self.path.starts_with("libraries/") && self.well_formed()
+    }
+
+    fn well_formed(&self) -> bool {
+        self.sha1.len() == 40 && self.sha1.chars().all(|c| c.is_ascii_hexdigit()) && self.size > 0 && crate::mrpack::safe_relative(&self.path).is_some()
     }
 }
 
@@ -293,11 +316,23 @@ pub struct ExportOptions {
     /// Los archivos que están en Modrinth (`remote_files`): si hay, también sale el paquete ligero.
     #[serde(skip)]
     pub remote: Vec<RemoteFile>,
+    /// Las bibliotecas del loader que están en el maven de Fabric (`remote_libraries`).
+    #[serde(skip)]
+    pub remote_base: Vec<RemoteFile>,
+}
+
+/// Lo que el paquete ligero deja fuera: los mods que están en Modrinth y, si hay alguno (si no, no sale
+/// ligero), las bibliotecas del loader que están en el maven de Fabric.
+pub async fn find_remote(instance: &Instance, paths: &Paths, options: &mut ExportOptions) {
+    options.remote = remote_files(instance).await;
+    if !options.remote.is_empty() {
+        options.remote_base = remote_libraries(instance, paths).await;
+    }
 }
 
 /// Qué archivos de la instancia están en Modrinth, para el paquete ligero. Sin conexión con Modrinth,
 /// ninguno (sale solo el paquete completo, como antes).
-pub async fn remote_files(instance: &Instance) -> Vec<RemoteFile> {
+async fn remote_files(instance: &Instance) -> Vec<RemoteFile> {
     let installed = crate::modrinth::identify(instance).await;
     let known: Vec<&crate::modrinth::InstalledFile> = installed.iter().filter(|f| f.project_id.is_some()).collect();
     let Ok(found) = crate::modrinth::files_by_hash(&known.iter().map(|f| f.sha1.clone()).collect::<Vec<_>>()).await else { return Vec::new() };
@@ -310,6 +345,20 @@ pub async fn remote_files(instance: &Instance) -> Vec<RemoteFile> {
             file.valid().then_some(file)
         })
         .collect()
+}
+
+/// Qué bibliotecas del loader están en el maven de Fabric. Fabric las anota con su espejo
+/// (`fabricmc.forgecdn.net`), pero se bajan del maven, que es el que pasa el filtro de la escuela: solo
+/// cuentan si el maven da la misma huella que el archivo de este PC.
+async fn remote_libraries(instance: &Instance, paths: &Paths) -> Vec<RemoteFile> {
+    let checks = launch::fabric_libraries(&instance.version_id, paths).into_iter().map(|(file, maven_path)| async move {
+        let sha1 = crate::integridad::sha1_file(&file)?;
+        let url = format!("{FABRIC_MAVEN}{maven_path}");
+        let published = crate::download::client().get(format!("{url}.sha1")).send().await.ok()?.error_for_status().ok()?.text().await.ok()?;
+        let library = RemoteFile { path: format!("libraries/{maven_path}"), url, sha1, sha512: String::new(), size: file.metadata().ok()?.len() };
+        (published.trim().get(..40)?.eq_ignore_ascii_case(&library.sha1) && library.valid_library()).then_some(library)
+    });
+    futures::future::join_all(checks).await.into_iter().flatten().collect()
 }
 
 #[derive(Serialize, Debug)]
@@ -421,8 +470,16 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
     // Lo que está en Modrinth y de verdad viaja en el paquete: el ligero no lo trae.
     let packed: HashSet<String> = entries.iter().map(|(_, name)| name.to_lowercase()).collect();
     manifest.remote = options.remote.iter().filter(|r| r.valid() && packed.contains(&format!("instancia/{}", r.path.to_lowercase()))).cloned().collect();
+    if !manifest.remote.is_empty() {
+        manifest.remote_base = options.remote_base.iter().filter(|r| r.valid_library() && packed.contains(&format!("base/{}", r.path.to_lowercase()))).cloned().collect();
+    }
     let lite_zip = pack_dir.join(lite_name(&pack_name));
-    manifest.lite_archive = (!manifest.remote.is_empty()).then(|| lite_name(&pack_name));
+    let lite_archive = (!manifest.remote.is_empty()).then(|| lite_name(&pack_name));
+    if manifest.remote_base.is_empty() {
+        manifest.lite_archive = lite_archive;
+    } else {
+        manifest.lite_zip = lite_archive;
+    }
     write_archive(&pack_zip, &manifest, &entries, |bytes| report(&t!("Empaquetando el modpack", "Packing the modpack"), bytes))?;
     let lite = if manifest.remote.is_empty() {
         // Uno de una exportación anterior ya no corresponde a este paquete.
@@ -430,7 +487,12 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
         None
     } else {
         progress(t!("Empaquetando la versión ligera…", "Packing the lite version…"), 1.0);
-        let remote: HashSet<String> = manifest.remote.iter().map(|r| format!("instancia/{}", r.path.to_lowercase())).collect();
+        let remote: HashSet<String> = manifest
+            .remote
+            .iter()
+            .map(|r| format!("instancia/{}", r.path.to_lowercase()))
+            .chain(manifest.remote_base.iter().map(|r| format!("base/{}", r.path.to_lowercase())))
+            .collect();
         let rest: Vec<(PathBuf, String)> = entries.iter().filter(|(_, name)| !remote.contains(&name.to_lowercase())).cloned().collect();
         write_archive(&lite_zip, &manifest, &rest, |_| {})?;
         Some(lite_zip)
@@ -657,10 +719,19 @@ pub fn install_with(zip_path: &Path, paths: &Paths, sources: &HashMap<String, Pa
             register(paths, &manifest.id, &manifest.version);
             return Ok(Installed { kind: "base".into(), name: manifest.name.clone(), folder: None, updated: false });
         }
-        // El paquete ligero: lo que no trae el zip ya está bajado de Modrinth.
+        // El paquete ligero: lo que no trae el zip ya está bajado. Los mods (de Modrinth) van a la instancia y
+        // las bibliotecas del loader (del maven de Fabric), a base. `sources` las tiene como "base/…".
         let in_zip: HashSet<String> = listed.iter().map(|(name, _, _)| name.to_lowercase()).collect();
-        for remote in manifest.remote.iter().filter(|r| !in_zip.contains(&format!("instancia/{}", r.path.to_lowercase()))) {
-            let (Some(relative), Some(source)) = (crate::mrpack::safe_relative(&remote.path).filter(|_| remote.valid()), sources.get(&remote.path.to_lowercase())) else {
+        let pending = manifest
+            .remote
+            .iter()
+            .map(|r| (r, r.valid(), r.path.to_lowercase(), "instancia", staging.as_path()))
+            .chain(manifest.remote_base.iter().map(|r| (r, r.valid_library(), format!("base/{}", r.path.to_lowercase()), "base", paths.base.as_path())));
+        for (remote, valid, key, prefix, root) in pending {
+            if in_zip.contains(&format!("{prefix}/{}", remote.path.to_lowercase())) {
+                continue;
+            }
+            let (Some(relative), Some(source)) = (crate::mrpack::safe_relative(&remote.path).filter(|_| valid), sources.get(&key)) else {
                 return Err(t!(
                     "Este es el paquete ligero de {}: sus mods se bajan de Modrinth al instalarlo desde el catálogo. Para instalarlo desde un archivo, usa «{}».",
                     "This is the lite package of {}: its mods are downloaded from Modrinth when installed from the catalog. To install it from a file, use «{}».",
@@ -668,11 +739,16 @@ pub fn install_with(zip_path: &Path, paths: &Paths, sources: &HashMap<String, Pa
                     manifest.archive
                 ));
             };
-            let target = staging.join(relative);
-            std::fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
-            std::fs::copy(source, &target).map_err(|e| t!("No se pudo copiar {}: {e}", "Could not copy {}: {e}", remote.path))?;
+            let target = root.join(relative);
+            // Una biblioteca que ya estaba igual en este PC es su propio origen.
+            if *source != target {
+                std::fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
+                let temp = PathBuf::from(format!("{}.parte", target.display()));
+                std::fs::copy(source, &temp).map_err(|e| t!("No se pudo copiar {}: {e}", "Could not copy {}: {e}", remote.path))?;
+                std::fs::rename(&temp, &target).map_err(|e| e.to_string())?;
+            }
             let crc32 = crate::remote_zip::file_crc32(&target).ok_or(t!("No se pudo leer {}.", "Could not read {}.", remote.path))?;
-            listed.push((format!("instancia/{}", remote.path), crc32, remote.size));
+            listed.push((format!("{prefix}/{}", remote.path), crc32, remote.size));
         }
         let state = staging.join(STATE_DIR);
         std::fs::create_dir_all(&state).map_err(|e| e.to_string())?;
@@ -783,8 +859,21 @@ mod tests {
         assert_eq!(back["minecraftVersion"], "26.1.2");
         assert_eq!(back["type"], "modpack");
         // Sin paquete ligero, el .json sale igual que antes (las versiones viejas lo leen).
-        assert!(manifest.remote.is_empty() && manifest.lite_archive.is_none());
+        assert!(manifest.remote.is_empty() && manifest.lite().is_none());
         assert!(back.get("remote").is_none() && back.get("liteArchive").is_none() && back.get("liteSha256").is_none());
+        assert!(back.get("remoteBase").is_none() && back.get("liteZip").is_none());
+    }
+
+    #[test]
+    fn ligero_de_la_035_y_de_la_0351() {
+        // El de la 0.35.0 (con el loader dentro) y el de la 0.35.1 (sin él) se leen igual.
+        let old: Manifest = serde_json::from_str(r#"{"type":"modpack","liteArchive":"A (ligero).zip"}"#).unwrap();
+        assert_eq!(old.lite().map(String::as_str), Some("A (ligero).zip"));
+        let new: Manifest = serde_json::from_str(r#"{"type":"modpack","liteZip":"A (ligero).zip","remoteBase":[{"path":"libraries/x.jar"}]}"#).unwrap();
+        assert_eq!(new.lite().map(String::as_str), Some("A (ligero).zip"));
+        assert_eq!(new.remote_base.len(), 1);
+        // La 0.35.0 solo conoce liteArchive: el de la 0.35.1 no lo lleva y sigue con el completo.
+        assert!(serde_json::to_value(&new).unwrap().get("liteArchive").is_none());
     }
 
     fn remote(path: &str, url: &str) -> RemoteFile {
@@ -800,8 +889,21 @@ mod tests {
         assert!(!RemoteFile { sha1: "corto".into(), ..remote("mods/a.jar", "https://cdn.modrinth.com/a.jar") }.valid());
     }
 
+    const LOADER: &str = "libraries/net/fabricmc/fabric-loader/0.19.5/fabric-loader-0.19.5.jar";
+
+    #[test]
+    fn bibliotecas_del_maven_validas() {
+        let url = "https://maven.fabricmc.net/net/fabricmc/fabric-loader/0.19.5/fabric-loader-0.19.5.jar";
+        assert!(remote(LOADER, url).valid_library());
+        assert!(!remote(LOADER, url).valid(), "no es un mod de Modrinth");
+        assert!(!remote(LOADER, "https://fabricmc.forgecdn.net/net/fabricmc/fabric-loader/0.19.5/fabric-loader-0.19.5.jar").valid_library(), "solo del maven");
+        assert!(!remote("versions/x/x.jar", url).valid_library(), "solo dentro de libraries");
+        assert!(!remote("libraries/../../x.jar", url).valid_library());
+    }
+
     /// Un paquete ligero de prueba: el manifiesto dice que mods/a.jar sale de Modrinth y el zip no lo trae.
-    fn lite_package(root: &Path) -> (Paths, PathBuf) {
+    /// Con `loader`, tampoco trae la biblioteca LOADER (del maven de Fabric), como desde la 0.35.1.
+    fn lite_package(root: &Path, loader: bool) -> (Paths, PathBuf) {
         let paths = Paths::new(root);
         std::fs::create_dir_all(&paths.base).unwrap();
         register(&paths, &base_id("26.3"), "1");
@@ -814,8 +916,10 @@ mod tests {
             minecraft_version: "26.3".into(),
             folder: Some("Prueba".into()),
             archive: "Prueba.zip".into(),
-            lite_archive: Some(lite_name("Prueba")),
+            lite_archive: (!loader).then(|| lite_name("Prueba")),
+            lite_zip: loader.then(|| lite_name("Prueba")),
             remote: vec![remote("mods/a.jar", "https://cdn.modrinth.com/data/a/versions/1/a.jar")],
+            remote_base: if loader { vec![remote(LOADER, "https://maven.fabricmc.net/net/fabricmc/fabric-loader/0.19.5/fabric-loader-0.19.5.jar")] } else { Vec::new() },
             ..Default::default()
         };
         let zip_path = root.join("Prueba (ligero).zip");
@@ -831,7 +935,7 @@ mod tests {
     fn instalar_el_paquete_ligero() {
         let root = std::env::temp_dir().join(format!("parabellum-ligero-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
-        let (paths, zip) = lite_package(&root);
+        let (paths, zip) = lite_package(&root, false);
 
         // Desde un archivo, sin los mods ya bajados: lo dice en vez de instalarlo a medias.
         let error = install(&zip, &paths, |_, _| {}).unwrap_err();
@@ -849,6 +953,34 @@ mod tests {
         assert!(folder.join("config/sodium.json").is_file());
         let record = std::fs::read_to_string(folder.join(STATE_DIR).join(crate::integridad::RECORD)).unwrap();
         assert!(record.contains("https://cdn.modrinth.com/data/a/versions/1/a.jar"), "{record}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn instalar_el_ligero_sin_el_loader() {
+        let root = std::env::temp_dir().join(format!("parabellum-ligero-loader-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (paths, zip) = lite_package(&root, true);
+        let downloaded = root.join("a-bajado.jar");
+        std::fs::write(&downloaded, b"jar").unwrap();
+        let library = root.join("loader-bajado.jar");
+        std::fs::write(&library, b"lib").unwrap();
+
+        // Con el mod pero sin la biblioteca: tampoco se instala a medias.
+        let only_mod = HashMap::from([("mods/a.jar".to_string(), downloaded.clone())]);
+        assert!(install_with(&zip, &paths, &only_mod, |_, _| {}).is_err());
+        assert!(!paths.instances.join("Prueba").exists());
+
+        // Con las dos: el mod en la instancia y la biblioteca en base, donde la busca el juego.
+        let sources = HashMap::from([("mods/a.jar".to_string(), downloaded), (format!("base/{}", LOADER.to_lowercase()), library)]);
+        install_with(&zip, &paths, &sources, |_, _| {}).unwrap();
+        assert_eq!(std::fs::read(paths.instances.join("Prueba/mods/a.jar")).unwrap(), b"jar");
+        assert_eq!(std::fs::read(paths.base.join(LOADER)).unwrap(), b"lib");
+
+        // Si ya estaba en base (es su propio origen), se queda como está.
+        let in_place = HashMap::from([("mods/a.jar".to_string(), paths.instances.join("Prueba/mods/a.jar")), (format!("base/{}", LOADER.to_lowercase()), paths.base.join(LOADER))]);
+        install_with(&zip, &paths, &in_place, |_, _| {}).unwrap();
+        assert_eq!(std::fs::read(paths.base.join(LOADER)).unwrap(), b"lib");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

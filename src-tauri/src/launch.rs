@@ -84,6 +84,20 @@ fn library_paths(library: &Value, paths: &Paths) -> (Option<PathBuf>, Option<Pat
     (native, Some(paths.libraries.join(relative)))
 }
 
+/// Las bibliotecas de una versión que vienen de Fabric (las del loader: sin `downloads`, con el maven de
+/// Fabric o su espejo como `url`) y están en este PC: el archivo y su ruta en el maven.
+pub fn fabric_libraries(version_id: &str, paths: &Paths) -> Vec<(PathBuf, String)> {
+    let Ok(version) = ResolvedVersion::resolve(version_id, paths) else { return Vec::new() };
+    version
+        .libraries
+        .iter()
+        .filter(|l| l.get("downloads").is_none() && l["url"].as_str().is_some_and(|u| matches!(u.trim_end_matches('/'), "https://maven.fabricmc.net" | "https://fabricmc.forgecdn.net")))
+        .filter_map(|l| Some(Maven::parse(l["name"].as_str()?)?.relative_path()))
+        .map(|relative| (paths.libraries.join(&relative), relative))
+        .filter(|(file, _)| file.is_file())
+        .collect()
+}
+
 /// Todo lo que usa una versión para jugarse: los JSON de su cadena (loader y vanilla), bibliotecas,
 /// el juego, sonidos y texturas y la configuración de registros, más el Java que pide. Sirve para
 /// empaquetarla y llevarla a donde Mojang está bloqueado.

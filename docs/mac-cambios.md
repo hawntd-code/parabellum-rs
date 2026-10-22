@@ -476,6 +476,25 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-22 · 0.35.1: el paquete ligero ya no trae el loader
+
+- **Lo que Drive todavía revisaba eran los 7 jars del loader** (fabric-loader, sponge-mixin y asm): con
+  ellos, el ligero de la 0.35.0 tardaba de 13 a 15 s en empezar; un zip sin jars, de 2 a 3 s.
+  - `packs::find_remote` (lo usan exportar, publicar el paquete oficial y `--exportar`) busca, además de los
+    mods de Modrinth, las bibliotecas de Fabric de la versión (`launch::fabric_libraries`). Solo entran si
+    `maven.fabricmc.net` da la misma huella (`<enlace>.sha1`) que el archivo de este PC. Fabric anota
+    su espejo `fabricmc.forgecdn.net`, pero se bajan del maven, que pasa el filtro de la escuela.
+  - El manifiesto gana `remoteBase` (rutas dentro de `base/`). Ese ligero se nombra en **`liteZip`**, no
+    en `liteArchive`: la 0.35.0 no sabe bajar `remoteBase` y lo instalaría sin el loader, así que así sigue
+    con el completo. Sin bibliotecas de Fabric (Forge, NeoForge…), se nombra en `liteArchive` como antes.
+  - `catalog::install_lite` baja a la vez el zip chico, los mods y las bibliotecas (las que ya están
+    iguales en `base/` no se bajan). Si el maven no responde, se usa el completo, como con Modrinth.
+  - Probado con «RETORCIDOS | MODPACK» (Fabric 0.20.0, 26.2): el ligero pasa de 4.05 MB a 0.11 MB y ya
+    no lleva ningún jar. Los 10 mods y las 7 bibliotecas (16 MB) bajan a la vez; la instancia queda
+    lista para jugar (`--comprobar`). El exe de la 0.35.0 publicado no ve ese ligero e instala el completo.
+- Mac: nada propio; compilar y probar. Después de publicar la 0.35.1, Juan vuelve a publicar el paquete
+  oficial para que salga con `liteZip`.
+
 ### 2026-10-21 · 0.35.0: el paquete ligero y los avisos de soporte
 
 - **El paquete oficial, más rápido** (plan-noviembre.md, punto 1). Drive revisa por virus los zips de

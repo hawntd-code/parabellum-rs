@@ -677,8 +677,8 @@ pub async fn publicar_paquete_comunidad(
         let include = crate::packs::exportable(&instance).into_iter().filter(|e| e.checked).map(|e| e.name).collect();
         // Los mods que están en Modrinth: con ellos sale también el paquete ligero (catalog::install_lite).
         progress(t!("Buscando qué mods están en Modrinth…", "Looking for which mods are on Modrinth…"), 0.0);
-        let remote = crate::packs::remote_files(&instance).await;
-        let options = crate::packs::ExportOptions { include, skip_base: true, remote, ..Default::default() };
+        let mut options = crate::packs::ExportOptions { include, skip_base: true, ..Default::default() };
+        crate::packs::find_remote(&instance, &paths, &mut options).await;
         let (exported, report) = (instance.clone(), progress.clone());
         let paths_copy = paths.clone();
         let out_copy = out.clone();

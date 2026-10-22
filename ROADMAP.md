@@ -168,8 +168,12 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
       del loader;
     - **avisos de soporte desde que se abre Parabellum:** `soporte::Watcher` y la regla `supportNotify`,
       con el número en el botón de Comunidades y la notificación de Windows.
-  - [ ] **Sacar del ligero también los jars del loader** (de maven.fabricmc.net, que pasa el filtro de la
-    escuela), para que Drive ya no tenga qué revisar.
+  - [x] **0.35.1, el ligero ya no trae el loader** (hecha el 2026-10-22, sin publicar): las 7 bibliotecas
+    de Fabric (`remoteBase`) bajan de maven.fabricmc.net, que pasa el filtro de la escuela, y el ligero ya
+    no lleva ningún jar: 0.11 MB contra 4.05 MB. Va en `liteZip` para que la 0.35.0 siga con el completo
+    (lo instalaría sin el loader). Probado con el exe de la 0.35.0 publicado.
+  - [ ] *Prueba:* Juan: publicar la 0.35.1, volver a publicar el paquete oficial y medir cuánto tarda en
+    empezar el ligero desde Drive (antes, de 13 a 15 s).
   - [ ] *Prueba:* Juan: pulsar «Jugar» en otra PC (o en una carpeta nueva) con el paquete ya publicado con
     la 0.35.0 (hecho el 2026-10-21).
   - [ ] **0.36.0 y 0.37.0:** una sola conexión a Firebase por persona (menos escuchas, y después el

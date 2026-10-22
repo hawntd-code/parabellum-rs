@@ -1451,7 +1451,7 @@ async fn exportar_modpack(
     // Con los mods que están en Modrinth sale también el paquete ligero (catalog::install_lite).
     progress(t!("Buscando qué mods están en Modrinth…", "Looking for which mods are on Modrinth…"), 0.0);
     let mut opciones = opciones;
-    opciones.remote = packs::remote_files(&instance).await;
+    packs::find_remote(&instance, &paths, &mut opciones).await;
     let result = tauri::async_runtime::spawn_blocking(move || packs::export(&instance, &paths, &folder, &opciones, progress))
         .await
         .map_err(|e| e.to_string())??;
@@ -3258,13 +3258,15 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             let skip_base = args.iter().skip(3).any(|a| a == "sin-base");
             let include = packs::exportable(&instance).into_iter().filter(|e| e.checked || (with_worlds && e.name == "saves")).map(|e| e.name).collect();
             let started = std::time::Instant::now();
-            let remote = tauri::async_runtime::block_on(packs::remote_files(&instance));
-            let result = packs::export(&instance, paths, &folder, &packs::ExportOptions { include, remote, skip_base, ..Default::default() }, |_, _| {})?;
+            let mut options = packs::ExportOptions { include, skip_base, ..Default::default() };
+            tauri::async_runtime::block_on(packs::find_remote(&instance, paths, &mut options));
+            let result = packs::export(&instance, paths, &folder, &options, |_, _| {})?;
             Ok(format!("{result:#?}\nen {:.0} s", started.elapsed().as_secs_f64()))
         }
         "--instalar-ligero" => {
             // --instalar-ligero <id del paquete>: instala con el paquete ligero de la carpeta «paquetes»
-            // (el zip chico de ahí y los mods del CDN de Modrinth), como se instala desde Drive.
+            // (el zip chico de ahí, los mods del CDN de Modrinth y el loader del maven de Fabric), como se
+            // instala desde Drive.
             let id = args.get(1).ok_or("Falta el id del paquete.")?;
             let catalog = tauri::async_runtime::block_on(catalog::load(paths, &config::Config::default()));
             let entry = catalog.entries.iter().find(|e| e.manifest.id.eq_ignore_ascii_case(id)).ok_or("No está en la carpeta paquetes.")?;

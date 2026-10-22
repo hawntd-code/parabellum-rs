@@ -27,6 +27,11 @@ este plan:
 - para el equipo, el número cuenta las solicitudes en las que lo último lo escribió quien pidió ayuda (las
   nuevas y las que el jugador contestó), y «esperando» en la cola usa la misma regla.
 
+**0.35.1** (2026-10-22, sin publicar): el ligero tampoco trae las bibliotecas del loader de Fabric, que eran
+los 7 jars que Drive todavía revisaba (de 13 a 15 s). Bajan de maven.fabricmc.net (`remoteBase`) y el
+ligero se nombra en `liteZip`, que la 0.35.0 no conoce. Detalle en
+[desarrollo.md](desarrollo.md) › «El paquete ligero».
+
 ---
 
 ## 1. El zip del paquete oficial tarda ~30 s en empezar

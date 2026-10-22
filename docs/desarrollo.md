@@ -139,9 +139,17 @@ resource packs y shaders que están en Modrinth. El `.json` los lista en `remote
 Drive se bajan a la vez el zip chico y esos archivos del CDN (los que ya están iguales en la instancia se
 copian); si Modrinth no responde, se usa el completo. Por qué: Drive revisa por virus los zips de menos
 de 100 MB, y lo que lo hace tardar son los jars. Uno con 21 tardó ~30 s en empezar a bajar; el ligero de
-«RETORCIDOS | MODPACK», que aún trae los 7 del loader, de 13 a 15 s (medido el 2026-10-20 y 21). Las versiones
+«RETORCIDOS | MODPACK», que aún traía los 7 del loader, de 13 a 15 s (medido el 2026-10-20 y 21). Las versiones
 anteriores a la 0.35.0 ignoran el ligero y siguen con el completo, así que el completo se sigue subiendo.
 Cada instalación ligera queda en `datos/logs/paquetes.log` con su tiempo.
+
+**Desde la 0.35.1, el ligero tampoco trae el loader de Fabric.** Sus bibliotecas (fabric-loader,
+sponge-mixin y asm) se listan en `remoteBase`, con rutas dentro de `base/` y enlaces de
+`maven.fabricmc.net`, que pasa el filtro de la escuela. Al exportar solo entran las que el maven da con la
+misma huella que el archivo de este PC (`<enlace>.sha1`); Fabric anota su espejo `fabricmc.forgecdn.net`,
+pero se usa el maven. Un ligero así se nombra en `liteZip`, no en `liteArchive`, porque la 0.35.0 no sabe
+bajar `remoteBase`: lo instalaría sin el loader. Así la 0.35.0 sigue con el completo. Si el loader no es de
+Fabric (o no hay `remoteBase`), el ligero se sigue nombrando en `liteArchive` como antes.
 
 ## Publicar una versión
 

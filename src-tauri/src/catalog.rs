@@ -47,7 +47,7 @@ pub struct Entry {
     pub icon: Option<String>,
     /// Carpeta donde está ("1.20.1/Better MC BMC4").
     pub location: String,
-    /// El paquete ligero en Drive (packs::Manifest::lite_archive): su id y su tamaño.
+    /// El paquete ligero en Drive (packs::Manifest::lite): su id y su tamaño.
     pub lite: Option<(String, u64)>,
 }
 
@@ -134,7 +134,7 @@ fn load_local(folder: &Path) -> (Vec<Entry>, Vec<String>) {
         }
         let icon = manifest.icon.as_ref().and_then(|name| std::fs::read(dir.join(name)).ok()).and_then(|b| image_data_url(&b));
         // El ligero, si está al lado (no se usa para instalar desde la carpeta: ahí el completo ya está).
-        let lite = manifest.lite_archive.as_ref().map(|n| dir.join(n)).and_then(|p| Some((p.display().to_string(), p.metadata().ok()?.len())));
+        let lite = manifest.lite().map(|n| dir.join(n)).and_then(|p| Some((p.display().to_string(), p.metadata().ok()?.len())));
         entries.push(Entry {
             size: zip.metadata().map(|m| m.len()).unwrap_or(0),
             archive: zip.display().to_string(),
@@ -234,8 +234,7 @@ async fn folder_entries(children: &[Value], path: &str, paths: &Paths) -> (Vec<E
             None => None,
         };
         let lite = manifest
-            .lite_archive
-            .as_ref()
+            .lite()
             .and_then(|n| by_name.get(&n.to_lowercase()))
             .and_then(|f| Some((f["id"].as_str().filter(|id| valid_id(id))?.to_string(), f["size"].as_str()?.parse().ok()?)));
         entries.push(Entry {
@@ -642,26 +641,36 @@ fn modrinth_cache(paths: &Paths) -> PathBuf {
     paths.data.join("descargas").join("modrinth")
 }
 
-/// ¿Se instala con el paquete ligero? Solo de Drive, con todos sus archivos de Modrinth bien formados.
+/// ¿Se instala con el paquete ligero? Solo de Drive, con todos sus archivos de Modrinth (y del maven de
+/// Fabric) bien formados.
 pub fn uses_lite(entry: &Entry) -> bool {
-    entry.source == Source::Drive && entry.lite.is_some() && !entry.manifest.remote.is_empty() && entry.manifest.remote.iter().all(packs::RemoteFile::valid)
+    let manifest = &entry.manifest;
+    entry.source == Source::Drive
+        && entry.lite.is_some()
+        && !manifest.remote.is_empty()
+        && manifest.remote.iter().all(packs::RemoteFile::valid)
+        && manifest.remote_base.iter().all(packs::RemoteFile::valid_library)
 }
 
-/// De dónde sale cada archivo de Modrinth del paquete (ruta en minúsculas -> archivo) y qué hay que bajar.
+/// De dónde sale cada archivo que el paquete ligero no trae (ruta en minúsculas -> archivo; las bibliotecas
+/// del loader, como "base/…") y qué hay que bajar.
 struct LitePlan {
     sources: HashMap<String, PathBuf>,
     downloads: Vec<download::FileDownload>,
     bytes: u64,
+    /// Si entre lo que se baja hay bibliotecas del maven de Fabric (para el texto del progreso).
+    libraries: bool,
 }
 
-/// Lo que ya está en este PC no se baja: el mismo archivo en la instancia que se actualiza (por su SHA-1)
-/// o en la caché (allí solo llega comprobado).
+/// Lo que ya está en este PC no se baja: el mismo archivo en la instancia que se actualiza o en base (por
+/// su SHA-1), o en la caché (allí solo llega comprobado).
 fn lite_plan(manifest: &Manifest, paths: &Paths) -> LitePlan {
     let folder = manifest.folder.clone().filter(|f| packs::valid_folder_name(f)).map(|f| paths.instances.join(f));
     let cache = modrinth_cache(paths);
-    let mut plan = LitePlan { sources: HashMap::new(), downloads: Vec::new(), bytes: 0 };
-    for remote in &manifest.remote {
-        let local = folder.as_ref().zip(crate::mrpack::safe_relative(&remote.path)).map(|(f, r)| f.join(r));
+    let mut plan = LitePlan { sources: HashMap::new(), downloads: Vec::new(), bytes: 0, libraries: false };
+    let mods = manifest.remote.iter().map(|r| (r, r.path.to_lowercase(), folder.as_ref().zip(crate::mrpack::safe_relative(&r.path)).map(|(f, p)| f.join(p)), false));
+    let libraries = manifest.remote_base.iter().map(|r| (r, format!("base/{}", r.path.to_lowercase()), crate::mrpack::safe_relative(&r.path).map(|p| paths.base.join(p)), true));
+    for (remote, key, local, library) in mods.chain(libraries) {
         let same = |file: &PathBuf| file.metadata().is_ok_and(|m| m.len() == remote.size) && crate::integridad::sha1_file(file).is_some_and(|h| h.eq_ignore_ascii_case(&remote.sha1));
         let cached = cache.join(&remote.sha1);
         let source = match local.filter(same) {
@@ -669,18 +678,19 @@ fn lite_plan(manifest: &Manifest, paths: &Paths) -> LitePlan {
             None => {
                 if !cached.metadata().is_ok_and(|m| m.len() == remote.size) {
                     plan.bytes += remote.size;
+                    plan.libraries |= library;
                     plan.downloads.push(download::FileDownload { url: remote.url.clone(), path: cached.clone(), sha1: Some(remote.sha1.clone()), size: Some(remote.size) });
                 }
                 cached
             }
         };
-        plan.sources.insert(remote.path.to_lowercase(), source);
+        plan.sources.insert(key, source);
     }
     plan
 }
 
 /// Baja lo que le falta a este PC de un paquete ligero: el zip chico de Drive y, a la vez, los mods del
-/// CDN de Modrinth. Devuelve el zip y de dónde sale cada archivo de Modrinth.
+/// CDN de Modrinth y las bibliotecas del maven de Fabric. Devuelve el zip y de dónde sale cada archivo.
 async fn fetch_lite(entry: &Entry, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<(PathBuf, HashMap<String, PathBuf>), String> {
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
     let (lite_id, lite_size) = entry.lite.clone().ok_or_else(|| remote_zip::PREFER_FULL.to_string())?;
@@ -701,18 +711,22 @@ async fn fetch_lite(entry: &Entry, paths: &Paths, progress: impl Fn(String, f64)
         }
     };
     let mods_report = {
-        let (progress, zip_bytes, mods_bytes) = (progress.clone(), zip_bytes.clone(), mods_bytes.clone());
+        let (progress, zip_bytes, mods_bytes, libraries) = (progress.clone(), zip_bytes.clone(), mods_bytes.clone(), plan.libraries);
         move |count: usize, files: usize, bytes: u64, all: u64| {
             mods_bytes.store(bytes, Relaxed);
-            progress(
+            let (done_mb, all_mb) = (bytes as f64 / 1048576.0, all as f64 / 1048576.0);
+            let stage = if libraries {
                 t!(
-                    "Bajando los mods de Modrinth: {count} de {files} ({:.0} de {:.0} MB)…",
-                    "Downloading the mods from Modrinth: {count} of {files} ({:.0} of {:.0} MB)…",
-                    bytes as f64 / 1048576.0,
-                    all as f64 / 1048576.0
-                ),
-                (zip_bytes.load(Relaxed) + bytes) as f64 / total as f64,
-            )
+                    "Bajando los mods y el loader: {count} de {files} ({done_mb:.0} de {all_mb:.0} MB)…",
+                    "Downloading the mods and the loader: {count} of {files} ({done_mb:.0} of {all_mb:.0} MB)…"
+                )
+            } else {
+                t!(
+                    "Bajando los mods de Modrinth: {count} de {files} ({done_mb:.0} de {all_mb:.0} MB)…",
+                    "Downloading the mods from Modrinth: {count} of {files} ({done_mb:.0} of {all_mb:.0} MB)…"
+                )
+            };
+            progress(stage, (zip_bytes.load(Relaxed) + bytes) as f64 / total as f64)
         }
     };
     let mods = async {
@@ -957,8 +971,9 @@ pub async fn install(
         }
     }
 
-    // Con el paquete ligero (desde la 0.35): el zip chico de Drive y los mods del CDN de Modrinth. Si el
-    // CDN no responde (una red que lo bloquee) o algo sale mal, se sigue como antes, con el completo.
+    // Con el paquete ligero (desde la 0.35): el zip chico de Drive y los mods del CDN de Modrinth (desde la
+    // 0.35.1, también las bibliotecas del maven de Fabric). Si no responden (una red que los bloquee) o algo
+    // sale mal, se sigue como antes, con el completo.
     if !manifest.is_base() && uses_lite(entry) {
         match install_lite(entry, paths, progress.clone()).await {
             Ok(result) => {
@@ -967,7 +982,7 @@ pub async fn install(
             Err(error) if crate::descargas::is_cancelled() => return Err(error),
             Err(error) => {
                 log(paths, &format!("{}: el paquete ligero falló ({error}); se baja el completo", manifest.name));
-                progress(t!("Modrinth no respondió: se baja el paquete completo de Google Drive…", "Modrinth did not answer: downloading the full package from Google Drive…"), 0.0);
+                progress(t!("Modrinth o Fabric no respondieron: se baja el paquete completo de Google Drive…", "Modrinth or Fabric did not answer: downloading the full package from Google Drive…"), 0.0);
             }
         }
     }
