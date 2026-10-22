@@ -206,8 +206,9 @@ capturas, `servers.dat`, mapas de minimapas. Hoy esa lista es fija en el código
 
 Paper, en una nube de Juan. Parabellum no exige ser el launcher para entrar (decisión 2): es el cliente
 recomendado. Con Paper el paquete oficial es del lado del cliente (vanilla o con mods que no hace falta
-tener en el servidor, como los de rendimiento); la versión de Minecraft todavía está por confirmar. El
-estado y los jugadores salen del ping del servidor (`ping.rs`), sin acceso a su consola.
+tener en el servidor, como los de rendimiento). **Minecraft 26.2** (Juan, 2026-10-22), la misma versión
+que el paquete oficial «RETORCIDOS | MODPACK» (Fabric). El estado y los jugadores salen del ping del
+servidor (`ping.rs`), sin acceso a su consola.
 
 ## 7. Soporte por chat y tarjetas de ajustes
 
@@ -381,7 +382,8 @@ El orden sigue las dependencias. Lo que se dice que «cabe» es lo razonable, no
 
   Se probó de punta a punta en la ventana real contra el emulador de Firebase. Faltan dos cosas de Juan:
   - publicar las reglas;
-  - subir el paquete oficial (Fabric 26.3 con Sodium, Fabric API y minimapa).
+  - subir el paquete oficial (Fabric 26.3 con Sodium, Fabric API y minimapa; al final fue «RETORCIDOS |
+    MODPACK», Fabric 26.2, y el servidor es Paper 26.2).
 - **E1 hecha (0.33.0):**
   - `identidad.rs`: huella de contenido, referencia del paquete, diferencias y migración de lo ya
     instalado;
@@ -416,8 +418,9 @@ antes de tocar E2: entrar al servidor es lo primero.
 
 Contestadas por Juan el 2026-10-18:
 
-1. **Servidor:** Paper, alojado por Juan en una nube aparte. Parabellum solo es el cliente. *Falta:* la
-   versión de Minecraft y si el paquete oficial lleva mods (del lado del cliente).
+1. **Servidor:** Paper **26.2** (confirmado por Juan el 2026-10-22), alojado por Juan en una nube aparte.
+   Parabellum solo es el cliente. El paquete oficial lleva mods del lado del cliente: «RETORCIDOS |
+   MODPACK», Fabric 26.2.
 2. **Exclusividad:** no se exige Parabellum para entrar. Queda fuera del plan.
 3. **Unirse:** con código en la sección Comunidades, o con una invitación por mensaje directo con el
    botón «Unirse».
