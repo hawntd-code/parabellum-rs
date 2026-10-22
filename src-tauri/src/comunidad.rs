@@ -626,6 +626,22 @@ pub async fn paquete_comunidad(app: AppHandle, id: String, servidor: String) -> 
     tauri::async_runtime::spawn_blocking(move || readiness_for(&package, &crate::instances::list(&paths))).await.map_err(|e| e.to_string())
 }
 
+/// Al abrir la comunidad, su paquete oficial (`id`: el del catálogo) empieza a bajar si falta o hay
+/// versión nueva (catalog::prefetch), así al pulsar «Jugar» ya va avanzado. Nunca mientras se juega.
+/// Sale en Descargas solo si baja algo. Devuelve si quedó bajado (o ya lo estaba).
+#[tauri::command]
+pub async fn precargar_paquete(state: tauri::State<'_, AppState>, id: String) -> Result<bool, String> {
+    if !state.games.lock().unwrap().is_empty() {
+        return Ok(false);
+    }
+    let paths = state.paths.clone();
+    let catalog = crate::catalog::current(&paths).await;
+    let Some(entry) = catalog.entries.iter().find(|e| !e.is_launcher() && e.manifest.id.eq_ignore_ascii_case(&id)) else { return Ok(false) };
+    let instances = crate::instances::list(&paths);
+    let job = crate::descargas::start(None, "catalogo", t!("Preparar {} para jugar", "Get {} ready to play", entry.manifest.name)).quiet().icon(entry.icon.clone());
+    job.run(crate::catalog::prefetch(entry, &paths, &instances, job.progress("catalogo"))).await
+}
+
 #[tauri::command]
 pub async fn borrar_paquete_comunidad(app: AppHandle, id: String, paquete: String) -> Result<(), String> {
     let (db, _) = db(&app)?;
@@ -659,7 +675,10 @@ pub async fn publicar_paquete_comunidad(
     job.run(async {
         // Lo que se exporta normalmente (mods, configuración, opciones…), sin mundos.
         let include = crate::packs::exportable(&instance).into_iter().filter(|e| e.checked).map(|e| e.name).collect();
-        let options = crate::packs::ExportOptions { include, skip_base: true, ..Default::default() };
+        // Los mods que están en Modrinth: con ellos sale también el paquete ligero (catalog::install_lite).
+        progress(t!("Buscando qué mods están en Modrinth…", "Looking for which mods are on Modrinth…"), 0.0);
+        let remote = crate::packs::remote_files(&instance).await;
+        let options = crate::packs::ExportOptions { include, skip_base: true, remote, ..Default::default() };
         let (exported, report) = (instance.clone(), progress.clone());
         let paths_copy = paths.clone();
         let out_copy = out.clone();

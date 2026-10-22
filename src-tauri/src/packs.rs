@@ -57,11 +57,49 @@ pub struct Manifest {
     /// Huella del contenido del paquete (identidad.rs): Minecraft, loader y los mods por su SHA-1.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_hash: Option<String>,
+    /// El paquete ligero: el mismo, sin los archivos de `remote`. Drive tarda ~30 s en entregar un zip
+    /// de menos de 100 MB lleno de mods (lo revisa por virus), y uno chico sin mods, de 2 a 3 s (el de
+    /// Parabellum y una capa del espejo, medido el 2026-10-21). Las versiones antes de la 0.35 no lo
+    /// conocen y siguen con `archive`, que lo trae todo.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lite_archive: Option<String>,
+    /// Solo en el .json de al lado, como `archive_size` y `archive_sha256`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lite_size: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lite_sha256: Option<String>,
+    /// Los archivos del paquete que también están en Modrinth: con el paquete ligero se bajan de su CDN
+    /// (rápido y pasa el filtro de la escuela).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub remote: Vec<RemoteFile>,
 }
 
 impl Manifest {
     pub fn is_base(&self) -> bool {
         self.kind == "base"
+    }
+}
+
+/// Un archivo del paquete que está en Modrinth.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RemoteFile {
+    /// Ruta dentro de la instancia, con "/" ("mods/sodium.jar"), como en el zip sin «instancia/».
+    pub path: String,
+    pub url: String,
+    pub sha1: String,
+    pub sha512: String,
+    pub size: u64,
+}
+
+impl RemoteFile {
+    /// Solo del CDN de Modrinth, con huella y una ruta que no sale de la instancia.
+    pub fn valid(&self) -> bool {
+        self.url.starts_with("https://cdn.modrinth.com/")
+            && self.sha1.len() == 40
+            && self.sha1.chars().all(|c| c.is_ascii_hexdigit())
+            && self.size > 0
+            && crate::mrpack::safe_relative(&self.path).is_some()
     }
 }
 
@@ -251,6 +289,26 @@ pub struct ExportOptions {
     /// Sin el paquete de Minecraft (base-minecraft-…): para el paquete oficial de una comunidad, porque
     /// Minecraft ya sale del espejo de Drive (espejo.rs) y no hay que volver a subir ~700 MB.
     pub skip_base: bool,
+    /// Los archivos que están en Modrinth (`remote_files`): si hay, también sale el paquete ligero.
+    #[serde(skip)]
+    pub remote: Vec<RemoteFile>,
+}
+
+/// Qué archivos de la instancia están en Modrinth, para el paquete ligero. Sin conexión con Modrinth,
+/// ninguno (sale solo el paquete completo, como antes).
+pub async fn remote_files(instance: &Instance) -> Vec<RemoteFile> {
+    let installed = crate::modrinth::identify(instance).await;
+    let known: Vec<&crate::modrinth::InstalledFile> = installed.iter().filter(|f| f.project_id.is_some()).collect();
+    let Ok(found) = crate::modrinth::files_by_hash(&known.iter().map(|f| f.sha1.clone()).collect::<Vec<_>>()).await else { return Vec::new() };
+    known
+        .iter()
+        .filter_map(|f| {
+            let remote = found.get(&f.sha1)?;
+            let file = crate::content::folder(instance, f.kind)?.join(&f.file);
+            let file = RemoteFile { path: relative(&instance.folder, &file)?, url: remote.url.clone(), sha1: remote.sha1.clone(), sha512: remote.sha512.clone(), size: remote.size };
+            file.valid().then_some(file)
+        })
+        .collect()
 }
 
 #[derive(Serialize, Debug)]
@@ -259,6 +317,8 @@ pub struct ExportResult {
     /// Carpeta que se sube a Drive tal cual (la de la versión de Minecraft).
     pub folder: String,
     pub modpack: String,
+    /// El paquete ligero, si salió (va en la misma carpeta que el modpack).
+    pub lite: Option<String>,
     pub base: String,
     /// La base ya estaba en la carpeta de salida y no se volvió a crear.
     pub base_reused: bool,
@@ -310,7 +370,7 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
         let entries: Vec<(PathBuf, String)> =
             base_files.iter().filter_map(|f| Some((f.clone(), format!("base/{}", relative(&paths.base, f)?)))).collect();
         write_archive(&base_zip, &manifest, &entries, |bytes| report(&t!("Empaquetando Minecraft", "Packing Minecraft"), bytes))?;
-        write_sidecar(&base_zip, &base_json, manifest)?;
+        write_sidecar(&base_zip, None, &base_json, manifest)?;
     }
 
     let pack_name = safe_file_name(&instance.name);
@@ -357,14 +417,31 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
         manifest.icon = Some(format!("{pack_name}.png"));
         entries.push((icon, format!("instancia/{STATE_DIR}/icono.png")));
     }
+    // Lo que está en Modrinth y de verdad viaja en el paquete: el ligero no lo trae.
+    let packed: HashSet<String> = entries.iter().map(|(_, name)| name.to_lowercase()).collect();
+    manifest.remote = options.remote.iter().filter(|r| r.valid() && packed.contains(&format!("instancia/{}", r.path.to_lowercase()))).cloned().collect();
+    let lite_zip = pack_dir.join(lite_name(&pack_name));
+    manifest.lite_archive = (!manifest.remote.is_empty()).then(|| lite_name(&pack_name));
     write_archive(&pack_zip, &manifest, &entries, |bytes| report(&t!("Empaquetando el modpack", "Packing the modpack"), bytes))?;
+    let lite = if manifest.remote.is_empty() {
+        // Uno de una exportación anterior ya no corresponde a este paquete.
+        let _ = std::fs::remove_file(&lite_zip);
+        None
+    } else {
+        progress(t!("Empaquetando la versión ligera…", "Packing the lite version…"), 1.0);
+        let remote: HashSet<String> = manifest.remote.iter().map(|r| format!("instancia/{}", r.path.to_lowercase())).collect();
+        let rest: Vec<(PathBuf, String)> = entries.iter().filter(|(_, name)| !remote.contains(&name.to_lowercase())).cloned().collect();
+        write_archive(&lite_zip, &manifest, &rest, |_| {})?;
+        Some(lite_zip)
+    };
     let (package_id, package_version) = (manifest.id.clone(), manifest.version.clone());
-    write_sidecar(&pack_zip, &pack_dir.join(format!("{pack_name}.json")), manifest)?;
+    write_sidecar(&pack_zip, lite.as_deref(), &pack_dir.join(format!("{pack_name}.json")), manifest)?;
     crate::identidad::save_reference(instance, &package_id, &package_version, "publicado", content);
     progress(t!("Listo", "Done"), 1.0);
     Ok(ExportResult {
         folder: version_dir.display().to_string(),
         modpack: pack_zip.display().to_string(),
+        lite: lite.map(|l| l.display().to_string()),
         base: base_zip.display().to_string(),
         base_reused,
         size: std::fs::metadata(&pack_zip).map(|m| m.len()).unwrap_or(0),
@@ -433,10 +510,19 @@ fn without_panel_key(text: &str) -> String {
     text.lines().filter(|l| !l.starts_with("key_key.parabellum.abrir:")).map(|l| format!("{l}\n")).collect()
 }
 
-fn write_sidecar(zip_path: &Path, json_path: &Path, mut manifest: Manifest) -> Result<(), String> {
+fn write_sidecar(zip_path: &Path, lite: Option<&Path>, json_path: &Path, mut manifest: Manifest) -> Result<(), String> {
     manifest.archive_size = std::fs::metadata(zip_path).map_err(|e| e.to_string())?.len();
     manifest.archive_sha256 = Some(sha256_file(zip_path).map_err(|e| e.to_string())?);
+    if let Some(lite) = lite {
+        manifest.lite_size = Some(std::fs::metadata(lite).map_err(|e| e.to_string())?.len());
+        manifest.lite_sha256 = Some(sha256_file(lite).map_err(|e| e.to_string())?);
+    }
     std::fs::write(json_path, serde_json::to_vec_pretty(&manifest).unwrap()).map_err(|e| e.to_string())
+}
+
+/// «RETORCIDOS _ EL PACK (ligero).zip», junto al completo.
+fn lite_name(pack_name: &str) -> String {
+    format!("{pack_name} (ligero).zip")
 }
 
 // ================= Instalar
@@ -505,6 +591,12 @@ pub fn valid_folder_name(name: &str) -> bool {
 
 /// Instala un paquete (base o modpack). `progress`: (texto, fracción).
 pub fn install(zip_path: &Path, paths: &Paths, progress: impl Fn(String, f64)) -> Result<Installed, String> {
+    install_with(zip_path, paths, &HashMap::new(), progress)
+}
+
+/// Como `install`, para el paquete ligero: `sources` dice dónde está ya bajado (y comprobado) cada
+/// archivo de `remote` que el zip no trae (su ruta en la instancia, en minúsculas -> el archivo).
+pub fn install_with(zip_path: &Path, paths: &Paths, sources: &HashMap<String, PathBuf>, progress: impl Fn(String, f64)) -> Result<Installed, String> {
     let manifest = read_manifest(zip_path)?.ok_or(t!("El zip no es un paquete de Parabellum (no tiene lanzador-pack.json).", "The zip is not a Parabellum package (it has no lanzador-pack.json)."))?;
     if !manifest.is_base() && !base_available(&manifest.minecraft_version, paths) {
         return Err(t!(
@@ -564,10 +656,27 @@ pub fn install(zip_path: &Path, paths: &Paths, progress: impl Fn(String, f64)) -
             register(paths, &manifest.id, &manifest.version);
             return Ok(Installed { kind: "base".into(), name: manifest.name.clone(), folder: None, updated: false });
         }
+        // El paquete ligero: lo que no trae el zip ya está bajado de Modrinth.
+        let in_zip: HashSet<String> = listed.iter().map(|(name, _, _)| name.to_lowercase()).collect();
+        for remote in manifest.remote.iter().filter(|r| !in_zip.contains(&format!("instancia/{}", r.path.to_lowercase()))) {
+            let (Some(relative), Some(source)) = (crate::mrpack::safe_relative(&remote.path).filter(|_| remote.valid()), sources.get(&remote.path.to_lowercase())) else {
+                return Err(t!(
+                    "Este es el paquete ligero de {}: sus mods se bajan de Modrinth al instalarlo desde el catálogo. Para instalarlo desde un archivo, usa «{}».",
+                    "This is the lite package of {}: its mods are downloaded from Modrinth when installed from the catalog. To install it from a file, use «{}».",
+                    manifest.name,
+                    manifest.archive
+                ));
+            };
+            let target = staging.join(relative);
+            std::fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
+            std::fs::copy(source, &target).map_err(|e| t!("No se pudo copiar {}: {e}", "Could not copy {}: {e}", remote.path))?;
+            let crc32 = crate::remote_zip::file_crc32(&target).ok_or(t!("No se pudo leer {}.", "Could not read {}.", remote.path))?;
+            listed.push((format!("instancia/{}", remote.path), crc32, remote.size));
+        }
         let state = staging.join(STATE_DIR);
         std::fs::create_dir_all(&state).map_err(|e| e.to_string())?;
         std::fs::write(state.join(INSTALLED_MANIFEST), serde_json::to_vec_pretty(&manifest).unwrap()).map_err(|e| e.to_string())?;
-        crate::integridad::save_package(&staging, &listed);
+        crate::integridad::save_package(&staging, &listed, &manifest.remote);
         let destination = paths.instances.join(&folder);
         let updated = destination.exists();
         if updated {
@@ -672,5 +781,73 @@ mod tests {
         let back = serde_json::to_value(&manifest).unwrap();
         assert_eq!(back["minecraftVersion"], "26.1.2");
         assert_eq!(back["type"], "modpack");
+        // Sin paquete ligero, el .json sale igual que antes (las versiones viejas lo leen).
+        assert!(manifest.remote.is_empty() && manifest.lite_archive.is_none());
+        assert!(back.get("remote").is_none() && back.get("liteArchive").is_none() && back.get("liteSha256").is_none());
+    }
+
+    fn remote(path: &str, url: &str) -> RemoteFile {
+        RemoteFile { path: path.into(), url: url.into(), sha1: "a".repeat(40), sha512: String::new(), size: 3 }
+    }
+
+    #[test]
+    fn archivos_de_modrinth_validos() {
+        assert!(remote("mods/sodium.jar", "https://cdn.modrinth.com/data/AANobbMI/versions/x/sodium.jar").valid());
+        assert!(!remote("mods/sodium.jar", "https://ejemplo.com/sodium.jar").valid(), "solo del CDN de Modrinth");
+        assert!(!remote("../fuera.jar", "https://cdn.modrinth.com/data/x.jar").valid(), "la ruta no sale de la instancia");
+        assert!(!remote("C:/Windows/x.jar", "https://cdn.modrinth.com/data/x.jar").valid());
+        assert!(!RemoteFile { sha1: "corto".into(), ..remote("mods/a.jar", "https://cdn.modrinth.com/a.jar") }.valid());
+    }
+
+    /// Un paquete ligero de prueba: el manifiesto dice que mods/a.jar sale de Modrinth y el zip no lo trae.
+    fn lite_package(root: &Path) -> (Paths, PathBuf) {
+        let paths = Paths::new(root);
+        std::fs::create_dir_all(&paths.base).unwrap();
+        register(&paths, &base_id("26.3"), "1");
+        let manifest = Manifest {
+            format: 1,
+            kind: "modpack".into(),
+            id: "prueba".into(),
+            name: "Prueba".into(),
+            version: "202610210000".into(),
+            minecraft_version: "26.3".into(),
+            folder: Some("Prueba".into()),
+            archive: "Prueba.zip".into(),
+            lite_archive: Some(lite_name("Prueba")),
+            remote: vec![remote("mods/a.jar", "https://cdn.modrinth.com/data/a/versions/1/a.jar")],
+            ..Default::default()
+        };
+        let zip_path = root.join("Prueba (ligero).zip");
+        let mut zip = ZipOut::create(&zip_path).unwrap();
+        zip.add_bytes(MANIFEST_IN_ARCHIVE, &serde_json::to_vec(&manifest).unwrap()).unwrap();
+        zip.add_bytes(&format!("instancia/{INSTANCE_FILE}"), br#"{"versionId":"26.3"}"#).unwrap();
+        zip.add_bytes("instancia/config/sodium.json", b"{}").unwrap();
+        zip.finish().unwrap();
+        (paths, zip_path)
+    }
+
+    #[test]
+    fn instalar_el_paquete_ligero() {
+        let root = std::env::temp_dir().join(format!("parabellum-ligero-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (paths, zip) = lite_package(&root);
+
+        // Desde un archivo, sin los mods ya bajados: lo dice en vez de instalarlo a medias.
+        let error = install(&zip, &paths, |_, _| {}).unwrap_err();
+        assert!(error.contains("paquete ligero") || error.contains("lite package"), "{error}");
+        assert!(!paths.instances.join("Prueba").exists());
+
+        // Con el mod ya bajado de Modrinth: queda en su lugar y la lista de la instancia sabe de dónde volver a bajarlo.
+        let downloaded = root.join("a-bajado.jar");
+        std::fs::write(&downloaded, b"jar").unwrap();
+        let sources = HashMap::from([("mods/a.jar".to_string(), downloaded)]);
+        let installed = install_with(&zip, &paths, &sources, |_, _| {}).unwrap();
+        let folder = paths.instances.join("Prueba");
+        assert_eq!(installed.folder.as_deref(), Some("Prueba"));
+        assert_eq!(std::fs::read(folder.join("mods/a.jar")).unwrap(), b"jar");
+        assert!(folder.join("config/sodium.json").is_file());
+        let record = std::fs::read_to_string(folder.join(STATE_DIR).join(crate::integridad::RECORD)).unwrap();
+        assert!(record.contains("https://cdn.modrinth.com/data/a/versions/1/a.jar"), "{record}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

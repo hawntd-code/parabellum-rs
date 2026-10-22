@@ -20,6 +20,13 @@ en qué orden.
 Cada versión pasa la lista de la sección 10.1 de plan-diciembre.md. Si una versión necesita reglas de Firebase
 nuevas, Juan las publica antes.
 
+**Avance:** la 0.35.0 (puntos 1 y 2) está hecha el 2026-10-21 y falta publicarla. Lo que cambió respecto de
+este plan:
+- el «botón del escudo» es el de Comunidades en la barra lateral;
+- el paquete ligero es otro zip junto al completo (`<Modpack> (ligero).zip`);
+- para el equipo, el número cuenta las solicitudes en las que lo último lo escribió quien pidió ayuda (las
+  nuevas y las que el jugador contestó), y «esperando» en la cola usa la misma regla.
+
 ---
 
 ## 1. El zip del paquete oficial tarda ~30 s en empezar

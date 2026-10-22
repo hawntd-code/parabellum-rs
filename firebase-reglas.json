@@ -599,6 +599,17 @@
           }
         }
       }
+    },
+    "supportNotify": {
+      "$cid": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          "$tid": {
+            ".write": "auth != null && (auth.uid === $uid || (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin' || root.child('communityMembers').child($cid).child(auth.uid).child('caps').child('support').val() === true)) && root.child('supportTickets').child($cid).child($tid).child('by').val() === $uid",
+            ".validate": "$tid.matches(/^t[0-9a-z]{10}$/) && newData.isNumber()"
+          }
+        }
+      }
     }
   }
 }

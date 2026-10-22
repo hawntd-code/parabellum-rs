@@ -69,7 +69,20 @@ async function loadCommunity(id) {
   }
   renderCommunities();
   refreshCommunityStatus();
-  if (community.detail?.id === id) loadSupport(id);
+  if (community.detail?.id === id) {
+    loadSupport(id);
+    prefetchPackages();
+  }
+}
+
+/** El paquete oficial que falta o tiene versión nueva empieza a bajar desde ya: al pulsar «Jugar» ya va
+ * avanzado (el motor decide si conviene: uno a la vez, con tope y nunca mientras se juega). */
+function prefetchPackages() {
+  for (const local of Object.values(community.detail?.local ?? {})) {
+    if (local.catalogId && (local.state === "falta" || local.state === "desactualizada")) {
+      invoke("precargar_paquete", { id: local.catalogId }).catch(() => {});
+    }
+  }
 }
 
 /** El estado de los servidores (ping). */
@@ -119,7 +132,10 @@ function renderCommunities() {
   const list = community.list ?? [];
   $("#cm-tabs").classList.toggle("hidden", list.length < 2);
   $("#cm-tabs").innerHTML = list
-    .map((c) => `<button class="cm-tab ${c.id === community.id ? "active" : ""}" data-community="${escapeHtml(c.id)}">${communityImage(c, "tiny")}<span>${escapeHtml(c.name)}</span></button>`)
+    .map(
+      (c) =>
+        `<button class="cm-tab ${c.id === community.id ? "active" : ""} ${support.notices?.communities?.[c.id] ? "notice" : ""}" data-community="${escapeHtml(c.id)}">${communityImage(c, "tiny")}<span>${escapeHtml(c.name)}</span></button>`,
+    )
     .join("");
   const body = $("#cm-body");
   if (community.list === null || (community.loading && !community.detail)) {

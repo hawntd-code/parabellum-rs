@@ -24,6 +24,8 @@ pub struct SocialState {
     chat: Mutex<Option<Arc<Chat>>>,
     /// Escucha de los favoritos de la cuenta (favoritos.rs).
     favorites: Mutex<Option<crate::firebase::Listener>>,
+    /// Los avisos de soporte de tus comunidades (soporte::Watcher).
+    support: Mutex<Option<Arc<crate::soporte::Watcher>>>,
     status: Mutex<Status>,
     /// Puerto del servidor de sesión local (None si no se pudo abrir).
     pub session_port: Mutex<Option<u16>>,
@@ -93,6 +95,11 @@ fn social(app: &AppHandle) -> Option<Arc<Social>> {
 /// La conexión con los amigos (None sin sesión de Google), para «Hostear partida».
 pub fn social_handle(app: &AppHandle) -> Option<Arc<Social>> {
     social(app)
+}
+
+/// El vigía de soporte (None sin sesión de Google).
+pub fn support_watcher(app: &AppHandle) -> Option<Arc<crate::soporte::Watcher>> {
+    app.state::<AppState>().social.support.lock().unwrap().clone()
 }
 
 /// El correo de la cuenta de Google con la que se inició sesión (si hay).
@@ -261,6 +268,7 @@ async fn connect(app: &AppHandle) {
             social.start();
             start_chat(app, &social);
             *app.state::<AppState>().social.favorites.lock().unwrap() = Some(crate::favoritos::start(app, social.database()));
+            *app.state::<AppState>().social.support.lock().unwrap() = Some(crate::soporte::Watcher::start(app, social.database()));
             update_status(app, |s| s.connecting = false);
         }
         Err(error) => update_status(app, |s| {
@@ -275,6 +283,8 @@ async fn disconnect(app: &AppHandle) {
         chat.stop();
     }
     app.state::<AppState>().social.favorites.lock().unwrap().take();
+    app.state::<AppState>().social.support.lock().unwrap().take();
+    let _ = app.emit("soporte-avisos", crate::soporte::Notices::default());
     let _ = app.emit("chats", Vec::<chat::Summary>::new());
     let social = app.state::<AppState>().social.social.lock().unwrap().take();
     if let Some(social) = social {

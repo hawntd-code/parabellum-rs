@@ -156,6 +156,9 @@ pub async fn soporte(app: AppHandle, id: String) -> Result<View, String> {
     if !me.is_object() {
         return Err(t!("Ya no eres miembro de esta comunidad.", "You are no longer a member of this community."));
     }
+    if let Some(watcher) = crate::cuenta::support_watcher(&app) {
+        watcher.set_staff(&id, is_staff(&me));
+    }
     if is_staff(&me) {
         let mut tickets = tickets_from(&get(&db, format!("supportTickets/{id}")).await?);
         sort_tickets(&mut tickets);
@@ -261,6 +264,9 @@ async fn mark_seen(app: &AppHandle, cid: &str, tid: &str) {
     // Solo existe para quien la pidió (para el equipo, la regla lo niega y no importa).
     if get(&db, format!("supportByUser/{cid}/{uid}/{tid}")).await.is_ok_and(|v| !v.is_null()) {
         let _ = db.put(&format!("supportByUser/{cid}/{uid}/{tid}"), &firebase::server_timestamp()).await;
+        if let Some(watcher) = crate::cuenta::support_watcher(app) {
+            watcher.seen(cid, tid);
+        }
     }
 }
 
@@ -283,46 +289,6 @@ pub fn soporte_escuchar(app: AppHandle, id: Option<String>, solicitud: Option<St
         |_| {},
     );
     *OPEN.lock().unwrap() = Some(listener);
-    Ok(())
-}
-
-/// La cola de la comunidad abierta: para el equipo, toda; para el jugador, sus solicitudes sin cerrar.
-/// Cada cambio avisa con `soporte-cola` (la ventana vuelve a pedir `soporte`).
-static QUEUE: Mutex<Vec<firebase::Listener>> = Mutex::new(Vec::new());
-
-#[tauri::command]
-pub async fn soporte_escuchar_cola(app: AppHandle, id: Option<String>) -> Result<(), String> {
-    QUEUE.lock().unwrap().clear();
-    let Some(cid) = id else { return Ok(()) };
-    check_ids(&cid, None)?;
-    let (db, uid) = db(&app)?;
-    let me = get(&db, format!("communityMembers/{cid}/{uid}")).await?;
-    let paths: Vec<String> = if is_staff(&me) {
-        vec![format!("supportTickets/{cid}")]
-    } else {
-        let mine = get(&db, format!("supportByUser/{cid}/{uid}")).await.unwrap_or(Value::Null);
-        let mut ids: Vec<(String, i64)> = mine.as_object().into_iter().flatten().map(|(t, at)| (t.clone(), at.as_i64().unwrap_or(0))).collect();
-        ids.sort_by_key(|(_, at)| std::cmp::Reverse(*at));
-        ids.into_iter().take(8).map(|(tid, _)| format!("supportTickets/{cid}/{tid}")).collect()
-    };
-    let listeners = paths
-        .into_iter()
-        .map(|path| {
-            let (app, cid) = (app.clone(), cid.clone());
-            // La primera vez llega lo que ya había: no es un cambio.
-            let first = std::sync::atomic::AtomicBool::new(true);
-            db.listen(
-                path,
-                move |_| {
-                    if !first.swap(false, std::sync::atomic::Ordering::Relaxed) {
-                        let _ = app.emit("soporte-cola", json!({ "community": cid }));
-                    }
-                },
-                |_| {},
-            )
-        })
-        .collect();
-    *QUEUE.lock().unwrap() = listeners;
     Ok(())
 }
 
@@ -349,7 +315,9 @@ pub async fn soporte_enviar(app: AppHandle, id: String, solicitud: String, texto
     } else if !mine && ticket["state"].as_str() == Some("abierto") {
         update.insert(format!("supportTickets/{id}/{solicitud}/state"), json!("atendido"));
     }
-    db.patch("", &Value::Object(update)).await.map_err(db_error)?;
+    // Contesta el equipo: el aviso para quien la pidió (lo escucha su vigía, sin abrir Comunidades).
+    let owner = ticket["by"].as_str().filter(|_| !mine);
+    patch_with_notice(&db, Value::Object(update), &id, owner, &solicitud).await?;
     if mine {
         mark_seen(&app, &id, &solicitud).await;
     }
@@ -428,7 +396,25 @@ pub async fn soporte_tarjeta(app: AppHandle, id: String, solicitud: String, ajus
         format!("supportTickets/{id}/{solicitud}/lastFrom"): uid,
         format!("supportTickets/{id}/{solicitud}/updated"): firebase::server_timestamp(),
     });
-    db.patch("", &update).await.map_err(db_error).map(|_| ())
+    // El aviso para quien la pidió, como al contestar.
+    let owner = get(&db, format!("supportTickets/{id}/{solicitud}/by")).await?;
+    patch_with_notice(&db, update, &id, owner.as_str().filter(|o| *o != uid), &solicitud).await
+}
+
+/// Escribe la respuesta del equipo junto con el aviso para quien la pidió (`supportNotify`). Si Firebase
+/// todavía no tiene la regla del aviso (se publica antes que la 0.35.0, pero por si acaso), la respuesta
+/// se manda igual, sin el aviso: solo no le llegaría al jugador hasta que abra Comunidades.
+async fn patch_with_notice(db: &firebase::Database, mut update: Value, cid: &str, owner: Option<&str>, tid: &str) -> Result<(), String> {
+    let Some(owner) = owner else { return db.patch("", &update).await.map_err(db_error).map(|_| ()) };
+    let notice = format!("supportNotify/{cid}/{owner}/{tid}");
+    update[notice.as_str()] = firebase::server_timestamp();
+    match db.patch("", &update).await {
+        Err(firebase::DbError::Permission(_)) => {
+            update.as_object_mut().unwrap().remove(&notice);
+            db.patch("", &update).await.map_err(db_error).map(|_| ())
+        }
+        other => other.map_err(db_error).map(|_| ()),
+    }
 }
 
 #[derive(Serialize)]
@@ -524,6 +510,283 @@ async fn acknowledge(app: &AppHandle, cid: &str, tid: &str, op: &str, result: &s
     let _ = db.put(&format!("supportMessages/{cid}/{tid}/{}", id_for("m", 12)), &message).await;
 }
 
+// ================= El vigía: los avisos de soporte desde que se abre Parabellum
+
+/// Lo que ve la ventana (`soporte-avisos`): cuántas cosas esperan, en total y por comunidad. Para quien
+/// pidió ayuda, las respuestas sin leer; para el equipo, además, las solicitudes que esperan respuesta.
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Notices {
+    pub total: usize,
+    pub communities: HashMap<String, usize>,
+}
+
+/// Una comunidad vigilada.
+#[derive(Default)]
+struct Watched {
+    name: String,
+    staff: bool,
+    listeners: Vec<firebase::Listener>,
+    /// Las respuestas del equipo a mis solicitudes (supportNotify): solicitud -> cuándo. None hasta que
+    /// llega la primera lectura (lo que ya había no se avisa).
+    replies: Option<HashMap<String, i64>>,
+    /// Hasta cuándo leí cada una (supportByUser).
+    seen: HashMap<String, i64>,
+    /// Del equipo: las que esperan respuesta (`waits`), solicitud -> (cuándo, tema, quién, es nueva).
+    waiting: Option<HashMap<String, (i64, String, String, bool)>>,
+}
+
+impl Watched {
+    fn count(&self) -> usize {
+        let unread = self.replies.iter().flatten().filter(|(tid, at)| **at > self.seen.get(*tid).copied().unwrap_or(0)).count();
+        unread + if self.staff { self.waiting.as_ref().map_or(0, HashMap::len) } else { 0 }
+    }
+}
+
+/// Espera respuesta del equipo: sin cerrar y lo último lo escribió quien la pidió (una nueva, o el
+/// jugador que contestó). Las tuyas no cuentan: las ves como jugador.
+fn waits(ticket: &Ticket, me: &str) -> bool {
+    ticket.state != "cerrado" && ticket.last_from == ticket.by && ticket.by != me
+}
+
+/// El vigía de soporte (plan de noviembre, punto 2): arranca con la sesión y escucha, en cada comunidad
+/// tuya, `supportNotify/{cid}/{uid}` (una rama: las respuestas a tus solicitudes) y, si eres del equipo,
+/// `supportTickets/{cid}` (la cola). Así te enteras sin abrir Comunidades, con el número en su botón y
+/// una notificación de Windows o Mac.
+pub struct Watcher {
+    app: AppHandle,
+    db: std::sync::Arc<firebase::Database>,
+    uid: String,
+    membership: Mutex<Option<firebase::Listener>>,
+    watched: Mutex<HashMap<String, Watched>>,
+    /// Lo ya avisado con una notificación: (solicitud, cuándo).
+    notified: Mutex<std::collections::HashSet<(String, i64)>>,
+    last: Mutex<Notices>,
+}
+
+impl Watcher {
+    pub fn start(app: &AppHandle, db: std::sync::Arc<firebase::Database>) -> std::sync::Arc<Self> {
+        let uid = db.session.uid.clone();
+        let watcher = std::sync::Arc::new(Self {
+            app: app.clone(),
+            db,
+            uid,
+            membership: Mutex::default(),
+            watched: Mutex::default(),
+            notified: Mutex::default(),
+            last: Mutex::default(),
+        });
+        // Las comunidades: al entrar o salir de una se empieza o se deja de escucharla.
+        let weak = std::sync::Arc::downgrade(&watcher);
+        let listener = watcher.db.listen(
+            format!("userCommunities/{}", watcher.uid),
+            move |value| {
+                if let Some(watcher) = weak.upgrade() {
+                    watcher.sync(&value);
+                }
+            },
+            |_| {},
+        );
+        *watcher.membership.lock().unwrap() = Some(listener);
+        watcher
+    }
+
+    /// Lo que hay ahora (la ventana lo pide al abrir: el aviso pudo llegar antes).
+    pub fn notices(&self) -> Notices {
+        self.last.lock().unwrap().clone()
+    }
+
+    fn sync(self: &std::sync::Arc<Self>, value: &Value) {
+        let wanted: std::collections::HashSet<String> =
+            value.as_object().into_iter().flatten().filter(|(cid, v)| v.as_bool() == Some(true) && valid_id('c', 12, cid)).map(|(cid, _)| cid.clone()).collect();
+        let added: Vec<String> = {
+            let mut watched = self.watched.lock().unwrap();
+            watched.retain(|cid, _| wanted.contains(cid));
+            let added = wanted.iter().filter(|cid| !watched.contains_key(*cid)).cloned().collect::<Vec<_>>();
+            for cid in &added {
+                watched.insert(cid.clone(), Watched::default());
+            }
+            added
+        };
+        for cid in added {
+            let watcher = self.clone();
+            tauri::async_runtime::spawn(async move { watcher.watch(cid).await });
+        }
+        self.emit();
+    }
+
+    /// Empieza a escuchar una comunidad: si eres del equipo, también su cola.
+    async fn watch(self: std::sync::Arc<Self>, cid: String) {
+        let (member, community, seen) = futures::join!(
+            get(&self.db, format!("communityMembers/{cid}/{}", self.uid)),
+            get(&self.db, format!("communities/{cid}/name")),
+            get(&self.db, format!("supportByUser/{cid}/{}", self.uid)),
+        );
+        let staff = member.as_ref().is_ok_and(is_staff);
+        let seen: HashMap<String, i64> = seen.unwrap_or_default().as_object().into_iter().flatten().filter_map(|(t, at)| Some((t.clone(), at.as_i64()?))).collect();
+        let weak = std::sync::Arc::downgrade(&self);
+        let mut listeners = vec![{
+            let (weak, cid) = (weak.clone(), cid.clone());
+            self.db.listen(
+                format!("supportNotify/{cid}/{}", self.uid),
+                move |value| {
+                    if let Some(watcher) = weak.upgrade() {
+                        watcher.on_replies(&cid, &value);
+                    }
+                },
+                |_| {},
+            )
+        }];
+        if staff {
+            let (weak, cid) = (weak.clone(), cid.clone());
+            listeners.push(self.db.listen(
+                format!("supportTickets/{cid}"),
+                move |value| {
+                    if let Some(watcher) = weak.upgrade() {
+                        watcher.on_queue(&cid, &value);
+                    }
+                },
+                |_| {},
+            ));
+        }
+        let mut watched = self.watched.lock().unwrap();
+        // Si saliste de la comunidad mientras tanto, las escuchas se sueltan aquí.
+        if let Some(entry) = watched.get_mut(&cid) {
+            *entry = Watched { name: community.ok().and_then(|n| n.as_str().map(String::from)).unwrap_or_default(), staff, listeners, seen, ..Watched::default() };
+        }
+    }
+
+    /// Te volvieron a dar o quitar el soporte (lo nota la ventana al abrir la comunidad).
+    pub fn set_staff(self: &std::sync::Arc<Self>, cid: &str, staff: bool) {
+        let changed = {
+            let mut watched = self.watched.lock().unwrap();
+            let changed = watched.get(cid).is_some_and(|w| !w.listeners.is_empty() && w.staff != staff);
+            if changed {
+                watched.insert(cid.to_string(), Watched::default());
+            }
+            changed
+        };
+        if changed {
+            let (watcher, cid) = (self.clone(), cid.to_string());
+            tauri::async_runtime::spawn(async move { watcher.watch(cid).await });
+        }
+    }
+
+    /// La leíste en este PC (soporte_mensajes, soporte_visto o al contestar).
+    pub fn seen(&self, cid: &str, tid: &str) {
+        if let Some(watched) = self.watched.lock().unwrap().get_mut(cid) {
+            let at = watched.replies.as_ref().and_then(|r| r.get(tid)).copied().unwrap_or(0);
+            let seen = watched.seen.entry(tid.to_string()).or_insert(0);
+            *seen = (*seen).max(at);
+        }
+        self.emit();
+    }
+
+    fn on_replies(&self, cid: &str, value: &Value) {
+        let replies: HashMap<String, i64> = value.as_object().into_iter().flatten().filter_map(|(t, at)| Some((t.clone(), at.as_i64()?))).collect();
+        let (fresh, name) = {
+            let mut watched = self.watched.lock().unwrap();
+            let Some(entry) = watched.get_mut(cid) else { return };
+            let fresh: Vec<(String, i64)> = match &entry.replies {
+                Some(before) => replies
+                    .iter()
+                    .filter(|(tid, at)| **at > before.get(*tid).copied().unwrap_or(0) && **at > entry.seen.get(*tid).copied().unwrap_or(0))
+                    .map(|(t, at)| (t.clone(), *at))
+                    .collect(),
+                None => Vec::new(),
+            };
+            entry.replies = Some(replies);
+            (fresh, entry.name.clone())
+        };
+        self.emit();
+        if !fresh.is_empty() {
+            let _ = self.app.emit("soporte-cola", json!({ "community": cid }));
+        }
+        for (tid, at) in fresh {
+            // El tema no viaja en el aviso: se lee de la solicitud.
+            let (db, app, cid, name) = (self.db.clone(), self.app.clone(), cid.to_string(), name.clone());
+            if !self.notified.lock().unwrap().insert((tid.clone(), at)) {
+                continue;
+            }
+            tauri::async_runtime::spawn(async move {
+                let topic = get(&db, format!("supportTickets/{cid}/{tid}/topic")).await.ok().and_then(|t| t.as_str().map(String::from)).unwrap_or_default();
+                let title = if name.is_empty() { t!("Te respondió el soporte", "Support answered you") } else { t!("Te respondió el soporte de {name}", "{name}'s support answered you") };
+                notify(&app, &title, &topic, &cid, &tid);
+            });
+        }
+    }
+
+    fn on_queue(&self, cid: &str, value: &Value) {
+        let waiting: HashMap<String, (i64, String, String, bool)> =
+            tickets_from(value).into_iter().filter(|t| waits(t, &self.uid)).map(|t| (t.id.clone(), (t.last_at, t.topic.clone(), t.by_name.clone(), t.last_at <= t.at))).collect();
+        let (fresh, name) = {
+            let mut watched = self.watched.lock().unwrap();
+            let Some(entry) = watched.get_mut(cid) else { return };
+            let fresh: Vec<(String, (i64, String, String, bool))> = match &entry.waiting {
+                Some(before) => waiting.iter().filter(|(tid, (at, ..))| before.get(*tid).is_none_or(|(old, ..)| at > old)).map(|(t, w)| (t.clone(), w.clone())).collect(),
+                None => Vec::new(),
+            };
+            let had = entry.waiting.is_some();
+            entry.waiting = Some(waiting);
+            (if had { fresh } else { Vec::new() }, entry.name.clone())
+        };
+        self.emit();
+        let _ = self.app.emit("soporte-cola", json!({ "community": cid }));
+        for (tid, (at, topic, by_name, new)) in fresh {
+            if !self.notified.lock().unwrap().insert((tid.clone(), at)) {
+                continue;
+            }
+            let title = match (new, name.is_empty()) {
+                (true, false) => t!("Nueva solicitud de ayuda en {name}", "New help request in {name}"),
+                (true, true) => t!("Nueva solicitud de ayuda", "New help request"),
+                (false, _) => t!("{by_name} contestó en soporte", "{by_name} replied in support"),
+            };
+            let body = if new { format!("{by_name}: {topic}") } else { topic };
+            notify(&self.app, &title, &body, cid, &tid);
+        }
+    }
+
+    /// El número en el botón de Comunidades y el punto de cada comunidad, si cambió.
+    fn emit(&self) {
+        let notices = {
+            let watched = self.watched.lock().unwrap();
+            let communities: HashMap<String, usize> = watched.iter().map(|(cid, w)| (cid.clone(), w.count())).filter(|(_, n)| *n > 0).collect();
+            Notices { total: communities.values().sum(), communities }
+        };
+        let mut last = self.last.lock().unwrap();
+        if *last != notices {
+            *last = notices.clone();
+            drop(last);
+            let _ = self.app.emit("soporte-avisos", notices);
+        }
+    }
+}
+
+/// La notificación de Windows o Mac: solo con los avisos activados, si Parabellum no está al frente y no
+/// se está jugando con el panel (ahí no se ve). Al pulsarla se abre la solicitud.
+fn notify(app: &AppHandle, title: &str, body: &str, cid: &str, tid: &str) {
+    let enabled = app.state::<AppState>().settings.lock().unwrap().notifications;
+    let in_front = app.get_webview_window("main").is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false));
+    if !enabled || in_front || crate::puente::game_connected(app) {
+        return;
+    }
+    let (handle, title, body, target) = (app.clone(), title.to_string(), body.to_string(), json!({ "community": cid, "ticket": tid }));
+    // Los avisos usan WinRT: se muestran desde el hilo de la ventana, que ya lo tiene iniciado.
+    let _ = app.run_on_main_thread(move || {
+        let click = handle.clone();
+        let _ = crate::avisos::show(&title, &body, false, move || {
+            crate::cuenta::show_window(&click);
+            let _ = click.emit("abrir-soporte", target.clone());
+        });
+    });
+}
+
+/// Los avisos de ahora (la ventana los pide al abrir; después llegan solos con `soporte-avisos`).
+#[tauri::command]
+pub fn soporte_avisos(app: AppHandle) -> Notices {
+    crate::cuenta::support_watcher(&app).map(|w| w.notices()).unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -559,5 +822,25 @@ mod tests {
         assert!(card_text("launcher.ram_gb", &json!(6)).contains("Memoria para el juego → 6 GB"));
         assert!(card_text("launcher.download_limit_mb", &json!(0)).contains("→ Sin límite"));
         assert_eq!(preview("una\ndos"), "una");
+    }
+
+    #[test]
+    fn que_cuenta_el_aviso() {
+        let t = |by: &str, state: &str, last_from: &str| Ticket { by: by.into(), state: state.into(), last_from: last_from.into(), ..Default::default() };
+        // Para el equipo (F): las que esperan respuesta.
+        assert!(waits(&t("E", "abierto", "E"), "F"), "una nueva");
+        assert!(waits(&t("E", "atendido", "E"), "F"), "el jugador contestó");
+        assert!(!waits(&t("E", "atendido", "F"), "F"), "ya contestó el equipo");
+        assert!(!waits(&t("E", "cerrado", "E"), "F"), "cerrada");
+        assert!(!waits(&t("F", "abierto", "F"), "F"), "la mía la veo como jugador");
+        // Para quien la pidió: las respuestas posteriores a lo que leyó.
+        let watched = Watched {
+            replies: Some(HashMap::from([("t1".into(), 50), ("t2".into(), 20)])),
+            seen: HashMap::from([("t1".into(), 40), ("t2".into(), 30)]),
+            ..Default::default()
+        };
+        assert_eq!(watched.count(), 1);
+        let staff = Watched { staff: true, waiting: Some(HashMap::from([("t3".into(), (1, String::new(), String::new(), true))])), ..watched };
+        assert_eq!(staff.count(), 2);
     }
 }

@@ -23,8 +23,8 @@ const support = {
   /** Tarjetas que se están aplicando o deshaciendo. */
   busy: new Set(),
   sending: false,
-  /** La comunidad cuya cola se escucha. */
-  watching: null,
+  /** Lo que avisa el vigía (soporte.rs): { total, communities: { cid: n } }. */
+  notices: { total: 0, communities: {} },
 };
 
 const ticketStates = () => ({ abierto: t("Abierta", "Open"), atendido: t("Atendida", "Answered"), cerrado: t("Cerrada", "Closed") });
@@ -34,12 +34,12 @@ const isStaffMember = (m) => !!m && (m.role === "owner" || m.role === "admin" ||
 const supportStaff = () => support.view?.community === community.id ? support.view.staff : isStaffMember(community.detail?.members.find((m) => m.you));
 const openTicket = () => (support.open && support.view?.community === support.open.community ? support.view.tickets.find((x) => x.id === support.open.id) : null) ?? support.open?.ticket ?? null;
 
-/** La cola de la comunidad (y la escucha, si cambió de comunidad). */
+/** Espera respuesta del equipo: sin cerrar y lo último lo escribió quien la pidió (como en soporte.rs). */
+const waitsForTeam = (x) => x.state !== "cerrado" && x.lastFrom === x.by && x.by !== myUid();
+
+/** La cola de la comunidad. Los cambios los avisa el vigía (`soporte-cola`), que escucha desde que se
+ * abre Parabellum. */
 async function loadSupport(cid) {
-  if (support.watching !== cid) {
-    support.watching = cid;
-    invoke("soporte_escuchar_cola", { id: cid }).catch(() => {});
-  }
   let view;
   try {
     view = await invoke("soporte", { id: cid });
@@ -92,7 +92,7 @@ function renderSupportSection() {
     mias: view.tickets.filter((x) => x.assignee === me && x.state !== "cerrado"),
     cerradas: view.tickets.filter((x) => x.state === "cerrado"),
   };
-  const waiting = groups.abiertas.filter((x) => x.state === "abierto").length;
+  const waiting = groups.abiertas.filter(waitsForTeam).length;
   const shown = groups[support.filter] ?? groups.abiertas;
   const chip = (key, label) => `<button class="sp-filter ${support.filter === key ? "active" : ""}" data-sp-filter="${key}">${label}<span>${groups[key].length}</span></button>`;
   const empty = {
@@ -495,6 +495,26 @@ async function sendCard() {
   }
 }
 
+// ---------- Avisos (el vigía de soporte.rs) ----------
+/** El número en el botón de Comunidades (el escudo) y el punto en cada comunidad de arriba. */
+function renderSupportNotices() {
+  const total = support.notices?.total ?? 0;
+  $("#communities-badge").textContent = total > 9 ? "9+" : String(total);
+  $("#communities-badge").classList.toggle("hidden", total === 0);
+  $("#communities-badge").title = t("Soporte: respuestas o solicitudes que esperan", "Support: answers or requests waiting");
+  for (const tab of $$("#cm-tabs .cm-tab[data-community]")) tab.classList.toggle("notice", !!support.notices?.communities?.[tab.dataset.community]);
+}
+
+/** Al pulsar la notificación: la comunidad y la solicitud. */
+async function openSupportFromNotice({ community: cid, ticket: tid }) {
+  if (state.page !== "communities" || community.id !== cid) {
+    community.id = cid;
+    navigate("communities", cid);
+  }
+  for (let i = 0; i < 40 && community.detail?.id !== cid; i++) await new Promise((r) => setTimeout(r, 100));
+  if (community.detail?.id === cid) openSupportTicket(tid);
+}
+
 // ---------- Eventos ----------
 function wireSupportEvents() {
   $("#cm-body").addEventListener("click", (event) => {
@@ -546,6 +566,18 @@ function wireSupportEvents() {
     clearTimeout(pending);
     pending = setTimeout(() => loadSupport(payload.community), 400);
   });
+  listen("soporte-avisos", ({ payload }) => {
+    support.notices = payload;
+    renderSupportNotices();
+  });
+  listen("abrir-soporte", ({ payload }) => openSupportFromNotice(payload));
+  // Lo que ya había avisado antes de que la ventana escuchara.
+  invoke("soporte_avisos")
+    .then((notices) => {
+      support.notices = notices;
+      renderSupportNotices();
+    })
+    .catch(() => {});
 }
 
 wireSupportEvents();

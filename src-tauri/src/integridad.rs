@@ -117,7 +117,9 @@ pub fn from_mrpack(info: &mrpack::Info, zip_path: &Path) -> Vec<Tracked> {
 
 /// Guarda la lista de un paquete de Parabellum instalado en `folder`: sus entradas "instancia/…" con
 /// el CRC32 y el tamaño que dice el zip. Las rutas quedan relativas a la carpeta del juego (gameDir).
-pub fn save_package(folder: &Path, entries: &[(String, u32, u64)]) {
+/// Lo que está en Modrinth (`remote`) lleva además su SHA-1 y su enlace: se repone sin el paquete.
+pub fn save_package(folder: &Path, entries: &[(String, u32, u64)], remote: &[crate::packs::RemoteFile]) {
+    let remote: HashMap<String, &crate::packs::RemoteFile> = remote.iter().filter(|r| r.valid()).map(|r| (format!("instancia/{}", r.path.to_lowercase()), r)).collect();
     let game = std::fs::read_to_string(folder.join(INSTANCE_FILE))
         .ok()
         .and_then(|t| serde_json::from_str::<Value>(&t).ok())
@@ -131,7 +133,14 @@ pub fn save_package(folder: &Path, entries: &[(String, u32, u64)]) {
         .iter()
         .filter_map(|(name, crc32, size)| {
             let rest = name.get(prefix.len()..).filter(|_| name.to_lowercase().starts_with(&prefix))?;
-            (is_tracked(rest) && safe_relative(rest).is_some()).then(|| Tracked { path: rest.to_string(), sha1: None, crc32: Some(*crc32), size: Some(*size), url: None })
+            let from = remote.get(&name.to_lowercase());
+            (is_tracked(rest) && safe_relative(rest).is_some()).then(|| Tracked {
+                path: rest.to_string(),
+                sha1: from.map(|r| r.sha1.clone()),
+                crc32: Some(*crc32),
+                size: Some(*size),
+                url: from.map(|r| r.url.clone()),
+            })
         })
         .collect();
     save(&game.map(|g| folder.join(g)).unwrap_or_else(|| folder.to_path_buf()), files);
@@ -254,7 +263,7 @@ fn present_path(game_dir: &Path, relative: &str) -> Option<PathBuf> {
     disabled.is_file().then_some(disabled)
 }
 
-fn sha1_file(path: &Path) -> Option<String> {
+pub(crate) fn sha1_file(path: &Path) -> Option<String> {
     use sha1::{Digest, Sha1};
     let mut file = std::fs::File::open(path).ok()?;
     let mut hasher = Sha1::new();

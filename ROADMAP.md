@@ -159,9 +159,17 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     y no dejan editar ni borrar mensajes. Probadas en el emulador (`docs/probar-reglas.py`).
 - [ ] *Prueba:* Juan: pedir ayuda desde otra cuenta en su comunidad y mandarle una tarjeta (la 0.34.0 y sus reglas ya están publicadas)
 - [ ] **Plan de noviembre** ([docs/plan-noviembre.md](docs/plan-noviembre.md), pedido de Juan el 2026-10-20), en este orden:
-  - [ ] **0.35.0:** el zip del paquete sin la espera de ~30 s (el revisor de virus de Google; los mods del
-    paquete pasan a bajar del CDN de Modrinth) y avisos de soporte desde que se abre Parabellum
-    (`supportNotify` y el número en el botón del escudo);
+  - [x] **0.35.0** (2026-10-21, falta publicarla):
+    - **el paquete sin la espera de ~30 s.** Junto al zip completo sale uno ligero sin lo que está en
+      Modrinth, y esos mods bajan del CDN a la vez. Si Modrinth no responde, se usa el completo. Además:
+      reintentos de los 500 de Drive, «Google Drive está revisando…» y «pedir antes» al abrir la
+      comunidad. Medido con 10 mods: 17.3 MB contra 4.05 MB, e instalarlo en 1.1 s;
+    - **avisos de soporte desde que se abre Parabellum:** `soporte::Watcher` y la regla `supportNotify`,
+      con el número en el botón de Comunidades y la notificación de Windows.
+  - [ ] *Prueba:* Juan:
+    1. publicar la regla `supportNotify`;
+    2. volver a publicar el paquete oficial con la 0.35.0, para que salga el ligero;
+    3. pulsar «Jugar» en otra PC (o en una carpeta nueva) y ver que no espera los 30 s.
   - [ ] **0.36.0 y 0.37.0:** una sola conexión a Firebase por persona (menos escuchas, y después el
     WebSocket de Firebase con respaldo SSE);
   - [ ] **0.38.0:** errores con una acción para resolverlos, y la O justo después de F2 abre esa captura;

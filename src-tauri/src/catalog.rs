@@ -47,6 +47,8 @@ pub struct Entry {
     pub icon: Option<String>,
     /// Carpeta donde está ("1.20.1/Better MC BMC4").
     pub location: String,
+    /// El paquete ligero en Drive (packs::Manifest::lite_archive): su id y su tamaño.
+    pub lite: Option<(String, u64)>,
 }
 
 impl Entry {
@@ -131,6 +133,8 @@ fn load_local(folder: &Path) -> (Vec<Entry>, Vec<String>) {
             continue;
         }
         let icon = manifest.icon.as_ref().and_then(|name| std::fs::read(dir.join(name)).ok()).and_then(|b| image_data_url(&b));
+        // El ligero, si está al lado (no se usa para instalar desde la carpeta: ahí el completo ya está).
+        let lite = manifest.lite_archive.as_ref().map(|n| dir.join(n)).and_then(|p| Some((p.display().to_string(), p.metadata().ok()?.len())));
         entries.push(Entry {
             size: zip.metadata().map(|m| m.len()).unwrap_or(0),
             archive: zip.display().to_string(),
@@ -138,6 +142,7 @@ fn load_local(folder: &Path) -> (Vec<Entry>, Vec<String>) {
             source: Source::Carpeta,
             icon,
             manifest,
+            lite,
         });
     }
     (entries, warnings)
@@ -228,6 +233,11 @@ async fn folder_entries(children: &[Value], path: &str, paths: &Paths) -> (Vec<E
             Some(icon) => cached_icon(icon, paths).await,
             None => None,
         };
+        let lite = manifest
+            .lite_archive
+            .as_ref()
+            .and_then(|n| by_name.get(&n.to_lowercase()))
+            .and_then(|f| Some((f["id"].as_str().filter(|id| valid_id(id))?.to_string(), f["size"].as_str()?.parse().ok()?)));
         entries.push(Entry {
             archive: zip["id"].as_str().unwrap().to_string(),
             size: zip["size"].as_str().and_then(|s| s.parse().ok()).unwrap_or(manifest.archive_size),
@@ -235,6 +245,7 @@ async fn folder_entries(children: &[Value], path: &str, paths: &Paths) -> (Vec<E
             source: Source::Drive,
             icon,
             manifest,
+            lite,
         });
     }
     (entries, warnings, mirror)
@@ -482,19 +493,24 @@ pub async fn fetch(entry: &Entry, paths: &Paths, progress: impl Fn(String, f64) 
     if entry.source == Source::Carpeta {
         return Ok((PathBuf::from(&entry.archive), false));
     }
+    fetch_drive(&entry.archive, entry.size, &entry.manifest.name, paths, progress).await.map(|zip| (zip, true))
+}
+
+/// Un zip de Drive en datos/descargas (se reanuda donde quedó y se reintenta si se corta o Drive falla).
+async fn fetch_drive(file_id: &str, size: u64, name: &str, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync) -> Result<PathBuf, String> {
     let dir = paths.data.join("descargas");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let finished = dir.join(format!("{}.zip", entry.archive));
-    if finished.metadata().is_ok_and(|m| m.len() == entry.size) {
-        return Ok((finished, true));
+    let finished = dir.join(format!("{file_id}.zip"));
+    if finished.metadata().is_ok_and(|m| m.len() == size) {
+        return Ok(finished);
     }
-    let partial = dir.join(format!("{}.zip.parte", entry.archive));
+    let partial = dir.join(format!("{file_id}.zip.parte"));
     let mut attempt = 1;
     loop {
-        match download_part(entry, &partial, &progress).await {
+        match download_part(file_id, size, name, &partial, &progress).await {
             Ok(()) => break,
             Err((error, retry)) if retry && attempt < 4 && !crate::descargas::is_cancelled() => {
-                progress(t!("Se cortó la conexión, reintentando ({attempt}/3)…", "The connection dropped, retrying ({attempt}/3)…"), 0.0);
+                progress(t!("Google Drive no respondió bien, reintentando ({attempt}/3)…", "Google Drive did not answer properly, retrying ({attempt}/3)…"), 0.0);
                 tokio::time::sleep(std::time::Duration::from_secs(3 * attempt)).await;
                 attempt += 1;
                 let _ = error;
@@ -503,20 +519,45 @@ pub async fn fetch(entry: &Entry, paths: &Paths, progress: impl Fn(String, f64) 
         }
     }
     std::fs::rename(&partial, &finished).map_err(|e| e.to_string())?;
-    Ok((finished, true))
+    Ok(finished)
 }
 
-async fn download_part(entry: &Entry, partial: &Path, progress: &(impl Fn(String, f64) + Send + Sync)) -> Result<(), (String, bool)> {
+async fn download_part(file_id: &str, size: u64, name: &str, partial: &Path, progress: &(impl Fn(String, f64) + Send + Sync)) -> Result<(), (String, bool)> {
     let mut existing = partial.metadata().map(|m| m.len()).unwrap_or(0);
-    if entry.size > 0 && existing >= entry.size {
+    if size > 0 && existing >= size {
         return Ok(());
     }
-    let mut request = download::client().get(download_url(&entry.archive));
+    let mut request = download::client().get(download_url(file_id));
     if existing > 0 {
         request = request.header(reqwest::header::RANGE, format!("bytes={existing}-"));
     }
-    let response = request.send().await.map_err(|e| (t!("No se pudo conectar con Google Drive: {e}", "Could not connect to Google Drive: {e}"), true))?;
-    let mut response = check_download(response).await.map_err(|e| (e, false))?;
+    // Drive revisa por virus los archivos de menos de 100 MB antes de soltarlos: con un modpack chico tarda
+    // ~30 s en empezar. Mientras, se dice qué pasa en lugar de dejar la barra quieta.
+    let started = std::time::Instant::now();
+    let sending = request.send();
+    tokio::pin!(sending);
+    let response = loop {
+        tokio::select! {
+            response = &mut sending => break response,
+            _ = tokio::time::sleep(std::time::Duration::from_secs(3)) => {
+                if crate::descargas::is_cancelled() {
+                    return Err((crate::descargas::cancelled_error(), false));
+                }
+                progress(
+                    t!(
+                        "Google Drive está revisando {name} antes de entregarlo (puede tardar hasta 30 s)… {} s",
+                        "Google Drive is checking {name} before handing it over (it can take up to 30 s)… {} s",
+                        started.elapsed().as_secs()
+                    ),
+                    existing as f64 / size.max(1) as f64,
+                );
+            }
+        }
+    };
+    let response = response.map_err(|e| (t!("No se pudo conectar con Google Drive: {e}", "Could not connect to Google Drive: {e}"), true))?;
+    // Un 500 de Drive (le pasa a veces justo después de revisarlo) se reintenta; un 404 o un 403, no.
+    let failed = response.status().is_server_error();
+    let mut response = check_download(response).await.map_err(|e| (e, failed))?;
     if existing > 0 && response.status() != reqwest::StatusCode::PARTIAL_CONTENT {
         existing = 0; // Drive ignoró el rango: se empieza de nuevo
     }
@@ -539,24 +580,27 @@ async fn download_part(entry: &Entry, partial: &Path, progress: &(impl Fn(String
             let speed = (done - existing) as f64 / started.elapsed().as_secs_f64().max(0.5) / 1048576.0;
             progress(
                 t!(
-                    "Descargando {}: {:.0} de {:.0} MB · {speed:.1} MB/s", "Downloading {}: {:.0} of {:.0} MB · {speed:.1} MB/s",
-                    entry.manifest.name,
+                    "Descargando {name}: {:.0} de {:.0} MB · {speed:.1} MB/s", "Downloading {name}: {:.0} of {:.0} MB · {speed:.1} MB/s",
                     done as f64 / 1048576.0,
-                    entry.size as f64 / 1048576.0
+                    size as f64 / 1048576.0
                 ),
-                done as f64 / entry.size.max(1) as f64,
+                done as f64 / size.max(1) as f64,
             );
         }
     }
     file.flush().await.map_err(|e| (e.to_string(), false))?;
-    if entry.size > 0 && done != entry.size {
+    if size > 0 && done != size {
         return Err((t!("La descarga quedó incompleta.", "The download is incomplete."), true));
     }
     Ok(())
 }
 
 async fn verify(zip: &Path, manifest: &Manifest) -> Result<(), String> {
-    let Some(expected) = manifest.archive_sha256.clone() else { return Ok(()) };
+    verify_sha256(zip, manifest.archive_sha256.clone()).await
+}
+
+async fn verify_sha256(zip: &Path, expected: Option<String>) -> Result<(), String> {
+    let Some(expected) = expected else { return Ok(()) };
     let file = zip.to_path_buf();
     let actual = tauri::async_runtime::spawn_blocking(move || packs::sha256_file(&file)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?;
     if !actual.eq_ignore_ascii_case(&expected) {
@@ -581,6 +625,208 @@ async fn install_full(entry: &Entry, paths: &Paths, progress: impl Fn(String, f6
         let _ = std::fs::remove_file(&zip);
     }
     result
+}
+
+// ================= El paquete ligero: el zip chico de Drive y los mods del CDN de Modrinth
+
+/// Lo que se baja de un paquete ligero va a una misma caché: la instalación y «pedir antes» (`prefetch`)
+/// no bajan a la vez. Si la instalación llega mientras se pide antes, lo espera (ya va avanzado).
+static LITE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+/// Cuánto lleva lo que se pide antes, para que la instalación que lo espera lo muestre.
+static PREFETCH_PROGRESS: std::sync::Mutex<Option<(String, f64)>> = std::sync::Mutex::new(None);
+/// Lo que se pide antes tiene un tope (pedido en el plan de noviembre): no llenar el disco ni la red sin
+/// que nadie lo haya pedido.
+pub const PREFETCH_LIMIT: u64 = 200 * 1024 * 1024;
+
+fn modrinth_cache(paths: &Paths) -> PathBuf {
+    paths.data.join("descargas").join("modrinth")
+}
+
+/// ¿Se instala con el paquete ligero? Solo de Drive, con todos sus archivos de Modrinth bien formados.
+pub fn uses_lite(entry: &Entry) -> bool {
+    entry.source == Source::Drive && entry.lite.is_some() && !entry.manifest.remote.is_empty() && entry.manifest.remote.iter().all(packs::RemoteFile::valid)
+}
+
+/// De dónde sale cada archivo de Modrinth del paquete (ruta en minúsculas -> archivo) y qué hay que bajar.
+struct LitePlan {
+    sources: HashMap<String, PathBuf>,
+    downloads: Vec<download::FileDownload>,
+    bytes: u64,
+}
+
+/// Lo que ya está en este PC no se baja: el mismo archivo en la instancia que se actualiza (por su SHA-1)
+/// o en la caché (allí solo llega comprobado).
+fn lite_plan(manifest: &Manifest, paths: &Paths) -> LitePlan {
+    let folder = manifest.folder.clone().filter(|f| packs::valid_folder_name(f)).map(|f| paths.instances.join(f));
+    let cache = modrinth_cache(paths);
+    let mut plan = LitePlan { sources: HashMap::new(), downloads: Vec::new(), bytes: 0 };
+    for remote in &manifest.remote {
+        let local = folder.as_ref().zip(crate::mrpack::safe_relative(&remote.path)).map(|(f, r)| f.join(r));
+        let same = |file: &PathBuf| file.metadata().is_ok_and(|m| m.len() == remote.size) && crate::integridad::sha1_file(file).is_some_and(|h| h.eq_ignore_ascii_case(&remote.sha1));
+        let cached = cache.join(&remote.sha1);
+        let source = match local.filter(same) {
+            Some(local) => local,
+            None => {
+                if !cached.metadata().is_ok_and(|m| m.len() == remote.size) {
+                    plan.bytes += remote.size;
+                    plan.downloads.push(download::FileDownload { url: remote.url.clone(), path: cached.clone(), sha1: Some(remote.sha1.clone()), size: Some(remote.size) });
+                }
+                cached
+            }
+        };
+        plan.sources.insert(remote.path.to_lowercase(), source);
+    }
+    plan
+}
+
+/// Baja lo que le falta a este PC de un paquete ligero: el zip chico de Drive y, a la vez, los mods del
+/// CDN de Modrinth. Devuelve el zip y de dónde sale cada archivo de Modrinth.
+async fn fetch_lite(entry: &Entry, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<(PathBuf, HashMap<String, PathBuf>), String> {
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
+    let (lite_id, lite_size) = entry.lite.clone().ok_or_else(|| remote_zip::PREFER_FULL.to_string())?;
+    let (manifest, paths_copy) = (entry.manifest.clone(), paths.clone());
+    let plan = tauri::async_runtime::spawn_blocking(move || lite_plan(&manifest, &paths_copy)).await.map_err(|e| e.to_string())?;
+    let total = (lite_size + plan.bytes).max(1);
+    // Los dos avanzan a la vez: la barra es la suma y el texto, el de los mods mientras bajan.
+    let zip_bytes = std::sync::Arc::new(AtomicU64::new(0));
+    let mods_bytes = std::sync::Arc::new(AtomicU64::new(0));
+    let mods_busy = std::sync::Arc::new(AtomicBool::new(!plan.downloads.is_empty()));
+    let zip_report = {
+        let (progress, zip_bytes, mods_bytes, mods_busy) = (progress.clone(), zip_bytes.clone(), mods_bytes.clone(), mods_busy.clone());
+        move |stage: String, fraction: f64| {
+            zip_bytes.store((fraction.clamp(0.0, 1.0) * lite_size as f64) as u64, Relaxed);
+            if !mods_busy.load(Relaxed) {
+                progress(stage, (zip_bytes.load(Relaxed) + mods_bytes.load(Relaxed)) as f64 / total as f64);
+            }
+        }
+    };
+    let mods_report = {
+        let (progress, zip_bytes, mods_bytes) = (progress.clone(), zip_bytes.clone(), mods_bytes.clone());
+        move |count: usize, files: usize, bytes: u64, all: u64| {
+            mods_bytes.store(bytes, Relaxed);
+            progress(
+                t!(
+                    "Bajando los mods de Modrinth: {count} de {files} ({:.0} de {:.0} MB)…",
+                    "Downloading the mods from Modrinth: {count} of {files} ({:.0} of {:.0} MB)…",
+                    bytes as f64 / 1048576.0,
+                    all as f64 / 1048576.0
+                ),
+                (zip_bytes.load(Relaxed) + bytes) as f64 / total as f64,
+            )
+        }
+    };
+    let mods = async {
+        let result = download::download_all(plan.downloads, mods_report).await;
+        mods_busy.store(false, Relaxed);
+        result
+    };
+    // De una carpeta (solo para probar, con --instalar-ligero), el zip ya está.
+    let zip = async {
+        match entry.source {
+            Source::Carpeta => Ok(PathBuf::from(&lite_id)),
+            Source::Drive => fetch_drive(&lite_id, lite_size, &entry.manifest.name, paths, zip_report).await,
+        }
+    };
+    let (zip, mods) = tokio::join!(zip, mods);
+    mods?;
+    Ok((zip?, plan.sources))
+}
+
+/// Espera a que termine lo que se está pidiendo antes, mostrando cuánto lleva.
+async fn lite_lock(progress: &(impl Fn(String, f64) + Send + Sync)) -> Result<tokio::sync::MutexGuard<'static, ()>, String> {
+    loop {
+        if let Ok(guard) = LITE_LOCK.try_lock() {
+            return Ok(guard);
+        }
+        crate::descargas::check()?;
+        let shown = PREFETCH_PROGRESS.lock().unwrap().clone();
+        if let Some((stage, fraction)) = shown {
+            progress(stage, fraction);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+}
+
+/// Instala o actualiza con el paquete ligero. Lo del jugador se conserva como con el completo
+/// (packs::install), y los mods que no cambiaron se copian de la instancia en lugar de bajarse.
+pub(crate) async fn install_lite(entry: &Entry, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<Installed, String> {
+    let _turn = lite_lock(&progress).await?;
+    let started = std::time::Instant::now();
+    let (zip, sources) = fetch_lite(entry, paths, progress.clone()).await?;
+    progress(t!("Comprobando {}…", "Checking {}…", entry.manifest.name), 1.0);
+    let copy = entry.source == Source::Drive;
+    if let Err(error) = verify_sha256(&zip, entry.manifest.lite_sha256.clone()).await {
+        if copy {
+            let _ = std::fs::remove_file(&zip);
+        }
+        return Err(error);
+    }
+    let (file, paths_copy, sources_copy) = (zip.clone(), paths.clone(), sources.clone());
+    let result = tauri::async_runtime::spawn_blocking(move || packs::install_with(&file, &paths_copy, &sources_copy, progress)).await.map_err(|e| e.to_string())??;
+    // Ya está todo en la instancia: lo bajado sobra.
+    if copy {
+        let _ = std::fs::remove_file(&zip);
+    }
+    let cache = modrinth_cache(paths);
+    let downloaded = sources.values().filter(|s| s.starts_with(&cache)).count();
+    for source in sources.values().filter(|s| s.starts_with(&cache)) {
+        let _ = std::fs::remove_file(source);
+    }
+    log(
+        paths,
+        &format!("{} {}: paquete ligero en {:.1} s ({downloaded} de Modrinth, {} ya estaban)", entry.manifest.name, entry.manifest.version, started.elapsed().as_secs_f64(), sources.len() - downloaded),
+    );
+    Ok(result)
+}
+
+/// datos/logs/paquetes.log: cómo se instaló cada paquete ligero (para medir y para el doctor).
+fn log(paths: &Paths, line: &str) {
+    use std::io::Write;
+    let _ = std::fs::create_dir_all(&paths.logs);
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(paths.logs.join("paquetes.log")) {
+        let _ = writeln!(file, "{} {line}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
+    }
+}
+
+/// «Pedir antes»: al abrir la comunidad, su paquete oficial empieza a bajar si falta o hay versión
+/// nueva, y al pulsar «Jugar» ya va avanzado o terminó. Uno a la vez y hasta PREFETCH_LIMIT. Con el
+/// paquete completo (de una versión anterior a la 0.35), solo si no está instalado: la actualización
+/// de esos va por partes y no usaría el zip. Devuelve si quedó bajado (o ya lo estaba).
+pub async fn prefetch(entry: &Entry, paths: &Paths, instances: &[Instance], progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<bool, String> {
+    if entry.source != Source::Drive || entry.manifest.is_base() || entry.is_launcher() {
+        return Ok(false);
+    }
+    let Ok(_turn) = LITE_LOCK.try_lock() else { return Ok(false) };
+    let shown = move |stage: String, fraction: f64| {
+        *PREFETCH_PROGRESS.lock().unwrap() = Some((stage.clone(), fraction));
+        progress(stage, fraction);
+    };
+    let result = if uses_lite(entry) {
+        let (manifest, paths_copy) = (entry.manifest.clone(), paths.clone());
+        let plan = tauri::async_runtime::spawn_blocking(move || lite_plan(&manifest, &paths_copy)).await.map_err(|e| e.to_string())?;
+        let lite_size = entry.lite.as_ref().map(|(_, size)| *size).unwrap_or(0);
+        if lite_size + plan.bytes > PREFETCH_LIMIT {
+            return Ok(false);
+        }
+        clean_cache(paths);
+        fetch_lite(entry, paths, shown).await.map(|_| true)
+    } else if entry.size <= PREFETCH_LIMIT && installed_instance(&entry.manifest, instances).is_none() {
+        fetch_drive(&entry.archive, entry.size, &entry.manifest.name, paths, shown).await.map(|_| true)
+    } else {
+        Ok(false)
+    };
+    *PREFETCH_PROGRESS.lock().unwrap() = None;
+    result
+}
+
+/// Lo que quedó en la caché de Modrinth hace más de dos semanas (de un paquete que ya cambió) se borra.
+fn clean_cache(paths: &Paths) {
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(14 * 24 * 3600);
+    for entry in std::fs::read_dir(modrinth_cache(paths)).into_iter().flatten().flatten() {
+        if entry.metadata().and_then(|m| m.modified()).is_ok_and(|t| t < old) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }
 
 // ================= Minecraft desde el catálogo (pedido de Juan: que todo baje de Google Drive)
@@ -708,6 +954,21 @@ pub async fn install(
                 manifest.minecraft_version
             ))?;
             install_full(base, paths, progress.clone()).await?;
+        }
+    }
+
+    // Con el paquete ligero (desde la 0.35): el zip chico de Drive y los mods del CDN de Modrinth. Si el
+    // CDN no responde (una red que lo bloquee) o algo sale mal, se sigue como antes, con el completo.
+    if !manifest.is_base() && uses_lite(entry) {
+        match install_lite(entry, paths, progress.clone()).await {
+            Ok(result) => {
+                return Ok(CatalogInstall { id: result.folder, name: result.name, kind: result.kind, updated: result.updated, downloaded_files: None, downloaded_bytes: None });
+            }
+            Err(error) if crate::descargas::is_cancelled() => return Err(error),
+            Err(error) => {
+                log(paths, &format!("{}: el paquete ligero falló ({error}); se baja el completo", manifest.name));
+                progress(t!("Modrinth no respondió: se baja el paquete completo de Google Drive…", "Modrinth did not answer: downloading the full package from Google Drive…"), 0.0);
+            }
         }
     }
 
@@ -884,7 +1145,7 @@ fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress
         .filter(|e| !e.name.ends_with('/') && e.name.strip_prefix("instancia/").is_some_and(|rest| !preserved(rest)))
         .map(|e| (e.name.clone(), e.crc32, e.size))
         .collect();
-    crate::integridad::save_package(&folder, &listed);
+    crate::integridad::save_package(&folder, &listed, &manifest.remote);
     std::fs::write(folder.join(STATE_DIR).join(packs::INSTALLED_MANIFEST), serde_json::to_vec_pretty(manifest).unwrap()).map_err(|e| e.to_string())?;
     // La referencia de la huella: lo que trae el paquete (identidad.rs).
     let names: Vec<String> = entries.iter().filter(|e| !e.name.ends_with('/')).map(|e| e.name.clone()).collect();
@@ -1005,6 +1266,7 @@ mod tests {
             size: 0,
             icon: None,
             location: String::new(),
+            lite: None,
         };
         let merged = merge(vec![entry("202601010000", Source::Drive), entry("202602010000", Source::Drive), entry("202602010000", Source::Carpeta)]);
         assert_eq!(merged.len(), 1);
@@ -1021,6 +1283,7 @@ mod tests {
             size: 0,
             icon: None,
             location: String::new(),
+            lite: None,
         };
         // Cada sistema ve solo la suya: la de Windows ("parabellum") no se ofrece en Mac ni al revés.
         assert_eq!(launcher_update(std::slice::from_ref(&newer)).is_some(), crate::plataforma::SELF_UPDATE);

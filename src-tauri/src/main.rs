@@ -1448,6 +1448,10 @@ async fn exportar_modpack(
     }
     let title = t!("Carpeta donde guardar el paquete (la de tus paquetes para Drive, o una USB)", "Folder to save the package in (your Drive packages folder, or a USB drive)");
     let Some(folder) = export_folder(&app, &paths, elegir, &title).await? else { return Ok(None) };
+    // Con los mods que están en Modrinth sale también el paquete ligero (catalog::install_lite).
+    progress(t!("Buscando qué mods están en Modrinth…", "Looking for which mods are on Modrinth…"), 0.0);
+    let mut opciones = opciones;
+    opciones.remote = packs::remote_files(&instance).await;
     let result = tauri::async_runtime::spawn_blocking(move || packs::export(&instance, &paths, &folder, &opciones, progress))
         .await
         .map_err(|e| e.to_string())??;
@@ -3247,14 +3251,29 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             Ok(out)
         }
         "--exportar" => {
-            // --exportar <instancia> <carpeta> [con-mundos]
+            // --exportar <instancia> <carpeta> [con-mundos] [sin-base]
             let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
             let folder = PathBuf::from(args.get(2).ok_or("Falta la carpeta.")?);
-            let with_worlds = args.get(3).is_some_and(|a| a == "con-mundos");
+            let with_worlds = args.iter().skip(3).any(|a| a == "con-mundos");
+            let skip_base = args.iter().skip(3).any(|a| a == "sin-base");
             let include = packs::exportable(&instance).into_iter().filter(|e| e.checked || (with_worlds && e.name == "saves")).map(|e| e.name).collect();
             let started = std::time::Instant::now();
-            let result = packs::export(&instance, paths, &folder, &packs::ExportOptions { include, ..Default::default() }, |_, _| {})?;
+            let remote = tauri::async_runtime::block_on(packs::remote_files(&instance));
+            let result = packs::export(&instance, paths, &folder, &packs::ExportOptions { include, remote, skip_base, ..Default::default() }, |_, _| {})?;
             Ok(format!("{result:#?}\nen {:.0} s", started.elapsed().as_secs_f64()))
+        }
+        "--instalar-ligero" => {
+            // --instalar-ligero <id del paquete>: instala con el paquete ligero de la carpeta «paquetes»
+            // (el zip chico de ahí y los mods del CDN de Modrinth), como se instala desde Drive.
+            let id = args.get(1).ok_or("Falta el id del paquete.")?;
+            let catalog = tauri::async_runtime::block_on(catalog::load(paths, &config::Config::default()));
+            let entry = catalog.entries.iter().find(|e| e.manifest.id.eq_ignore_ascii_case(id)).ok_or("No está en la carpeta paquetes.")?;
+            if entry.lite.is_none() {
+                return Err("Ese paquete no tiene versión ligera.".into());
+            }
+            let started = std::time::Instant::now();
+            let result = tauri::async_runtime::block_on(catalog::install_lite(entry, paths, |stage, fraction| eprintln!("{:3.0} % {stage}", fraction * 100.0)))?;
+            Ok(format!("{result:#?}\nen {:.1} s", started.elapsed().as_secs_f64()))
         }
         "--exportar-mrpack" => {
             let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
@@ -3998,6 +4017,7 @@ fn main() {
             comunidad::borrar_servidor_comunidad,
             comunidad::guardar_paquete_comunidad,
             comunidad::paquete_comunidad,
+            comunidad::precargar_paquete,
             comunidad::borrar_paquete_comunidad,
             comunidad::publicar_paquete_comunidad,
             estado_canal,
@@ -4046,7 +4066,7 @@ fn main() {
             soporte::soporte_mensajes,
             soporte::soporte_visto,
             soporte::soporte_escuchar,
-            soporte::soporte_escuchar_cola,
+            soporte::soporte_avisos,
             soporte::soporte_enviar,
             soporte::soporte_tomar,
             soporte::soporte_estado,

@@ -1066,6 +1066,8 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .cm-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
 .cm-tab { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 6px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-weight: 650; }
 .cm-tab.active, .cm-tab:hover { background: var(--card); color: var(--text); border-color: var(--border-strong); }
+/* Algo de soporte espera en esa comunidad (el vigía de soporte.rs). */
+.cm-tab.notice::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-left: -2px; }
 .cm-image { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; flex: none; display: grid; place-items: center; }
 .cm-image.tiny { width: 24px; height: 24px; border-radius: 6px; }
 .cm-image.large { width: 72px; height: 72px; border-radius: 16px; }

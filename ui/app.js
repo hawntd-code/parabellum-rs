@@ -7610,7 +7610,8 @@ function demoInvoke(command, args = {}) {
     return later({ ...record }, 500);
   }
   if (command === "soporte_abrir") return later("t0000000002", 700);
-  if (["soporte_enviar", "soporte_tomar", "soporte_estado", "soporte_tarjeta", "soporte_escuchar", "soporte_escuchar_cola", "soporte_visto"].includes(command)) return later(null, 200);
+  if (["soporte_enviar", "soporte_tomar", "soporte_estado", "soporte_tarjeta", "soporte_escuchar", "soporte_visto"].includes(command)) return later(null, 200);
+  if (command === "soporte_avisos") return Promise.resolve(player ? { total: 1, communities: { c0000000000a1: 1 } } : { total: 2, communities: { c0000000000a1: 2 } });
   if (command === "comunidades") return Promise.resolve([{ id: "c0000000000a1", name: "Parabellum", description: "El servidor de Parabellum", image: null, role: player ? "member" : "owner", caps: {} }]);
   if (command === "comunidad")
     return Promise.resolve({
@@ -7677,6 +7678,7 @@ function demoInvoke(command, args = {}) {
   if (command === "estado_servidores") return later(Object.fromEntries(args.direcciones.map((a) => [a.toLowerCase(), a.startsWith("creativo") ? { online: false } : { online: true, players: 7, maxPlayers: 50 }])), 400);
   if (command === "drive_publicar") return Promise.resolve("hawntd@gmail.com");
   if (command === "paquete_comunidad") return Promise.resolve({ state: "falta", catalogId: "parabellum-oficial", wanted: "1.0.0", instance: null, installed: null });
+  if (command === "precargar_paquete") return Promise.resolve(false);
   if (command === "estado_canal") return Promise.resolve({ channel: state.settings.updateChannel ?? "estable", backTo: null });
   if (command === "canal_actualizaciones") return Promise.resolve({ ...state.settings, updateChannel: args.canal });
   if (command === "modo_escuela") return Promise.resolve({ ...state.settings, schoolMode: args.activo });

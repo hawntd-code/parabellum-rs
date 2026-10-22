@@ -132,6 +132,16 @@ escribir en Drive; los demás jugadores nunca lo ven). Después, «Subir a Drive
 la misma estructura que la carpeta local; lo que ya está igual no se vuelve a subir. La cuenta tiene
 que poder editar esa carpeta.
 
+**El paquete ligero (desde la 0.35.0).** Al exportar un modpack (y al publicar el paquete oficial de una
+comunidad) junto al zip completo sale `<Modpack> (ligero).zip`: el mismo paquete sin los mods,
+resource packs y shaders que están en Modrinth. El `.json` los lista en `remote` (ruta, enlace de
+`cdn.modrinth.com`, SHA-1, SHA-512 y tamaño) y nombra el ligero en `liteArchive`. Al instalar desde
+Drive se bajan a la vez el zip chico y esos archivos del CDN (los que ya están iguales en la instancia se
+copian); si Modrinth no responde, se usa el completo. Por qué: Drive revisa por virus los zips de menos
+de 100 MB y uno lleno de mods tarda ~30 s en empezar a bajar (medido el 2026-10-20 y 21). Las versiones
+anteriores a la 0.35.0 ignoran el ligero y siguen con el completo, así que el completo se sigue subiendo.
+Cada instalación ligera queda en `datos/logs/paquetes.log` con su tiempo.
+
 ## Publicar una versión
 
 1. **Drive** (lo hace Juan): Ajustes › Acerca de › «Publicar esta versión» deja `_parabellum` con
@@ -183,7 +193,8 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--buscar <texto> [mod\|resourcepack\|shader] [loader] [versión]` | Busca en Modrinth |
 | `--instalar <instancia> <proyecto> [versión]` | Instala de Modrinth con dependencias compatibles |
 | `--actualizaciones <instancia> [aplicar]` | Lista (o aplica) las actualizaciones seguras |
-| `--exportar <instancia> <carpeta> [con-mundos]` | Paquete para Drive o USB (modpack + base de Minecraft) |
+| `--exportar <instancia> <carpeta> [con-mundos] [sin-base]` | Paquete para Drive o USB (modpack, su versión ligera y la base de Minecraft; `sin-base`, sin la base) |
+| `--instalar-ligero <id>` | Instala con el paquete ligero de la carpeta `paquetes` y los mods del CDN de Modrinth, como desde Drive (para medir) |
 | `--exportar-mrpack <instancia> <archivo.mrpack>` | Modpack en formato de Modrinth |
 | `--importar <archivo> [nombre]` | Instala un .mrpack o un paquete de Parabellum |
 | `--externas` | Instancias de CurseForge, Prism y MultiMC en este PC |

@@ -432,7 +432,8 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 ## Próximo en Windows
 
 - **[plan-noviembre.md](plan-noviembre.md)** (2026-10-20). Por versión:
-  - 0.35.0, el paquete oficial baja sus mods del CDN de Modrinth y hay avisos de soporte desde el inicio;
+  - 0.35.0 (hecha, falta publicarla), el paquete oficial baja sus mods del CDN de Modrinth y hay avisos de
+    soporte desde el inicio;
   - 0.36.0 y 0.37.0, una sola conexión a Firebase (WebSocket);
   - 0.38.0, errores con acción y la O después de F2;
   - 0.39.0 a 0.41.0, E4 (mundos en Drive) y E5 (tarjetas de Minecraft).
@@ -441,6 +442,32 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   en Mac) y un vigía de la carpeta de capturas.
 
 ## Cambios de Windows
+
+### 2026-10-21 · 0.35.0: el paquete ligero y los avisos de soporte
+
+- **El paquete oficial sin la espera de ~30 s** (plan-noviembre.md, punto 1). Drive revisa por virus los
+  zips de menos de 100 MB y uno lleno de mods tarda ~30 s en empezar; uno sin mods, de 2 a 3 s.
+  - `packs::export` deja, junto al zip completo, `<Modpack> (ligero).zip` sin lo que está en Modrinth.
+    El manifiesto gana `remote` (ruta, enlace del CDN, SHA-1, SHA-512 y tamaño), `liteArchive`,
+    `liteSize` y `liteSha256`. Las versiones viejas lo ignoran y siguen con el completo.
+  - `catalog::install` usa el ligero si está: el zip chico de Drive y los mods del CDN a la vez (los que
+    ya están iguales en la instancia se copian). Si Modrinth no responde, se usa el completo.
+  - Las descargas de Drive reintentan los 500 y dicen «Google Drive está revisando… N s» mientras esperan.
+  - «Pedir antes» (`precargar_paquete`): al abrir una comunidad, su paquete que falta o tiene versión
+    nueva empieza a bajar (hasta 200 MB, nunca mientras se juega).
+  - Medido con «RETORCIDOS | MODPACK» (10 mods): completo 17.3 MB, ligero 4.05 MB; los 10 mods del CDN
+    (13 MB) e instalar, 1.1 s. Con el CDN bloqueado, falla en 11 s sin tocar la instancia.
+- **Avisos de soporte desde que se abre Parabellum** (punto 2): `soporte::Watcher` arranca con la sesión.
+  - Escucha `supportNotify/{cid}/{uid}` (las respuestas a tus solicitudes) y, si eres del equipo,
+    `supportTickets/{cid}`.
+  - Manda `soporte-avisos` (el número en el botón de Comunidades y un punto en cada comunidad) y una
+    notificación con `plataforma::avisos`. El comando nuevo es `soporte_avisos`, y
+    `soporte_escuchar_cola` se fue.
+  - Regla nueva: `supportNotify`, con sus pruebas. Juan la publica antes que la 0.35.0.
+- Mac: compilar y probar.
+  - La notificación del vigía usa `avisos::show` como el chat. Revisa que en Mac llegue y que al
+    pulsarla abra la solicitud (evento `abrir-soporte`).
+  - Corre `cargo test`: hay pruebas nuevas en `packs` y `soporte`.
 
 ### 2026-10-20 · El repo es público
 
