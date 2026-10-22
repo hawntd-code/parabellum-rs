@@ -1,0 +1,31 @@
+---
+import { SITE } from '../config';
+import type { Releases } from '../lib/releases';
+import type { Strings } from '../i18n';
+
+interface Props {
+  t: Strings;
+  releases: Releases;
+}
+const { t, releases } = Astro.props;
+const links = [...t.nav, ['#hostear', t.layers.hostear.label], ['#descargar', t.layers.descargar.label]];
+---
+
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <div class="footer-brand">
+      <a class="brand" href="#inicio"><img src="/logo.png" alt="" width="30" height="30" /><span>parabellum</span></a>
+      <p>
+        {t.footer.versionsLabel}: Windows <span data-release-version="windows">{releases.windows.version}</span> · Mac
+        <span data-release-version="mac">{releases.mac.version}</span>
+      </p>
+    </div>
+    <nav aria-label={t.footer.links}>
+      {links.map(([href, label]) => <a href={href}>{label}</a>)}
+      <a href={`https://github.com/${SITE.repo}`}>GitHub ↗</a>
+    </nav>
+    <p class="footer-code"><a href={`https://github.com/${SITE.repo}`}>{t.footer.code} ↗</a></p>
+    <p class="legal">{t.footer.credits}</p>
+    <p class="legal">{t.footer.legal}</p>
+  </div>
+</footer>

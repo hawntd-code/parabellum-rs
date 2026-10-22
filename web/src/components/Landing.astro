@@ -1,0 +1,60 @@
+---
+// La página completa en un idioma: la superficie, las nueve capas y lo que flota encima (barra rápida,
+// logros, tooltip y partículas).
+import Base from '../layouts/Base.astro';
+import Header from './Header.astro';
+import Hero from './Hero.astro';
+import Footer from './Footer.astro';
+import Funciones from './capas/Funciones.astro';
+import Amigos from './capas/Amigos.astro';
+import Hostear from './capas/Hostear.astro';
+import Mods from './capas/Mods.astro';
+import Comunidades from './capas/Comunidades.astro';
+import Escuela from './capas/Escuela.astro';
+import Detalles from './capas/Detalles.astro';
+import Descargar from './capas/Descargar.astro';
+import Preguntas from './capas/Preguntas.astro';
+import { SITE } from '../config';
+import { getReleases } from '../lib/releases';
+import { getStrings, type Lang } from '../i18n';
+
+interface Props {
+  lang: Lang;
+}
+const { lang } = Astro.props;
+const t = getStrings(lang);
+const releases = await getReleases();
+// Lo que necesita el JavaScript, sin «<» para que no pueda cerrar la etiqueta.
+const uiJson = JSON.stringify({ ...t.ui, header: t.header, repo: SITE.repo }).replace(/</g, '\\u003c');
+---
+
+<Base t={t}>
+  <a class="skip-link" href="#main">{t.skip}</a>
+  <Header t={t} />
+  <div class="miner" id="miner" aria-hidden="true"></div>
+
+  <main id="main">
+    <Hero t={t} releases={releases} />
+    <Funciones t={t} />
+    <Amigos t={t} />
+    <Hostear t={t} />
+    <Mods t={t} />
+    <Comunidades t={t} />
+    <Escuela t={t} />
+    <Detalles t={t} />
+    <Descargar t={t} releases={releases} />
+    <Preguntas t={t} />
+  </main>
+
+  <Footer t={t} releases={releases} />
+
+  <nav class="hotbar in-hero" id="hotbar" aria-label={t.header.hotbar}></nav>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+  <div class="fx-layer" id="fx" aria-hidden="true"></div>
+
+  <script type="application/json" id="ui-strings" is:inline set:html={uiJson} />
+  <script>
+    import '../scripts/excavacion.js';
+  </script>
+</Base>

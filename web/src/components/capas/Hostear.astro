@@ -1,0 +1,80 @@
+---
+// Grava: hostear sin abrir puertos. Palanca de redstone, ajustes como en Aternos y la carrera de rutas.
+import Layer from '../Layer.astro';
+import { coordOf } from '../../lib/layers';
+import type { Strings } from '../../i18n';
+
+interface Props {
+  t: Strings;
+}
+const { t } = Astro.props;
+const h = t.host;
+const routes = [
+  ['local', 'sprite:minecart-local'],
+  ['p2p', 'sprite:minecart-p2p'],
+  ['playit', 'sprite:minecart-playit'],
+] as const;
+---
+
+<Layer id="hostear" t={t}>
+  <div class="wrap host">
+    <div class="host-copy">
+      <p class="coord">{coordOf('hostear', t)}</p>
+      <h2>{h.title}</h2>
+      <p>{h.text}</p>
+
+      <div class="rig">
+        <button class="lever" id="lever" type="button" role="switch" aria-checked="false" aria-label={h.lever}>
+          <span class="lever-base" data-px="tex:cobble"></span><span class="lever-stick"></span>
+        </button>
+        <span class="dust" id="dust" aria-hidden="true"></span>
+        <span class="lamp" id="lamp" aria-hidden="true"><i class="lamp-off" data-px="iso:lampOff|lampOff"></i><i class="lamp-on" data-px="iso:lampOn|lampOn"></i></span>
+        <div class="server-card" id="server-card">
+          <i class="srv-icon" data-px="iso:serverTop|serverSide"></i>
+          <span class="srv-name"><b>{h.serverName}</b><small>{h.serverMeta}</small></span>
+          <span class="srv-state" id="srv-state">{h.off}</span>
+          <span class="srv-stats"><span>{h.tps} <b id="srv-tps">—</b></span><span>{h.players} <b id="srv-players">0/10</b></span></span>
+          <span class="srv-heads" id="srv-heads" aria-hidden="true"></span>
+        </div>
+      </div>
+
+      <div class="rules" aria-label={h.rulesLabel}>
+        {
+          h.rules.map(rule => (
+            <label class="rule">
+              <input type="checkbox" checked={rule.checked} />
+              <span class="sw" />
+              <span>
+                <b>{rule.name}</b>
+                <code>{rule.code}</code>
+              </span>
+            </label>
+          ))
+        }
+      </div>
+      <p class="note">{h.rulesNote}</p>
+    </div>
+
+    <div class="race" id="race">
+      <div class="race-head"><b>{h.raceTitle}</b><small>{h.raceExample}</small></div>
+      <div class="routes" role="group" aria-label={h.routesLabel}>
+        {routes.map(([id]) => <label><input type="checkbox" data-route-toggle={id} checked />{h.routes[id]}</label>)}
+      </div>
+      {
+        routes.map(([id, cart]) => (
+          <div class="track" data-route={id}>
+            <span class="track-label">{h.routes[id]}</span>
+            <div class="rail">
+              <i class="cart" data-px={cart} />
+              <i class="goal" data-px="iso:serverTop|serverSide" />
+            </div>
+            <b class="track-result">{h.waiting}</b>
+          </div>
+        ))
+      }
+      <button class="btn btn-primary btn-wide" id="race-start" type="button">{h.join}</button>
+      <p class="race-result" id="race-result" aria-live="polite">{h.raceIntro}</p>
+      <p class="note">{h.raceNote}</p>
+    </div>
+  </div>
+</Layer>

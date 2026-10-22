@@ -1,0 +1,26 @@
+---
+// Una capa de la excavación. El script dibuja el corte del mundo detrás del contenido según su material.
+import { layerOf, type LayerId } from '../lib/layers';
+import type { Strings } from '../i18n';
+
+interface Props {
+  id: LayerId;
+  t: Strings;
+}
+
+const { id, t } = Astro.props;
+const layer = layerOf(id);
+const names = t.layers[id];
+---
+
+<section
+  class="layer"
+  id={id}
+  data-material={layer.material}
+  data-biome={names.biome}
+  data-label={names.label}
+  data-y={layer.y}
+  data-icon={layer.icon}
+>
+  <slot />
+</section>

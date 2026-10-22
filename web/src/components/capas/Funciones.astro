@@ -1,0 +1,144 @@
+---
+// Tierra: qué es Parabellum por dentro. Muestra una maqueta del launcher con datos de ejemplo, o la
+// demo real si SITE.launcherDemoUrl tiene una dirección.
+import Layer from '../Layer.astro';
+import { SITE } from '../../config';
+import { coordOf } from '../../lib/layers';
+import type { Strings } from '../../i18n';
+
+interface Props {
+  t: Strings;
+}
+const { t } = Astro.props;
+const f = t.features;
+const m = f.mock;
+const covers = [
+  ['cover-purple', 'iso:tint:#c9a8ff,#9466e6,#e1ccff,#7d4fd0|tint:#b48cff,#8a5ad8,#c9a8ff,#6a3cbd'],
+  ['cover-indigo', 'iso:tint:#5a4fd6,#3f36a8,#7a70ff,#2a2378|tint:#4a41c0,#332b96,#6a60f0,#221c66'],
+  ['cover-cyan', 'iso:tint:#9ff6ff,#5ad8ee,#d2fbff,#2c9fc0|tint:#4fb8e8,#3a8fd0,#7fd2ff,#2463a8'],
+  ['cover-green', 'iso:grassTop|grass'],
+];
+const exploreIcons = [
+  'iso:tint:#ff7ad9,#c94fb0,#ff9ff0,#8a2f78|tint:#ff7ad9,#c94fb0,#ff9ff0,#8a2f78',
+  'iso:tint:#e9f1ff,#bcd0ee,#ffffff,#8fa6c9|tint:#e9f1ff,#bcd0ee,#ffffff,#8fa6c9',
+  'iso:tint:#7cf0b0,#3fc883,#b5ffd6,#1f8a55|tint:#7cf0b0,#3fc883,#b5ffd6,#1f8a55',
+];
+const faces = ['sprite:face-alex', 'sprite:face-mar', 'sprite:face-dani'];
+const tabs = Object.entries(f.tabs);
+---
+
+<Layer id="funciones" t={t}>
+  <div class="wrap split split-launcher">
+    <div class="copy">
+      <p class="coord">{coordOf('funciones', t)}</p>
+      <h2>{f.title}</h2>
+      <p>{f.text}</p>
+      <ul class="ore-facts">
+        {
+          f.facts.map(fact => (
+            <li>
+              <span class="mine-wrap">
+                <button class="mine" type="button" data-block={fact.block} data-name={fact.name} aria-label={fact.aria} />
+              </span>
+              <span set:html={fact.html} />
+            </li>
+          ))
+        }
+      </ul>
+      <p class="hint" set:html={f.hintHtml} />
+    </div>
+
+    <div class="launcher-wrap">
+      {
+        SITE.launcherDemoUrl ? (
+          <div class="launcher-demo">
+            <iframe src={SITE.launcherDemoUrl} title={f.demoTitle} loading="lazy" />
+            <a class="link-btn" href={SITE.launcherDemoUrl}>{f.demoOpen} ↗</a>
+          </div>
+        ) : (
+          <>
+            <div class="launcher-tabs" role="tablist" aria-label={f.tabsLabel}>
+              {tabs.map(([id, label], index) => (
+                <button type="button" role="tab" aria-selected={index === 0 ? 'true' : 'false'} aria-controls={`lp-${id}`} data-ltab={id}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div class="launcher" aria-label={f.mockLabel} role="group">
+              <div class="l-top">
+                <span class="l-brand"><img src="/logo.png" alt="" width="22" height="22" /><b>parabellum</b></span>
+                <span class="l-crumb" id="l-crumb" data-crumbs={JSON.stringify({ library: m.home, explore: f.tabs.explore, servers: f.tabs.servers, messages: f.tabs.messages })}>{m.home}</span>
+                <span class="l-spacer" />
+                <span class="l-pill">{m.schoolMode}</span>
+                <span class="l-pill l-accent">{m.downloads}</span>
+                <span class="l-pill l-dot">{m.noGame}</span>
+              </div>
+              <div class="l-body">
+                <div class="l-rail" aria-hidden="true">
+                  <i class="l-ico active" data-lrail="library"><svg viewBox="0 0 16 16"><path d="M5 3l8 5-8 5z" /></svg></i>
+                  <i class="l-ico" data-lrail="explore"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" /><path d="M10.5 5.5l-1.5 3.5-3.5 1.5 1.5-3.5z" /></svg></i>
+                  <i class="l-ico" data-lrail="servers"><svg viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="4" rx="1" /><rect x="2.5" y="9" width="11" height="4" rx="1" /></svg></i>
+                  <i class="l-ico" data-lrail="messages"><svg viewBox="0 0 16 16"><path d="M3 4h10v7H7l-3 2v-2H3z" /></svg></i>
+                  <i class="l-sep" />
+                  <i class="l-inst" data-px={covers[0][1]} />
+                  <i class="l-inst" data-px={covers[2][1]} />
+                </div>
+                <div class="l-main">
+                  <div class="l-panel" id="lp-library" role="tabpanel" data-lpanel="library">
+                    <div class="l-head"><b>{f.tabs.library}</b><span class="l-search">{m.search}</span><span class="l-new">{m.newInstance}</span></div>
+                    <div class="l-grid">
+                      {m.instances.map(([name, meta], index) => (
+                        <div class="l-card">
+                          <div class={`l-cover ${covers[index][0]}`}><i data-px={covers[index][1]} /></div>
+                          <b>{name}</b><small>{meta}</small><span class="l-play">{m.play}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div class="l-panel" id="lp-explore" role="tabpanel" data-lpanel="explore" hidden>
+                    <div class="l-head"><b>{f.tabs.explore}</b><span class="l-search">{m.exploreQuery}</span><span class="l-chip">Modrinth</span><span class="l-chip">Drive</span></div>
+                    {m.explore.map(([name, meta, action], index) => (
+                      <div class="l-row">
+                        <i class="l-mod" data-px={exploreIcons[index]} />
+                        <span><b>{name}</b><small>{meta}</small></span>
+                        <span class={index === 1 ? 'l-btn ghost' : 'l-btn'}>{action}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div class="l-panel" id="lp-servers" role="tabpanel" data-lpanel="servers" hidden>
+                    <div class="l-head"><b>{f.tabs.servers}</b><span class="l-new">{m.createServer}</span></div>
+                    <p class="l-sub">{m.yourServers}</p>
+                    <div class="l-row"><i class="l-mod" data-px="iso:serverTop|serverSide" /><span><b>{m.serverName}</b><small>{m.serverMeta}</small></span><span class="l-state on">{m.on}</span><span class="l-btn danger">{m.stop}</span></div>
+                    <p class="l-sub">{m.fromFriends}</p>
+                    <div class="l-row"><i class="l-face" data-px="sprite:face-alex" /><span><b>{m.friendWorld}</b><small>{m.friendWorldMeta}</small></span><span class="l-btn">{m.join}</span></div>
+                  </div>
+                  <div class="l-panel l-chat" id="lp-messages" role="tabpanel" data-lpanel="messages" hidden>
+                    <div class="l-chatlist">
+                      {m.chats.map((name, index) => <p class={index === 0 ? 'on' : ''}><i data-px={faces[index]} />{name}</p>)}
+                    </div>
+                    <div class="l-conv">
+                      <p class="l-msg">{m.msg1}</p>
+                      <p class="l-msg mine">{m.msg2}</p>
+                      <div class="l-recipe"><i data-px="iso:grassTop|grass" /><span><b>Cobbleverse</b><small>{m.recipeMeta}</small></span><span class="l-btn">{m.install}</span></div>
+                      <p class="l-react">🔥 1 · 👍 2</p>
+                    </div>
+                  </div>
+                </div>
+                <aside class="l-friends" aria-hidden="true">
+                  <b>{m.friends}</b>
+                  {m.friendList.map(([name, status], index) => (
+                    <p class={index === 2 ? 'off' : ''}>
+                      <i data-px={faces[index]} />
+                      <span>{name}<small>{status}</small></span>
+                      {index < 2 && <em class={index === 0 ? 'play' : 'on'} />}
+                    </p>
+                  ))}
+                </aside>
+              </div>
+            </div>
+          </>
+        )
+      }
+    </div>
+  </div>
+</Layer>

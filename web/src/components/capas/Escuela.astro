@@ -1,0 +1,37 @@
+---
+// Portal: el modo escuela. Con la red bloqueando a Mojang, todo llega por el portal de Google Drive.
+import Layer from '../Layer.astro';
+import { coordOf } from '../../lib/layers';
+import type { Strings } from '../../i18n';
+
+interface Props {
+  t: Strings;
+}
+const { t } = Astro.props;
+const s = t.school;
+---
+
+<Layer id="escuela" t={t}>
+  <div class="wrap school">
+    <div class="school-copy">
+      <p class="coord">{coordOf('escuela', t)}</p>
+      <h2>{s.title}</h2>
+      <p>{s.text}</p>
+      <button class="school-toggle" id="school-toggle" type="button" role="switch" aria-checked="false">
+        <span class="toggle-track"><i></i></span><span>{s.toggle}</span><b id="school-state">{s.off}</b>
+      </button>
+      <p class="quip" id="school-quip">{s.quip}</p>
+      <p class="note">{s.note}</p>
+    </div>
+    <div class="school-stage" id="school-stage">
+      <div class="node node-mojang"><i class="node-block" data-px="iso:stone|stone"></i><b>{s.mojang}</b><small id="mojang-status">{s.mojangStatus}</small></div>
+      <div class="barriers" aria-hidden="true"><i data-px="sprite:barrier"></i><i data-px="sprite:barrier"></i><i data-px="sprite:barrier"></i></div>
+      <div class="node node-portal">
+        <span class="portal"><i class="portal-frame" data-px="sprite:portalFrame"></i><i class="portal-swirl"></i></span><b>{s.drive}</b><small id="drive-status">{s.driveStatus}</small>
+      </div>
+      <div class="node node-pc"><i class="node-block" data-px="sprite:pc"></i><b>{s.pc}</b><small id="pc-status">{s.pcStatus}</small></div>
+      <svg class="paths" aria-hidden="true" preserveAspectRatio="none"><path id="path-mojang"></path><path id="path-drive"></path></svg>
+      <div class="flow" id="school-flow" aria-hidden="true"></div>
+    </div>
+  </div>
+</Layer>

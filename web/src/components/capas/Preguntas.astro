@@ -1,0 +1,32 @@
+---
+// Roca madre: preguntas frecuentes (las mismas del README del repo).
+import Layer from '../Layer.astro';
+import { coordOf } from '../../lib/layers';
+import type { Strings } from '../../i18n';
+
+interface Props {
+  t: Strings;
+}
+const { t } = Astro.props;
+const q = t.faq;
+---
+
+<Layer id="preguntas" t={t}>
+  <div class="wrap faq">
+    <div class="section-head">
+      <p class="coord">{coordOf('preguntas', t)}</p>
+      <h2>{q.title}</h2>
+      <p>{q.lead}</p>
+    </div>
+    <div class="faq-list">
+      {
+        q.items.map(item => (
+          <details>
+            <summary>{item.q}</summary>
+            <p>{item.a}</p>
+          </details>
+        ))
+      }
+    </div>
+  </div>
+</Layer>

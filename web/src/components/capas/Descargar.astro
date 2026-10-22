@@ -1,0 +1,73 @@
+---
+// Diamantes: descargar. Los botones salen de las releases de GitHub (al compilar y otra vez en el navegador).
+import Layer from '../Layer.astro';
+import { SITE } from '../../config';
+import { coordOf } from '../../lib/layers';
+import { formatDate, formatSize } from '../../lib/releases-core.js';
+import type { Releases } from '../../lib/releases';
+import type { Strings } from '../../i18n';
+
+interface Props {
+  t: Strings;
+  releases: Releases;
+}
+const { t, releases } = Astro.props;
+const d = t.download;
+const [zipBefore, zipAfter] = d.zip.split('{size}');
+const systems = [
+  { id: 'windows', label: d.windows, req: d.windowsReq, release: releases.windows, primary: true },
+  { id: 'mac', label: d.mac, req: d.macReq, release: releases.mac, primary: false },
+] as const;
+const steps = [d.windowsSteps, d.macSteps];
+---
+
+<Layer id="descargar" t={t}>
+  <div class="wrap download">
+    <div class="download-copy">
+      <p class="coord">{coordOf('descargar', t)}</p>
+      <h2>{d.title}</h2>
+      <p>{d.text}</p>
+      <div class="big-mine">
+        <span class="mine-wrap"><button class="mine mine-big" type="button" id="diamond-mine" data-block="ore:deepslate:diamond" data-name={d.mineName} aria-label={d.mine}></button></span>
+      </div>
+    </div>
+    <div class="download-card" id="download-card">
+      <h3>{d.card}</h3>
+      <div class="download-buttons">
+        {
+          systems.map(system => (
+            <div class="download-option">
+              <a
+                class={`btn btn-big ${system.primary ? 'btn-primary' : 'btn-ghost'}`}
+                id={`dl-${system.id}`}
+                href={system.release.url}
+                data-release={system.id}
+              >
+                <span>{system.label}</span>
+                <small>v<span data-release-version={system.id}>{system.release.version}</span></small>
+              </a>
+              <p class="download-meta">
+                {system.req} · {zipBefore}<span data-release-size={system.id}>{formatSize(system.release.size)}</span>{zipAfter} ·{' '}
+                <span data-release-date={system.id}>{formatDate(system.release.date, t.lang)}</span>
+              </p>
+              <a class="download-notes" href={system.release.page} data-release-page={system.id}>{d.notes} ↗</a>
+            </div>
+          ))
+        }
+      </div>
+      <div class="steps">
+        {
+          steps.map(step => (
+            <div>
+              <b>{step.title}</b>
+              <ol>
+                {step.itemsHtml.map(item => <li set:html={item} />)}
+              </ol>
+            </div>
+          ))
+        }
+      </div>
+      <a class="all-versions" href={`https://github.com/${SITE.repo}/releases`}>{d.allVersions} ↗</a>
+    </div>
+  </div>
+</Layer>

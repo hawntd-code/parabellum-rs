@@ -1,0 +1,36 @@
+---
+import type { Strings } from '../i18n';
+
+interface Props {
+  t: Strings;
+}
+const { t } = Astro.props;
+---
+
+<header class="site-header">
+  <a class="brand" id="brand" href="#inicio" aria-label={t.header.home}>
+    <img src="/logo.png" alt="" width="34" height="34" /><span>parabellum</span>
+  </a>
+  <nav class="main-nav" aria-label={t.header.nav}>
+    {t.nav.map(([href, label]) => <a href={href}>{label}</a>)}
+  </nav>
+  <div class="f3">
+    <button class="f3-chip" id="f3-chip" type="button" aria-expanded="false" aria-controls="biome-list" title={t.header.layers}>
+      <span class="f3-y" id="f3-y">Y 64</span><span class="f3-biome" id="f3-biome">{t.layers.inicio.biome}</span><span class="f3-caret" aria-hidden="true">▾</span>
+    </button>
+    <div class="biome-list" id="biome-list" hidden></div>
+  </div>
+  <div class="header-actions">
+    <a class="icon-btn lang-btn" id="lang-link" href={t.other.path} hreflang={t.other.lang} lang={t.other.lang} title={t.other.title}>
+      {t.other.short}
+    </a>
+    <button class="icon-btn" id="sound-toggle" type="button" aria-pressed="false" aria-label={t.header.soundOn} title={t.header.soundOn}>
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path class="spk" d="M2 6h3l4-3v10l-4-3H2z"></path><path class="wave" d="M11 5.5c1 1.4 1 3.6 0 5M13 4c2 2.3 2 5.7 0 8"></path><path class="mute" d="M11 6l4 4M15 6l-4 4"></path></svg>
+    </button>
+    <button class="icon-btn" id="pause-motion" type="button" aria-pressed="false" aria-label={t.header.pause} title={t.header.pause}>
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path class="pause" d="M4 3h3v10H4zM9 3h3v10H9z"></path><path class="play" d="M4 3l9 5-9 5z"></path></svg>
+    </button>
+    <a class="btn btn-primary btn-small" href="#descargar">{t.header.download}</a>
+  </div>
+  <div class="xp" aria-hidden="true"><div class="xp-bar"><span id="xp-fill"></span></div><span class="xp-level" id="xp-level">0</span></div>
+</header>

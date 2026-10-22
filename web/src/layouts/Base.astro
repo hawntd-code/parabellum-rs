@@ -1,0 +1,56 @@
+---
+// La página: cabeza (SEO, idiomas, fuentes) y cuerpo.
+import '@fontsource/bungee/400.css';
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
+import '@fontsource/inter/800.css';
+import '@fontsource/vt323/400.css';
+import '../styles/global.css';
+import { SITE } from '../config';
+import type { Strings } from '../i18n';
+
+interface Props {
+  t: Strings;
+}
+
+const { t } = Astro.props;
+const canonical = new URL(t.path, SITE.url).href;
+const alternate = new URL(t.other.path, SITE.url).href;
+const ogImage = new URL('/og.png', SITE.url).href;
+---
+
+<!doctype html>
+<html lang={t.htmlLang} data-lang={t.lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#120a28" />
+    <title>{t.meta.title}</title>
+    <meta name="description" content={t.meta.description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="alternate" hreflang={t.lang} href={canonical} />
+    <link rel="alternate" hreflang={t.other.lang} href={alternate} />
+    <link rel="alternate" hreflang="x-default" href={new URL('/', SITE.url).href} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Parabellum" />
+    <meta property="og:title" content={t.meta.title} />
+    <meta property="og:description" content={t.meta.description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:locale" content={t.ogLocale} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={t.meta.ogAlt} />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

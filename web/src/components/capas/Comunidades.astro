@@ -1,0 +1,71 @@
+---
+// Geoda: comunidades (unirse con código y «Jugar» con el paquete oficial) y el soporte con tarjetas de ajustes.
+import Layer from '../Layer.astro';
+import { coordOf } from '../../lib/layers';
+import type { Strings } from '../../i18n';
+
+interface Props {
+  t: Strings;
+}
+const { t } = Astro.props;
+const c = t.community;
+---
+
+<Layer id="comunidades" t={t}>
+  <div class="wrap community">
+    <div class="community-copy">
+      <p class="coord">{coordOf('comunidades', t)}</p>
+      <h2>{c.title}</h2>
+      <p>{c.text}</p>
+
+      <div class="cd" id="community-demo">
+        <div class="cd-join" id="cd-join">
+          <span class="cd-label" id="cd-label">{c.codeLabel}</span>
+          <div class="cd-code">
+            <span class="cd-input" aria-labelledby="cd-label">{c.code}</span>
+            <button class="btn btn-primary btn-small" id="cd-join-btn" type="button">{c.joinButton}</button>
+          </div>
+        </div>
+        <div class="cd-card" id="cd-card" hidden>
+          <div class="cd-head">
+            <i data-px="sprite:shard"></i>
+            <span><b>{c.name}</b><small>{c.meta}</small></span>
+          </div>
+          <div class="cd-server">
+            <i data-px="iso:serverTop|serverSide"></i>
+            <span><b>{c.server}</b><small class="online">{c.serverStatus}</small></span>
+            <span class="cd-pack">{c.pack}</span>
+          </div>
+          <ol class="cd-steps" id="cd-steps">
+            {c.steps.map(step => <li>{step}</li>)}
+          </ol>
+          <div class="cd-progress" aria-hidden="true"><span id="cd-fill"></span></div>
+          <button class="btn btn-primary btn-wide" id="cd-play" type="button">{c.playButton}</button>
+          <p class="cd-status" id="cd-status" aria-live="polite"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="support">
+      <h3>{c.supportTitle}</h3>
+      <p>{c.supportText}</p>
+      <div class="support-chat">
+        <p class="msg mine">{c.supportPlayer}<span class="attach">{c.supportAttachment}</span></p>
+        <p class="msg"><b>{c.supportStaff}</b>{c.supportReply}</p>
+        <div class="setting-card" id="setting-card">
+          <p class="sc-head">{c.cardTitle}</p>
+          <b class="sc-name">{c.cardSetting}</b>
+          <div class="sc-values">
+            <span>{c.cardNow}<b id="sc-now">{c.cardValueNow}</b></span>
+            <span>{c.cardRecommended}<b>{c.cardValue}</b></span>
+          </div>
+          <div class="sc-actions">
+            <button class="btn btn-primary btn-small" id="sc-apply" type="button">{c.apply}</button>
+            <button class="btn btn-ghost btn-small" id="sc-undo" type="button" hidden>{c.undo}</button>
+          </div>
+          <p class="sc-status" id="sc-status" aria-live="polite"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</Layer>

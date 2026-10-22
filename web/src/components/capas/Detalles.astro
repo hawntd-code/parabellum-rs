@@ -1,0 +1,52 @@
+---
+// Pizarra profunda: los detalles (cada uno con su mineral) y lo que viene.
+import Layer from '../Layer.astro';
+import { coordOf } from '../../lib/layers';
+import type { Strings } from '../../i18n';
+
+interface Props {
+  t: Strings;
+}
+const { t } = Astro.props;
+const d = t.details;
+---
+
+<Layer id="detalles" t={t}>
+  <div class="wrap">
+    <div class="section-head center">
+      <p class="coord">{coordOf('detalles', t)}</p>
+      <h2>{d.title}</h2>
+    </div>
+    <ul class="veins">
+      {
+        d.items.map(item => (
+          <li>
+            <span class="mine-wrap">
+              <button class="mine" type="button" data-block={item.block} data-name={item.name} aria-label={item.aria} />
+            </span>
+            <div>
+              <h3>{item.title}</h3>
+              <p>{item.text}</p>
+            </div>
+          </li>
+        ))
+      }
+    </ul>
+    <div class="upcoming">
+      <span class="soon">{d.soon}</span>
+      <ul>
+        {
+          d.upcoming.map(item => (
+            <li>
+              <i data-px="sprite:shard" />
+              <span>
+                <b>{item.title}</b>
+                <small>{item.text}</small>
+              </span>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </div>
+</Layer>

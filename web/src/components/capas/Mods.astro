@@ -1,0 +1,75 @@
+---
+// Veta de redstone: mods de Modrinth (la mesa de crafteo con dependencias) y el doctor.
+import Layer from '../Layer.astro';
+import { coordOf } from '../../lib/layers';
+import type { Strings } from '../../i18n';
+
+interface Props {
+  t: Strings;
+}
+const { t } = Astro.props;
+const m = t.mods;
+const importIcons = [
+  'iso:planks|planks',
+  'iso:tint:#7a5a9a,#5f4580,#9a7abd,#4a3466|tint:#7a5a9a,#5f4580,#9a7abd,#4a3466',
+  'iso:tint:#4a8fd0,#3a74ad,#6aa8e8,#2a5888|tint:#4a8fd0,#3a74ad,#6aa8e8,#2a5888',
+];
+---
+
+<Layer id="mods" t={t}>
+  <div class="wrap">
+    <div class="mods-top">
+      <div class="section-head">
+        <p class="coord">{coordOf('mods', t)}</p>
+        <h2>{m.title}</h2>
+        <p>{m.text}</p>
+      </div>
+      <div class="craft" id="craft">
+        <div class="craft-window">
+          <p class="craft-title">{m.craftTitle}</p>
+          <div class="craft-body">
+            <div class="craft-grid" id="craft-grid" aria-live="polite" aria-label={m.gridLabel}></div>
+            <span class="craft-arrow" aria-hidden="true"></span>
+            <div class="craft-result" id="craft-result" aria-label={m.resultLabel}><i data-px="iso:grassTop|grass"></i><b id="craft-count">0</b></div>
+          </div>
+        </div>
+        <div class="craft-actions">
+          <button class="btn btn-ghost btn-small" type="button" data-add-mod="iris">{m.add.iris}</button>
+          <button class="btn btn-ghost btn-small" type="button" data-add-mod="modmenu">{m.add.modmenu}</button>
+          <button class="btn btn-ghost btn-small" type="button" data-add-mod="lithium">{m.add.lithium}</button>
+          <button class="link-btn" type="button" id="craft-clear">{m.clear}</button>
+        </div>
+        <p class="craft-log" id="craft-log" aria-live="polite">{t.ui.craftIdle}</p>
+      </div>
+    </div>
+
+    <div class="mods-extras">
+      <div class="extra">
+        <span class="extra-icons">{importIcons.map(icon => <i data-px={icon} />)}</span>
+        <span><b>{m.extras[0].title}</b><small>{m.extras[0].text}</small></span>
+      </div>
+      <div class="extra">
+        <span class="extra-icons"><i data-px="sprite:face-mar"></i></span>
+        <span><b>{m.extras[1].title}</b><small>{m.extras[1].text}</small></span>
+      </div>
+    </div>
+
+    <div class="doctor" id="doctor">
+      <div class="doctor-copy">
+        <p class="coord">{m.doctorCoord}</p>
+        <h3>{m.doctorTitle}</h3>
+        <p>{m.doctorText}</p>
+        <div class="doctor-buttons">
+          <button class="btn btn-primary" id="doctor-start" type="button">{m.doctorStart}</button>
+          <button class="btn btn-ghost" id="doctor-fix" type="button" hidden>{m.doctorFix}</button>
+        </div>
+        <p class="doctor-status" id="doctor-status" aria-live="polite">{m.doctorIdle}</p>
+      </div>
+      <div class="doctor-board">
+        <div class="doctor-meter" id="doctor-meter" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        <div class="doctor-grid" id="doctor-grid" role="img" aria-label={m.doctorBoard}></div>
+      </div>
+    </div>
+    <p class="note">{m.note}</p>
+  </div>
+</Layer>

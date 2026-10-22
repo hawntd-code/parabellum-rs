@@ -1,0 +1,50 @@
+---
+// La superficie: cielo de noche, colinas, árboles, criaturas y el bloque de Parabellum flotando.
+import type { Strings } from '../i18n';
+import type { Releases } from '../lib/releases';
+import { HERO } from '../lib/layers';
+
+interface Props {
+  t: Strings;
+  releases: Releases;
+}
+const { t, releases } = Astro.props;
+---
+
+<section class="hero" id="inicio" data-biome={t.layers.inicio.biome} data-label={t.layers.inicio.label} data-y={HERO.y}>
+  <canvas class="sky" id="sky" aria-hidden="true"></canvas>
+  <div class="moon" data-px="sprite:moon" aria-hidden="true"></div>
+  <div class="clouds" aria-hidden="true"><i class="cloud c1"></i><i class="cloud c2"></i><i class="cloud c3"></i></div>
+  <canvas class="hills hills-far" id="hills-far" aria-hidden="true"></canvas>
+  <canvas class="hills hills-near" id="hills-near" aria-hidden="true"></canvas>
+
+  <div class="hero-copy wrap">
+    <p class="hero-kicker">{t.hero.kicker}</p>
+    <div class="title-wrap">
+      <h1 class="hero-title"><span>{t.hero.title1}</span> <span class="accent">{t.hero.title2}</span></h1>
+      <button class="splash" id="splash" type="button" title={t.hero.splashTitle}>{t.hero.splash}</button>
+    </div>
+    <p class="hero-text">{t.hero.text}</p>
+    <div class="btn-row">
+      <a class="btn btn-primary btn-big" href={releases.windows.url} data-release="windows">
+        <span>{t.hero.windows}</span><small>v<span data-release-version="windows">{releases.windows.version}</span></small>
+      </a>
+      <a class="btn btn-ghost btn-big" href={releases.mac.url} data-release="mac">
+        <span>{t.hero.mac}</span><small>v<span data-release-version="mac">{releases.mac.version}</span></small>
+      </a>
+    </div>
+    <p class="hero-small">{t.hero.small}</p>
+  </div>
+
+  <div class="hero-stage" id="hero-stage">
+    <div class="tree tree-a" data-px="sprite:tree" aria-hidden="true"></div>
+    <div class="tree tree-b" data-px="sprite:tree" aria-hidden="true"></div>
+    <div class="flowers" id="flowers" aria-hidden="true"></div>
+    <button class="drop-logo" id="drop-logo" type="button" aria-label={t.hero.pickup}>
+      <img src="/logo.png" alt="" width="82" height="82" /><i class="drop-shadow" aria-hidden="true"></i>
+    </button>
+    <div class="mobs" id="mobs"></div>
+    <canvas class="ground" id="ground" aria-hidden="true"></canvas>
+  </div>
+  <a class="dig-cue" href="#funciones"><span class="pick" data-px="sprite:pickaxe" aria-hidden="true"></span><span>{t.hero.dig}</span></a>
+</section>

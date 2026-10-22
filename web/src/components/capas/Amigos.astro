@@ -1,0 +1,140 @@
+---
+// Cueva: amigos, chat y el panel que se abre con la tecla O dentro del juego.
+import Layer from '../Layer.astro';
+import { coordOf } from '../../lib/layers';
+import type { Strings } from '../../i18n';
+
+interface Props {
+  t: Strings;
+}
+const { t } = Astro.props;
+const fr = t.friends;
+const g = fr.game;
+const reactions = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+const gpTabs = ['friends', 'messages', 'shots'];
+const badges = ['1', '2', ''];
+const faces = ['sprite:face-alex', 'sprite:face-mar', 'sprite:face-dani'];
+---
+
+<Layer id="amigos" t={t}>
+  <div class="wrap">
+    <div class="section-head">
+      <p class="coord">{coordOf('amigos', t)}</p>
+      <h2 set:html={fr.titleHtml} />
+      <p set:html={fr.textHtml} />
+    </div>
+    <div class="friends-grid">
+      <div class="friends-col">
+        <ul class="friend-list" aria-label={fr.listLabel}>
+          {
+            fr.list.map((friend, index) => (
+              <li class={friend.kind === 'off' ? 'off' : ''}>
+                <i class="head" data-px={`sprite:${friend.face}`} />
+                <span>
+                  <b>{friend.name}</b>
+                  <small class={friend.kind}>{friend.status}</small>
+                </span>
+                {index === 0 && <button class="btn btn-primary btn-tiny join-trigger" type="button">{fr.join}</button>}
+                {index === 1 && <button class="btn btn-ghost btn-tiny invite-btn" type="button">{fr.invite}</button>}
+              </li>
+            ))
+          }
+        </ul>
+        <div class="chat" aria-label={fr.chatLabel}>
+          <p class="msg"><b>{fr.chat.name}</b>{fr.chat.msg}</p>
+          <p class="msg mine"><span class="quote">{fr.chat.quote}</span>{fr.chat.reply}</p>
+          <div class="reactions" role="group" aria-label={fr.reactLabel}>
+            {reactions.map(emoji => <button type="button" data-reaction={emoji} aria-pressed="false">{emoji}</button>)}
+          </div>
+          <p class="typing" id="typing">{fr.typing}<span class="dots" aria-hidden="true"><i /><i /><i /></span></p>
+        </div>
+      </div>
+
+      <div class="game" id="game">
+        <canvas class="game-scene" id="game-scene" aria-hidden="true"></canvas>
+        <div class="game-hud" aria-hidden="true">
+          <span class="nametag" id="nametag">Alex</span>
+          <span class="crosshair"></span>
+          <div class="g-chat"><p><b>&lt;Alex&gt;</b> {g.chat}</p><p class="sys">{g.hint}</p></div>
+          <div class="g-bar"><div class="g-hearts" id="g-hearts"></div><div class="g-hotbar"><i class="sel"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+        </div>
+        <div class="game-toast" id="game-toast" role="status" hidden>
+          <i data-px="sprite:face-alex"></i><span><b>{g.toastTitle}</b><small>{g.toastMeta}</small></span><button class="btn btn-primary btn-tiny join-trigger" type="button">{fr.join}</button>
+        </div>
+        <button class="game-open" id="game-open" type="button" aria-expanded="false" aria-controls="game-panel"><kbd class="key">O</kbd><span>{g.open}</span></button>
+
+        <div class="game-panel" id="game-panel" role="dialog" aria-label={g.panelLabel} hidden>
+          <aside class="gp-side">
+            <div class="gp-me"><i data-px="sprite:face-you"></i><span><b>{g.me}</b><small>{g.online}</small></span></div>
+            <div class="gp-tabs" role="tablist" aria-label={g.tabsLabel}>
+              {
+                g.tabs.map((label, index) => (
+                  <button type="button" role="tab" aria-selected={index === 0 ? 'true' : 'false'} data-gp={gpTabs[index]}>
+                    {label}
+                    {badges[index] && <em>{badges[index]}</em>}
+                  </button>
+                ))
+              }
+            </div>
+            <p class="gp-foot"><span class="dot"></span>{g.connected}<small>{g.escToClose}</small></p>
+          </aside>
+          <div class="gp-main">
+            <div class="gp-view" data-gpview="friends">
+              <div class="gp-title"><b>{g.friendsTitle}</b><small>{g.friendsCount}</small></div>
+              <div class="gp-add"><span>{g.addPlaceholder}</span><em>{g.addButton}</em></div>
+              <div class="gp-filters">{g.filters.map((label, index) => <span class={index === 0 ? 'on' : ''}>{label}</span>)}</div>
+              {
+                fr.list.map((friend, index) => (
+                  <div class={`gp-row${friend.kind === 'off' ? ' off' : ''}`}>
+                    <i data-px={faces[index]} />
+                    <span>
+                      <b>{friend.name}</b>
+                      <small class={friend.kind}>{friend.status}</small>
+                    </span>
+                    {index === 0 && <button class="btn btn-primary btn-tiny join-trigger" type="button">{fr.join}</button>}
+                    {index === 1 && <button class="btn btn-ghost btn-tiny invite-btn" type="button">{fr.invite}</button>}
+                  </div>
+                ))
+              }
+            </div>
+            <div class="gp-view" data-gpview="messages" hidden>
+              <div class="gp-title"><b>{g.groupTitle}</b><small>{g.groupMeta}</small></div>
+              {
+                g.groupMsgs.map(message => (
+                  <p class={message.quote ? 'msg mine' : 'msg'}>
+                    {message.name && <b>{message.name}</b>}
+                    {message.quote && <span class="quote">{message.quote}</span>}
+                    {message.text}
+                    {message.invite && (
+                      <span class="invite-card">
+                        {message.invite} <button class="link-btn join-trigger" type="button">{fr.join}</button>
+                      </span>
+                    )}
+                  </p>
+                ))
+              }
+              <div class="gp-input">{g.write}</div>
+            </div>
+            <div class="gp-view" data-gpview="shots" hidden>
+              <div class="gp-title"><b>{g.shotsTitle}</b><small>{g.shotsHint}</small></div>
+              <div class="gp-shots">
+                {
+                  g.shotDates.map((date, index) => (
+                    <button type="button" class="shot" data-shot={index}>
+                      <canvas class="shot-canvas" aria-hidden="true" />
+                      <span>{g.send}</span>
+                      <small>{date}</small>
+                    </button>
+                  ))
+                }
+              </div>
+              <p class="gp-note">{g.openFolder}</p>
+            </div>
+          </div>
+          <button class="gp-close" id="game-close" type="button" aria-label={g.close}>×</button>
+        </div>
+      </div>
+    </div>
+    <p class="note">{fr.note}</p>
+  </div>
+</Layer>
