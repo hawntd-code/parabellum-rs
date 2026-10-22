@@ -24,12 +24,15 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 ## Estado
 
 - Última revisión de los PR de Mac en Windows: 2026-10-20, PR #1 a #17 (todos mezclados).
-- **Publicado en Drive:** Windows **0.34.0** desde el 2026-10-20 (Juan; el exe publicado es idéntico
-  al compilado de `main` en `6379499`), con las reglas de Firebase del soporte ya publicadas.
+- **Publicado en Drive:** Windows **0.35.0** desde el 2026-10-21 (Juan; el exe publicado es idéntico
+  al compilado de `main` en `84a59e8`), con la regla `supportNotify` ya publicada.
   **Mac 0.33.0** desde el 2026-10-20 (Diego, compilada de `main` en `52de0a3`; ver «Versiones
-  publicadas en Drive»): las Mac con la 0.28.0 se actualizan directo a ella. Le falta solo la 0.34.0
-  (E3), que no tiene nada propio de Mac. Quedan las pruebas a mano de «Lo que queda por probar en
-  Mac», abajo.
+  publicadas en Drive»).
+  - A Mac le faltan la 0.34.0 (E3) y la 0.35.0 (paquete ligero y avisos de soporte).
+  - De lo propio de Mac, solo la notificación del vigía de soporte (`avisos::show`).
+  - Se puede publicar directo una Mac 0.35.0 compilada de `main`: en «Lo que queda por probar en Mac»
+    está qué revisar antes (punto 0).
+  - Siguen pendientes las pruebas a mano de esa sección.
 - **Descargas en GitHub:** cada versión publicada tiene su release con el zip, y el README las enlaza:
   Windows como `v<versión>` y Mac como `mac-v<versión>` (la Mac 0.33.0 ya está, con tu zip de Drive tal
   cual, como `Parabellum-Mac-0.33.0.zip`). Arriba hay un botón para cada sistema y «Descargar» muestra
@@ -42,6 +45,20 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 La Mac 0.33.0 ya está publicada (trae lo de la 0.29.0 a la 0.33.0). Lo que falta probar a mano, en este
 orden:
+
+0. **Antes de publicar la Mac 0.35.0** (compilada de `main` en `84a59e8` o más nuevo):
+   - `cargo test`: hay pruebas nuevas en `packs` (el paquete ligero) y `soporte` (el vigía).
+   - **Paquete ligero.** Instala el paquete oficial de la comunidad de Juan desde Comunidades › Jugar en
+     una carpeta de prueba (`PARABELLUM_ROOT`). Tiene que bajar «Bajando los mods de Modrinth…» y quedar
+     en `datos/logs/paquetes.log` con «paquete ligero en N s». Esto sale solo cuando Juan vuelva a
+     publicar el paquete oficial con la 0.35.0; antes baja el zip completo, como siempre.
+   - **Avisos de soporte.** Con Parabellum en segundo plano, que Juan (del equipo) te conteste en una
+     solicitud tuya:
+     - sale una notificación de macOS «Te respondió el soporte de …»;
+     - al pulsarla se abre esa solicitud;
+     - el botón de Comunidades (el escudo) muestra el número hasta que la lees.
+   - Con la comunidad abierta, la descarga del paquete empieza sola si te falta (`precargar_paquete`):
+     se ve en Descargas como «Preparar … para jugar».
 
 1. **Lo que quedó de la 0.28.0** (abajo, paso 3): dentro del juego (pestañas, escribir, emojis,
    capturas) y lo de con un amigo. Juan puede ser el amigo. El panel ya abre con la O en «Fabric 26.3»
@@ -109,6 +126,22 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
 
+- **0.35.0** · 2026-10-21 · Plan de noviembre, puntos 1 y 2. Publicada por Juan, compilada de `main` en
+  `84a59e8` (zip de 10042136 bytes, SHA-256 `f4cc27b5…6780`), con la regla `supportNotify` publicada
+  antes:
+  - **El paquete oficial baja más rápido**: sus mods bajan del CDN de Modrinth, a la vez, y de Drive solo
+    baja un zip chico con lo demás. Si Modrinth no responde, se usa el completo. Juan volvió a publicar
+    el paquete «RETORCIDOS | MODPACK» (26.2) con la 0.35.0 esa misma noche.
+  - Medido en Drive ese día:
+    - el zip completo (17 MB, 17 jars) tarda 17.5 s en empezar;
+    - el ligero (4 MB) tarda de 13 a 15 s, porque todavía trae los 7 jars del loader;
+    - los mods del CDN, ~1 s.
+  - **Empieza a bajar desde que abres la comunidad**, si falta o tiene versión nueva (hasta 200 MB y
+    nunca mientras se juega).
+  - **Avisos de soporte desde que se abre Parabellum**: el número en el botón de Comunidades y una
+    notificación cuando el equipo te responde; al equipo, cuando alguien pide ayuda o contesta.
+  - Cuando Drive tarda, Descargas dice «Google Drive está revisando… N s», y un error 500 de Drive se
+    reintenta solo.
 - **0.34.0** · 2026-10-20 · E3. Publicada por Juan, compilada de `main` en `6379499`, con las reglas
   de Firebase del soporte publicadas antes:
   - **Pedir ayuda** al equipo de soporte de la comunidad, desde la comunidad o desde «Reportar
@@ -432,8 +465,8 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 ## Próximo en Windows
 
 - **[plan-noviembre.md](plan-noviembre.md)** (2026-10-20). Por versión:
-  - 0.35.0 (hecha, falta publicarla), el paquete oficial baja sus mods del CDN de Modrinth y hay avisos de
-    soporte desde el inicio;
+  - 0.35.0 (publicada el 2026-10-21), el paquete oficial baja sus mods del CDN de Modrinth y hay avisos
+    de soporte desde el inicio;
   - 0.36.0 y 0.37.0, una sola conexión a Firebase (WebSocket);
   - 0.38.0, errores con acción y la O después de F2;
   - 0.39.0 a 0.41.0, E4 (mundos en Drive) y E5 (tarjetas de Minecraft).
@@ -445,8 +478,8 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ### 2026-10-21 · 0.35.0: el paquete ligero y los avisos de soporte
 
-- **El paquete oficial sin la espera de ~30 s** (plan-noviembre.md, punto 1). Drive revisa por virus los
-  zips de menos de 100 MB y uno lleno de mods tarda ~30 s en empezar; uno sin mods, de 2 a 3 s.
+- **El paquete oficial, más rápido** (plan-noviembre.md, punto 1). Drive revisa por virus los zips de
+  menos de 100 MB antes de entregarlos, y lo que tarda son los jars: uno con 21 tardaba ~30 s en empezar.
   - `packs::export` deja, junto al zip completo, `<Modpack> (ligero).zip` sin lo que está en Modrinth.
     El manifiesto gana `remote` (ruta, enlace del CDN, SHA-1, SHA-512 y tamaño), `liteArchive`,
     `liteSize` y `liteSha256`. Las versiones viejas lo ignoran y siguen con el completo.
@@ -457,13 +490,18 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
     nueva empieza a bajar (hasta 200 MB, nunca mientras se juega).
   - Medido con «RETORCIDOS | MODPACK» (10 mods): completo 17.3 MB, ligero 4.05 MB; los 10 mods del CDN
     (13 MB) e instalar, 1.1 s. Con el CDN bloqueado, falla en 11 s sin tocar la instancia.
+  - Ya publicado, el ligero tarda en Drive de 13 a 15 s en empezar, contra 17.5 s del completo: lo que
+    Drive revisa son los jars, y el ligero todavía lleva los 7 del loader. Lo siguiente es sacarlos también
+    (bajan de maven.fabricmc.net, que pasa el filtro de la escuela).
 - **Avisos de soporte desde que se abre Parabellum** (punto 2): `soporte::Watcher` arranca con la sesión.
   - Escucha `supportNotify/{cid}/{uid}` (las respuestas a tus solicitudes) y, si eres del equipo,
     `supportTickets/{cid}`.
   - Manda `soporte-avisos` (el número en el botón de Comunidades y un punto en cada comunidad) y una
     notificación con `plataforma::avisos`. El comando nuevo es `soporte_avisos`, y
     `soporte_escuchar_cola` se fue.
-  - Regla nueva: `supportNotify`, con sus pruebas. Juan la publica antes que la 0.35.0.
+  - Regla nueva: `supportNotify`, con sus pruebas. Juan la publicó antes que la 0.35.0 (2026-10-21).
+  - Si el equipo usa la 0.35.0 donde la regla todavía no está, su respuesta se manda igual, sin el aviso
+    (`patch_with_notice`).
 - Mac: compilar y probar.
   - La notificación del vigía usa `avisos::show` como el chat. Revisa que en Mac llegue y que al
     pulsarla abra la solicitud (evento `abrir-soporte`).

@@ -159,17 +159,19 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     y no dejan editar ni borrar mensajes. Probadas en el emulador (`docs/probar-reglas.py`).
 - [ ] *Prueba:* Juan: pedir ayuda desde otra cuenta en su comunidad y mandarle una tarjeta (la 0.34.0 y sus reglas ya están publicadas)
 - [ ] **Plan de noviembre** ([docs/plan-noviembre.md](docs/plan-noviembre.md), pedido de Juan el 2026-10-20), en este orden:
-  - [x] **0.35.0** (2026-10-21, falta publicarla):
+  - [x] **0.35.0** (publicada el 2026-10-21, con la regla `supportNotify`):
     - **el paquete sin la espera de ~30 s.** Junto al zip completo sale uno ligero sin lo que está en
       Modrinth, y esos mods bajan del CDN a la vez. Si Modrinth no responde, se usa el completo. Además:
       reintentos de los 500 de Drive, «Google Drive está revisando…» y «pedir antes» al abrir la
-      comunidad. Medido con 10 mods: 17.3 MB contra 4.05 MB, e instalarlo en 1.1 s;
+      comunidad. Medido con 10 mods: 17.3 MB contra 4.05 MB, e instalarlo en 1.1 s. En Drive, el ligero tarda
+      de 13 a 15 s en empezar, contra 17.5 s del completo: Drive revisa los jars y el ligero aún trae los 7
+      del loader;
     - **avisos de soporte desde que se abre Parabellum:** `soporte::Watcher` y la regla `supportNotify`,
       con el número en el botón de Comunidades y la notificación de Windows.
-  - [ ] *Prueba:* Juan:
-    1. publicar la regla `supportNotify`;
-    2. volver a publicar el paquete oficial con la 0.35.0, para que salga el ligero;
-    3. pulsar «Jugar» en otra PC (o en una carpeta nueva) y ver que no espera los 30 s.
+  - [ ] **Sacar del ligero también los jars del loader** (de maven.fabricmc.net, que pasa el filtro de la
+    escuela), para que Drive ya no tenga qué revisar.
+  - [ ] *Prueba:* Juan: pulsar «Jugar» en otra PC (o en una carpeta nueva) con el paquete ya publicado con
+    la 0.35.0 (hecho el 2026-10-21).
   - [ ] **0.36.0 y 0.37.0:** una sola conexión a Firebase por persona (menos escuchas, y después el
     WebSocket de Firebase con respaldo SSE);
   - [ ] **0.38.0:** errores con una acción para resolverlos, y la O justo después de F2 abre esa captura;

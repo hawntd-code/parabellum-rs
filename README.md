@@ -63,9 +63,9 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td align="center" valign="top">
 <br>
-<a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.34.0/Parabellum-0.34.0.zip"><img alt="Descargar Parabellum 0.34.0 para Windows" src="https://img.shields.io/badge/Descargar-v0.34.0-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
+<a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.35.0/Parabellum-0.35.0.zip"><img alt="Descargar Parabellum 0.35.0 para Windows" src="https://img.shields.io/badge/Descargar-v0.35.0-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
 <br><br>
-<sub>Windows 10 u 11 de 64 bits · zip de 10 MB · 20 oct 2026</sub>
+<sub>Windows 10 u 11 de 64 bits · zip de 10 MB · 21 oct 2026</sub>
 <br><br>
 </td>
 <td align="center" valign="top">
@@ -79,13 +79,13 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td valign="top">
 
-**Lo nuevo en la 0.34.0**
+**Lo nuevo en la 0.35.0**
 
-- **Pide ayuda** al equipo de soporte de tu comunidad, con el diagnóstico de tu instancia (sin tu carpeta de usuario, correos ni claves).
-- **Tarjetas de ajustes:** el equipo te propone un ajuste y lo aplicas con un clic; si no te gusta, lo deshaces igual.
-- «Reportar problema» ya no incluye tus datos personales.
+- **El paquete de tu comunidad baja más rápido:** los mods, desde Modrinth y todos a la vez.
+- Empieza a bajar **desde que abres la comunidad**.
+- **Avisos de soporte** desde que abres Parabellum: un número en Comunidades y una notificación de Windows.
 
-<sub>[Notas completas](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.34.0)</sub>
+<sub>[Notas completas](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.35.0)</sub>
 
 </td>
 <td valign="top">

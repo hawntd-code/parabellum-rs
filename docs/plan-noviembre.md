@@ -20,7 +20,7 @@ en qué orden.
 Cada versión pasa la lista de la sección 10.1 de plan-diciembre.md. Si una versión necesita reglas de Firebase
 nuevas, Juan las publica antes.
 
-**Avance:** la 0.35.0 (puntos 1 y 2) está hecha el 2026-10-21 y falta publicarla. Lo que cambió respecto de
+**Avance:** la 0.35.0 (puntos 1 y 2) se publicó el 2026-10-21, con su regla. Lo que cambió respecto de
 este plan:
 - el «botón del escudo» es el de Comunidades en la barra lateral;
 - el paquete ligero es otro zip junto al completo (`<Modpack> (ligero).zip`);

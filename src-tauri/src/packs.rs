@@ -57,10 +57,11 @@ pub struct Manifest {
     /// Huella del contenido del paquete (identidad.rs): Minecraft, loader y los mods por su SHA-1.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_hash: Option<String>,
-    /// El paquete ligero: el mismo, sin los archivos de `remote`. Drive tarda ~30 s en entregar un zip
-    /// de menos de 100 MB lleno de mods (lo revisa por virus), y uno chico sin mods, de 2 a 3 s (el de
-    /// Parabellum y una capa del espejo, medido el 2026-10-21). Las versiones antes de la 0.35 no lo
-    /// conocen y siguen con `archive`, que lo trae todo.
+    /// El paquete ligero: el mismo, sin los archivos de `remote`. Drive revisa por virus los zips de menos
+    /// de 100 MB antes de entregarlos y lo que tarda son los jars: con 21, ~30 s; el ligero de
+    /// «RETORCIDOS | MODPACK», con los 7 del loader, de 13 a 15 s (el completo, 17.5 s); el de Parabellum,
+    /// sin jars, 2 s (medido el 2026-10-21). Las versiones antes de la 0.35 no lo conocen y siguen con
+    /// `archive`, que lo trae todo.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lite_archive: Option<String>,
     /// Solo en el .json de al lado, como `archive_size` y `archive_sha256`.
