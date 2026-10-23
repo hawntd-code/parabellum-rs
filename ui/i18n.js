@@ -45,6 +45,11 @@ function adoptLanguage(code) {
 }
 
 const HTML_EN = {
+  "Mundos en Drive": "Worlds in Drive",
+  "Ver respaldos": "View backups",
+  "Administrar": "Manage",
+  "Respaldos del mundo y sus dimensiones.": "Backups of the world and its dimensions.",
+  "Tus copias privadas, historial y transferencias pendientes.": "Your private backups, history and pending transfers.",
   // 0.32 (pulido de la interfaz)
   "Solicitudes": "Requests",
   "Launcher de Minecraft no premium, hecho para jugar con tus amigos y en la escuela.": "Non-premium Minecraft launcher, made to play with your friends and at school.",

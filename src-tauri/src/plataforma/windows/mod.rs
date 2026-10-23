@@ -490,3 +490,15 @@ mod tests {
         assert_eq!(unprotect(&secret).unwrap(), b"1//token");
     }
 }
+
+/// Impide abrir el mundo en Java mientras se prepara una copia; permite renombrar la copia anterior.
+pub fn lock_world(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .share_mode(4)
+        .open(path)
+}

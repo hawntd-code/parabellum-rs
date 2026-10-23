@@ -102,6 +102,7 @@ impl GoogleAccount {
                 ("code_challenge_method", "S256"),
                 ("state", &state),
                 ("access_type", "offline"),
+                ("include_granted_scopes", "true"),
                 // Con permisos extra se pide confirmarlos siempre: así Google devuelve el token para guardarlo.
                 ("prompt", if scopes == SCOPES { "select_account" } else { "consent select_account" }),
             ],

@@ -1,6 +1,6 @@
 [package]
 name = "parabellum"
-version = "0.38.0"
+version = "0.39.0"
 description = "Parabellum: launcher de Minecraft no premium"
 edition = "2021"
 publish = false
@@ -57,6 +57,7 @@ windows-core = "0.62"
 # clave guardada en el Llavero (ring ya viene con reqwest/rustls: no se compila nada nuevo), los
 # avisos y las imágenes del chat.
 [target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
 ring = "0.17"
 
 # Avisos con el Centro de Notificaciones (UserNotifications); objc2, su Foundation y block2 ya vienen con Tauri

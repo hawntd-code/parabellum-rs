@@ -255,6 +255,18 @@ check("Nadie edita una tarjeta", False, "PUT", f"supportMessages/{CID}/{TID}/m00
 check("Nadie borra un mensaje", False, "DELETE", f"supportMessages/{CID}/{TID}/m000000000003", "F")
 check("E manda el acuse", True, "PUT", f"supportMessages/{CID}/{TID}/m000000000010", "E", msg("E", "acuse", text="Aplicado en mi PC", ack={"op": "o000000000001", "result": "aplicada"}))
 check("E no cambia el tema", False, "PUT", f"supportTickets/{CID}/{TID}/topic", "E", "Otra cosa")
+# 0.39.0: solo ajustes conocidos del juego, ligados al paquete y con valores estrictos.
+target = {"package": "paquete-oficial", "minecraft": "1.21.1", "contentHash": "sha256:" + "a" * 64}
+game_card = lambda setting="minecraft.renderDistance", value=8, **extra: card(scope="instancia", setting=setting, value=value, target=target) | extra
+game_values = [("renderDistance", 8), ("simulationDistance", 6), ("graphics", 2), ("maxFps", 120), ("vsync", True), ("fov", 90), ("guiScale", 0), ("particles", 2), ("entityShadows", False), ("gamma", 0.7)]
+for index, (setting, value) in enumerate(game_values):
+    check(f"F propone Minecraft {setting}", True, "PUT", f"supportMessages/{CID}/{TID}/m{500+index:012d}", "F", msg("F", "tarjeta", card=game_card("minecraft." + setting, value)))
+invalid_game = [game_card(value=1), game_card(value=33), game_card(value=8.5), game_card(value=True), game_card("minecraft.vsync", "true"), game_card("minecraft.gamma", 1.1), game_card("minecraft.fov", 111), game_card("minecraft.maxFps", 0), game_card("minecraft.graphics", 3), game_card("minecraft.javaArgs", "-Xmx99G"), game_card(target=None), game_card(target=target | {"command": "run"}), game_card(target=target | {"contentHash": "sin-huella"}), game_card(scope="launcher"), game_card(setting="launcher.ram_gb", value=6)]
+for index, bad in enumerate(invalid_game):
+    check(f"F no puede mandar tarjeta de Minecraft inválida {index+1}", False, "PUT", f"supportMessages/{CID}/{TID}/m{550+index:012d}", "F", msg("F", "tarjeta", card=bad))
+check("E tampoco propone una tarjeta de Minecraft", False, "PUT", f"supportMessages/{CID}/{TID}/m000000000580", "E", msg("E", "tarjeta", card=game_card()))
+for index, result in enumerate(["pendiente", "conflicto"]):
+    check(f"E avisa tarjeta {result}", True, "PUT", f"supportMessages/{CID}/{TID}/m{590+index:012d}", "E", msg("E", "acuse", ack={"op": "o000000000001", "result": result}))
 check("E cierra su solicitud", True, "PUT", f"supportTickets/{CID}/{TID}/state", "E", "cerrado")
 check("G no la reabre", False, "PUT", f"supportTickets/{CID}/{TID}/state", "G", "abierto")
 check("E guarda hasta dónde leyó", True, "PUT", f"supportByUser/{CID}/E/{TID}", "E", NOW)

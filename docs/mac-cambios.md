@@ -524,6 +524,22 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-23 · 0.39.0 en desarrollo: errores, mundos en Drive y ajustes de Minecraft
+
+- Entrega unificada autorizada por Juan: botones de error, mundos en Drive y tarjetas de ajustes del
+  juego. El trabajo y sus verificaciones se registran en [0.39.0-implementacion.md](0.39.0-implementacion.md).
+- Implementados `ajustes_juego.rs`, `mundos_archivo.rs`, `drive_mundos.rs` y `mundos.rs`, con ventanas
+  en `ui/mundos.js`, recuperación en `ui/acciones.js` y tarjetas del juego en Soporte. Las subidas
+  reanudables usan un token separado `drive.file` y solo gestionan archivos etiquetados de Parabellum.
+- El contrato nuevo `plataforma::lock_world` está en ambos sistemas. Windows comprueba el bloqueo
+  con permisos de apertura y cierra su handle antes del intercambio de carpetas; Mac usa `fcntl`
+  (el bloqueo POSIX de Java), con la dependencia `libc`. Paper incluye también las carpetas externas
+  de Nether y End. Mac debe probar bloqueo con Java, restauración, Llavero y OAuth de Drive en un Mac
+  real antes de publicar. No se cambió el paquete ni la versión publicada de Mac.
+- `firebase-reglas.json` admite diez ajustes de Minecraft, su destino y los acuses pendiente/conflicto.
+  Pasó el emulador; todavía hay que publicar esas reglas antes de distribuir la 0.39.0 estable.
+- La última estable sigue siendo 0.38.0. La captura F2 → O queda al final del roadmap.
+
 ### 2026-10-23 · 0.38.0: WebSocket compartido con respaldo SSE
 
 - El respaldo SSE aplica los mismos límites de historial al recibir cambios parciales: el hilo abierto

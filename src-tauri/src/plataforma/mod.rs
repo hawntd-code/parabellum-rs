@@ -32,6 +32,7 @@
 //!   foreign_java_ready()           si se puede abrir un Java ajeno (Mac: si Rosetta está instalado).
 //!   install_foreign_java()         instala lo que hace falta para eso (Mac: Rosetta; pide permiso).
 //!   protect(datos) / unprotect     cifrar con la cuenta del usuario (sesiones, claves).
+//!   lock_world(ruta)               bloqueo de session.lock compatible con Java, liberado al cerrar el archivo.
 //!   ui_language()                  idioma del sistema: "es" o "en".
 //!   open_path / reveal_path / open_url
 //!   system_memory()                (total, disponible) en bytes.

@@ -314,7 +314,7 @@ Incluye copias, revisiones, restauración y conflictos en la misma 0.39.0, junto
   - la retención: 5 confirmadas, las cabezas de los conflictos y el tope de 5 GB.
 - **`drive_mundos.rs` (nuevo):**
   - la carpeta «Parabellum/Mundos», buscada por `appProperties` y no por nombre;
-  - la subida reanudable: la sesión de subida se guarda en `datos/mundos/subidas.json` y sobrevive a cerrar
+  - la subida reanudable: cada sesión cifrada se guarda en `datos/mundos/pendientes/<revisión>.json` y sobrevive a cerrar
     Parabellum o apagar la PC;
   - confirmar la copia con la huella MD5 que da Drive, y después `state=confirmada`;
   - listar, bajar y mandar a la papelera.
@@ -334,7 +334,8 @@ Incluye copias, revisiones, restauración y conflictos en la misma 0.39.0, junto
 - **Conflicto:** las dos ramas lado a lado (de qué PC y cuándo), con **Seguir con esta**; la otra se puede
   convertir en otro mundo.
 - **En otra PC:** «Mundos en tu Drive» lista los que no están en este PC. **Bajar** prepara la instancia
-  compatible (con `identidad.rs`) o dice qué falta. Lo que se reemplace queda en `respaldos.rs`.
+  compatible (con `identidad.rs`) o dice qué falta. Lo que se reemplace queda fuera de `saves`, en
+  `.lanzador/respaldos-mundos`, y se puede recuperar desde la ventana de Respaldos.
 - **Aviso del jugador:** si la copia es de otro UUID (otro nombre, sin premium), se avisa antes de abrir,
   porque el inventario «desaparecería».
 - **Ajustes › Recursos:** cuánto ocupan los mundos en Drive y el tope.
@@ -371,7 +372,7 @@ instancia, que viven en `options.txt`.
 |---|---|
 | Distancia de renderizado | `renderDistance` (2 a 32) |
 | Distancia de simulación | `simulationDistance` (desde 1.18) |
-| Calidad gráfica | `graphicsMode` (0, 1, 2) desde 1.19; antes, `fancyGraphics` |
+| Calidad gráfica | `graphicsMode` (0, 1, 2) desde 1.16 (Fabulous); antes, `fancyGraphics` |
 | FPS máximos | `maxFps` |
 | VSync | `enableVsync` |
 | Campo de visión | `fov`, guardado como -1 a 1 |

@@ -744,3 +744,18 @@ mod tests {
         assert_eq!(rgba, [7, 7, 7, 255].repeat(6));
     }
 }
+
+/// El mismo bloqueo POSIX por rango que utiliza FileChannel de Java, no un bloqueo flock separado.
+pub fn lock_world(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    use std::os::fd::AsRawFd;
+    let file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(path)?;
+    let mut lock: libc::flock = unsafe { std::mem::zeroed() };
+    lock.l_type = libc::F_WRLCK as _;
+    lock.l_whence = libc::SEEK_SET as _;
+    lock.l_start = 0;
+    lock.l_len = 0;
+    if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_SETLK, &lock) } == -1 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(file)
+}

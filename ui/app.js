@@ -4,7 +4,10 @@
 // Puente con Rust (Tauri). Fuera de Tauri (navegador) se usan datos de ejemplo para revisar el diseño.
 // ======================================================================
 const tauri = window.__TAURI__;
-const invoke = tauri ? tauri.core.invoke : demoInvoke;
+const invokeRaw = tauri ? tauri.core.invoke : demoInvoke;
+const invoke = (command, args) => Promise.resolve().then(() => invokeRaw(command, args)).catch(error => {
+  throw window.errorRecovery?.capture(command, args, error) ?? error;
+});
 const listen = tauri ? tauri.event.listen : () => Promise.resolve(() => {});
 const appWindow = tauri ? tauri.window.getCurrentWindow() : null;
 
@@ -260,25 +263,36 @@ function friendlyError(message) {
 function toast(message, kind = "info") {
   // Lo que cancelaste en Descargas no es un error que haya que avisar.
   if (kind === "error" && isCancelled(message)) return;
-  if (kind === "error") message = friendlyError(message);
+  const recovery = kind === "error" ? window.errorRecovery?.present(message) : null;
+  if (kind === "error") message = friendlyError(recovery?.message ?? message);
   const element = document.createElement("div");
   element.className = `toast ${kind}`;
   // Los errores se anuncian de inmediato al lector de pantalla; lo demás, cuando termine de hablar.
   if (kind === "error") element.setAttribute("role", "alert");
   element.innerHTML = `${icon(kind === "error" ? "alert" : "check")}<div>${escapeHtml(message)}</div>`;
-  // Mojang o un loader bloqueados (la escuela): el arreglo está a un clic.
-  if (kind === "error" && suggestsSchool(message)) {
+  for (const action of recovery?.actions ?? []) {
     const button = document.createElement("button");
     button.className = "btn small primary toast-action";
-    button.innerHTML = `${icon("school")}<span>${t("Activar modo escuela", "Turn on school mode")}</span>`;
-    button.onclick = () => {
-      element.remove();
-      if (!state.settings.schoolMode) toggleSchool();
+    button.innerHTML = `${icon(action.glyph)}<span>${escapeHtml(action.label)}</span>`;
+    button.onclick = async () => {
+      button.disabled = true;
+      try { await action.run(); element.remove(); }
+      catch (error) { toast(String(error), "error"); }
+      finally { button.disabled = false; }
     };
     element.querySelector("div").append(button);
   }
+  if (recovery?.actions.length) {
+    const close = document.createElement("button");
+    close.className = "circle-btn small toast-dismiss";
+    close.setAttribute("aria-label", t("Cerrar aviso", "Dismiss notice"));
+    close.innerHTML = icon("close");
+    close.onclick = () => element.remove();
+    element.append(close);
+  }
   $("#toasts").appendChild(element);
-  setTimeout(() => {
+  const dismiss = () => {
+    if (element.matches(":hover, :focus-within")) return void setTimeout(dismiss, 2500);
     if (!motionOk()) return element.remove();
     // Se desvanece y después cierra su hueco: los otros avisos bajan suave en vez de saltar.
     const height = element.offsetHeight;
@@ -291,7 +305,8 @@ function toast(message, kind = "info") {
       { duration: 300, easing: EASE_IN, fill: "forwards" },
     );
     whenDone(leave, () => element.remove(), 360);
-  }, kind === "error" ? 7000 : 3500);
+  };
+  setTimeout(dismiss, recovery?.actions.length ? 20000 : kind === "error" ? 7000 : 3500);
 }
 
 /** Un error de red de Mojang o de un loader, con el modo escuela apagado: en la escuela, eso lo arregla. */
@@ -670,6 +685,19 @@ async function reloadInstances() {
   renderSteps();
   renderServers();
 }
+window.addEventListener("operacion-recuperada", async ({ detail: { command, args, result } }) => {
+  try {
+    if (command === "contenido" && state.current?.id === args.id) { state.content = result; renderContent(); }
+    else if (command === "listar_versiones") { state.versions = result; renderVersions(); }
+    else if (command === "versiones_compatibles") { state.loaderGames[args.loader] = result; renderVersions(); }
+    else if (command === "versiones_loader" && state.selectedVersion) await loadLoaderVersions(state.selectedVersion);
+    else if (command === "buscar_contenido" && state.page === "explore") await runExplore();
+    else if (["instalar_contenido", "actualizar_contenido", "instalar_de_catalogo", "verificar_instancia"].includes(command)) {
+      await reloadInstances();
+      if (state.current) await loadContent();
+    }
+  } catch (e) { toast(String(e), "error"); }
+});
 
 // ======================================================================
 // Detalle de instancia
@@ -881,6 +909,7 @@ function renderContent() {
             : `<div class="c-name">${escapeHtml(item.name)}</div>`
         }<div class="c-sub">${escapeHtml(sub)}</div></div>
         ${updateChip(item.file)}
+        ${world ? `<button class="btn small" data-world-cloud="${escapeHtml(item.file)}">${icon("cloud")}${t("Respaldos", "Backups")}</button>` : ""}
         ${world ? "" : `<div class="c-version">${escapeHtml(item.version ?? "")}</div>
           <label class="toggle" title="${item.enabled ? t("Desactivar", "Disable") : t("Activar", "Enable")}"><input type="checkbox" data-toggle="${escapeHtml(item.file)}" ${item.enabled ? "checked" : ""}><span></span></label>`}
         ${
@@ -5000,6 +5029,7 @@ function wireEvents() {
       return;
     }
     if (event.key === "Escape") {
+      if (topModal()?.id === "worlds-dialog") { window.worldBackups?.close(); return; }
       if (topModal()?.id === "cm-dialog") community.cancelDialog?.();
       else if (topModal()?.id === "support-dialog") closeSupportTicket();
       closeModal("#create-dialog");
@@ -5583,7 +5613,7 @@ async function runExplore(append = false) {
       toast(t("Modrinth está bloqueado en esta red: aquí tienes los modpacks del catálogo de Drive.", "Modrinth is blocked on this network: here are the modpacks from the Drive catalog."));
       return selectExploreKind("drive");
     }
-    $("#explore-results").innerHTML = `<div class="content-empty">${escapeHtml(error)}</div>`;
+    $("#explore-results").innerHTML = `<div class="content-empty">${window.errorRecovery.panel(error)}</div>`;
     $("#explore-more").classList.add("hidden");
   } finally {
     $("#explore-more").disabled = false;
@@ -7365,6 +7395,7 @@ function updateExportDestination() {
 // Datos de ejemplo (solo al abrir index.html en un navegador, para revisar el diseño)
 // ======================================================================
 function demoInvoke(command, args = {}) {
+  if (command.startsWith("mundos_")) return window.worldsDemo(command, args);
   const now = Date.now();
   const instances = [
     { id: "Vanilla 1.21.1", name: "Vanilla 1.21.1", versionId: "1.21.1", minecraftVersion: "1.21.1", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: now - 3600e3, created: now - 86400e3 * 4 },
@@ -7699,24 +7730,29 @@ function demoInvoke(command, args = {}) {
       m("m000000000002", "f3", "Dani", "diagnostico", "🛠 Parabellum 0.34.0 · Windows (x86_64) · 8 GB de RAM\nInstancia: Parabellum Oficial · Minecraft 26.3 · Fabric 0.17.2 · 4 GB\nSe abrió hace 3 min\nError:\njava.lang.OutOfMemoryError: Java heap space\nDoctor: Le falta memoria al juego\n  Tiene 4 GB y el paquete pide 6 GB", now - 3.59e6),
       m("m000000000003", "f2", "Alex_mx", "texto", "Hola Dani, al paquete le falta memoria. Prueba con este ajuste y me dices.", now - 14e5),
       m("m000000000004", "f2", "Alex_mx", "tarjeta", "🛠 Ajuste propuesto: Memoria para el juego (GB) → 6", now - 13.9e5, { card: card("o000000000001", "launcher.ram_gb", 6) }),
+      m("m000000000007", "f2", "Alex_mx", "tarjeta", "Renderizado → 8", now - 8e5, { card: { ...card("o000000000003", "minecraft.renderDistance", 8), scope: "instancia", target: { package: "parabellum-oficial", minecraft: "26.3", contentHash: "sha256:" + "a".repeat(64) } } }),
       ...(player ? [] : [m("m000000000005", "f3", "Dani", "acuse", "✓ Ajuste aplicado en mi PC", now - 12e5, { ack: { op: "o000000000001", result: "aplicada" } }), m("m000000000006", "f2", "Alex_mx", "tarjeta", "🛠 Ajuste propuesto: Modo escuela → Activado", now - 6e5, { card: card("o000000000002", "launcher.school_mode", true) })]),
     ];
   };
   if (command === "soporte") return later({ staff: !player, tickets: player ? sd.tickets.filter((x) => x.by === "f3") : sd.tickets }, 300);
   if (command === "soporte_mensajes") return later(supportMessages(args.solicitud), 300);
+  const gameTarget = { package: "parabellum-oficial", minecraft: "26.3", contentHash: "sha256:" + "a".repeat(64) };
+  sd.gameSettings ??= [{ id: "minecraft.renderDistance", label: t("Distancia de renderizado", "Render distance"), kind: "range", min: 2, max: 32, options: [], value: 12, instance: "Vanilla 1.21.1", instanceName: "Parabellum Oficial", target: gameTarget }];
+  if (command === "ajustes_juego_compartibles") return Promise.resolve(sd.gameSettings.map((s) => ({ ...s })));
+  if (command === "soporte_tarjeta_destinos") return Promise.resolve([{ id: "Vanilla 1.21.1", name: "Parabellum Oficial" }]);
   if (command === "ajustes_compartibles") return later(sd.settings.map((s) => ({ ...s })), 100);
   if (command === "tarjetas_aplicadas") return Promise.resolve({ ...sd.applied });
   if (command === "aplicar_tarjeta") {
     const message = supportMessages(args.solicitud).find((x) => x.id === args.mensaje);
-    const setting = sd.settings.find((s) => s.id === message.card.setting);
+    const setting = [...sd.settings, ...sd.gameSettings].find((s) => s.id === message.card.setting);
     const result = { result: setting.value === message.card.value ? "ya-estaba" : "aplicada", previous: setting.value, value: message.card.value };
     setting.value = message.card.value;
-    sd.applied[message.card.op] = result;
+    sd.applied[message.card.op] = { ...result, setting: setting.id };
     return later(result, 600);
   }
   if (command === "deshacer_tarjeta") {
     const record = sd.applied[args.op];
-    const setting = sd.settings.find((s) => sameValue(s.value, record.value) && s.id === "launcher.ram_gb") ?? sd.settings.find((s) => s.id === "launcher.ram_gb");
+    const setting = [...sd.settings, ...sd.gameSettings].find((s) => s.id === record.setting);
     setting.value = record.previous;
     Object.assign(record, { result: "deshecha" });
     return later({ ...record }, 500);

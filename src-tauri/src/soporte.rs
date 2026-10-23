@@ -22,6 +22,7 @@ use crate::firebase;
 use crate::AppState;
 
 const RECORD: &str = "tarjetas.json";
+static CARD_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(rename_all = "camelCase", default)]
@@ -56,6 +57,8 @@ pub struct Card {
     pub value: Value,
     pub scope: String,
     pub official: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<crate::ajustes_juego::Target>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -95,6 +98,8 @@ pub struct Applied {
     pub at: i64,
     /// «aplicada», «ya-estaba» o «deshecha».
     pub result: String,
+    pub instance: Option<String>,
+    pub target: Option<crate::ajustes_juego::Target>,
 }
 
 #[derive(Serialize)]
@@ -110,11 +115,14 @@ fn record_path(app: &AppHandle) -> std::path::PathBuf {
 }
 
 pub fn record(app: &AppHandle) -> HashMap<String, Applied> {
-    std::fs::read(record_path(app)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    std::fs::read(record_path(app))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
 }
 
-fn save_record(app: &AppHandle, record: &HashMap<String, Applied>) {
-    let _ = std::fs::write(record_path(app), serde_json::to_vec_pretty(record).unwrap_or_default());
+fn save_record(app: &AppHandle, record: &HashMap<String, Applied>) -> Result<(), String> {
+    crate::mundos_archivo::atomic(&record_path(app), record)
 }
 
 fn is_staff(member: &Value) -> bool {
@@ -133,7 +141,11 @@ fn tickets_from(value: &Value) -> Vec<Ticket> {
         .as_object()
         .into_iter()
         .flatten()
-        .filter_map(|(tid, t)| serde_json::from_value::<Ticket>(t.clone()).ok().map(|ticket| Ticket { id: tid.clone(), ..ticket }))
+        .filter_map(|(tid, t)| {
+            serde_json::from_value::<Ticket>(t.clone())
+                .ok()
+                .map(|ticket| Ticket { id: tid.clone(), ..ticket })
+        })
         .collect()
 }
 
@@ -165,7 +177,12 @@ pub async fn soporte(app: AppHandle, id: String) -> Result<View, String> {
         return Ok(View { staff: true, tickets });
     }
     let seen = get(&db, format!("supportByUser/{id}/{uid}")).await.unwrap_or(Value::Null);
-    let ids: Vec<(String, i64)> = seen.as_object().into_iter().flatten().map(|(t, at)| (t.clone(), at.as_i64().unwrap_or(0))).collect();
+    let ids: Vec<(String, i64)> = seen
+        .as_object()
+        .into_iter()
+        .flatten()
+        .map(|(t, at)| (t.clone(), at.as_i64().unwrap_or(0)))
+        .collect();
     let found = futures::future::join_all(ids.iter().map(|(tid, _)| get(&db, format!("supportTickets/{id}/{tid}")))).await;
     let mut tickets: Vec<Ticket> = ids
         .iter()
@@ -173,7 +190,11 @@ pub async fn soporte(app: AppHandle, id: String) -> Result<View, String> {
         .filter_map(|((tid, seen_at), t)| {
             let ticket = serde_json::from_value::<Ticket>(t.ok()?).ok()?;
             let unread = ticket.last_from != uid && ticket.last_at > *seen_at;
-            Some(Ticket { id: tid.clone(), unread, ..ticket })
+            Some(Ticket {
+                id: tid.clone(),
+                unread,
+                ..ticket
+            })
         })
         .collect();
     sort_tickets(&mut tickets);
@@ -195,7 +216,14 @@ fn message_value(uid: &str, name: &str, text: &str, kind: &str) -> Value {
 
 /// Pide ayuda: el tema, lo que pasó y, si el jugador lo deja, su diagnóstico (ya revisado por él).
 #[tauri::command]
-pub async fn soporte_abrir(app: AppHandle, id: String, tema: String, texto: String, instancia: Option<String>, diagnostico: Option<String>) -> Result<String, String> {
+pub async fn soporte_abrir(
+    app: AppHandle,
+    id: String,
+    tema: String,
+    texto: String,
+    instancia: Option<String>,
+    diagnostico: Option<String>,
+) -> Result<String, String> {
     check_ids(&id, None)?;
     let (db, uid) = db(&app)?;
     let topic: String = tema.trim().chars().take(80).collect();
@@ -216,11 +244,17 @@ pub async fn soporte_abrir(app: AppHandle, id: String, tema: String, texto: Stri
     update.insert(format!("supportTickets/{id}/{tid}"), ticket);
     // Hasta cuándo la leyó, con la hora del servidor (la del PC puede ir atrasada).
     update.insert(format!("supportByUser/{id}/{uid}/{tid}"), firebase::server_timestamp());
-    update.insert(format!("supportMessages/{id}/{tid}/{}", id_for("m", 12)), message_value(&uid, &name, &text, "texto"));
+    update.insert(
+        format!("supportMessages/{id}/{tid}/{}", id_for("m", 12)),
+        message_value(&uid, &name, &text, "texto"),
+    );
     // El diagnóstico se vuelve a limpiar aquí (sin la carpeta del usuario, correos ni claves).
     if let Some(diagnosis) = diagnostico.map(|d| crate::reporte::redact(d.trim())).filter(|d| !d.is_empty()) {
         let diagnosis: String = diagnosis.chars().take(4000).collect();
-        update.insert(format!("supportMessages/{id}/{tid}/{}", id_for("m", 12)), message_value(&uid, &name, &diagnosis, "diagnostico"));
+        update.insert(
+            format!("supportMessages/{id}/{tid}/{}", id_for("m", 12)),
+            message_value(&uid, &name, &diagnosis, "diagnostico"),
+        );
     }
     db.patch("", &Value::Object(update)).await.map_err(db_error)?;
     Ok(tid)
@@ -235,7 +269,13 @@ fn messages_from(value: &Value, uid: &str) -> Vec<Message> {
         .as_object()
         .into_iter()
         .flatten()
-        .filter_map(|(mid, m)| serde_json::from_value::<Message>(m.clone()).ok().map(|message| Message { id: mid.clone(), mine: message.from == uid, ..message }))
+        .filter_map(|(mid, m)| {
+            serde_json::from_value::<Message>(m.clone()).ok().map(|message| Message {
+                id: mid.clone(),
+                mine: message.from == uid,
+                ..message
+            })
+        })
         .collect();
     list.sort_by(|a, b| a.at.cmp(&b.at).then(a.id.cmp(&b.id)));
     list
@@ -304,7 +344,10 @@ pub async fn soporte_enviar(app: AppHandle, id: String, solicitud: String, texto
     let ticket = get(&db, format!("supportTickets/{id}/{solicitud}")).await?;
     let mine = ticket["by"].as_str() == Some(uid.as_str());
     let mut update = serde_json::Map::new();
-    update.insert(format!("supportMessages/{id}/{solicitud}/{}", id_for("m", 12)), message_value(&uid, &my_name(&app), &text, "texto"));
+    update.insert(
+        format!("supportMessages/{id}/{solicitud}/{}", id_for("m", 12)),
+        message_value(&uid, &my_name(&app), &text, "texto"),
+    );
     update.insert(format!("supportTickets/{id}/{solicitud}/last"), json!(preview(&text)));
     update.insert(format!("supportTickets/{id}/{solicitud}/lastAt"), firebase::server_timestamp());
     update.insert(format!("supportTickets/{id}/{solicitud}/lastFrom"), json!(uid));
@@ -355,7 +398,10 @@ pub async fn soporte_estado(app: AppHandle, id: String, solicitud: String, estad
 
 /// El texto de una tarjeta: va siempre, para los clientes viejos y el panel del juego.
 fn card_text(setting: &str, value: &Value) -> String {
-    let label = crate::ajustes::find(setting).map(|d| if crate::idioma::english() { d.en } else { d.es }).unwrap_or(setting);
+    let game_label = crate::ajustes_juego::label(setting);
+    let label = crate::ajustes::find(setting)
+        .map(|d| if crate::idioma::english() { d.en } else { d.es })
+        .unwrap_or(&game_label);
     // Sin lo de entre paréntesis («Memoria para el juego (GB)»): el valor ya lleva su unidad.
     let label = label.split(" (").next().unwrap_or(label);
     let shown = match (setting, value) {
@@ -366,26 +412,67 @@ fn card_text(setting: &str, value: &Value) -> String {
         ("launcher.download_limit_mb", v) => format!("{v} MB/s"),
         (_, v) => v.to_string(),
     };
-    t!("🛠 Ajuste propuesto: {label} → {shown} (pulsa «Aplicar» en Parabellum)", "🛠 Proposed setting: {label} → {shown} (press «Apply» in Parabellum)")
+    t!(
+        "🛠 Ajuste propuesto: {label} → {shown} (pulsa «Aplicar» en Parabellum)",
+        "🛠 Proposed setting: {label} → {shown} (press «Apply» in Parabellum)"
+    )
 }
 
 /// El equipo propone un ajuste (de la lista de ajustes.rs, con un valor válido).
 #[tauri::command]
-pub async fn soporte_tarjeta(app: AppHandle, id: String, solicitud: String, ajuste: String, valor: Value) -> Result<(), String> {
+pub async fn soporte_tarjeta(app: AppHandle, id: String, solicitud: String, ajuste: String, valor: Value, instancia: Option<String>) -> Result<(), String> {
     check_ids(&id, Some(&solicitud))?;
     let (db, uid) = db(&app)?;
     // Se valida aquí con las mismas reglas que al aplicarla (y otra vez en las reglas de Firebase).
-    let (_, outcome) = crate::ajustes::plan(&crate::settings::Settings::default(), &crate::ajustes::Operation { id: ajuste.clone(), value: valor.clone(), expected: None })?;
-    let value = match outcome {
-        crate::ajustes::Outcome::Applied { value } | crate::ajustes::Outcome::Unchanged { value } => value,
-        crate::ajustes::Outcome::Conflict { current } => current,
+    let (value, target) = if ajuste.starts_with("minecraft.") {
+        let instance = crate::instances::find(
+            &app.state::<AppState>().paths,
+            &instancia.ok_or_else(|| t!("Elige la instancia del paquete oficial.", "Choose the official package instance."))?,
+        )
+        .ok_or_else(|| t!("No se encontró la instancia.", "The instance was not found."))?;
+        let target = crate::ajustes_juego::target(&instance).ok_or_else(|| {
+            t!(
+                "Esta instancia no tiene referencia del paquete oficial.",
+                "This instance has no official package reference."
+            )
+        })?;
+        official_instance(&app, &id, &instance, &target).await?;
+        (
+            crate::ajustes_juego::validate(&ajuste, &valor, Some(&instance.minecraft_version))?,
+            Some(target),
+        )
+    } else {
+        let (_, outcome) = crate::ajustes::plan(
+            &crate::settings::Settings::default(),
+            &crate::ajustes::Operation {
+                id: ajuste.clone(),
+                value: valor.clone(),
+                expected: None,
+            },
+        )?;
+        (
+            match outcome {
+                crate::ajustes::Outcome::Applied { value } | crate::ajustes::Outcome::Unchanged { value } => value,
+                crate::ajustes::Outcome::Conflict { current } => current,
+            },
+            None,
+        )
     };
     // 5.0 → 5 (se lee mejor en el texto y en la base de datos).
     let value = match value.as_f64() {
         Some(n) if n.fract() == 0.0 && !value.is_boolean() => json!(n as i64),
         _ => value,
     };
-    let card = Card { v: 1, op: id_for("o", 12), kind: "setting".into(), setting: ajuste.clone(), value: value.clone(), scope: "launcher".into(), official: id.clone() };
+    let card = Card {
+        v: 1,
+        op: id_for("o", 12),
+        kind: "setting".into(),
+        setting: ajuste.clone(),
+        value: value.clone(),
+        scope: if target.is_some() { "instancia" } else { "launcher" }.into(),
+        official: id.clone(),
+        target,
+    };
     let text = card_text(&ajuste, &value);
     let mut message = message_value(&uid, &my_name(&app), &text, "tarjeta");
     message["card"] = serde_json::to_value(&card).unwrap();
@@ -405,7 +492,9 @@ pub async fn soporte_tarjeta(app: AppHandle, id: String, solicitud: String, ajus
 /// todavía no tiene la regla del aviso (se publica antes que la 0.35.0, pero por si acaso), la respuesta
 /// se manda igual, sin el aviso: solo no le llegaría al jugador hasta que abra Comunidades.
 async fn patch_with_notice(db: &firebase::Database, mut update: Value, cid: &str, owner: Option<&str>, tid: &str) -> Result<(), String> {
-    let Some(owner) = owner else { return db.patch("", &update).await.map_err(db_error).map(|_| ()) };
+    let Some(owner) = owner else {
+        return db.patch("", &update).await.map_err(db_error).map(|_| ());
+    };
     let notice = format!("supportNotify/{cid}/{owner}/{tid}");
     update[notice.as_str()] = firebase::server_timestamp();
     match db.patch("", &update).await {
@@ -426,69 +515,345 @@ pub struct CardResult {
     pub value: Value,
 }
 
-/// Aplica una tarjeta en este PC. Se vuelve a comprobar todo (no se confía en lo que muestra la ventana):
-/// que la solicitud sea tuya, que la mandó alguien que **hoy** es del equipo de esa comunidad, y el
-/// ajuste y su valor. Repetirla no cambia nada.
-#[tauri::command]
-pub async fn aplicar_tarjeta(app: AppHandle, id: String, solicitud: String, mensaje: String) -> Result<CardResult, String> {
-    check_ids(&id, Some(&solicitud))?;
-    if !valid_id('m', 12, &mensaje) {
+/// Comprueba la solicitud, el autor actual y el contrato de la tarjeta antes de tocar este PC.
+async fn checked_card(app: &AppHandle, cid: &str, tid: &str, mid: &str) -> Result<Card, String> {
+    check_ids(cid, Some(tid))?;
+    if !valid_id('m', 12, mid) {
         return Err(t!("Tarjeta no válida.", "Invalid card."));
     }
-    let (db, uid) = db(&app)?;
-    let (message, ticket) = futures::join!(get(&db, format!("supportMessages/{id}/{solicitud}/{mensaje}")), get(&db, format!("supportTickets/{id}/{solicitud}")));
+    let (db, uid) = db(app)?;
+    let (message, ticket) = futures::join!(
+        get(&db, format!("supportMessages/{cid}/{tid}/{mid}")),
+        get(&db, format!("supportTickets/{cid}/{tid}"))
+    );
     let message: Message = serde_json::from_value(message?).map_err(|_| t!("La tarjeta ya no está.", "The card is no longer there."))?;
     let ticket = ticket?;
-    let card = message.card.filter(|c| message.kind == "tarjeta" && c.v == 1 && c.kind == "setting" && c.scope == "launcher" && c.official == id).ok_or(t!("Tarjeta no válida.", "Invalid card."))?;
+    let card = message
+        .card
+        .filter(|c| {
+            message.kind == "tarjeta"
+                && c.v == 1
+                && c.kind == "setting"
+                && c.official == cid
+                && valid_id('o', 12, &c.op)
+                && ((c.scope == "launcher" && c.target.is_none()) || (c.scope == "instancia" && c.target.is_some()))
+        })
+        .ok_or_else(|| t!("Tarjeta no válida.", "Invalid card."))?;
     if ticket["by"].as_str() != Some(uid.as_str()) {
-        return Err(t!("Solo quien pidió la ayuda puede aplicar sus tarjetas.", "Only whoever asked for help can apply its cards."));
+        return Err(t!(
+            "Solo quien pidió la ayuda puede aplicar sus tarjetas.",
+            "Only whoever requested help can apply these cards."
+        ));
     }
-    let sender = get(&db, format!("communityMembers/{id}/{}", message.from)).await.unwrap_or(Value::Null);
-    if !is_staff(&sender) {
-        return Err(t!("Quien la mandó ya no es del equipo de soporte: no se aplica.", "Whoever sent it is no longer on the support team: it is not applied."));
+    if !is_staff(&get(&db, format!("communityMembers/{cid}/{}", message.from)).await?) {
+        return Err(t!(
+            "Quien la mandó ya no es del equipo de soporte.",
+            "The sender is no longer on the support team."
+        ));
     }
-    let def = crate::ajustes::find(&card.setting).ok_or(t!("Esta versión de Parabellum no conoce ese ajuste: actualízala.", "This version of Parabellum does not know that setting: update it."))?;
-    if crate::loaders::compare_versions(env!("CARGO_PKG_VERSION"), def.since) == std::cmp::Ordering::Less {
-        return Err(t!("Actualiza Parabellum para aplicar esta tarjeta.", "Update Parabellum to apply this card."));
+    Ok(card)
+}
+
+async fn official_instance(app: &AppHandle, cid: &str, instance: &crate::instances::Instance, target: &crate::ajustes_juego::Target) -> Result<(), String> {
+    if !crate::ajustes_juego::compatible(instance, target) {
+        return Err(t!(
+            "La instancia no coincide con el paquete de esta tarjeta. Verifica o restaura el paquete oficial. ⟦accion:verificar⟧",
+            "The instance does not match this card's package. Check or restore the official package. ⟦accion:verificar⟧"
+        ));
     }
+    let (db, _) = db(app)?;
+    let packages = get(&db, format!("communityPackages/{cid}")).await?;
+    let reference = crate::identidad::reference(instance).ok_or_else(|| t!("Falta la referencia del paquete.", "The package reference is missing."))?;
+    if !packages.as_object().into_iter().flatten().any(|(_, p)| {
+        p["catalogId"] == target.package && p["minecraft"] == target.minecraft && p["version"].as_str().is_none_or(|v| v.is_empty() || v == reference.version)
+    }) {
+        return Err(t!(
+            "El paquete ya no es el oficial de esta comunidad. Pide una tarjeta nueva.",
+            "This package is no longer the community's official package. Request a new card."
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn ajustes_juego_compartibles(app: AppHandle, id: String) -> Result<Vec<crate::ajustes_juego::Described>, String> {
+    check_ids(&id, None)?;
+    let (db, _) = db(&app)?;
+    let packages = get(&db, format!("communityPackages/{id}")).await?;
+    let paths = app.state::<AppState>().paths.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::instances::list(&paths)
+            .iter()
+            .filter(|i| {
+                crate::identidad::reference(i).is_some_and(|r| {
+                    packages.as_object().into_iter().flatten().any(|(_, p)| {
+                        p["catalogId"] == r.package
+                            && p["minecraft"] == i.minecraft_version
+                            && p["version"].as_str().is_none_or(|v| v.is_empty() || v == r.version)
+                    })
+                })
+            })
+            .flat_map(crate::ajustes_juego::describe)
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn soporte_tarjeta_destinos(app: AppHandle, id: String, solicitud: String, mensaje: String) -> Result<Vec<crate::instances::Instance>, String> {
+    let card = checked_card(&app, &id, &solicitud, &mensaje).await?;
+    let target = card.target.ok_or_else(|| t!("Esta tarjeta es del launcher.", "This is a launcher card."))?;
+    let paths = app.state::<AppState>().paths.clone();
+    let list = tauri::async_runtime::spawn_blocking(move || {
+        crate::instances::list(&paths)
+            .into_iter()
+            .filter(|i| crate::ajustes_juego::compatible(i, &target))
+            .collect::<Vec<_>>()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(list)
+}
+
+/// La persona elige aplicar; el juego abierto conserva el valor esperado para el cierre.
+#[tauri::command]
+pub async fn aplicar_tarjeta(app: AppHandle, id: String, solicitud: String, mensaje: String, instancia: Option<String>) -> Result<CardResult, String> {
+    let _guard = CARD_LOCK.lock().await;
+    let card = checked_card(&app, &id, &solicitud, &mensaje).await?;
     let mut record = record(&app);
-    if let Some(done) = record.get(&card.op).filter(|r| r.result != "deshecha") {
-        return Ok(CardResult { result: done.result.clone(), previous: done.previous.clone(), value: done.value.clone() });
+    if let Some(done) = record.get(&card.op) {
+        if done.community != id
+            || done.ticket != solicitud
+            || done.message != mensaje
+            || done.setting != card.setting
+            || !crate::ajustes_juego::equal(&done.value, &card.value)
+            || done.target != card.target
+        {
+            return Err(t!(
+                "La tarjeta cambió después de revisarla. Pide una tarjeta nueva.",
+                "The card changed after review. Request a new card."
+            ));
+        }
+        if matches!(done.result.as_str(), "aplicada" | "ya-estaba" | "pendiente" | "pendiente-deshacer") {
+            return Ok(CardResult {
+                result: done.result.clone(),
+                previous: done.previous.clone(),
+                value: done.value.clone(),
+            });
+        }
     }
-    let previous = crate::ajustes::read(&app, &card.setting)?;
-    let outcome = crate::ajustes::apply(&app, &crate::ajustes::Operation { id: card.setting.clone(), value: card.value.clone(), expected: Some(previous.clone()) })?;
-    let (result, value) = match outcome {
-        crate::ajustes::Outcome::Applied { value } => ("aplicada", value),
-        crate::ajustes::Outcome::Unchanged { value } => ("ya-estaba", value),
-        crate::ajustes::Outcome::Conflict { current } => return Err(t!("El ajuste cambió mientras tanto (ahora está en {current}). Vuelve a pulsar.", "The setting changed meanwhile (now it is {current}). Press again.")),
+    let (previous, value, result, instance_id) = if let Some(target) = &card.target {
+        let paths = app.state::<AppState>().paths.clone();
+        let instance = match instancia {
+            Some(id) => crate::instances::find(&paths, &id).ok_or_else(|| t!("No se encontró la instancia.", "The instance was not found."))?,
+            None => {
+                let found = crate::instances::list(&paths)
+                    .into_iter()
+                    .filter(|i| crate::ajustes_juego::compatible(i, target))
+                    .collect::<Vec<_>>();
+                if found.len() != 1 {
+                    return Err(t!(
+                        "Elige una instancia compatible para aplicar la tarjeta.",
+                        "Choose a compatible instance to apply the card."
+                    ));
+                }
+                found.into_iter().next().unwrap()
+            }
+        };
+        official_instance(&app, &id, &instance, target).await?;
+        let value = crate::ajustes_juego::validate(&card.setting, &card.value, Some(&instance.minecraft_version))?;
+        let previous = crate::ajustes_juego::read(&instance, &card.setting)?;
+        let running = app.state::<AppState>().games.lock().unwrap().contains_key(&instance.id);
+        let result = if running {
+            "pendiente"
+        } else {
+            let _world = crate::mundos::starting(&app, "instancia", &instance.id)?;
+            match crate::ajustes_juego::apply(&instance, &card.setting, &value, &previous)? {
+                crate::ajustes::Outcome::Applied { .. } => "aplicada",
+                crate::ajustes::Outcome::Unchanged { .. } => "ya-estaba",
+                crate::ajustes::Outcome::Conflict { .. } => {
+                    return Err(t!(
+                        "El ajuste cambió mientras tanto. Vuelve a pulsar.",
+                        "The setting changed meanwhile. Press again."
+                    ))
+                }
+            }
+        };
+        (previous, value, result, Some(instance.id))
+    } else {
+        let previous = crate::ajustes::read(&app, &card.setting)?;
+        let outcome = crate::ajustes::apply(
+            &app,
+            &crate::ajustes::Operation {
+                id: card.setting.clone(),
+                value: card.value.clone(),
+                expected: Some(previous.clone()),
+            },
+        )?;
+        let (result, value) = match outcome {
+            crate::ajustes::Outcome::Applied { value } => ("aplicada", value),
+            crate::ajustes::Outcome::Unchanged { value } => ("ya-estaba", value),
+            crate::ajustes::Outcome::Conflict { .. } => {
+                return Err(t!(
+                    "El ajuste cambió mientras tanto. Vuelve a pulsar.",
+                    "The setting changed meanwhile. Press again."
+                ))
+            }
+        };
+        (previous, value, result, None)
     };
     record.insert(
         card.op.clone(),
-        Applied { community: id.clone(), ticket: solicitud.clone(), message: mensaje, setting: card.setting.clone(), previous: previous.clone(), value: value.clone(), at: chrono::Utc::now().timestamp_millis(), result: result.into() },
+        Applied {
+            community: id.clone(),
+            ticket: solicitud.clone(),
+            message: mensaje,
+            setting: card.setting.clone(),
+            previous: previous.clone(),
+            value: value.clone(),
+            at: chrono::Utc::now().timestamp_millis(),
+            result: result.into(),
+            instance: instance_id,
+            target: card.target,
+        },
     );
-    save_record(&app, &record);
+    save_record(&app, &record)?;
     acknowledge(&app, &id, &solicitud, &card.op, result).await;
-    Ok(CardResult { result: result.into(), previous, value })
+    let _ = app.emit("tarjetas-cambiadas", ());
+    Ok(CardResult {
+        result: result.into(),
+        previous,
+        value,
+    })
 }
 
-/// Vuelve al valor de antes de la tarjeta, solo si nadie lo cambió después.
+/// Cancelar una pendiente no modifica options.txt; deshacer una aplicada respeta cambios posteriores.
 #[tauri::command]
 pub async fn deshacer_tarjeta(app: AppHandle, op: String) -> Result<CardResult, String> {
+    let _guard = CARD_LOCK.lock().await;
     let mut record = record(&app);
-    let done = record.get(&op).cloned().ok_or(t!("Esa tarjeta no se aplicó en este PC.", "That card was not applied on this PC."))?;
-    if done.result == "deshecha" {
-        return Ok(CardResult { result: done.result, previous: done.previous, value: done.value });
+    let done = record
+        .get(&op)
+        .cloned()
+        .ok_or_else(|| t!("Esa tarjeta no se aplicó en este PC.", "This card was not applied on this PC."))?;
+    if done.result == "deshecha" || done.result == "pendiente-deshacer" {
+        return Ok(CardResult {
+            result: done.result,
+            previous: done.previous,
+            value: done.value,
+        });
     }
-    let outcome = crate::ajustes::apply(&app, &crate::ajustes::Operation { id: done.setting.clone(), value: done.previous.clone(), expected: Some(done.value.clone()) })?;
-    if let crate::ajustes::Outcome::Conflict { current } = outcome {
-        return Err(t!("Lo cambiaste después de aplicarla (ahora está en {current}): no se deshace.", "You changed it after applying it (now it is {current}): it is not undone."));
+    let result = if done.result == "pendiente" {
+        "deshecha"
+    } else if let Some(id) = &done.instance {
+        let instance =
+            crate::instances::find(&app.state::<AppState>().paths, id).ok_or_else(|| t!("No se encontró la instancia.", "The instance was not found."))?;
+        if app.state::<AppState>().games.lock().unwrap().contains_key(id) {
+            "pendiente-deshacer"
+        } else {
+            let _world = crate::mundos::starting(&app, "instancia", id)?;
+            let outcome = crate::ajustes_juego::apply(&instance, &done.setting, &done.previous, &done.value)?;
+            if matches!(outcome, crate::ajustes::Outcome::Conflict { .. }) {
+                return Err(t!("Lo cambiaste después: no se deshace.", "You changed it afterwards: it is not undone."));
+            }
+            "deshecha"
+        }
+    } else {
+        let outcome = crate::ajustes::apply(
+            &app,
+            &crate::ajustes::Operation {
+                id: done.setting.clone(),
+                value: done.previous.clone(),
+                expected: Some(done.value.clone()),
+            },
+        )?;
+        if matches!(outcome, crate::ajustes::Outcome::Conflict { .. }) {
+            return Err(t!("Lo cambiaste después: no se deshace.", "You changed it afterwards: it is not undone."));
+        }
+        "deshecha"
+    };
+    record.get_mut(&op).unwrap().result = result.into();
+    save_record(&app, &record)?;
+    acknowledge(
+        &app,
+        &done.community,
+        &done.ticket,
+        &op,
+        if result == "pendiente-deshacer" { "pendiente" } else { result },
+    )
+    .await;
+    let _ = app.emit("tarjetas-cambiadas", ());
+    Ok(CardResult {
+        result: result.into(),
+        previous: done.value,
+        value: done.previous,
+    })
+}
+
+pub fn settle_pending(app: &AppHandle, instance: Option<String>) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        settle_pending_now(&app, instance).await;
+    });
+}
+pub async fn settle_pending_now(app: &AppHandle, instance: Option<String>) {
+    let _guard = CARD_LOCK.lock().await;
+    let pending: Vec<_> = record(&app)
+        .into_iter()
+        .filter(|(_, v)| matches!(v.result.as_str(), "pendiente" | "pendiente-deshacer") && instance.as_ref().is_none_or(|id| v.instance.as_ref() == Some(id)))
+        .collect();
+    for (op, done) in pending {
+        let Some(id) = done.instance.as_ref() else { continue };
+        if app.state::<AppState>().games.lock().unwrap().contains_key(id) {
+            continue;
+        }
+        let Ok(card) = checked_card(&app, &done.community, &done.ticket, &done.message).await else {
+            continue;
+        };
+        let Some(target) = &done.target else { continue };
+        let Some(instance) = crate::instances::find(&app.state::<AppState>().paths, id) else {
+            continue;
+        };
+        let Ok(()) = official_instance(&app, &done.community, &instance, target).await else {
+            continue;
+        };
+        let Ok(_world) = crate::mundos::starting(&app, "instancia", id) else {
+            continue;
+        };
+        let undo = done.result == "pendiente-deshacer";
+        let (value, expected) = if undo { (&done.previous, &done.value) } else { (&done.value, &done.previous) };
+        let result = if card.setting != done.setting || !crate::ajustes_juego::equal(&card.value, &done.value) || card.target != done.target {
+            "conflicto"
+        } else {
+            match crate::ajustes_juego::apply(&instance, &done.setting, value, expected) {
+                Ok(crate::ajustes::Outcome::Applied { .. }) => {
+                    if undo {
+                        "deshecha"
+                    } else {
+                        "aplicada"
+                    }
+                }
+                Ok(crate::ajustes::Outcome::Unchanged { .. }) => {
+                    if undo {
+                        "deshecha"
+                    } else {
+                        "ya-estaba"
+                    }
+                }
+                Ok(crate::ajustes::Outcome::Conflict { .. }) => "conflicto",
+                Err(_) => continue,
+            }
+        };
+        let mut records = record(&app);
+        if let Some(entry) = records.get_mut(&op) {
+            entry.result = result.into();
+        }
+        if save_record(&app, &records).is_ok() {
+            acknowledge(&app, &done.community, &done.ticket, &op, result).await;
+            let _ = app.emit("tarjetas-cambiadas", ());
+        }
     }
-    let entry = record.get_mut(&op).unwrap();
-    entry.result = "deshecha".into();
-    let result = entry.clone();
-    save_record(&app, &record);
-    acknowledge(&app, &result.community, &result.ticket, &op, "deshecha").await;
-    Ok(CardResult { result: result.result, previous: result.previous, value: result.value })
 }
 
 /// Lo que pasó con cada tarjeta en este PC (para mostrar «Aplicada» y «Deshacer»).
@@ -503,6 +868,11 @@ async fn acknowledge(app: &AppHandle, cid: &str, tid: &str, op: &str, result: &s
     let text = match result {
         "aplicada" => t!("✓ Ajuste aplicado en mi PC", "✓ Setting applied on my PC"),
         "ya-estaba" => t!("✓ Ya lo tenía así", "✓ I already had it like that"),
+        "pendiente" => t!("◷ Ajuste pendiente hasta cerrar el juego", "◷ Setting pending until the game closes"),
+        "conflicto" => t!(
+            "El ajuste cambió: la tarjeta pendiente no se aplicó",
+            "The setting changed: the pending card was not applied"
+        ),
         _ => t!("↩ Deshice el ajuste", "↩ I undid the setting"),
     };
     let mut message = message_value(&uid, &my_name(app), &text, "acuse");
@@ -538,7 +908,12 @@ struct Watched {
 
 impl Watched {
     fn count(&self) -> usize {
-        let unread = self.replies.iter().flatten().filter(|(tid, at)| **at > self.seen.get(*tid).copied().unwrap_or(0)).count();
+        let unread = self
+            .replies
+            .iter()
+            .flatten()
+            .filter(|(tid, at)| **at > self.seen.get(*tid).copied().unwrap_or(0))
+            .count();
         unread + if self.staff { self.waiting.as_ref().map_or(0, HashMap::len) } else { 0 }
     }
 }
@@ -597,8 +972,13 @@ impl Watcher {
     }
 
     fn sync(self: &std::sync::Arc<Self>, value: &Value) {
-        let wanted: std::collections::HashSet<String> =
-            value.as_object().into_iter().flatten().filter(|(cid, v)| v.as_bool() == Some(true) && valid_id('c', 12, cid)).map(|(cid, _)| cid.clone()).collect();
+        let wanted: std::collections::HashSet<String> = value
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(cid, v)| v.as_bool() == Some(true) && valid_id('c', 12, cid))
+            .map(|(cid, _)| cid.clone())
+            .collect();
         let added: Vec<String> = {
             let mut watched = self.watched.lock().unwrap();
             watched.retain(|cid, _| wanted.contains(cid));
@@ -623,7 +1003,13 @@ impl Watcher {
             get(&self.db, format!("supportByUser/{cid}/{}", self.uid)),
         );
         let staff = member.as_ref().is_ok_and(is_staff);
-        let seen: HashMap<String, i64> = seen.unwrap_or_default().as_object().into_iter().flatten().filter_map(|(t, at)| Some((t.clone(), at.as_i64()?))).collect();
+        let seen: HashMap<String, i64> = seen
+            .unwrap_or_default()
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter_map(|(t, at)| Some((t.clone(), at.as_i64()?)))
+            .collect();
         let weak = std::sync::Arc::downgrade(&self);
         let mut listeners = vec![{
             let (weak, cid) = (weak.clone(), cid.clone());
@@ -652,7 +1038,13 @@ impl Watcher {
         let mut watched = self.watched.lock().unwrap();
         // Si saliste de la comunidad mientras tanto, las escuchas se sueltan aquí.
         if let Some(entry) = watched.get_mut(&cid) {
-            *entry = Watched { name: community.ok().and_then(|n| n.as_str().map(String::from)).unwrap_or_default(), staff, listeners, seen, ..Watched::default() };
+            *entry = Watched {
+                name: community.ok().and_then(|n| n.as_str().map(String::from)).unwrap_or_default(),
+                staff,
+                listeners,
+                seen,
+                ..Watched::default()
+            };
         }
     }
 
@@ -683,7 +1075,12 @@ impl Watcher {
     }
 
     fn on_replies(&self, cid: &str, value: &Value) {
-        let replies: HashMap<String, i64> = value.as_object().into_iter().flatten().filter_map(|(t, at)| Some((t.clone(), at.as_i64()?))).collect();
+        let replies: HashMap<String, i64> = value
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter_map(|(t, at)| Some((t.clone(), at.as_i64()?)))
+            .collect();
         let (fresh, name) = {
             let mut watched = self.watched.lock().unwrap();
             let Some(entry) = watched.get_mut(cid) else { return };
@@ -709,21 +1106,36 @@ impl Watcher {
                 continue;
             }
             tauri::async_runtime::spawn(async move {
-                let topic = get(&db, format!("supportTickets/{cid}/{tid}/topic")).await.ok().and_then(|t| t.as_str().map(String::from)).unwrap_or_default();
-                let title = if name.is_empty() { t!("Te respondió el soporte", "Support answered you") } else { t!("Te respondió el soporte de {name}", "{name}'s support answered you") };
+                let topic = get(&db, format!("supportTickets/{cid}/{tid}/topic"))
+                    .await
+                    .ok()
+                    .and_then(|t| t.as_str().map(String::from))
+                    .unwrap_or_default();
+                let title = if name.is_empty() {
+                    t!("Te respondió el soporte", "Support answered you")
+                } else {
+                    t!("Te respondió el soporte de {name}", "{name}'s support answered you")
+                };
                 notify(&app, &title, &topic, &cid, &tid);
             });
         }
     }
 
     fn on_queue(&self, cid: &str, value: &Value) {
-        let waiting: HashMap<String, (i64, String, String, bool)> =
-            tickets_from(value).into_iter().filter(|t| waits(t, &self.uid)).map(|t| (t.id.clone(), (t.last_at, t.topic.clone(), t.by_name.clone(), t.last_at <= t.at))).collect();
+        let waiting: HashMap<String, (i64, String, String, bool)> = tickets_from(value)
+            .into_iter()
+            .filter(|t| waits(t, &self.uid))
+            .map(|t| (t.id.clone(), (t.last_at, t.topic.clone(), t.by_name.clone(), t.last_at <= t.at)))
+            .collect();
         let (fresh, name) = {
             let mut watched = self.watched.lock().unwrap();
             let Some(entry) = watched.get_mut(cid) else { return };
             let fresh: Vec<(String, (i64, String, String, bool))> = match &entry.waiting {
-                Some(before) => waiting.iter().filter(|(tid, (at, ..))| before.get(*tid).is_none_or(|(old, ..)| at > old)).map(|(t, w)| (t.clone(), w.clone())).collect(),
+                Some(before) => waiting
+                    .iter()
+                    .filter(|(tid, (at, ..))| before.get(*tid).is_none_or(|(old, ..)| at > old))
+                    .map(|(t, w)| (t.clone(), w.clone()))
+                    .collect(),
                 None => Vec::new(),
             };
             let had = entry.waiting.is_some();
@@ -751,7 +1163,10 @@ impl Watcher {
         let notices = {
             let watched = self.watched.lock().unwrap();
             let communities: HashMap<String, usize> = watched.iter().map(|(cid, w)| (cid.clone(), w.count())).filter(|(_, n)| *n > 0).collect();
-            Notices { total: communities.values().sum(), communities }
+            Notices {
+                total: communities.values().sum(),
+                communities,
+            }
         };
         let mut last = self.last.lock().unwrap();
         if *last != notices {
@@ -766,7 +1181,9 @@ impl Watcher {
 /// se está jugando con el panel (ahí no se ve). Al pulsarla se abre la solicitud.
 fn notify(app: &AppHandle, title: &str, body: &str, cid: &str, tid: &str) {
     let enabled = app.state::<AppState>().settings.lock().unwrap().notifications;
-    let in_front = app.get_webview_window("main").is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false));
+    let in_front = app
+        .get_webview_window("main")
+        .is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false));
     if !enabled || in_front || crate::puente::game_connected(app) {
         return;
     }
@@ -793,7 +1210,12 @@ mod tests {
 
     #[test]
     fn la_cola_ordena_abiertas_primero() {
-        let t = |id: &str, state: &str, at: i64| Ticket { id: id.into(), state: state.into(), last_at: at, ..Default::default() };
+        let t = |id: &str, state: &str, at: i64| Ticket {
+            id: id.into(),
+            state: state.into(),
+            last_at: at,
+            ..Default::default()
+        };
         let mut list = vec![t("a", "cerrado", 50), t("b", "atendido", 40), t("c", "abierto", 10), t("d", "abierto", 30)];
         sort_tickets(&mut list);
         let ids: Vec<&str> = list.iter().map(|t| t.id.as_str()).collect();
@@ -826,7 +1248,12 @@ mod tests {
 
     #[test]
     fn que_cuenta_el_aviso() {
-        let t = |by: &str, state: &str, last_from: &str| Ticket { by: by.into(), state: state.into(), last_from: last_from.into(), ..Default::default() };
+        let t = |by: &str, state: &str, last_from: &str| Ticket {
+            by: by.into(),
+            state: state.into(),
+            last_from: last_from.into(),
+            ..Default::default()
+        };
         // Para el equipo (F): las que esperan respuesta.
         assert!(waits(&t("E", "abierto", "E"), "F"), "una nueva");
         assert!(waits(&t("E", "atendido", "E"), "F"), "el jugador contestó");
@@ -840,7 +1267,11 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(watched.count(), 1);
-        let staff = Watched { staff: true, waiting: Some(HashMap::from([("t3".into(), (1, String::new(), String::new(), true))])), ..watched };
+        let staff = Watched {
+            staff: true,
+            waiting: Some(HashMap::from([("t3".into(), (1, String::new(), String::new(), true))])),
+            ..watched
+        };
         assert_eq!(staff.count(), 2);
     }
 }

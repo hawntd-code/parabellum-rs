@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Parabellum</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="mundos.css">
 </head>
 <body class="booting">
   <!-- ================= Pantalla de carga: actualización y sesión de Google ================= -->
@@ -344,6 +345,7 @@
                   <button class="btn primary" id="hs-motd-save"><svg><use href="#i-check"/></svg>Guardar</button>
                 </div>
               </div>
+              <div class="setting"><div class="grow"><b data-worlds-server-label>Mundos en Drive</b><span data-worlds-server-hint>Respaldos del mundo y sus dimensiones.</span></div><button class="btn" id="worlds-server"><svg><use href="#i-cloud"/></svg><span>Ver respaldos</span></button></div>
               <div class="card-panel pregen-card" id="hs-pregen"></div>
               <div id="hs-options"></div>
               <div class="card-panel host-left-out hidden" id="hs-left-box">
@@ -509,6 +511,7 @@
                 </div>
                 <button class="btn hidden" id="content-update-all"><svg><use href="#i-update"/></svg><span>Actualizar todo</span></button>
                 <button class="btn" id="content-favorites" title="Instalar tus favoritos en esta instancia"><svg><use href="#i-star"/></svg>Favoritos</button>
+                <button class="btn" id="worlds-library"><svg><use href="#i-cloud"/></svg><span>Mundos en Drive</span></button>
                 <button class="btn icon-only" id="content-folder" title="Abrir carpeta"><svg><use href="#i-folder"/></svg></button>
                 <button class="btn primary" id="content-add"><svg><use href="#i-plus"/></svg>Agregar contenido<svg class="chev"><use href="#i-down"/></svg></button>
               </div>
@@ -870,6 +873,7 @@
               <span class="value" id="ram-value"></span>
             </div>
             <input type="range" id="ram" min="2" max="16" step="1">
+            <div class="setting"><div class="grow"><b data-worlds-account-label>Mundos en Drive</b><span data-worlds-account-hint>Tus copias privadas, historial y transferencias pendientes.</span></div><button class="btn" id="worlds-settings"><svg><use href="#i-cloud"/></svg><span>Administrar</span></button></div>
             <div class="range-labels"><span>2 GB</span><span id="ram-max"></span></div>
             <div class="setting" style="margin-top:22px">
               <div class="grow"><b>Ancho de la ventana del juego</b><span>En píxeles, al abrir Minecraft.</span></div>
@@ -1540,11 +1544,13 @@
   </svg>
   <script src="i18n.js"></script>
   <script src="markdown.js"></script>
+  <script src="acciones.js"></script>
   <script src="app.js"></script>
   <script src="chat-experience.js"></script>
   <script src="curseforge.js"></script>
   <script src="hostear.js"></script>
   <script src="comunidad.js"></script>
   <script src="soporte.js"></script>
+  <script src="mundos.js"></script>
 </body>
 </html>

@@ -215,9 +215,9 @@ async function openSupportTicket(tid) {
   openModal("#support-dialog");
   setTimeout(() => $("#sp-input").focus(), 60);
   try {
-    const [messages, applied, settings] = await Promise.all([invoke("soporte_mensajes", { id: cid, solicitud: tid }), invoke("tarjetas_aplicadas"), invoke("ajustes_compartibles")]);
+    const [messages, applied, launcher, game] = await Promise.all([invoke("soporte_mensajes", { id: cid, solicitud: tid }), invoke("tarjetas_aplicadas"), invoke("ajustes_compartibles"), invoke("ajustes_juego_compartibles", { id: cid })]);
     if (support.open?.id !== tid) return;
-    Object.assign(support, { messages, applied: applied ?? {}, settings });
+    Object.assign(support, { messages, applied: applied ?? {}, settings: [...launcher, ...(game ?? [])] });
     renderTicketMessages();
     invoke("soporte_escuchar", { id: cid, solicitud: tid }).catch(() => {});
     // Leída: se apaga el punto en la lista.
@@ -268,11 +268,18 @@ function settingValue(id, value) {
   if (typeof value === "boolean") return value ? t("Activado", "On") : t("Desactivado", "Off");
   if (id === "launcher.ram_gb") return `${value} GB`;
   if (id === "launcher.download_limit_mb") return Number(value) === 0 ? t("Sin límite", "No limit") : `${value} MB/s`;
+  if (id === "minecraft.graphics") return [t("Rápidos", "Fast"), t("Detallados", "Fancy"), t("Fabulosos", "Fabulous")][Number(value)] ?? String(value);
+  if (id === "minecraft.particles") return [t("Todas", "All"), t("Reducidas", "Decreased"), t("Mínimas", "Minimal")][Number(value)] ?? String(value);
+  if (id === "minecraft.guiScale" && Number(value) === 0) return t("Automática", "Automatic");
+  if (id === "minecraft.fov") return `${value}°`;
+  if (id === "minecraft.maxFps") return Number(value) === 260 ? t("Sin límite", "Unlimited") : `${value} FPS`;
+  if (id.endsWith("Distance")) return `${value} chunks`;
   return String(value);
 }
 
 /** Cuándo se nota (lo dice la tarjeta). */
 function settingEffect(id) {
+  if (id.startsWith("minecraft.")) return t("Solo cambia los ajustes de la instancia elegida. Si Minecraft está abierto, queda pendiente hasta que lo cierres. Puedes deshacerlo.", "Only changes settings in the chosen instance. If Minecraft is open, it waits until you close it. You can undo it.");
   return (
     {
       "launcher.ram_gb": t("Se usa la próxima vez que abras el juego. Las instancias con memoria propia no cambian.", "It is used the next time you open the game. Instances with their own memory do not change."),
@@ -288,9 +295,9 @@ const sameValue = (a, b) => (typeof a === "number" || typeof b === "number" ? Ma
 
 function cardHtml(m, acks) {
   const c = m.card ?? {};
-  const def = support.settings?.find((s) => s.id === c.setting);
-  const owner = openTicket()?.by === myUid();
   const record = support.applied?.[c.op];
+  const def = support.settings?.find((s) => s.id === c.setting && (!record?.instance || s.instance === record.instance) && (!c.target || (s.target?.package === c.target.package && s.target?.minecraft === c.target.minecraft && s.target?.contentHash === c.target.contentHash)));
+  const owner = openTicket()?.by === myUid();
   const busy = support.busy.has(c.op);
   // Sin lo de entre paréntesis («Memoria para el juego (GB)»): el valor ya lleva su unidad.
   const label = (def?.label ?? c.setting).replace(/\s*\(.*\)$/, "");
@@ -303,15 +310,17 @@ function cardHtml(m, acks) {
     )}</small><b>${escapeHtml(settingValue(c.setting, c.value))}</b></span>`;
     // Lo mismo que revisa aplicar_tarjeta: que sea de esta comunidad y que quien la mandó siga en el equipo
     // (si salió de la comunidad, tampoco). Lo ya aplicado se puede deshacer igual.
-    const valid = c.v === 1 && c.kind === "setting" && c.scope === "launcher" && c.official === support.open?.community;
+    const valid = c.v === 1 && c.kind === "setting" && ((c.scope === "launcher" && c.setting.startsWith("launcher.")) || (c.scope === "instancia" && c.setting.startsWith("minecraft.") && c.target)) && c.official === support.open?.community;
     const known = community.detail?.id === support.open?.community;
     const stale = known && !isStaffMember(community.detail.members.find((x) => x.uid === m.from));
     if (!valid) actions = `<span class="cm-chip warn">${icon("alert")}${t("Esta tarjeta no es válida", "This card is not valid")}</span>`;
     else if (record?.result === "aplicada")
       actions = `<span class="cm-chip ok">${icon("check")}${t("Aplicada en este PC", "Applied on this PC")}</span><button class="btn small" data-sp-undo="${escapeHtml(c.op)}" ${busy ? "disabled" : ""}>${icon("reply")}${t("Deshacer", "Undo")}</button>`;
+    else if (["pendiente", "pendiente-deshacer"].includes(record?.result)) actions = `<span class="cm-chip">${icon("clock")}${record.result === "pendiente" ? t("Se aplicará al cerrar Minecraft", "Will apply when Minecraft closes") : t("Se deshará al cerrar Minecraft", "Will undo when Minecraft closes")}</span>${record.result === "pendiente" ? `<button class="btn small" data-sp-undo="${escapeHtml(c.op)}" ${busy ? "disabled" : ""}>${t("Cancelar", "Cancel")}</button>` : ""}`;
+    else if (record?.result === "conflicto") actions = `<span class="cm-chip warn">${icon("alert")}${t("Las opciones cambiaron. Pide una nueva tarjeta para revisar el valor actual.", "The options changed. Ask for a new card to review the current value.")}</span>`;
     else if (record?.result === "ya-estaba") actions = `<span class="cm-chip ok">${icon("check")}${t("Ya lo tenías así", "You already had it like that")}</span>`;
     else if (stale) actions = `<span class="cm-chip warn">${icon("alert")}${t("Quien la mandó ya no es del equipo de soporte", "Whoever sent it is no longer on the support team")}</span>`;
-    else if (!def) actions = `<span class="cm-chip warn">${icon("update")}${t("Actualiza Parabellum para aplicarla", "Update Parabellum to apply it")}</span>`;
+    else if (!def) actions = `<span class="cm-chip warn">${icon("alert")}${c.scope === "instancia" ? t("Necesitas la misma versión del paquete oficial y Minecraft.", "You need the same version of the official package and Minecraft.") : t("Actualiza Parabellum para aplicarla", "Update Parabellum to apply it")}</span>`;
     else
       actions = `${record?.result === "deshecha" ? `<span class="cm-chip">${t("La deshiciste", "You undid it")}</span>` : ""}<button class="btn small primary" data-sp-apply="${escapeHtml(m.id)}" ${busy ? "disabled" : ""}>${icon("check")}${
         busy ? t("Aplicando…", "Applying…") : record ? t("Aplicar otra vez", "Apply again") : t("Aplicar", "Apply")
@@ -321,13 +330,13 @@ function cardHtml(m, acks) {
     const ack = acks[c.op];
     actions = ack
       ? `<span class="cm-chip ${ack === "deshecha" ? "" : "ok"}">${icon(ack === "deshecha" ? "reply" : "check")}${
-          { aplicada: t("La aplicó en su PC", "Applied on their PC"), "ya-estaba": t("Ya lo tenía así", "They already had it"), deshecha: t("La deshizo", "They undid it") }[ack]
+          { aplicada: t("La aplicó en su PC", "Applied on their PC"), "ya-estaba": t("Ya lo tenía así", "They already had it"), deshecha: t("La deshizo", "They undid it"), pendiente: t("Pendiente de cerrar Minecraft", "Waiting for Minecraft to close"), conflicto: t("Las opciones cambiaron", "The options changed") }[ack] ?? ack
         }</span>`
       : `<span class="cm-chip">${icon("clock")}${t("Sin aplicar todavía", "Not applied yet")}</span>`;
   }
   return `<div class="sp-card">
     <div class="sp-card-head"><span class="sp-card-icon">${icon("sliders")}</span><span class="grow"><b>${escapeHtml(label)}</b><span class="faint">${escapeHtml(
-      t(`Ajuste de Parabellum · lo propone ${m.name}`, `Parabellum setting · proposed by ${m.name}`),
+      c.scope === "instancia" ? t(`Minecraft ${c.target?.minecraft} · ${def?.instanceName ?? c.target?.package} · lo propone ${m.name}`, `Minecraft ${c.target?.minecraft} · ${def?.instanceName ?? c.target?.package} · proposed by ${m.name}`) : t(`Ajuste de Parabellum · lo propone ${m.name}`, `Parabellum setting · proposed by ${m.name}`),
     )}</span></span></div>
     <div class="sp-card-values">${values}</div>
     <p class="sp-card-effect">${escapeHtml(settingEffect(c.setting))}${owner ? ` ${escapeHtml(t("Solo cambia si pulsas «Aplicar».", "It only changes if you press «Apply»."))}` : ""}</p>
@@ -426,10 +435,20 @@ async function applyCard(mid) {
   support.busy.add(op);
   renderTicketMessages();
   try {
-    const result = await invoke("aplicar_tarjeta", { id: support.open.community, solicitud: support.open.id, mensaje: mid });
+    let instancia = null;
+    if (m.card.scope === "instancia") {
+      const destinations = await invoke("soporte_tarjeta_destinos", { id: support.open.community, solicitud: support.open.id, mensaje: mid });
+      if (!destinations.length) throw t("Instala la versión correspondiente del paquete oficial antes de aplicar la tarjeta.", "Install the matching official package version before applying the card.");
+      if (destinations.length === 1) instancia = destinations[0].id;
+      else {
+        const accepted = await cmDialog({ title: t("Elegir instancia", "Choose instance"), glyph: "sliders", body: `<label class="cm-field"><span class="label">${t("Aplicar en", "Apply in")}</span><select id="sp-destination">${destinations.map((d) => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}</option>`).join("")}</select></label>`, ok: t("Continuar", "Continue"), onOk: () => { instancia = $("#sp-destination").value; return true; } });
+        if (!accepted) return;
+      }
+    }
+    const result = await invoke("aplicar_tarjeta", { id: support.open.community, solicitud: support.open.id, mensaje: mid, instancia });
     support.applied[op] = { ...result, setting: m.card.setting };
-    support.settings = await invoke("ajustes_compartibles");
-    toast(result.result === "ya-estaba" ? t("Ya lo tenías así: no cambió nada.", "You already had it like that: nothing changed.") : t("Ajuste aplicado.", "Setting applied."));
+    await refreshCardSettings();
+    toast(result.result === "pendiente" ? t("Se aplicará cuando cierres Minecraft.", "It will apply when you close Minecraft.") : result.result === "ya-estaba" ? t("Ya lo tenías así: no cambió nada.", "You already had it like that: nothing changed.") : t("Ajuste aplicado.", "Setting applied."));
   } catch (error) {
     toast(String(error), "error");
   } finally {
@@ -444,8 +463,8 @@ async function undoCard(op) {
   try {
     const result = await invoke("deshacer_tarjeta", { op });
     support.applied[op] = { ...support.applied[op], ...result };
-    support.settings = await invoke("ajustes_compartibles");
-    toast(t("Volvió a como estaba.", "It is back to how it was."));
+    await refreshCardSettings();
+    toast(result.result === "pendiente-deshacer" ? t("Se deshará cuando cierres Minecraft.", "It will undo when you close Minecraft.") : t("Cambio deshecho.", "Change undone."));
   } catch (error) {
     toast(String(error), "error");
   } finally {
@@ -455,34 +474,46 @@ async function undoCard(op) {
 }
 
 // ---------- Tarjeta nueva (el equipo) ----------
+async function refreshCardSettings() {
+  if (!support.open) return;
+  const cid = support.open.community;
+  const [launcher, game, applied] = await Promise.all([invoke("ajustes_compartibles"), invoke("ajustes_juego_compartibles", { id: cid }), invoke("tarjetas_aplicadas")]);
+  if (support.open?.community !== cid) return;
+  support.settings = [...launcher, ...(game ?? [])];
+  support.applied = applied ?? {};
+}
+const formSetting = () => support.settings?.[Number($("#sp-card-setting").value)];
 function openCardForm() {
   const form = $("#sp-card-form");
   if (!form.classList.contains("hidden")) return form.classList.add("hidden");
   const settings = support.settings ?? [];
-  $("#sp-card-setting").innerHTML = settings.map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`).join("");
+  const launcher = settings.map((s, i) => ({ ...s, index: i })).filter((s) => !s.instance);
+  const game = settings.map((s, i) => ({ ...s, index: i })).filter((s) => s.instance);
+  const option = (s) => `<option value="${s.index}">${escapeHtml(s.instanceName ? `${s.instanceName} · ${s.label}` : s.label)}</option>`;
+  $("#sp-card-setting").innerHTML = `<optgroup label="Parabellum">${launcher.map(option).join("")}</optgroup>${game.length ? `<optgroup label="${t("Del juego (paquete oficial)", "Game (official package)")}">${game.map(option).join("")}</optgroup>` : ""}`;
   renderCardValue();
   form.classList.remove("hidden");
   $("#sp-card-setting").focus();
 }
 
 function renderCardValue() {
-  const def = support.settings?.find((s) => s.id === $("#sp-card-setting").value);
+  const def = formSetting();
   if (!def) return;
   const box = $("#sp-card-value");
   if (def.kind === "bool") box.innerHTML = `<select id="sp-card-input"><option value="true">${t("Activado", "On")}</option><option value="false">${t("Desactivado", "Off")}</option></select>`;
-  else if (def.kind === "range") box.innerHTML = `<input id="sp-card-input" type="number" min="${def.min}" max="${def.max}" step="1" value="${escapeHtml(String(def.value ?? def.min))}">`;
+  else if (def.kind === "range") box.innerHTML = `<input id="sp-card-input" type="number" min="${def.min}" max="${def.max}" step="${def.id === "minecraft.gamma" ? "0.1" : "1"}" value="${escapeHtml(String(def.value ?? def.min))}">`;
   else box.innerHTML = `<select id="sp-card-input">${def.options.map((o) => `<option value="${o}">${escapeHtml(settingValue(def.id, o))}</option>`).join("")}</select>`;
 }
 
 async function sendCard() {
-  const def = support.settings?.find((s) => s.id === $("#sp-card-setting").value);
+  const def = formSetting();
   if (!def || !support.open) return;
   const raw = $("#sp-card-input").value;
   const valor = def.kind === "bool" ? raw === "true" : Number(raw);
-  if (def.kind === "range" && (!Number.isInteger(valor) || valor < def.min || valor > def.max)) return toast(t(`Elige un número de ${def.min} a ${def.max}.`, `Choose a number from ${def.min} to ${def.max}.`), "error");
+  if (def.kind === "range" && (!Number.isFinite(valor) || (def.id !== "minecraft.gamma" && !Number.isInteger(valor)) || valor < def.min || valor > def.max)) return toast(t(`Elige un número de ${def.min} a ${def.max}.`, `Choose a number from ${def.min} to ${def.max}.`), "error");
   $("#sp-card-send").disabled = true;
   try {
-    await invoke("soporte_tarjeta", { id: support.open.community, solicitud: support.open.id, ajuste: def.id, valor });
+    await invoke("soporte_tarjeta", { id: support.open.community, solicitud: support.open.id, ajuste: def.id, valor, instancia: def.instance ?? null });
     $("#sp-card-form").classList.add("hidden");
     if (!tauri) {
       support.messages.push({ id: `m${Date.now()}`, from: myUid(), name: state.social?.name ?? "Tú", text: "", at: Date.now(), kind: "tarjeta", card: { v: 1, op: `o${Date.now()}`, kind: "setting", setting: def.id, value: valor, scope: "launcher", official: support.open.community }, mine: true });
@@ -517,6 +548,7 @@ async function openSupportFromNotice({ community: cid, ticket: tid }) {
 
 // ---------- Eventos ----------
 function wireSupportEvents() {
+  listen("tarjetas-cambiadas", () => { if (support.open) refreshCardSettings().then(renderTicketMessages).catch(() => {}); });
   $("#cm-body").addEventListener("click", (event) => {
     const target = event.target.closest("button");
     if (!target || !target.closest("#cm-support")) return;

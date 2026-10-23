@@ -271,6 +271,7 @@ async fn connect(app: &AppHandle) {
             start_chat(app, &social);
             *app.state::<AppState>().social.favorites.lock().unwrap() = Some(crate::favoritos::start(app, social.database()));
             *app.state::<AppState>().social.support.lock().unwrap() = Some(crate::soporte::Watcher::start(app, social.database()));
+            crate::soporte::settle_pending(app,None);
             update_status(app, |s| s.connecting = false);
         }
         Err(error) => update_status(app, |s| {

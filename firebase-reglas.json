@@ -558,19 +558,34 @@
                 ".validate": "newData.val() === 'setting'"
               },
               "setting": {
-                ".validate": "newData.val() === \"launcher.message_sound\" || newData.val() === \"launcher.notifications\" || newData.val() === \"launcher.game_panel\" || newData.val() === \"launcher.school_mode\" || newData.val() === \"launcher.ram_gb\" || newData.val() === \"launcher.download_parallel\" || newData.val() === \"launcher.download_limit_mb\""
+                ".validate": "newData.val() === \"launcher.message_sound\" || newData.val() === \"launcher.notifications\" || newData.val() === \"launcher.game_panel\" || newData.val() === \"launcher.school_mode\" || newData.val() === \"launcher.ram_gb\" || newData.val() === \"launcher.download_parallel\" || newData.val() === \"launcher.download_limit_mb\" || newData.val() === \"minecraft.renderDistance\" || newData.val() === \"minecraft.simulationDistance\" || newData.val() === \"minecraft.graphics\" || newData.val() === \"minecraft.maxFps\" || newData.val() === \"minecraft.vsync\" || newData.val() === \"minecraft.fov\" || newData.val() === \"minecraft.guiScale\" || newData.val() === \"minecraft.particles\" || newData.val() === \"minecraft.entityShadows\" || newData.val() === \"minecraft.gamma\""
               },
               "value": {
-                ".validate": "((newData.parent().child('setting').val() === \"launcher.message_sound\" || newData.parent().child('setting').val() === \"launcher.notifications\" || newData.parent().child('setting').val() === \"launcher.game_panel\" || newData.parent().child('setting').val() === \"launcher.school_mode\") && newData.isBoolean()) || (newData.parent().child('setting').val() === 'launcher.ram_gb' && newData.isNumber() && newData.val() >= 1 && newData.val() <= 64 && newData.val() % 1 === 0) || (newData.parent().child('setting').val() === 'launcher.download_parallel' && newData.isNumber() && newData.val() >= 1 && newData.val() <= 3 && newData.val() % 1 === 0) || (newData.parent().child('setting').val() === 'launcher.download_limit_mb' && (newData.val() === 0 || newData.val() === 1 || newData.val() === 2 || newData.val() === 5 || newData.val() === 10 || newData.val() === 20))"
+                ".validate": "((newData.parent().child('setting').val() === \"launcher.message_sound\" || newData.parent().child('setting').val() === \"launcher.notifications\" || newData.parent().child('setting').val() === \"launcher.game_panel\" || newData.parent().child('setting').val() === \"launcher.school_mode\") && newData.isBoolean()) || (newData.parent().child('setting').val() === 'launcher.ram_gb' && newData.isNumber() && newData.val() >= 1 && newData.val() <= 64 && newData.val() % 1 === 0) || (newData.parent().child('setting').val() === 'launcher.download_parallel' && newData.isNumber() && newData.val() >= 1 && newData.val() <= 3 && newData.val() % 1 === 0) || (newData.parent().child('setting').val() === 'launcher.download_limit_mb' && (newData.val() === 0 || newData.val() === 1 || newData.val() === 2 || newData.val() === 5 || newData.val() === 10 || newData.val() === 20)) || ((newData.parent().child('setting').val() === 'minecraft.vsync' || newData.parent().child('setting').val() === 'minecraft.entityShadows') && newData.isBoolean()) || ((newData.parent().child('setting').val() === 'minecraft.renderDistance' || newData.parent().child('setting').val() === 'minecraft.simulationDistance') && newData.isNumber() && newData.val() >= 2 && newData.val() <= 32 && newData.val() % 1 === 0) || ((newData.parent().child('setting').val() === 'minecraft.graphics' || newData.parent().child('setting').val() === 'minecraft.particles') && newData.isNumber() && newData.val() >= 0 && newData.val() <= 2 && newData.val() % 1 === 0) || ((newData.parent().child('setting').val() === 'minecraft.maxFps') && newData.isNumber() && newData.val() >= 10 && newData.val() <= 260 && newData.val() % 1 === 0) || ((newData.parent().child('setting').val() === 'minecraft.fov') && newData.isNumber() && newData.val() >= 30 && newData.val() <= 110 && newData.val() % 1 === 0) || ((newData.parent().child('setting').val() === 'minecraft.guiScale') && newData.isNumber() && newData.val() >= 0 && newData.val() <= 8 && newData.val() % 1 === 0) || ((newData.parent().child('setting').val() === 'minecraft.gamma') && newData.isNumber() && newData.val() >= 0 && newData.val() <= 1)"
               },
               "scope": {
-                ".validate": "newData.val() === 'launcher'"
+                ".validate": "(newData.val() === 'launcher' && newData.parent().child('setting').val().matches(/^launcher[.]/) && !newData.parent().hasChild('target')) || (newData.val() === 'instancia' && newData.parent().child('setting').val().matches(/^minecraft[.]/) && newData.parent().hasChild('target'))"
               },
               "official": {
                 ".validate": "newData.val() === $cid"
               },
               "$other": {
                 ".validate": false
+              },
+              "target": {
+                ".validate": "newData.parent().child('scope').val() === 'instancia' && newData.hasChildren(['package', 'minecraft', 'contentHash'])",
+                "package": {
+                  ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 128"
+                },
+                "minecraft": {
+                  ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 40"
+                },
+                "contentHash": {
+                  ".validate": "newData.isString() && newData.val().matches(/^sha256:[0-9a-f]{64}$/)"
+                },
+                "$other": {
+                  ".validate": false
+                }
               }
             },
             "ack": {
@@ -579,7 +594,7 @@
                 ".validate": "newData.isString() && newData.val().matches(/^o[0-9a-z]{12}$/)"
               },
               "result": {
-                ".validate": "newData.val() === 'aplicada' || newData.val() === 'ya-estaba' || newData.val() === 'deshecha'"
+                ".validate": "newData.val() === 'aplicada' || newData.val() === 'ya-estaba' || newData.val() === 'deshecha' || newData.val() === 'pendiente' || newData.val() === 'conflicto'"
               },
               "$other": {
                 ".validate": false

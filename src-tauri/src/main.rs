@@ -8,6 +8,7 @@ mod identidad;
 use plataforma::{accesos, avisos};
 mod actividad;
 mod ajustes;
+mod ajustes_juego;
 mod amigos;
 mod arranque;
 mod canal;
@@ -30,6 +31,7 @@ mod descargas;
 mod download;
 mod favoritos;
 mod drive;
+mod drive_mundos;
 mod espejo;
 mod externos;
 mod firebase;
@@ -44,6 +46,8 @@ mod launch;
 mod loaders;
 mod modrinth;
 mod mojang;
+mod mundos;
+mod mundos_archivo;
 mod mrpack;
 mod nbt;
 mod opciones;
@@ -668,6 +672,7 @@ struct GameClosed {
 
 #[tauri::command]
 async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor: Option<String>) -> Result<u32, String> {
+    let _world_guard=mundos::starting(&app,"instancia",&id)?;
     let paths = state.paths.clone();
     let settings = state.settings.lock().unwrap().clone();
     if let Some(problem) = settings::validate_username(&settings.username) {
@@ -771,6 +776,11 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
             diagnostico::after_crash(&instance, &diagnostico::CrashContext { since_ms: started, exit_code: code, ram_gb, system_ram_gb: system_ram_gb() })
         });
         let code = if stopped { None } else if failed { Some(code.filter(|c| *c != 0).unwrap_or(1)) } else { code };
+        let after_close=app.clone();let closed_id=id.clone();
+        tauri::async_runtime::spawn(async move{
+            soporte::settle_pending_now(&after_close,Some(closed_id.clone())).await;
+            mundos::auto_backup(&after_close,"instancia",&closed_id);
+        });
         let _ = app.emit("juego-cerrado", GameClosed { id, code, reason, diagnosis });
     });
     Ok(pid)
@@ -876,6 +886,7 @@ async fn restaurar_respaldo(state: State<'_, AppState>, id: String, respaldo: St
 
 #[tauri::command]
 fn eliminar_instancia(state: State<AppState>, id: String) -> Result<(), String> {
+    if mundos::busy("instancia",&id){return Err(t!("Espera a que termine la copia o restauración del mundo.","Wait for the world backup or restore to finish."));}
     if state.games.lock().unwrap().contains_key(&id) {
         return Err(t!("Cierra el juego antes de eliminar la instancia.", "Close the game before deleting the instance."));
     }
@@ -907,6 +918,7 @@ fn activar_contenido(state: State<AppState>, id: String, tipo: String, archivo: 
 
 #[tauri::command]
 fn eliminar_contenido(state: State<AppState>, id: String, tipo: String, archivo: String) -> Result<(), String> {
+    if mundos::busy("instancia",&id){return Err(t!("Espera a que termine la copia o restauración del mundo.","Wait for the world backup or restore to finish."));}
     content::delete(&instance_or_error(&state, &id)?, &tipo, &archivo)
 }
 
@@ -2676,6 +2688,7 @@ async fn invitados_servidor(app: AppHandle, id: String, invitados: Vec<servidor:
 
 #[tauri::command]
 async fn eliminar_servidor(app: AppHandle, id: String) -> Result<(), String> {
+    if mundos::busy("servidor",&id){return Err(t!("Espera a que termine la operación de mundos.","Wait for the world operation to finish."));}
     hosting::delete_server(&app, &id).await
 }
 
@@ -4055,6 +4068,7 @@ fn main() {
             cuenta::create_tray(app.handle())?;
             cuenta::startup(app.handle());
             hosting::init(app.handle());
+            mundos::resume_startup(app.handle());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -4075,6 +4089,21 @@ fn main() {
                 return true;
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+            mundos::mundos_estado,
+            mundos::mundos_conectar,
+            mundos::mundos_desconectar,
+            mundos::mundos_locales,
+            mundos::mundos_configurar,
+            mundos::mundos_respaldar,
+            mundos::mundos_reanudar,
+            mundos::mundos_nube,
+            mundos::mundos_destinos,
+            mundos::mundos_exportar,
+            mundos::mundos_restaurar,
+            mundos::mundos_anteriores,
+            mundos::mundos_volver_anterior,
+            soporte::ajustes_juego_compartibles,
+            soporte::soporte_tarjeta_destinos,
             estado_inicial,
             guardar_ajustes,
             lista_descargas,

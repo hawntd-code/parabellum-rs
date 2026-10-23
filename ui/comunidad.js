@@ -392,7 +392,7 @@ function cmDialog({ title, subtitle = "", glyph = "community", wide = false, bod
       try {
         if (await handler()) finish(true);
       } catch (error) {
-        $("#cm-dialog-error").textContent = String(error);
+        $("#cm-dialog-error").innerHTML = window.errorRecovery.panel(error);
         $("#cm-dialog-error").classList.remove("hidden");
       } finally {
         button.disabled = false;

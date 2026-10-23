@@ -983,6 +983,7 @@ pub fn start_server(app: &AppHandle, id: &str) -> Result<(), String> {
     if host_state.running.lock().unwrap().contains_key(id) {
         return Ok(());
     }
+    let _world_guard=crate::mundos::starting(app,"servidor",id)?;
     let mut config = servidor::find(&state.paths, id).ok_or(missing())?;
     // e4mc y compañía abren su propia dirección (y e4mc 6.2 tumba los servidores de 26.2): fuera.
     let tunnel_mods = servidor::remove_tunnel_mods(&mut config);
@@ -1348,6 +1349,7 @@ fn on_exit(app: &AppHandle, id: &str, code: Option<i32>) {
             }
         }
         hosting(&app).auto_fixes.lock().unwrap().remove(&id);
+        crate::mundos::auto_backup(&app,"servidor",&id);
         emit(&app);
         retarget(&app).await;
         publish(&app, &id).await;

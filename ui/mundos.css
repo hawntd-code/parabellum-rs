@@ -1,0 +1,41 @@
+/* Continúa las superficies, tipografía y botones de Parabellum. */
+.wb-modal { width: min(780px, calc(100vw - 40px)); }
+.wb-modal .modal-body { padding: 0 24px 20px; }
+.wb-modal h3 { margin: 0 0 12px; font-size: 15px; }
+.wb-modal .faint { display: block; font-size: 12px; line-height: 1.6; }
+.wb-account, .wb-row, .wb-revision, .wb-toolbar, .wb-world, .wb-footer { display: flex; align-items: center; gap: 12px; }
+.wb-account { padding-top: 8px; flex-wrap: wrap; }
+.wb-account .grow, .wb-revision .grow, .wb-world .grow { min-width: 0; overflow-wrap: anywhere; }
+.wb-account b { font-size: 13px; }
+.wb-quota { width: 100%; height: 4px; margin: 14px 0 0; accent-color: var(--accent); }
+.wb-section { padding-top: 22px; }
+.wb-section + .wb-section { margin-top: 20px; border-top: 1px solid var(--border); }
+.wb-row, .wb-revision { padding: 15px 0; border-bottom: 1px solid var(--border); }
+.wb-row:last-child, .wb-revision:last-child { border-bottom: 0; }
+.wb-revision { align-items: flex-start; }
+.wb-revision b { font-size: 13px; }
+.wb-revision .cm-chip { margin: 0 0 6px 8px; }
+.wb-row-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.wb-world { width: 100%; background: transparent; color: var(--text); text-align: left; border: 0; border-bottom: 1px solid var(--border); padding: 17px 2px; cursor: pointer; }
+.wb-world:hover { background: var(--raised); }
+.wb-world > svg { color: var(--muted); width: 24px; height: 24px; flex: none; }
+.wb-world .cm-chip { flex: none; }
+.wb-notice { display: flex; gap: 12px; padding: 16px; border-radius: var(--r); background: var(--raised); margin: 12px 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.wb-notice > svg { width: 20px; height: 20px; flex: none; color: var(--warn); }
+.wb-notice b { display: block; color: var(--text); margin-bottom: 4px; }
+.wb-error { color: var(--warn); white-space: pre-line; line-height: 1.6; overflow-wrap: anywhere; }
+.wb-intro { padding: 14px 0; line-height: 1.65; }
+.wb-intro h3 { font-size: 20px; margin-bottom: 8px; }
+.wb-intro p { color: var(--muted); }
+.wb-intro .btn { margin-top: 12px; }
+.wb-empty { color: var(--muted); padding: 28px 0; line-height: 1.7; }
+.wb-footer { padding: 16px 24px; border-top: 1px solid var(--border); justify-content: space-between; }
+.wb-recipe { display: grid; grid-template-columns: 100px minmax(0,1fr); gap: 10px; margin: 22px 0; font-size: 13px; }
+.wb-recipe dt { color: var(--muted); }
+.wb-recipe dd { margin: 0; overflow-wrap: anywhere; }
+.wb-consent { font-size: 13px; align-items: flex-start; line-height: 1.6; margin-top: 20px; }
+.wb-consent input { margin-top: 4px; flex: none; }
+.wb-world:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.recovery-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.recovery-message { white-space: pre-line; overflow-wrap: anywhere; }
+@media (max-width: 680px) { .wb-revision { flex-wrap: wrap; } .wb-row-actions { width: 100%; justify-content: flex-start; } .wb-world { flex-wrap: wrap; } .wb-account { gap: 8px; } }
