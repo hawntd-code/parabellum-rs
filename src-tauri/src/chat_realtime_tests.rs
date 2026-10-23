@@ -53,7 +53,14 @@ async fn chat37_buzones_envio_idempotente_escritura_y_cliente_anterior() {
     social_a.start(); social_b.start(); chat_a.start(); chat_b.start();
     wait_for("listas sincronizadas",|| chat_a.synced() && chat_b.synced() && social_a.synced() && social_b.synced()).await;
     wait_for("buzones sin escuchas por amigo ni conversación",|| metrics::LISTENERS.load(Ordering::SeqCst) == 14).await;
+    let sse_only=std::env::var("PARABELLUM_FIREBASE_TRANSPORT").is_ok_and(|mode|mode=="sse");
+    if sse_only {
+        wait_for("referencia SSE: siete conexiones por usuario",|| metrics::SSE.load(Ordering::SeqCst)==14 && metrics::WEBSOCKETS.load(Ordering::SeqCst)==0 && metrics::OPEN.load(Ordering::SeqCst)==14).await;
+    } else {
+        wait_for("una conexión WebSocket por usuario",|| metrics::WEBSOCKETS.load(Ordering::SeqCst)==2 && metrics::SSE.load(Ordering::SeqCst)==0 && metrics::OPEN.load(Ordering::SeqCst)==2).await;
+    }
     println!("8 conversaciones y 1 amigo por usuario: 14 escuchas entre dos clientes (7 por cliente). Antes: 14 por cliente.");
+    println!("Transporte: {}",if sse_only {"SSE: 14 conexiones entre dos clientes"} else {"WebSocket: 2 conexiones entre dos clientes"});
     chat_b.open("g_test0").unwrap();
     wait_for("solo el chat abierto agrega 3 escuchas",|| metrics::LISTENERS.load(Ordering::SeqCst) == 17).await;
     let key = format!("{}aaaaaaa",db_a.server_now());
@@ -98,10 +105,29 @@ async fn chat37_buzones_envio_idempotente_escritura_y_cliente_anterior() {
         let next = page["cursor"].as_str().unwrap().to_string(); assert_ne!(cursor.as_ref(),Some(&next)); cursor=Some(next);
     }
     assert_eq!(photos.len(),3,"La galería recorre el historial sin perder ni repetir imágenes");
+    chat_b.open("g_test1").unwrap();
+    wait_for("historial limitado a los 150 más recientes",||received.lock().unwrap().len()==150).await;
+    let oldest=received.lock().unwrap()[0].id.clone();
+    let latest=format!("{}ddddddd",db_a.server_now());
+    chat_a.send_text_tracked("g_test1","Después del historial",None,Some(&latest)).await.unwrap();
+    wait_for("la ventana de mensajes avanza sin crecer",||{
+        let messages=received.lock().unwrap();
+        messages.len()==150 && messages.iter().any(|m|m.id==latest) && !messages.iter().any(|m|m.id==oldest)
+    }).await;
+    let watched=Arc::new(AtomicUsize::new(0));let count=watched.clone();
+    let watch=chat_b.watch("g_test1",move |messages|{count.store(messages.len(),Ordering::SeqCst);}).unwrap();
+    wait_for("chat del juego comparte los datos",||watched.load(Ordering::SeqCst)==150).await;
+    for _ in 0..5 {
+        chat_b.close();chat_b.open("g_test1").unwrap();
+        wait_for("reabrir con una escucha ya caliente conserva el primer evento",||received.lock().unwrap().len()==150).await;
+    }
+    drop(watch);chat_b.open("g_test0").unwrap();
+    wait_for("abrir de nuevo el chat vacío",||received.lock().unwrap().is_empty()).await;
     // Un miembro de una versión anterior sigue escribiendo solo las rutas canónicas.
     admin("chats/g_legacy", &json!({"members":{"A":true,"C":true},"meta":{"kind":"grupo","name":"Anterior","owner":"A","lastAt":1}})).await;
     admin("userChats/A/g_legacy", &json!(true)).await;
-    admin("friends/A/C", &json!(true)).await; admin("friends/C/A", &json!(true)).await;
+    // La amistad real crea ambos sentidos en la misma escritura; no expone una mitad sin permiso.
+    admin("friends", &json!({"A":{"B":true,"C":true},"B":{"A":true},"C":{"A":true}})).await;
     admin("presence/C", &json!({"name":"TestC","state":"online","updated":db_c.server_now()})).await;
     wait_for("respaldo para conversación y amigo anteriores",|| metrics::LISTENERS.load(Ordering::SeqCst) == 19).await;
     db_c.put("presence/C",&json!({"name":"TestC","state":"playing","pack":"Anterior","updated":crate::firebase::server_timestamp()})).await.unwrap();
@@ -114,6 +140,7 @@ async fn chat37_buzones_envio_idempotente_escritura_y_cliente_anterior() {
     chat_b.close(); chat_a.stop(); chat_b.stop();
     social_a.go_offline().await; social_b.go_offline().await;
     wait_for("cero escuchas al cerrar sesión",|| metrics::LISTENERS.load(Ordering::SeqCst)==0).await;
+    wait_for("cero conexiones al cerrar sesión",|| metrics::OPEN.load(Ordering::SeqCst)==0).await;
     // Las reglas anteriores no deben romper envíos ni presencia durante la actualización gradual.
     let mut old_rules = rules.clone();
     for branch in ["chatInbox","presenceInbox","typing"] { old_rules["rules"].as_object_mut().unwrap().remove(branch); }

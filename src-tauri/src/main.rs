@@ -3738,10 +3738,10 @@ abierto {seconds} s"));
             })
         }
         "--probar-tiempo-real" => {
-            // Cuánto tarda en llegar por la escucha algo que se acaba de escribir (con la sesión guardada).
+            // Solo una marca temporal en los leídos propios; se restaura aunque falle la medición.
             let config = config::Config::load(paths);
             let refresh = google::load_session(paths).ok_or("No hay sesión de Google guardada.")?;
-            let rounds: u32 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(5);
+            let rounds: u32 = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(5).clamp(1,50);
             tauri::async_runtime::block_on(async move {
                 let account = google::GoogleAccount::resume(&config, refresh).await?;
                 let token = account.id_token().await?;
@@ -3749,40 +3749,56 @@ abierto {seconds} s"));
                 let uid = session.uid.clone();
                 let db = Arc::new(firebase::Database::new(&config.firebase_database_url, session));
                 let path = format!("reads/{uid}/_latencia");
+                let before=db.get(&path).await.map_err(|e|e.to_string())?;
                 let seen: Arc<Mutex<Vec<(i64, std::time::Instant)>>> = Arc::default();
-                let log = seen.clone();
-                let _listener = db.listen(
+                let ready=Arc::new(std::sync::atomic::AtomicBool::new(false));
+                let (log,loaded)=(seen.clone(),ready.clone());
+                let started=std::time::Instant::now();
+                let listener = db.listen(
                     format!("reads/{uid}"),
                     move |data| {
+                        loaded.store(true,std::sync::atomic::Ordering::SeqCst);
                         if let Some(value) = data["_latencia"].as_i64() {
                             log.lock().unwrap().push((value, std::time::Instant::now()));
                         }
                     },
-                    |error| eprintln!("escucha: {error}"),
+                    |_| {},
                 );
-                tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-                let mut report = String::new();
-                for round in 1..=rounds as i64 {
-                    let sent = std::time::Instant::now();
-                    db.put(&path, &serde_json::json!(round)).await.map_err(|e| e.to_string())?;
-                    let wrote = sent.elapsed();
-                    let mut arrived = None;
-                    for _ in 0..1000 {
-                        if let Some((_, at)) = seen.lock().unwrap().iter().find(|(value, _)| *value == round) {
-                            arrived = Some(at.duration_since(sent));
-                            break;
-                        }
+                let measured=async {
+                    while !ready.load(std::sync::atomic::Ordering::SeqCst) {
+                        if started.elapsed()>std::time::Duration::from_secs(12) { return Err("La escucha no se sincronizó en 12 s.".to_string()); }
                         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                     }
-                    report += &format!(
-                        "{round}: escribir {} ms · llegar por la escucha {}\n",
-                        wrote.as_millis(),
-                        arrived.map(|d| format!("{} ms", d.as_millis())).unwrap_or_else(|| "NO LLEGÓ en 10 s".into())
-                    );
-                    tokio::time::sleep(std::time::Duration::from_millis(700)).await;
+                    let mut report=format!("Sincronizar una escucha: {} ms\nMétricas (escuchas,abiertas,conexiones,eventos,bytes,peticiones,bytes): {}\nTransporte (websockets,sse,entradas_respaldo): {}\n",started.elapsed().as_millis(),firebase::metrics::line(),firebase::metrics::transport());
+                    let marker=db.server_now();
+                    for round in 1..=rounds as i64 {
+                        let sent = std::time::Instant::now();
+                        let value=marker+round;
+                        db.put(&path, &serde_json::json!(value)).await.map_err(|e| e.to_string())?;
+                        let wrote = sent.elapsed();
+                        let mut arrived = None;
+                        for _ in 0..1000 {
+                            if let Some((_, at)) = seen.lock().unwrap().iter().find(|(found, _)| *found == value) {
+                                arrived = Some(at.duration_since(sent)); break;
+                            }
+                            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                        }
+                        report += &format!("{round}: escribir {} ms · llegar por la escucha {}\n",wrote.as_millis(),arrived.map(|d| format!("{} ms", d.as_millis())).unwrap_or_else(|| "NO LLEGÓ en 10 s".into()));
+                        if arrived.is_none() {return Err(report);}
+                        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                    }
+                    Ok::<String,String>(report)
+                }.await;
+                let restored=if before.is_null() {db.delete(&path).await} else {db.put(&path,&before).await.map(|_|())};
+                drop(listener);
+                for _ in 0..200 {
+                    if firebase::metrics::OPEN.load(std::sync::atomic::Ordering::SeqCst)==0 {break;}
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                 }
-                let _ = db.delete(&path).await;
-                Ok::<String, String>(report)
+                restored.map_err(|_|"No se pudo restaurar la marca temporal de la prueba.".to_string())?;
+                let mut report=measured?;
+                report+=&format!("Marca temporal restaurada. Conexiones de escucha al terminar: {}",firebase::metrics::OPEN.load(std::sync::atomic::Ordering::SeqCst));
+                Ok(report)
             })
         }
         "--playit" => {

@@ -28,7 +28,7 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   perfiles y galería con navegación, además del asistente de CurseForge de la 0.36.2.
   El ligero ya está subido y CurseForge está probado en la escuela; falta medir el tiempo del ligero.
   Mac pasó las pruebas automáticas; quedan sus pruebas visuales del portal de CurseForge y del chat.
-  Sigue la 0.38.0 (WebSocket con respaldo SSE), todavía sin iniciar.
+  La 0.38.0 (WebSocket con respaldo SSE) está en desarrollo; primero irá al canal de pruebas.
 
 - Última revisión de los PR de Mac en Windows: 2026-10-20, PR #1 a #17 (todos mezclados).
 - **Publicado en Drive:** Windows **0.37.0**, confirmada por Juan el 2026-10-23;
@@ -506,6 +506,23 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   en Mac) y un vigía de la carpeta de capturas.
 
 ## Cambios de Windows
+
+### 2026-10-23 · 0.38.0: WebSocket compartido con respaldo SSE
+
+- `firebase_ws.rs` agrupa las escuchas de cada `Database` en un socket. Conserva `Database::listen`,
+  deduplica consultas idénticas y separa las consultas filtradas por etiquetas. Reconecta, reconstruye
+  suscripciones, renueva el token dentro del canal y vuelve automáticamente a SSE si hace falta.
+  Una generación por transporte evita que eventos tardíos del anterior reemplacen los nuevos.
+- Las peticiones puntuales conservan REST y sus respuestas atómicas. No hay cambios de datos ni
+  reglas nuevas. `firebase.csv` conserva sus columnas; `firebase-transporte.csv` distingue WebSocket,
+  SSE y las entradas en el respaldo. `PARABELLUM_FIREBASE_TRANSPORT=sse` permite comparar el modo anterior.
+- El chat reserva su conversación abierta antes de suscribirse, porque los datos de una escucha
+  compartida pueden llegar al instante desde caché. `--probar-tiempo-real` informa la sincronización
+  y el transporte; restaura la marca temporal propia y no manda mensajes a otras personas.
+- Pruebas y resultados se registran en [0.38.0-firebase.md](0.38.0-firebase.md).
+- **Mac:** no cambia el contrato de plataforma. Compilar y probar conexión, suspensión/reanudación,
+  cierre de sesión y respaldo en una red que bloquee WebSocket. Comparar los contadores; primero
+  publicar en el canal de pruebas. La versión estable de Windows sigue siendo la 0.37.0.
 
 ### 2026-10-23 · 0.37.0: escuchas, perfiles y galería del chat
 

@@ -779,6 +779,7 @@ pub fn startup(app: &AppHandle) {
         tauri::async_runtime::spawn(async move {
             let started = std::time::Instant::now();
             let path = app.state::<AppState>().paths.logs.join("firebase.csv");
+            let transport_path = app.state::<AppState>().paths.logs.join("firebase-transporte.csv");
             let _ = std::fs::create_dir_all(path.parent().unwrap());
             let write = |line: String| {
                 use std::io::Write as _;
@@ -788,6 +789,11 @@ pub fn startup(app: &AppHandle) {
                         let _ = writeln!(file, "hora,segundos,amigos,conversaciones,escuchas,abiertas,conexiones,eventos,bytes_escuchas,peticiones,bytes_peticiones,nota");
                     }
                     let _ = writeln!(file, "{line}");
+                }
+                let new = !transport_path.exists();
+                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&transport_path) {
+                    if new { let _ = writeln!(file, "hora,websockets,sse,entradas_respaldo"); }
+                    let _ = writeln!(file, "{},{}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"), crate::firebase::metrics::transport());
                 }
             };
             let row = |note: &str| {

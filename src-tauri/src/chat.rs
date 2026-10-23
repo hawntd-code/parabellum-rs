@@ -112,6 +112,7 @@ struct Inner {
     asked_names: HashSet<String>,
     /// La conversación abierta en la ventana, sus mensajes y sus reacciones.
     open: Option<Open>,
+    open_id: Option<String>,
     messages: Value,
     reactions: Value,
     /// Último mensaje conocido de cada chat (para avisar solo de lo nuevo).
@@ -119,7 +120,6 @@ struct Inner {
 }
 
 struct Open {
-    id: String,
     _messages: Listener,
     _reactions: Listener,
     _typing: Listener,
@@ -278,6 +278,7 @@ impl Chat {
         let mut inner = self.inner.lock().unwrap();
         inner.chat_listeners.clear();
         inner.open = None;
+        inner.open_id = None;
     }
 
     fn update_chat_ids(self: &Arc<Self>, data: &Value) {
@@ -479,7 +480,7 @@ impl Chat {
     }
 
     pub fn open_chat(&self) -> Option<String> {
-        self.inner.lock().unwrap().open.as_ref().map(|o| o.id.clone())
+        self.inner.lock().unwrap().open_id.clone()
     }
 
     // ================= Conversación abierta
@@ -491,6 +492,15 @@ impl Chat {
             self.emit_messages();
             return Ok(());
         }
+        // Con una escucha compartida el primer dato puede estar en caché y llegar al momento.
+        // Publica primero la conversación de destino para no perder ese primer evento.
+        {
+            let mut inner=self.inner.lock().unwrap();
+            inner.open=None;
+            inner.open_id=Some(id.clone());
+            inner.messages=Value::Null;
+            inner.reactions=Value::Null;
+        }
         let listen = |path: String, reactions: bool| {
             let weak = Arc::downgrade(self);
             let chat_id = id.clone();
@@ -500,7 +510,7 @@ impl Chat {
                     if let Some(chat) = weak.upgrade() {
                         {
                             let mut inner = chat.inner.lock().unwrap();
-                            if inner.open.as_ref().is_some_and(|o| o.id == chat_id) {
+                            if inner.open_id.as_deref()==Some(chat_id.as_str()) {
                                 if reactions {
                                     inner.reactions = data;
                                 } else {
@@ -520,12 +530,12 @@ impl Chat {
                 if chat.open_chat().as_deref() == Some(&typing_id) { (chat.typing_changed)(typing_id.clone(), data); }
             }
         }, |_| {});
-        let open = Open { _messages: listen("messages".into(), false), _reactions: listen("reactions".into(), true), _typing: typing, id: id.clone() };
+        let open = Open { _messages: listen("messages".into(), false), _reactions: listen("reactions".into(), true), _typing: typing };
         let mut inner = self.inner.lock().unwrap();
-        inner.messages = Value::Null;
-        inner.reactions = Value::Null;
+        if inner.open_id.as_deref()!=Some(id.as_str()) { return Ok(()); }
         inner.open = Some(open);
         drop(inner);
+        self.emit_messages();
         let (chat, id) = (self.clone(), id.clone());
         tauri::async_runtime::spawn(async move {
             if let Ok(data) = chat.db.get(&format!("chats/{id}")).await { chat.update_chat(&id, data); }
@@ -536,6 +546,7 @@ impl Chat {
     pub fn close(&self) {
         let mut inner = self.inner.lock().unwrap();
         inner.open = None;
+        inner.open_id = None;
         inner.messages = Value::Null;
         inner.reactions = Value::Null;
     }
@@ -596,8 +607,8 @@ impl Chat {
     fn emit_messages(&self) {
         let (id, list) = {
             let inner = self.inner.lock().unwrap();
-            let Some(open) = &inner.open else { return };
-            (open.id.clone(), self.parse_messages(&inner.messages, &inner.reactions, &inner.names))
+            let Some(id) = &inner.open_id else { return };
+            (id.clone(), self.parse_messages(&inner.messages, &inner.reactions, &inner.names))
         };
         (self.messages)(id, list);
     }
@@ -811,7 +822,7 @@ impl Chat {
     async fn recent(&self, id: &str) -> Value {
         {
             let inner = self.inner.lock().unwrap();
-            if inner.open.as_ref().is_some_and(|o| o.id == id) {
+            if inner.open_id.as_deref()==Some(id) {
                 return inner.messages.clone();
             }
         }
@@ -890,7 +901,7 @@ impl Chat {
         }
         let reacted = {
             let inner = self.inner.lock().unwrap();
-            inner.open.as_ref().is_none_or(|o| o.id != id) || inner.reactions.get(message).is_some_and(|r| r.is_object())
+            inner.open_id.as_deref()!=Some(id) || inner.reactions.get(message).is_some_and(|r| r.is_object())
         };
         if reacted {
             update.insert(format!("reactions/{id}/{message}"), Value::Null);

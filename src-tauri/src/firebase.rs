@@ -1,10 +1,13 @@
 //! Firebase: la sesión sale del token de Google que ya tiene Parabellum (no hay que iniciar sesión dos
-//! veces) y la Realtime Database se usa por su API REST, con escucha en tiempo real (Server-Sent
-//! Events) que se vuelve a conectar sola si se corta o caduca el token.
+//! veces). Las escuchas comparten WebSocket y vuelven a SSE si hace falta. Las peticiones puntuales
+//! conservan REST para mantener las respuestas y las escrituras atómicas existentes.
 
 use serde_json::{Map, Value};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+#[path = "firebase_ws.rs"]
+mod websocket;
 
 /// Cuánto se usa Firebase, para medirlo antes de cambiar cómo se conecta (mejora 5 de
 /// docs/plan-diciembre.md). Ver `metrics` y `cuenta::startup`, que lo anota cada minuto.
@@ -17,6 +20,14 @@ pub mod metrics {
     pub static OPEN: AtomicU64 = AtomicU64::new(0);
     /// Conexiones abiertas desde que arrancó (las de más son reconexiones).
     pub static CONNECTS: AtomicU64 = AtomicU64::new(0);
+    pub static WEBSOCKETS: AtomicU64 = AtomicU64::new(0);
+    pub static SSE: AtomicU64 = AtomicU64::new(0);
+    pub static FALLBACKS: AtomicU64 = AtomicU64::new(0);
+
+    /// Detalle del transporte, aparte del CSV anterior para conservar sus columnas.
+    pub fn transport() -> String {
+        format!("{},{},{}", WEBSOCKETS.load(Ordering::Relaxed), SSE.load(Ordering::Relaxed), FALLBACKS.load(Ordering::Relaxed))
+    }
     /// Cambios que llegaron (put/patch) y bytes de las escuchas.
     pub static EVENTS: AtomicU64 = AtomicU64::new(0);
     pub static STREAM_BYTES: AtomicU64 = AtomicU64::new(0);
@@ -86,6 +97,8 @@ pub struct Session {
     /// Identificador estable de la cuenta (uno por cuenta de Google).
     pub uid: String,
     token: tokio::sync::Mutex<Token>,
+    #[cfg(test)]
+    refresh_url: Option<String>,
 }
 
 impl Session {
@@ -94,7 +107,7 @@ impl Session {
         use base64::Engine;
         let b64 = |value: Value| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(value.to_string());
         let id = format!("{}.{}.", b64(serde_json::json!({"alg":"none","typ":"JWT"})), b64(serde_json::json!({"sub":uid,"user_id":uid,"uid":uid,"iat":1700000000,"exp":4102444800i64,"aud":namespace,"iss":format!("https://securetoken.google.com/{namespace}"),"firebase":{"sign_in_provider":"custom","identities":{}}})));
-        Self { api_key:String::new(), uid:uid.into(), token:tokio::sync::Mutex::new(Token {id,refresh:String::new(),expires:Instant::now()+Duration::from_secs(3600)}) }
+        Self { api_key:String::new(), uid:uid.into(), token:tokio::sync::Mutex::new(Token {id,refresh:String::new(),expires:Instant::now()+Duration::from_secs(3600)}),refresh_url:None }
     }
 
     pub async fn sign_in_with_google(api_key: &str, google_id_token: &str) -> Result<Self, String> {
@@ -118,6 +131,8 @@ impl Session {
         let text = |key: &str| json[key].as_str().map(String::from).ok_or_else(|| explain(None));
         let seconds = json["expiresIn"].as_str().and_then(|s| s.parse::<u64>().ok()).unwrap_or(3600);
         Ok(Self {
+            #[cfg(test)]
+            refresh_url: None,
             api_key: api_key.to_string(),
             uid: text("localId")?,
             token: tokio::sync::Mutex::new(Token {
@@ -127,6 +142,8 @@ impl Session {
             }),
         })
     }
+
+    async fn invalidate(&self) { self.token.lock().await.expires = Instant::now(); }
 
     /// Hasta cuándo sirve el token que se tiene ahora (después, `token()` pide otro).
     pub async fn valid_until(&self) -> Instant {
@@ -139,8 +156,11 @@ impl Session {
         if Instant::now() < token.expires {
             return Ok(token.id.clone());
         }
+        let refresh_url=format!("{REFRESH_URL}{}", self.api_key);
+        #[cfg(test)]
+        let refresh_url=self.refresh_url.clone().unwrap_or(refresh_url);
         let response = http()
-            .post(format!("{REFRESH_URL}{}", self.api_key))
+            .post(refresh_url)
             .form(&[("grant_type", "refresh_token"), ("refresh_token", token.refresh.as_str())])
             .send()
             .await
@@ -196,11 +216,15 @@ pub struct Database {
     /// Diferencia entre el reloj del servidor y el de este PC (ms). Los relojes de los PC pueden ir
     /// minutos adelantados o atrasados: lo que se ordena por hora usa la del servidor.
     server_offset_ms: std::sync::atomic::AtomicI64,
+    websocket: std::sync::OnceLock<Arc<websocket::Hub>>,
+    timing: websocket::Timing,
+    sse_only: bool,
 }
 
 impl Database {
     pub fn new(url: &str, session: Session) -> Self {
-        Self { url: url.trim_end_matches('/').to_string(), session, server_offset_ms: Default::default() }
+        Self { url: url.trim_end_matches('/').to_string(), session, server_offset_ms: Default::default(), websocket:Default::default(), timing:Default::default(),
+            sse_only:std::env::var("PARABELLUM_FIREBASE_TRANSPORT").is_ok_and(|mode|mode.eq_ignore_ascii_case("sse")) }
     }
 
     pub fn set_server_offset(&self, offset_ms: i64) {
@@ -270,26 +294,53 @@ impl Database {
     ) -> Listener {
         let db = self.clone();
         metrics::add(&metrics::LISTENERS, 1);
-        let task = tauri::async_runtime::spawn(async move {
-            let mut delay = Duration::from_secs(1);
-            loop {
-                let mut data = Value::Null;
-                match db.stream(&path, &mut data, &on_change).await {
-                    // Terminó bien (token por caducar, conexión muda o el servidor la cerró): se
-                    // vuelve a conectar enseguida, sin esperas que dejen la lista desactualizada.
-                    Ok(()) => {
-                        delay = Duration::from_secs(1);
-                        tokio::time::sleep(Duration::from_millis(200)).await;
-                    }
-                    Err(error) => {
-                        on_error(error);
-                        tokio::time::sleep(delay).await;
-                        delay = (delay * 2).min(Duration::from_secs(20));
+        let spec = if self.sse_only { None } else { websocket::Spec::parse(&path) };
+        if let Some(spec) = spec {
+            let hub = self.websocket.get_or_init(||websocket::Hub::new(Arc::downgrade(self), &self.url, self.timing.clone()));
+            let (tx,mut rx) = tokio::sync::mpsc::unbounded_channel();
+            let registration=hub.register(spec,tx.clone());
+            let task=tauri::async_runtime::spawn(async move {
+                let mut sse: Option<Listener>=None;
+                let mut generation=0;
+                let mut previous: Option<Value>=None;
+                while let Some(notice)=rx.recv().await {
+                    match notice {
+                        websocket::Notice::Mode {generation:next,sse:use_sse}=>{
+                            generation=next;
+                            sse=None;
+                            if use_sse {
+                                let (db,path,data_tx,error_tx)=(db.clone(),path.clone(),tx.clone(),tx.clone());
+                                sse=Some(Listener::task(tauri::async_runtime::spawn(async move {
+                                    db.run_sse(&path,move |value|{let _=data_tx.send(websocket::Notice::Data {generation:next,value});},
+                                        move |error|{let _=error_tx.send(websocket::Notice::Error {generation:next,error});}).await;
+                                })));
+                            }
+                        },
+                        websocket::Notice::Data {generation:source,value} if source==generation=>{
+                            if previous.as_ref()!=Some(&value) { previous=Some(value.clone()); on_change(value); }
+                        },
+                        websocket::Notice::Error {generation:source,error} if source==generation=>on_error(error),
+                        _=>{},
                     }
                 }
+                drop(sse);
+            });
+            Listener {task,counted:true,subscription:Some(registration)}
+        } else {
+            let task=tauri::async_runtime::spawn(async move {db.run_sse(&path,on_change,on_error).await;});
+            Listener {task,counted:true,subscription:None}
+        }
+    }
+
+    async fn run_sse(&self,path:&str,on_change:impl Fn(Value)+Send+Sync,on_error:impl Fn(String)+Send+Sync) {
+        let mut delay=Duration::from_secs(1);
+        loop {
+            let mut data=Value::Null;
+            match self.stream(path,&mut data,&on_change).await {
+                Ok(())=>{delay=Duration::from_secs(1);tokio::time::sleep(Duration::from_millis(200)).await;},
+                Err(error)=>{on_error(error);tokio::time::sleep(delay).await;delay=(delay*2).min(Duration::from_secs(20));},
             }
-        });
-        Listener { task, counted: true }
+        }
     }
 
     async fn stream(&self, path: &str, data: &mut Value, on_change: &(impl Fn(Value) + Send + Sync)) -> Result<(), String> {
@@ -313,16 +364,7 @@ impl Database {
         if !response.status().is_success() {
             return Err(status_message(response.status()));
         }
-        metrics::add(&metrics::CONNECTS, 1);
-        metrics::add(&metrics::OPEN, 1);
-        // Al salir (por donde sea) deja de contar como abierta.
-        struct Open;
-        impl Drop for Open {
-            fn drop(&mut self) {
-                metrics::sub(&metrics::OPEN);
-            }
-        }
-        let _open = Open;
+        let _open = OpenConnection::new(false);
         let mut response = response;
         // Bytes y no texto: una letra con tilde o un emoji puede quedar partida entre dos trozos.
         let mut buffer: Vec<u8> = Vec::new();
@@ -373,22 +415,37 @@ fn status_message(status: reqwest::StatusCode) -> String {
     }
 }
 
+/// Cuenta el socket físico, incluso al cancelar una conexión o cambiar de transporte.
+struct OpenConnection { websocket:bool }
+impl OpenConnection {
+    fn new(websocket:bool) -> Self {
+        metrics::add(&metrics::CONNECTS,1); metrics::add(&metrics::OPEN,1);
+        metrics::add(if websocket {&metrics::WEBSOCKETS} else {&metrics::SSE},1);
+        Self {websocket}
+    }
+}
+impl Drop for OpenConnection {
+    fn drop(&mut self) { metrics::sub(&metrics::OPEN); metrics::sub(if self.websocket {&metrics::WEBSOCKETS} else {&metrics::SSE}); }
+}
+
 /// Una escucha activa; se detiene al soltarla.
 pub struct Listener {
     task: tauri::async_runtime::JoinHandle<()>,
     /// Es una escucha de Firebase (cuenta en metrics::LISTENERS); si no, otra tarea que se para igual.
     counted: bool,
+    subscription: Option<websocket::Registration>,
 }
 
 impl Listener {
     /// Una tarea cualquiera que se detiene al soltarla (no es una escucha de Firebase).
     pub fn task(task: tauri::async_runtime::JoinHandle<()>) -> Self {
-        Self { task, counted: false }
+        Self { task, counted: false, subscription:None }
     }
 }
 
 impl Drop for Listener {
     fn drop(&mut self) {
+        self.subscription.take();
         self.task.abort();
         if self.counted {
             metrics::sub(&metrics::LISTENERS);

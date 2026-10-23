@@ -216,8 +216,10 @@ La cola del soporte (`soporte_escuchar_cola`) solo empieza cuando se abre la pá
   cliente frente a las 14 anteriores. Abrir una conversación agrega tres (mensajes, reacciones y
   escritura). Sigue siendo SSE; la conexión única corresponde al paso 2.
 
-**Paso 2, el protocolo de WebSocket de Firebase:** el que usan los SDK oficiales. Es un solo
-`wss://<base>/.ws?v=5&ns=<ns>` por persona y, por dentro, todas las escuchas (`q`) y escrituras (`p`, `m`):
+**Paso 2, el protocolo de WebSocket de Firebase (0.38.0, en desarrollo):** el que usan los SDK
+oficiales. Un `wss://<base>/.ws?v=5&ns=<ns>` por persona para las escuchas. Las peticiones puntuales
+conservan REST para mantener sus respuestas exactas y las actualizaciones atómicas, incluidas rutas
+que se pueden escribir pero no leer. Ver [0.38.0-firebase.md](0.38.0-firebase.md).
 - **Módulo nuevo `firebase_ws.rs`:**
   - el saludo (`h`) y la redirección de host;
   - `auth` con el token, que se renueva antes de vencer;
@@ -438,7 +440,7 @@ instancia, que viven en `options.txt`.
 | **0.36.1** | CurseForge como fuente predeterminada; conserva la elección previa de Modrinth | — | Publicada en Drive y ligero subido (2026-10-22); queda medir e instalar desde una carpeta nueva |
 | **0.36.2** | Asistente con el portal oficial de CurseForge, recepción verificada y continuación de pendientes; probado por Juan | — | GitHub publicado; incluida en la 0.37.0 de Drive |
 | **0.37.0** | 3, paso 1, perfiles, escritura y galería; publicada en Drive y GitHub | `chatInbox`, `presenceInbox`, `typing`, `users/$uid/streamVersion` | Publicación y reglas funcionando confirmadas por Juan el 2026-10-23 |
-| **0.38.0** | 3, paso 2 (WebSocket con respaldo SSE), primero en el canal de pruebas | — | Probarlo en la escuela |
+| **0.38.0** | 3, paso 2 (WebSocket compartido, renovación y respaldo SSE), en desarrollo; primero en el canal de pruebas | — | Probarlo en la escuela |
 | **0.39.0** | 4 (errores con acción y la O después de F2) | — | — |
 | **0.40.0 – 0.41.0** | E4 (mundos en Drive), en el canal de pruebas y después estable | — | Agregar `drive.file` en Google Cloud |
 | **0.42.0** | E5 (tarjetas de Minecraft) | Lista de ajustes del juego | Publicar las reglas |
