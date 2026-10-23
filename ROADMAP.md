@@ -172,7 +172,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     de Fabric (`remoteBase`) bajan de maven.fabricmc.net, que pasa el filtro de la escuela, y el ligero ya
     no lleva ningún jar: 0.11 MB contra 4.05 MB. Va en `liteZip` para que la 0.35.0 siga con el completo
     (lo instalaría sin el loader). Probado con el exe de la 0.35.0 publicado.
-  - [ ] *Prueba:* Juan: publicar la 0.36.0 en Drive, volver a publicar el paquete oficial y medir cuánto tarda en
+  - [ ] *Prueba:* Juan: publicar la 0.36.1 en Drive, volver a publicar el paquete oficial y medir cuánto tarda en
     empezar el ligero desde Drive (antes, de 13 a 15 s).
   - [ ] *Prueba:* Juan: pulsar «Jugar» en otra PC (o en una carpeta nueva) con el paquete ya publicado con
     la 0.35.0 (hecho el 2026-10-21).
@@ -181,6 +181,8 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     importar el `.zip` con `manifest.json`, loader y overrides. El puente público en Cloud Run guarda
     la clave; los archivos bajan directo del CDN con SHA-1. Lo restringido se descarga a mano desde su
     página. Las actualizaciones automáticas de contenido de CurseForge quedan para otra versión.
+  - [x] **0.36.1, CurseForge predeterminado:** Explorar usa CurseForge si no hay una elección guardada;
+    conserva la preferencia por Modrinth y los data packs siguen usando Modrinth.
   - [ ] *Prueba real:* CurseForge desde la red de la escuela.
   - [ ] **0.37.0 y 0.38.0:** una sola conexión a Firebase por persona (menos escuchas, y después el
     WebSocket de Firebase con respaldo SSE);

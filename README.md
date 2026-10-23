@@ -63,7 +63,7 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td align="center" valign="top">
 <br>
-<a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.36.0/Parabellum-0.36.0.zip"><img alt="Descargar Parabellum 0.36.0 para Windows" src="https://img.shields.io/badge/Descargar-v0.36.0-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
+<a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.36.1/Parabellum-0.36.1.zip"><img alt="Descargar Parabellum 0.36.1 para Windows" src="https://img.shields.io/badge/Descargar-v0.36.1-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
 <br><br>
 <sub>Windows 10 u 11 de 64 bits · zip de 10.2 MB · 22 oct 2026</sub>
 <br><br>
@@ -79,13 +79,14 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td valign="top">
 
-**Lo nuevo en la 0.36.0**
+**Lo nuevo en la 0.36.1**
 
+- **CurseForge predeterminado:** Explorar empieza en CurseForge si todavía no elegiste una fuente. Si elegiste Modrinth, se conserva.
 - **CurseForge junto a Modrinth:** elige dónde buscar e instala con las dependencias compatibles.
 - **Modpacks de CurseForge:** importa su .zip o instálalos desde Explorar. Si un autor exige descargar a mano, Parabellum te lleva a su página.
 - **El paquete ligero sin los jars de Fabric:** incluye la mejora de la 0.35.1 para reducir la espera de Drive.
 
-<sub>[Notas completas](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.36.0)</sub>
+<sub>[Notas completas](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.36.1)</sub>
 
 </td>
 <td valign="top">

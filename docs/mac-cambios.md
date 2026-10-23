@@ -23,7 +23,8 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
-- **0.36.0:** integración compartida de CurseForge, puente ya desplegado en Cloud Run e inclusión de
+- **0.36.1:** CurseForge es la fuente predeterminada al explorar sin una elección guardada. Incluye la
+  integración compartida de CurseForge, puente ya desplegado en Cloud Run e inclusión de
   las mejoras de la 0.35.1. Entrega de Windows en GitHub; la publicación de Drive sigue siendo un paso
   aparte. Mac debe compilar y probar lo descrito en la entrada del 2026-10-22 antes de publicar.
 
@@ -480,6 +481,14 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   en Mac) y un vigía de la carpeta de capturas.
 
 ## Cambios de Windows
+
+### 2026-10-22 · 0.36.1: CurseForge como fuente predeterminada
+
+- Explorar empieza en CurseForge cuando no hay una fuente guardada o no se puede leer el
+  almacenamiento local. Se respeta la elección previa de Modrinth. Los data packs siguen en Modrinth.
+- Verificado en Windows: sintaxis de JavaScript, ocho casos de fuente y preferencias, compilación
+  de distribución y arranque del ejecutable instalado. El zip contiene el mismo exe compilado.
+- **Mac:** nada específico; el cambio compartido se incluye al volver a compilar.
 
 ### 2026-10-22 · 0.36.0: CurseForge junto a Modrinth
 

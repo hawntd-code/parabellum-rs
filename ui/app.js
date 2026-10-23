@@ -5379,12 +5379,12 @@ function modLoadersFor(instance) {
 
 const exploreTarget = () => state.instances.find((i) => i.id === state.explore.target) ?? null;
 
-/** Dónde se buscó la última vez en este PC. */
+/** Fuente guardada en este PC; CurseForge es la predeterminada. */
 function savedSource() {
   try {
-    return localStorage.getItem("parabellum-fuente") === "curseforge" ? "curseforge" : "modrinth";
+    return localStorage.getItem("parabellum-fuente") === "modrinth" ? "modrinth" : "curseforge";
   } catch {
-    return "modrinth";
+    return "curseforge";
   }
 }
 

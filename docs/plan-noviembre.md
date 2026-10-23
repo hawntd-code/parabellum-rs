@@ -416,6 +416,7 @@ instancia, que viven en `options.txt`.
 |---|---|---|---|
 | **0.35.0** | 1a (reintentos, pedir antes, «revisando»), 1b (mods del CDN de Modrinth) y 2 (avisos de soporte) | `supportNotify` | Publicar las reglas; volver a publicar el paquete oficial (elegir antes cuál es el bueno) |
 | **0.36.0** | CurseForge: búsqueda, instalar con dependencias e importar modpacks; incluye la 0.35.1 | — | Publicar en Drive y volver a publicar el paquete oficial |
+| **0.36.1** | CurseForge como fuente predeterminada; conserva la elección previa de Modrinth | — | Publicar esta corrección en Drive junto con el paquete oficial actualizado |
 | **0.37.0** | 3, paso 1 (`userChats` y buzón de presencia) | `userChats`, `presenceInbox` | Publicar las reglas |
 | **0.38.0** | 3, paso 2 (WebSocket con respaldo SSE), primero en el canal de pruebas | — | Probarlo en la escuela |
 | **0.39.0** | 4 (errores con acción y la O después de F2) | — | — |
