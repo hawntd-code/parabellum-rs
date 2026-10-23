@@ -23,6 +23,11 @@ la importación de modpacks `.zip`, la búsqueda y la instalación con dependenc
 permiten descargas externas llevan a su página. Actualizar automáticamente ese contenido queda para
 otra versión. El detalle técnico y la prueba reproducible están en [desarrollo.md](desarrollo.md).
 
+**Confirmación de Juan (2026-10-22):** CurseForge funciona correctamente desde la red de la escuela
+tras sus pruebas. La **0.36.1 ya está publicada en Drive** y el **modpack ligero ya está subido**.
+Queda medir el tiempo de descarga del nuevo ligero y probar su instalación desde una carpeta nueva.
+La siguiente implementación sigue siendo la **0.37.0**, reducir las escuchas de Firebase.
+
 Cada versión pasa la lista de la sección 10.1 de plan-diciembre.md. Si una versión necesita reglas de Firebase
 nuevas, Juan las publica antes.
 
@@ -118,8 +123,8 @@ sigue publicando.
   zip;
 - el `delta_update` con un mod cambiado.
 
-**Juan:** volver a publicar el paquete oficial con la versión que lo incluya, y elegir antes cuál es el bueno
-(lo de `ForgeConfigAPIPort` y el shader).
+**Juan:** el paquete ligero ya está subido (confirmado el 2026-10-22). Queda medir la descarga y
+comprobar la instalación desde una carpeta nueva.
 
 ---
 
@@ -415,8 +420,8 @@ instancia, que viven en `options.txt`.
 | Versión | Qué | Reglas nuevas | Juan |
 |---|---|---|---|
 | **0.35.0** | 1a (reintentos, pedir antes, «revisando»), 1b (mods del CDN de Modrinth) y 2 (avisos de soporte) | `supportNotify` | Publicar las reglas; volver a publicar el paquete oficial (elegir antes cuál es el bueno) |
-| **0.36.0** | CurseForge: búsqueda, instalar con dependencias e importar modpacks; incluye la 0.35.1 | — | Publicar en Drive y volver a publicar el paquete oficial |
-| **0.36.1** | CurseForge como fuente predeterminada; conserva la elección previa de Modrinth | — | Publicar esta corrección en Drive junto con el paquete oficial actualizado |
+| **0.36.0** | CurseForge: búsqueda, instalar con dependencias e importar modpacks; incluye la 0.35.1 | — | Incluida en la 0.36.1 publicada; CurseForge probado en la escuela |
+| **0.36.1** | CurseForge como fuente predeterminada; conserva la elección previa de Modrinth | — | Publicada en Drive y ligero subido (2026-10-22); queda medir e instalar desde una carpeta nueva |
 | **0.37.0** | 3, paso 1 (`userChats` y buzón de presencia) | `userChats`, `presenceInbox` | Publicar las reglas |
 | **0.38.0** | 3, paso 2 (WebSocket con respaldo SSE), primero en el canal de pruebas | — | Probarlo en la escuela |
 | **0.39.0** | 4 (errores con acción y la O después de F2) | — | — |

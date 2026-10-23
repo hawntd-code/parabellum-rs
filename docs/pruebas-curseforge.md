@@ -39,9 +39,13 @@ y `entityculling`. No se forzaron sus enlaces ni se dio por completo ese modpack
 En la ventana real de Windows se comprobaron el selector Modrinth/CurseForge, categorías, búsqueda,
 la marca «Instalado», descripción del proyecto, enlace a CurseForge y versiones compatibles.
 
+## Confirmación en la red de la escuela
+
+El 2026-10-22 Juan confirmó que CurseForge funciona correctamente desde la escuela tras hacer sus
+pruebas. Confirmó también la publicación de la 0.36.1 en Drive y la subida del modpack ligero.
+Queda medir la descarga del nuevo ligero y comprobar su instalación desde una carpeta nueva.
+
 ## Pendientes
 
-- Prueba de la búsqueda desde la red de la escuela.
 - Interfaz e instalación en una Mac real antes de publicar una versión de Mac.
 - Favoritos y actualizaciones automáticas del contenido de CurseForge, para otra entrega.
-- Publicar la 0.36.0 en Drive y volver a publicar el paquete oficial para recibir la mejora del ligero.

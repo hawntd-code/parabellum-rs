@@ -25,12 +25,14 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 - **0.36.1:** CurseForge es la fuente predeterminada al explorar sin una elección guardada. Incluye la
   integración compartida de CurseForge, puente ya desplegado en Cloud Run e inclusión de
-  las mejoras de la 0.35.1. Entrega de Windows en GitHub; la publicación de Drive sigue siendo un paso
-  aparte. Mac debe compilar y probar lo descrito en la entrada del 2026-10-22 antes de publicar.
+  las mejoras de la 0.35.1. Entrega de Windows en GitHub y en Drive. Juan confirmó también la subida
+  del modpack ligero y que CurseForge funciona desde la escuela el 2026-10-22. Falta medir el tiempo
+  de descarga del nuevo ligero. Mac debe compilar y probar lo descrito en la entrada del 2026-10-22
+  antes de publicar.
 
 - Última revisión de los PR de Mac en Windows: 2026-10-20, PR #1 a #17 (todos mezclados).
-- **Publicado en Drive:** Windows **0.35.0** desde el 2026-10-21 (Juan; el exe publicado es idéntico
-  al compilado de `main` en `84a59e8`), con la regla `supportNotify` ya publicada.
+- **Publicado en Drive:** Windows **0.36.1** desde el 2026-10-22 (publicación confirmada por Juan;
+  código de la entrega en `63509b3`), con el modpack ligero ya subido.
   **Mac 0.33.0** desde el 2026-10-20 (Diego, compilada de `main` en `52de0a3`; ver «Versiones
   publicadas en Drive»).
   - A Mac le faltan la 0.34.0 (E3) y la 0.35.0 (paquete ligero y avisos de soporte).
@@ -130,6 +132,16 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
+
+- **0.36.1** · 2026-10-22 · Publicada por Juan en Drive (confirmado por él). Código de la entrega
+  de Windows en `63509b3`; también disponible en GitHub:
+  - **CurseForge es la fuente predeterminada** al explorar sin una elección guardada; se conserva
+    Modrinth si el jugador ya lo eligió. Los data packs siguen usando Modrinth.
+  - Incluye búsqueda e instalación con dependencias y modpacks de CurseForge de la 0.36.0, y la
+    mejora del paquete ligero sin los jars del loader de Fabric de la 0.35.1.
+  - Juan confirmó que **CurseForge funciona correctamente en la red de la escuela** tras sus pruebas.
+  - El **modpack oficial ligero ya está subido**, confirmado por Juan. Queda medir cuánto tarda
+    en empezar a bajar y completar la instalación desde una carpeta nueva.
 
 - **0.35.0** · 2026-10-21 · Plan de noviembre, puntos 1 y 2. Publicada por Juan, compilada de `main` en
   `84a59e8` (zip de 10042136 bytes, SHA-256 `f4cc27b5…6780`), con la regla `supportNotify` publicada
