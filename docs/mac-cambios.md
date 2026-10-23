@@ -539,6 +539,9 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 - `firebase-reglas.json` admite diez ajustes de Minecraft, su destino y los acuses pendiente/conflicto.
   Pasó el emulador; todavía hay que publicar esas reglas antes de distribuir la 0.39.0 estable.
 - La última estable sigue siendo 0.38.0. La captura F2 → O queda al final del roadmap.
+- Revisión final del candidato: las carpetas preparadas quedan fuera de `saves`, para que un cierre
+  inesperado no muestre una restauración incompleta como jugable. La búsqueda de carpetas en Drive
+  exige que pertenezcan a la cuenta conectada, aunque exista una carpeta compartida con iguales etiquetas.
 
 ### 2026-10-23 · 0.38.0: WebSocket compartido con respaldo SSE
 

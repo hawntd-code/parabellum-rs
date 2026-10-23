@@ -297,7 +297,7 @@ impl Client {
         parent: Option<&str>,
         world: Option<&str>,
     ) -> Result<String, String> {
-        let mut query=format!("trashed = false and mimeType = '{MIME}' and appProperties has {{ key='pbl' and value={} }}",quoted(tag));
+        let mut query=format!("trashed = false and 'me' in owners and mimeType = '{MIME}' and appProperties has {{ key='pbl' and value={} }}",quoted(tag));
         if let Some(parent) = parent {
             query += &format!(" and {} in parents", quoted(parent));
         }

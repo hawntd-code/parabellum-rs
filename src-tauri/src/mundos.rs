@@ -719,7 +719,7 @@ pub async fn mundos_volver_anterior(app: AppHandle, origen: Source, respaldo: St
         at: chrono::Utc::now().timestamp_millis(),
         local: current,
     };
-    let stage = target.parent().unwrap().join(format!(".parabellum-recuperar-{}", archive::id()));
+    let stage = target.parent().unwrap().parent().unwrap().join(format!(".parabellum-recuperar-{}", archive::id()));
     let source = previous_dir.join("mundo");
     let server = origen.kind == "servidor";
     blocking(move || {
@@ -811,7 +811,8 @@ pub async fn mundos_restaurar(
             let job_id = archive::id();
             let download = paths.data.join("mundos").join(format!("descarga-{job_id}.zip"));
             std::fs::create_dir_all(download.parent().unwrap()).map_err(|e| e.to_string())?;
-            let staged = target.parent().unwrap().join(format!(".parabellum-restaurar-{job_id}"));
+            // Fuera de saves: un cierre inesperado no presenta una copia incompleta como jugable.
+            let staged = target.parent().unwrap().parent().unwrap().join(format!(".parabellum-restaurar-{job_id}"));
             let _cleanup = RestoreCleanup {
                 download: download.clone(),
                 staged: staged.clone(),

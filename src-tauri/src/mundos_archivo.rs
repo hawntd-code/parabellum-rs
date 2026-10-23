@@ -418,7 +418,9 @@ pub fn install(staged: &Path, target: &Path, backups: &Path, server: bool) -> Re
         .ok_or_else(|| "Destino sin carpeta".to_string())?
         .canonicalize()
         .map_err(|e| e.to_string())?;
-    if staged.parent().and_then(|p| p.canonicalize().ok()).as_ref() != Some(&parent) || !staged.is_dir() || staged.is_symlink() || target.is_symlink() {
+    let staged_parent=staged.parent().and_then(|p|p.canonicalize().ok());
+    let outside_saves=parent.parent().is_some_and(|p|staged_parent.as_deref()==Some(p)) && staged.file_name().is_some_and(|n|{let n=n.to_string_lossy();n.starts_with(".parabellum-restaurar-") || n.starts_with(".parabellum-recuperar-")});
+    if (!outside_saves && staged_parent.as_ref()!=Some(&parent)) || !staged.is_dir() || staged.is_symlink() || target.is_symlink() {
         return Err(t!("Destino de restauración no válido.", "Invalid restore destination."));
     }
     let mut current = vec![(target.to_path_buf(), String::new())];
@@ -629,6 +631,13 @@ mod tests {
         assert_eq!(std::fs::read(original.join("level.dat")).unwrap(), b"nuevo");
         assert!(install(&f.0.join("inexistente"), &original, &f.0.join("backups"), false).is_err());
         assert_eq!(std::fs::read(original.join("level.dat")).unwrap(), b"nuevo");
+    }
+    #[test]
+    fn la_preparacion_no_aparece_como_mundo_en_saves(){
+        let f=Fixture::new();let original=f.world("saves/world");let stage=f.world(".parabellum-restaurar-prueba");put(&stage,"level.dat",b"nuevo");
+        assert!(!original.parent().unwrap().join(stage.file_name().unwrap()).exists());
+        install(&stage,&original,&f.0.join("backups"),false).unwrap();
+        assert_eq!(std::fs::read(original.join("level.dat")).unwrap(),b"nuevo");assert!(!stage.exists());
     }
     #[cfg(windows)]
     #[test]
