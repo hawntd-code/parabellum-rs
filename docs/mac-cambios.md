@@ -494,6 +494,24 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-23 · 0.36.2: asistente del portal de CurseForge
+
+- `curseforge_manual.rs` guarda los pendientes por instancia con proyecto, archivo, tamaño y SHA-1.
+  La página oficial se abre en una ventana del launcher; el usuario inicia la descarga allí. El archivo
+  llega a una carpeta temporal y se instala solo después de comprobar su huella. La ventana remota
+  no puede ejecutar comandos de Parabellum.
+- El asistente sirve para mods, sus dependencias y modpacks. Biblioteca y la instancia permiten
+  continuar después de cerrar Parabellum. Reconoce las descargas ya existentes, incluidos nombres
+  con `(1)`, y permite elegir un archivo de otra carpeta. Los archivos originales se conservan.
+  Recupera también temporales completos tras cerrar el launcher. Si WebView2 no entrega `Finished`,
+  la recepción termina al comprobar el tamaño y SHA-1 exactos de la descarga iniciada en el portal.
+- Los errores aparecen junto al archivo; al completar se actualizan procedencia e integridad. No se
+  inicia el juego mientras haya archivos obligatorios pendientes de este asistente.
+- Pruebas: 128 unitarias correctas y una de P2P omitida por requerir internet; comprobación de
+  JavaScript y revisión visual del asistente. Pendiente completar el recorrido con el exe final.
+- **Mac:** compilar y probar la ventana del portal, su descarga y el selector de archivo. No hay
+  cambios en el contrato de plataforma; se usan los eventos de descarga compartidos de Tauri.
+
 ### 2026-10-22 · 0.36.1: CurseForge como fuente predeterminada
 
 - Explorar empieza en CurseForge cuando no hay una fuente guardada o no se puede leer el

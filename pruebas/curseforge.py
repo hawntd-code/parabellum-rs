@@ -138,11 +138,17 @@ def main():
 
     class Restricted(BaseHTTPRequestHandler):
         def do_POST(self):
-            self.rfile.read(int(self.headers.get("Content-Length", 0)))
-            self.reply([info])
+            payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+            self.reply([info if project == 419699 else api(f"/v1/mods/{project}") for project in payload.get("modIds", [])])
 
         def do_GET(self):
-            self.reply(blocked_file if self.path.split("?")[0].endswith(str(blocked_file["id"])) else [blocked_file])
+            path = self.path.split("?")[0]
+            if path == f"/v1/mods/419699/files/{blocked_file['id']}":
+                self.reply(blocked_file)
+            elif path == "/v1/mods/419699/files":
+                self.reply([blocked_file])
+            else:
+                self.reply(api(self.path))
 
         def reply(self, data):
             body = json.dumps({"data": data}).encode()
@@ -161,8 +167,10 @@ def main():
         restricted = instance("Descarga restringida", "1.21.1")
         try:
             result = run("--instalar", restricted.name, "cf:419699", f"cf:{files[0]['id']}", bridge=f"http://127.0.0.1:{server.server_port}")
-            assert "NO SE PUEDE" in result and "curseforge.com" in result
-            assert not list(restricted.glob("mods/*.jar"))
+            assert "PENDIENTE EN CURSEFORGE" in result and "curseforge.com" in result
+            assert not (restricted / "mods" / files[0]["fileName"]).exists()
+            pending = json.loads((restricted / ".lanzador" / "curseforge-pendientes.json").read_text(encoding="utf-8"))
+            assert pending[0]["fileId"] == files[0]["id"] and len(pending[0]["sha1"]) == 40
         finally:
             server.shutdown()
             thread.join()

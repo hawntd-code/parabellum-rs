@@ -22,6 +22,7 @@ mod diagnostico;
 mod cuenta;
 mod culpable;
 mod curseforge;
+mod curseforge_manual;
 mod descargas;
 mod download;
 mod favoritos;
@@ -674,6 +675,9 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
         return Err(t!("Este juego ya está abierto.", "This game is already open."));
     }
     // Si «Buscar el mod culpable» quedó a medias (se cerró Parabellum), los mods vuelven a como estaban.
+    if curseforge_manual::pending_count(&instance)? > 0 {
+        return Err(t!("Completa los archivos pendientes de CurseForge antes de jugar. Puedes continuar desde la Biblioteca.", "Complete the pending CurseForge files before playing. You can continue from the Library."));
+    }
     culpable::restore(&instance);
     // Que el modpack esté completo: lo que falte se baja (o se repone) antes de abrir el juego.
     let cached = state.catalog.lock().unwrap().clone();
@@ -1405,6 +1409,7 @@ async fn import_modpack(
                 return Err(error);
             }
         };
+        curseforge_manual::register(&instance, &manual)?;
         instances::set_game_language(&instance.game_dir);
         let mut source = source;
         source["name"] = serde_json::json!(pack.name);
@@ -3344,7 +3349,12 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                 out += &format!("  NO SE PUEDE: {problem}{}\n", plan.manual_url.as_ref().map(|u| format!(" ({u})")).unwrap_or_default());
             } else if curse {
                 tauri::async_runtime::block_on(curseforge::install(&instance, &plan.files, |_, _, _, _| {}))?;
-                out += &format!("  INSTALADO en {:.1} s\n", started.elapsed().as_secs_f64());
+                curseforge_manual::register(&instance, &plan.manual)?;
+                if plan.manual.is_empty() {
+                    out += &format!("  INSTALADO en {:.1} s\n", started.elapsed().as_secs_f64());
+                } else {
+                    for file in &plan.manual { out += &format!("  PENDIENTE EN CURSEFORGE: {} ({})\n", file.file_name, file.url); }
+                }
             } else {
                 tauri::async_runtime::block_on(modrinth::install(&instance, &plan.files, |_, _, _, _| {}))?;
                 out += &format!("  INSTALADO en {:.1} s\n", started.elapsed().as_secs_f64());
@@ -4029,6 +4039,7 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label() != "main" { return; }
             // Con la sesión iniciada, la X deja Parabellum junto al reloj (los amigos te siguen viendo).
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if cuenta::should_hide_on_close(window.app_handle()) {
@@ -4038,7 +4049,13 @@ fn main() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(|invoke| {
+            // El portal remoto solo navega y descarga: nunca ejecuta comandos de Parabellum.
+            if invoke.message.webview_ref().label() != "main" {
+                invoke.resolver.reject("Esta ventana no puede ejecutar comandos de Parabellum.");
+                return true;
+            }
+            let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
             estado_inicial,
             guardar_ajustes,
             lista_descargas,
@@ -4082,6 +4099,10 @@ fn main() {
             proyectos_instalados,
             preparar_instalacion,
             instalar_contenido,
+            curseforge_manual::curseforge_pendientes,
+            curseforge_manual::curseforge_preparar,
+            curseforge_manual::curseforge_abrir_portal,
+            curseforge_manual::curseforge_elegir_archivo,
             buscar_actualizaciones,
             actualizar_contenido,
             abrir_enlace,
@@ -4231,7 +4252,9 @@ fn main() {
             carpeta_servidor,
             arreglar_servidor,
             salir_de_servidor
-        ])
+            ];
+            handler(invoke)
+        })
         .build(tauri::generate_context!())
         .expect("no se pudo abrir Parabellum")
         .run(|app, event| match event {

@@ -165,6 +165,18 @@ El puente está publicado, escala de 0 a 3 instancias y se comprobó con categor
 Los jars y zips se bajan directamente del CDN de CurseForge. Cuando el autor no permite descargas
 externas, la interfaz ofrece su página; no se inventa ni se fuerza un enlace de descarga.
 
+Desde la **0.36.2**, `curseforge_manual.rs` abre esa página en una ventana de Tauri sin permisos
+de comandos del launcher. El usuario descarga desde el portal; `on_download` recibe el archivo en
+`.lanzador/curseforge-entrada`, comprueba el tamaño y SHA-1 esperado y lo coloca en su categoría.
+Los pendientes se guardan en `.lanzador/curseforge-pendientes.json`, con su proyecto y archivo exactos.
+El asistente permite retomarlos desde Biblioteca o la instancia, y elegir un archivo ya descargado.
+También reconoce copias de Descargas con `(1)` en el nombre si coinciden por su huella. No se cambian
+archivos personales de Descargas ni se construyen enlaces alternativos de descarga.
+La recepción comprueba también el temporal después de la descarga iniciada por el usuario: algunas
+versiones de WebView2 no entregan `Finished`. Solo acepta el tamaño y SHA-1 exactos, nunca un archivo
+parcial. Al reabrir recupera los temporales completos de una sesión anterior; tras diez minutos sin
+completarse permite reintentar. Cerrar la ventana del portal no oculta el launcher en la bandeja.
+
 Recorrido reproducible con el ejecutable final, **siempre en una carpeta de prueba**:
 
 ```powershell

@@ -83,6 +83,7 @@
         <!-- INICIO -->
         <section class="page" id="page-home">
           <div class="page-inner">
+            <div class="cf-pending hidden" id="curseforge-pending"></div>
             <div id="home-filled">
               <div class="home-summary" id="home-summary">
                 <div class="summary-tile hidden" id="tile-steps">
@@ -483,6 +484,7 @@
               <button class="circle-btn big" id="detail-edit" title="Ajustes de la instancia"><svg><use href="#i-settings"/></svg></button>
               <button class="circle-btn big" id="detail-more" title="Más opciones"><svg><use href="#i-more"/></svg></button>
             </div>
+            <div class="cf-pending hidden" id="cf-detail-pending"></div>
             <div class="tabs" id="detail-tabs">
               <button class="tab active" data-tab="content"><svg><use href="#i-cubes"/></svg>Contenido</button>
               <button class="tab" data-tab="logs"><svg><use href="#i-terminal"/></svg>Registro</button>
@@ -1038,7 +1040,23 @@
     </div>
   </div>
 
-  <!-- ================= Instalar desde Modrinth ================= -->
+  <!-- Descargas que el usuario inicia en el portal oficial de CurseForge. -->
+  <div class="overlay hidden" id="curseforge-dialog">
+    <div class="modal cf-assistant" role="dialog" aria-modal="true" aria-labelledby="cf-assistant-title">
+      <div class="modal-head">
+        <h2 id="cf-assistant-title">Completar instalación</h2>
+        <button class="circle-btn" id="cf-assistant-close" title="Cerrar"><svg><use href="#i-close"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="cf-assistant-meta"><b id="cf-assistant-instance"></b><span id="cf-assistant-count" role="status" aria-live="polite"></span></div>
+        <p class="muted" id="cf-assistant-text"></p>
+        <div id="cf-assistant-list"></div>
+        <div class="modal-actions"><button class="btn" id="cf-assistant-later">Cerrar</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= Instalar contenido ================= -->
   <div class="overlay hidden" id="install-dialog">
     <div class="modal small">
       <div class="modal-head">
@@ -1512,6 +1530,7 @@
   <script src="i18n.js"></script>
   <script src="markdown.js"></script>
   <script src="app.js"></script>
+  <script src="curseforge.js"></script>
   <script src="hostear.js"></script>
   <script src="comunidad.js"></script>
   <script src="soporte.js"></script>

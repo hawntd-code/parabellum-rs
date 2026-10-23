@@ -687,6 +687,25 @@ body.booting .app { visibility: hidden; }
 .link-btn:hover { color: var(--text); background: var(--card); }
 .value-inline { font: 700 16px var(--font-display); color: var(--accent-fg); }
 .modal.small { width: min(460px, calc(100vw - 48px)); }
+
+/* Asistente de CurseForge: mismas superficies, tipografía y acciones que el resto del launcher. */
+.cf-pending { display: flex; align-items: center; gap: 14px; padding: 16px 18px; margin-bottom: 20px; border: 1px solid var(--border-strong); border-radius: var(--r); background: var(--panel); }
+.cf-pending .grow { display: grid; gap: 4px; }
+.cf-pending .grow > span { color: var(--muted); font-size: 13px; }
+.cf-pending-icon { display: flex; color: var(--accent-fg); }
+.modal.cf-assistant { width: min(660px, calc(100vw - 48px)); }
+.cf-assistant-meta { display: flex; align-items: baseline; gap: 16px; justify-content: space-between; margin-bottom: 12px; }
+.cf-assistant-meta span { color: var(--muted); font-size: 12px; }
+#cf-assistant-list { display: grid; gap: 10px; margin-top: 18px; }
+.cf-file { display: flex; align-items: flex-start; gap: 14px; padding: 16px; background: var(--field); border: 1px solid var(--border); border-radius: var(--r); }
+.cf-file .grow { min-width: 0; }
+.cf-file-icon { display: flex; padding-top: 2px; color: var(--muted); }
+.cf-file-name, .cf-file-status { display: block; margin-top: 5px; overflow-wrap: anywhere; font-size: 12px; color: var(--muted); }
+.cf-file-name { color: var(--faint); }
+.cf-file-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.cf-file.has-error { border-color: var(--danger); }
+.cf-file.has-error .cf-file-status { color: var(--danger); }
+.cf-complete { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 32px 12px; color: var(--success); }
 .crash-icon { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: rgba(240, 82, 93, .15); color: var(--danger); flex: none; }
 .crash-reason {
   margin: 12px 0 0; max-height: 240px; overflow: auto; padding: 12px 14px; border-radius: var(--r); background: var(--field); border: 1px solid var(--border);

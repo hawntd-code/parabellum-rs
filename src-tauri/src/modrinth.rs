@@ -841,6 +841,9 @@ pub struct Plan {
     /// La página donde bajarlo a mano (CurseForge, cuando su autor no deja bajarlo fuera de ahí).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub manual_url: Option<String>,
+    /// Archivos que el usuario obtiene desde el portal oficial de CurseForge.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub manual: Vec<crate::curseforge::Manual>,
     /// El problema es del propio mod pedido: vale la pena probar otras versiones suyas.
     #[serde(skip)]
     check_main: bool,
@@ -849,7 +852,7 @@ pub struct Plan {
 impl Plan {
     /// Un plan vacío de ese proyecto (se llena después).
     pub fn new(project_id: String, title: String) -> Self {
-        Self { project_id, title, version_number: String::new(), files: Vec::new(), optional: Vec::new(), installed: false, problem: None, manual_url: None, check_main: false }
+        Self { project_id, title, version_number: String::new(), files: Vec::new(), optional: Vec::new(), installed: false, problem: None, manual_url: None, manual: Vec::new(), check_main: false }
     }
 }
 
@@ -1089,6 +1092,7 @@ async fn plan_version(instance: &Instance, project_id: &str, version_id: Option<
             installed: true,
             problem: None,
             manual_url: None,
+            manual: Vec::new(),
             check_main: false,
         });
     }
@@ -1230,6 +1234,7 @@ async fn plan_version(instance: &Instance, project_id: &str, version_id: Option<
         installed: false,
         problem,
         manual_url: None,
+        manual: Vec::new(),
     })
 }
 

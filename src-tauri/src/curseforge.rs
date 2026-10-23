@@ -538,17 +538,15 @@ pub async fn plan(instance: &Instance, project_id: &str, version_id: Option<&str
         plan.installed = true;
         return Ok(plan);
     }
-    if chosen.url.is_empty() {
-        plan.problem = Some(t!(
-            "Su autor no deja bajar {title} fuera de CurseForge. Ábrelo en su página, bájalo y suéltalo en la pestaña Contenido de la instancia.",
-            "Its author does not allow downloading {title} outside CurseForge. Open its page, download it and drop it on the instance's Content tab."
-        ));
-        plan.manual_url = Some(file_page(&main_info, numeric(&chosen.id)?));
-        return Ok(plan);
-    }
     let replaces = |project: &str| already.iter().find(|(_, _, e)| cf(e.project_id) == project).map(|(_, real, _)| real.clone());
     let icon = |m: &Value| m["logo"]["thumbnailUrl"].as_str().filter(|u| u.starts_with("https://")).map(String::from);
-    plan.files.push(planned(&chosen, kind, &title, icon(&main_info), false, replaces(&chosen.project_id)));
+    if chosen.url.is_empty() {
+        let manual = manual_file(&chosen, kind, &main_info, replaces(&chosen.project_id))?;
+        plan.manual_url = Some(manual.url.clone());
+        plan.manual.push(manual);
+    } else {
+        plan.files.push(planned(&chosen, kind, &title, icon(&main_info), false, replaces(&chosen.project_id)));
+    }
     if kind != ContentType::Mod {
         return Ok(plan);
     }
@@ -568,7 +566,7 @@ pub async fn plan(instance: &Instance, project_id: &str, version_id: Option<&str
         }
         let infos = mods(&new).await;
         for id in new {
-            if plan.files.len() > 40 {
+            if seen.len() > 40 {
                 plan.problem = Some(t!("{title} pide demasiadas dependencias para instalarlas con seguridad. Usa su modpack.", "{title} requests too many dependencies to install safely. Use its modpack."));
                 return Ok(plan);
             }
@@ -590,12 +588,11 @@ pub async fn plan(instance: &Instance, project_id: &str, version_id: Option<&str
                 if slug_installed(&info, &installed_ids) {
                     continue;
                 }
-                plan.problem = Some(t!(
-                    "{title} necesita {name}, y su autor no deja bajarlo fuera de CurseForge. Bájalo de su página, suéltalo en la pestaña Contenido y vuelve a instalar {title}.",
-                    "{title} needs {name}, and its author does not allow downloading it outside CurseForge. Download it from its page, drop it on the Content tab and install {title} again."
-                ));
-                plan.manual_url = Some(file_page(&info, numeric(&dependency.id)?));
-                return Ok(plan);
+                let manual = manual_file(&dependency, kind, &info, None)?;
+                if plan.manual_url.is_none() { plan.manual_url = Some(manual.url.clone()); }
+                plan.manual.push(manual);
+                pending.push(dependency);
+                continue;
             }
             // El .jar dice qué mod es: si ya hay uno con ese id (de Modrinth o a mano), no se repite.
             let jar = candidates.join(format!("{}.jar", dependency.sha1));
@@ -700,7 +697,7 @@ pub struct Pack {
 }
 
 /// Lo que hay que bajar a mano porque su autor no deja bajarlo fuera de CurseForge.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Manual {
     /// Nombre del proyecto («Just Enough Items»).
@@ -710,6 +707,36 @@ pub struct Manual {
     pub url: String,
     /// La carpeta de la instancia donde va («mods»).
     pub folder: String,
+    pub project_id: u64,
+    pub file_id: u64,
+    pub sha1: String,
+    pub size: u64,
+    #[serde(default)]
+    pub replaces: Option<String>,
+}
+
+fn manual_file(version: &Version, kind: ContentType, info: &Value, replaces: Option<String>) -> Result<Manual, String> {
+    Ok(Manual {
+        name: text(info, "name"), file_name: version.filename.clone(),
+        url: file_page(info, numeric(&version.id)?), folder: kind.kind().into(),
+        project_id: numeric(&version.project_id)?, file_id: numeric(&version.id)?,
+        sha1: version.sha1.clone(), size: version.size, replaces,
+    })
+}
+
+/// Registra también los archivos recibidos desde el portal, una vez comprobada su huella.
+pub fn remember_manual(instance: &Instance, file: &Manual) {
+    let path = format!("{}/{}", file.folder, file.file_name);
+    let mut index = load_index(instance);
+    if let Some(old) = &file.replaces {
+        index.files.remove(&format!("{}/{}", file.folder, old.trim_end_matches(".disabled")));
+        crate::integridad::forget(instance, &format!("{}/{}", file.folder, old));
+    }
+    index.files.insert(path.clone(), IndexEntry { project_id: file.project_id, file_id: file.file_id, sha1: file.sha1.clone() });
+    save_index(instance, &index);
+    let mut tracked = crate::integridad::load(&instance.game_dir).unwrap_or_default();
+    tracked.push(crate::integridad::Tracked { path, sha1: Some(file.sha1.clone()), size: Some(file.size), crc32: None, url: None });
+    crate::integridad::save(&instance.game_dir, tracked);
 }
 
 /// Lee el manifest.json de un modpack de CurseForge. None si el zip no lo es.
@@ -815,6 +842,9 @@ async fn resolve(pack: &Pack) -> Result<(Vec<Resolved>, Vec<Manual>), String> {
                 file_name: name,
                 url: file_page(&info, *file_id),
                 folder: folder.into(),
+                project_id: *project, file_id: *file_id,
+                sha1: f["hashes"].as_array().into_iter().flatten().find(|h| h["algo"] == 1).map(|h| text(h, "value")).unwrap_or_default(),
+                size: count(&f["fileLength"]), replaces: None,
             }),
         }
     }
@@ -834,6 +864,7 @@ async fn resolve(pack: &Pack) -> Result<(Vec<Resolved>, Vec<Manual>), String> {
 pub async fn install_modpack_files(pack: &Pack, zip_path: &Path, game_dir: &Path, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<Vec<Manual>, String> {
     progress(t!("Preguntando a CurseForge por los {} archivos del modpack…", "Asking CurseForge about the {} files of the modpack…", pack.files.len()), 0.0);
     let (resolved, manual) = resolve(pack).await?;
+    crate::curseforge_manual::validate(&manual)?;
     let downloads: Vec<FileDownload> = resolved
         .iter()
         .map(|r| FileDownload { url: r.url.clone(), path: game_dir.join(&r.path), sha1: Some(r.sha1.clone()), size: Some(r.size) })
@@ -853,7 +884,7 @@ pub async fn install_modpack_files(pack: &Pack, zip_path: &Path, game_dir: &Path
     // enlace: si falta, el aviso pide bajarlo.
     let mut tracked: Vec<crate::integridad::Tracked> =
         resolved.iter().map(|r| crate::integridad::Tracked { path: r.path.clone(), sha1: Some(r.sha1.clone()), crc32: None, size: Some(r.size), url: Some(r.url.clone()) }).collect();
-    tracked.extend(manual.iter().map(|m| crate::integridad::Tracked { path: format!("{}/{}", m.folder, m.file_name), sha1: None, crc32: None, size: None, url: None }));
+    tracked.extend(manual.iter().map(|m| crate::integridad::Tracked { path: format!("{}/{}", m.folder, m.file_name), sha1: Some(m.sha1.clone()), crc32: None, size: Some(m.size), url: None }));
     tracked.extend(copied);
     crate::integridad::save(game_dir, tracked.into_iter().filter(|t| crate::integridad::is_tracked(&t.path)).collect());
     // Explorar también reconoce como instalados los mods que llegaron dentro del modpack.

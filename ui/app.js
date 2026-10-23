@@ -710,6 +710,7 @@ function renderInstance() {
   stop.classList.toggle("hidden", !running);
   showLaunching();
   $("#detail-join").disabled = running;
+  curseforgeAssistant.render();
   // Al abrir otra instancia se vuelve a la pestaña Contenido con su contenido.
   if (state.contentFor !== i.id) {
     state.contentFor = i.id;
@@ -1650,6 +1651,8 @@ async function play(id, server = null, { skipCheck = false } = {}) {
   state.launching.add(id);
   showLaunching();
   try {
+    await curseforgeAssistant.refresh();
+    if (curseforgeAssistant.queues.some(q => q.id === id)) return curseforgeAssistant.open(id);
     await launch(instance, id, server, skipCheck);
   } finally {
     state.launching.delete(id);
@@ -5283,6 +5286,7 @@ async function init() {
   renderGroups();
   updateChatBadge();
   navigate("home", null, false);
+  curseforgeAssistant.init();
   // Al volver a la ventana (o desde la bandeja) se piden los datos al momento, sin esperar avisos.
   let lastSync = Date.now();
   const resync = async () => {
@@ -5675,6 +5679,10 @@ async function installProject(projectId, versionId = null) {
       toast(t(`${plan.title} ${plan.versionNumber} ya está instalado en ${instance.name}.`, `${plan.title} ${plan.versionNumber} is already installed in ${instance.name}.`));
     } else if (plan.problem) {
       showInstallProblem(plan, projectId);
+    } else if (plan.manual?.length) {
+      const selected = versionId ?? plan.files.find(f => !f.dependency)?.versionId ?? plan.manual.find(f => `cf:${f.projectId}` === projectId)?.fileId;
+      await invoke("curseforge_preparar", { id: instance.id, proyecto: projectId, version: selected ? String(selected).replace(/^(?!cf:)/, "cf:") : null });
+      await curseforgeAssistant.open(instance.id);
     } else {
       await invoke("instalar_contenido", { id: instance.id, archivos: plan.files });
       const dependencies = plan.files.filter((f) => f.dependency).map((f) => f.title);
@@ -5718,29 +5726,11 @@ function showInstallProblem(plan, projectId) {
 
 /** Lo de un modpack de CurseForge que hay que bajar a mano: sus autores no dejan bajarlo fuera de ahí. */
 function showManualDownloads(result) {
-  const list = result?.manual ?? [];
-  if (!list.length) return;
-  openInstallDialog({
-    alert: false,
-    title: t(`Falta bajar ${plural(list.length, "archivo", "archivos")} a mano`, `${plural(list.length, "file needs", "files need")} to be downloaded by hand`),
-    text: t(
-      `Sus autores no dejan bajarlos fuera de CurseForge. Abre cada uno, bájalo y ponlo en su carpeta de ${result.name}. Antes de jugar, Parabellum revisa que estén.`,
-      `Their authors do not allow downloading them outside CurseForge. Open each one, download it and put it in its folder of ${result.name}. Before playing, Parabellum checks that they are there.`,
-    ),
-    items: [],
-    ok: t("Abrir la carpeta", "Open the folder"),
-    secondary: t("Después", "Later"),
-    onOk: () => invoke("abrir_carpeta_contenido", { id: result.id, tipo: list[0].folder }).catch((error) => toast(String(error), "error")),
-  });
-  $("#install-list").innerHTML = list
-    .map(
-      (m) => `<div class="install-item"><span class="grow"><b>${escapeHtml(m.name)}</b><span class="faint"> · ${escapeHtml(m.folder)}/${escapeHtml(m.fileName)}</span></span>
-        <button class="btn small" data-manual-url="${escapeHtml(m.url)}">${icon("external")}${t("Abrir", "Open")}</button></div>`,
-    )
-    .join("");
-  // El diálogo no se cierra al abrir una: suelen ser varias.
-  $("#install-ok").onclick = () => invoke("abrir_carpeta_contenido", { id: result.id, tipo: list[0].folder }).catch((error) => toast(String(error), "error"));
+  if (result?.manual?.length && result.id) {
+    curseforgeAssistant.open(result.id).catch(error => toast(String(error), "error"));
+  }
 }
+
 
 function offerOptional(plan) {
   openInstallDialog({
@@ -6456,7 +6446,7 @@ async function installModpack(projectId, versionId = null) {
     const result = await invoke("instalar_modpack", { proyecto: projectId, version: versionId, titulo: info.title ?? null, icono: info.icon ?? null });
     await reloadInstances();
     toast(result.manual?.length
-      ? t(`Se importó ${result.name}. Faltan archivos que debes descargar a mano.`, `${result.name} was imported. Some files need to be downloaded by hand.`)
+      ? t(`Se preparó ${result.name}. Completa los archivos pendientes en el asistente de CurseForge.`, `${result.name} is prepared. Complete the pending files in the CurseForge assistant.`)
       : t(`${result.name} está lista para jugar. La encuentras en tu biblioteca.`, `${result.name} is ready to play. You will find it in your library.`));
     if (result.warning) toast(result.warning, "error");
     if (result.notes?.length) toast(result.notes.join(" "));
@@ -7370,6 +7360,10 @@ function demoInvoke(command, args = {}) {
     servers: [{ name: "UniversoCraft", address: "mc.universocraft.com", instance: "Vanilla 1.21.1" }],
   });
   const demo = {
+    curseforge_pendientes: location.search.includes("curseforge") ? [{ id: instances[0].id, name: instances[0].name, files: [
+      { fileId: 5424446, projectId: 1, name: "FSB Interop", fileName: "fsb-interop-1.4.0+mc1.21-build.54.jar", folder: "mods" },
+      { fileId: 8053769, projectId: 2, name: "Entity Culling", fileName: "entityculling-fabric-1.10.2-mc1.21.1.jar", folder: "mods" },
+    ] }] : [],
     hosting_estado: {
       playit: { connected: true, agentInstalled: true, claimUrl: null, state: "on", address: "brave-creeper.gl.joinmc.link", target: "Survival con amigos", account: "verified", message: null },
       worldPlayit: false,
