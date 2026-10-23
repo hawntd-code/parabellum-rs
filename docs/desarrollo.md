@@ -36,7 +36,7 @@ Usa WebView2, que ya viene en Windows 10 y 11.
 Para revisar el diseño sin compilar: sirve la carpeta `ui/` con cualquier servidor estático; fuera de
 Tauri la interfaz usa datos de ejemplo.
 
-### Pruebas de chat y Firebase (0.37.0)
+### Pruebas de chat y Firebase (0.37.0 y 0.38.0)
 
 `cargo test --release --locked` ejecuta las unitarias. El recorrido de tiempo real usa el
 [emulador oficial de Firebase](https://storage.googleapis.com/firebase-preview-drop/emulator/firebase-database-emulator-v4.11.2.jar),
@@ -56,8 +56,17 @@ cargo test --release --locked chat37 -- --ignored --nocapture
 Las reglas usan el espacio local `parabellum-prueba`; el motor usa `parabellum-chat37`.
 El recorrido vacía y prepara exclusivamente ese espacio local, prueba dos clientes, compatibilidad,
 reintentos sin duplicados, escritura, perfiles, páginas de imágenes y liberación de escuchas.
-La medición de referencia es ocho chats y un amigo por usuario: **7 escuchas frente a 14**.
-No representa una conexión única; el cambio de protocolo va en la 0.38.0.
+La medición de referencia es ocho chats y un amigo por usuario: **7 escuchas frente a 14** desde
+la 0.37.0. La 0.38.0 transporta esas siete escuchas por **un WebSocket por cliente** y conserva SSE
+como respaldo automático. Para repetir el mismo recorrido con SSE, establece
+`PARABELLUM_FIREBASE_TRANSPORT=sse` solo en el proceso de prueba; sin esa variable se usa WebSocket.
+Los casos de bloqueo de WebSocket, cortes, renovación y recuperación se prueban además con un
+servidor local controlado dentro de las unitarias. Detalles y aceptación de la versión en
+[0.38.0-firebase.md](0.38.0-firebase.md).
+
+`datos/logs/firebase.csv` conserva sus columnas y cuenta escuchas lógicas y conexiones físicas.
+`firebase-transporte.csv` agrega `websockets`, `sse` y `entradas_respaldo`; se registra junto al
+anterior una vez por minuto. Los contadores no incluyen las peticiones REST puntuales.
 
 Para la revisión visual, servir la **raíz del repositorio** y abrir `/ui/?chat37`. Esa demostración
 incluye imágenes del propio repositorio y respuestas/escritura simuladas; no envía mensajes reales.
@@ -303,12 +312,12 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--probar-p2p <puerto> [segundos]` | Abre un túnel P2P en este PC hacia un servidor encendido y le hace ping; con segundos lo deja abierto (puerto en `datos/logs/p2p-puerto.txt`) |
 | `--convertir-imagen <entrada> <salida.png>` | Abre una imagen con Windows (HEIC, TIFF…) y la guarda como PNG |
 | `--probar-favoritos` | Con la sesión guardada: lee los favoritos de la cuenta, escribe uno de prueba (y lo borra) y comprueba las reglas de Firebase |
-| `--probar-tiempo-real [veces]` | Con la sesión de Google guardada: cuánto tarda en llegar por la escucha de Firebase algo recién escrito |
+| `--probar-tiempo-real [veces]` | Con la sesión de Google guardada y `PARABELLUM_ROOT` aislado: sincronización, transporte y latencia; restaura su marca temporal en los leídos propios |
 | `--catalogo` | Modpacks y versiones de Drive y de la carpeta paquetes, con su estado |
 | `--espejo [filtro]` | Qué tiene el espejo de Minecraft en Drive (paquetes, capas y el espacio del Drive) |
 | `--espejo-subir <todo\|1.20.1,1.21.1…> [sin-loaders] [sin-servidores]` | Arma y sube el espejo (quien publica, con «Conectar Drive»); el avance va a `datos/logs/espejo.txt` |
 | `--instalar-catalogo <id> [reparar]` | Instala, actualiza o repara un paquete (bajando solo lo que cambió) |
-| `--publicar-launcher <carpeta> [notas]` | Prepara _parabellum con esta versión para subirla a Drive |
+| `--publicar-launcher <carpeta> [notas] [pruebas]` | Prepara _parabellum; con `pruebas`, prepara _parabellum-pruebas para el canal de pruebas |
 
 ## Hoja de ruta
 

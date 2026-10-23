@@ -199,9 +199,14 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     que las reglas nuevas de Firebase ya están publicadas y funcionan correctamente. En el emulador:
     7 escuchas por cliente frente a 14, con ocho chats y un amigo; 129 unitarias correctas y recorrido
     de dos clientes correcto. La medición en la red real se retoma como referencia para la 0.38.0.
-  - [ ] **0.38.0 (en desarrollo):** una conexión persistente para las escuchas con WebSocket de
-    Firebase, renovación y reconexión, y respaldo SSE. Primero en el canal de pruebas;
-    [implementación y medición](docs/0.38.0-firebase.md).
+  - [x] **0.38.0, motor:** una conexión persistente para las escuchas con WebSocket de Firebase,
+    renovación, reconexión y respaldo SSE. 133 unitarias y recorrido del chat correctos en ambos
+    transportes; siete conexiones por cliente pasan a una en el escenario de referencia.
+    Windows compilada e instalada como candidato, Firebase real comprobado, ZIP de pruebas y
+    borrador de GitHub preparados.
+    [Implementación y medición](docs/0.38.0-firebase.md).
+  - [ ] **0.38.0, aceptación y salida:** primero en el canal de pruebas; comprobar la escuela,
+    suspensión/reanudación y una sesión larga antes de publicar la estable.
   - [ ] **0.39.0:** errores con una acción para resolverlos, y la O justo después de F2 abre esa captura;
   - [ ] **0.40.0 y 0.41.0, E4, mundos en Drive:** copias, revisiones, conflictos y restaurar con su instancia;
   - [ ] **0.42.0, E5, tarjetas de Minecraft:** ajustes de `options.txt` por versión, pendientes hasta

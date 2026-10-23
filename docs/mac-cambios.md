@@ -28,7 +28,9 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   perfiles y galería con navegación, además del asistente de CurseForge de la 0.36.2.
   El ligero ya está subido y CurseForge está probado en la escuela; falta medir el tiempo del ligero.
   Mac pasó las pruebas automáticas; quedan sus pruebas visuales del portal de CurseForge y del chat.
-  La 0.38.0 (WebSocket con respaldo SSE) está en desarrollo; primero irá al canal de pruebas.
+  La 0.38.0 (WebSocket con respaldo SSE) ya está implementada y pasó las pruebas automáticas de
+  Windows y Mac. Windows ya está compilada e instalada como candidato, con ZIP del canal de pruebas
+  y borrador de GitHub; queda aceptar la escuela, suspensión y sesión larga antes de la estable.
 
 - Última revisión de los PR de Mac en Windows: 2026-10-20, PR #1 a #17 (todos mezclados).
 - **Publicado en Drive:** Windows **0.37.0**, confirmada por Juan el 2026-10-23;
@@ -38,8 +40,9 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   - A Mac le faltan las novedades de la 0.34.0 (E3), la 0.35.0 (paquete ligero y avisos de soporte),
     la 0.36 (CurseForge) y la 0.37.0 (chat y escuchas).
   - De lo propio de Mac, solo la notificación del vigía de soporte (`avisos::show`).
-  - Se puede publicar directo una Mac 0.37.0 compilada de `main`: revisar «Lo que queda por probar
-    en Mac» (punto 0), además del portal de CurseForge y el chat descritos en «Cambios de Windows».
+  - Para publicar una Mac con lo de la estable 0.37.0, usar `da5b22c` y revisar «Lo que queda por probar
+    en Mac» (punto 0), además del portal y el chat. `main` ya contiene la 0.38.0, que debe pasar primero
+    por el canal de pruebas y la comprobación de WebSocket/respaldo descrita en «Cambios de Windows».
   - Siguen pendientes las pruebas a mano de esa sección.
 - **Descargas en GitHub:** cada versión publicada tiene su release con el zip, y el README las enlaza:
   Windows como `v<versión>` y Mac como `mac-v<versión>` (la Mac 0.33.0 ya está, con tu zip de Drive tal
@@ -524,6 +527,13 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   compartida pueden llegar al instante desde caché. `--probar-tiempo-real` informa la sincronización
   y el transporte; restaura la marca temporal propia y no manda mensajes a otras personas.
 - Pruebas y resultados se registran en [0.38.0-firebase.md](0.38.0-firebase.md).
+- En `9250224`: Windows pasó 133 unitarias y Mac 141, con `cargo check` correcto en ambos. El chat
+  pasó en el emulador oficial con WebSocket y SSE: siete escuchas por cliente, una conexión con
+  WebSocket frente a siete con SSE. Historial, reapertura y limpieza final correctos.
+- Windows compilada e instalada como candidato. Firebase real: una escucha sincronizó en 603 ms
+  por WebSocket, sus cinco actualizaciones llegaron y el SSE forzado también pasó. Marca restaurada
+  y cero conexiones al terminar. Arranque nativo y versión 0.38.0 verificados; ZIP y hashes en la guía.
+  La entrega solo está preparada para pruebas y como borrador en GitHub; Drive estable sigue en 0.37.0.
 - **Mac:** no cambia el contrato de plataforma. Compilar y probar conexión, suspensión/reanudación,
   cierre de sesión y respaldo en una red que bloquee WebSocket. Comparar los contadores; primero
   publicar en el canal de pruebas. La versión estable de Windows sigue siendo la 0.37.0.

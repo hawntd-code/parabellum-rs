@@ -33,8 +33,8 @@ continuación de pendientes. Entrega de Windows en GitHub e incluida en la 0.37.
 **0.37.0 publicada (confirmado por Juan el 2026-10-23):** reducir las escuchas y afinar la experiencia del chat, según
 el nuevo pedido de Juan. Perfiles, escritura animada, galería con navegación y transiciones al enviar
 y recibir. Juan confirmó también que las reglas nuevas ya están publicadas y funcionan correctamente.
-Pruebas y detalles en [0.37.0-chat.md](0.37.0-chat.md). Sigue la 0.38.0: WebSocket con respaldo SSE,
-primero en el canal de pruebas.
+Pruebas y detalles en [0.37.0-chat.md](0.37.0-chat.md). La 0.38.0 ya implementa WebSocket con respaldo
+SSE y pasó la validación automática; primero se prepara para el canal de pruebas.
 
 Cada versión pasa la lista de la sección 10.1 de plan-diciembre.md. Si una versión necesita reglas de Firebase
 nuevas, Juan las publica antes.
@@ -216,7 +216,7 @@ La cola del soporte (`soporte_escuchar_cola`) solo empieza cuando se abre la pá
   cliente frente a las 14 anteriores. Abrir una conversación agrega tres (mensajes, reacciones y
   escritura). Sigue siendo SSE; la conexión única corresponde al paso 2.
 
-**Paso 2, el protocolo de WebSocket de Firebase (0.38.0, en desarrollo):** el que usan los SDK
+**Paso 2, el protocolo de WebSocket de Firebase (0.38.0, implementado):** el que usan los SDK
 oficiales. Un `wss://<base>/.ws?v=5&ns=<ns>` por persona para las escuchas. Las peticiones puntuales
 conservan REST para mantener sus respuestas exactas y las actualizaciones atómicas, incluidas rutas
 que se pueden escribir pero no leer. Ver [0.38.0-firebase.md](0.38.0-firebase.md).
@@ -230,6 +230,9 @@ que se pueden escribir pero no leer. Ver [0.38.0-firebase.md](0.38.0-firebase.md
   bloquee), vuelve a SSE solo. Lo demás del código no cambia.
 - **Dependencia:** `tokio-tungstenite` con rustls (la misma pila TLS que ya se usa).
 - **El emulador habla el mismo protocolo:** todo se prueba ahí primero.
+- **Resultado local:** 133 unitarias correctas y el recorrido completo del chat correcto en ambos
+  transportes. Con ocho chats y un amigo: siete escuchas lógicas por cliente; SSE usa siete
+  conexiones y WebSocket una. La aceptación en la escuela sigue pendiente.
 
 **Medir antes y después** con `datos/logs/firebase.csv` y `metrics::LISTENERS`: conexiones abiertas,
 tiempo hasta tener amigos y mensajes al arrancar, y bytes por minuto. **Meta:** 1 conexión y menos de 1.5 s
@@ -237,8 +240,9 @@ hasta tener todo.
 
 **Pruebas:**
 - unitarias del protocolo (marcos partidos, redirección y reconexión), con un servidor de prueba;
-- `--probar-tiempo-real` contra el emulador y contra la base real (con la sesión de Juan, solo lectura y una
-  escritura de prueba que se borra, como ya hace `--probar-favoritos`);
+- recorrido del chat con dos clientes contra el emulador oficial, en WebSocket y SSE;
+- `--probar-tiempo-real` contra la base real, con la sesión de Juan y una marca temporal en sus leídos
+  propios que se restaura al terminar;
 - cortar la red a la mitad y ver que vuelve sola y no pierde mensajes;
 - la escuela: que el WebSocket pase el filtro y, si no, que vuelva a SSE.
 
@@ -440,7 +444,7 @@ instancia, que viven en `options.txt`.
 | **0.36.1** | CurseForge como fuente predeterminada; conserva la elección previa de Modrinth | — | Publicada en Drive y ligero subido (2026-10-22); queda medir e instalar desde una carpeta nueva |
 | **0.36.2** | Asistente con el portal oficial de CurseForge, recepción verificada y continuación de pendientes; probado por Juan | — | GitHub publicado; incluida en la 0.37.0 de Drive |
 | **0.37.0** | 3, paso 1, perfiles, escritura y galería; publicada en Drive y GitHub | `chatInbox`, `presenceInbox`, `typing`, `users/$uid/streamVersion` | Publicación y reglas funcionando confirmadas por Juan el 2026-10-23 |
-| **0.38.0** | 3, paso 2 (WebSocket compartido, renovación y respaldo SSE), en desarrollo; primero en el canal de pruebas | — | Probarlo en la escuela |
+| **0.38.0** | 3, paso 2 (WebSocket compartido, renovación y respaldo SSE), compilado e instalado como candidato; ZIP de pruebas y borrador de GitHub preparados | — | Aceptar escuela, suspensión y sesión larga antes de la estable |
 | **0.39.0** | 4 (errores con acción y la O después de F2) | — | — |
 | **0.40.0 – 0.41.0** | E4 (mundos en Drive), en el canal de pruebas y después estable | — | Agregar `drive.file` en Google Cloud |
 | **0.42.0** | E5 (tarjetas de Minecraft) | Lista de ajustes del juego | Publicar las reglas |
