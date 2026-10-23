@@ -1106,9 +1106,9 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 .profile-shared p { font-size: 13px; }
 .profile-group { display: flex; align-items: center; gap: 10px; padding: 8px; width: 100%; color: var(--text); border: 0; border-radius: var(--r); background: transparent; text-align: left; }
 .profile-group:hover { background: var(--field); }
-.profile-group > span { flex: 1; }
+.profile-group > span:not(.group-avatar) { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .profile-group > svg { width: 16px; height: 16px; color: var(--faint); }
-.profile-group .head, .profile-group .group-avatar { width: 32px; height: 32px; border-radius: 8px; }
+.profile-group .head, .profile-group .group-avatar { flex: none; width: 32px; height: 32px; border-radius: 8px; }
 /* El visor reserva el marco durante cargas y errores y mantiene visibles sus controles. */
 .lightbox { padding: 0; gap: 0; cursor: default; background: rgba(9, 8, 13, .97); color: #f4f2fa; }
 .media-header { display: flex; flex: none; align-items: center; gap: 20px; width: 100%; padding: 18px 24px; min-height: 76px; border-bottom: 1px solid #ffffff12; }

@@ -383,6 +383,7 @@ const HTML_EN = {
   "Solicitud de ayuda": "Help request",
   "Pedir ayuda": "Ask for help",
   "Ver perfil": "View profile",
+  "Enviar mensaje": "Send message",
   "Imágenes compartidas": "Shared images",
   "Visor de imágenes": "Image viewer",
   "Ampliar o ajustar": "Zoom or fit",

@@ -515,6 +515,9 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   permisos, compatibilidad anterior y cierre sin escuchas pendientes. Ocho chats y un amigo:
   7 escuchas por cliente frente a 14. Las reglas pasan `docs/probar-reglas.py`.
   Perfil, envío, escritura, galería, teclado, ampliación y recuperación del foco revisados en navegador.
+  GitHub Actions en `441f972`: Windows correcto y Mac correcto (137 pruebas y tres omitidas).
+  La revisión final añade el botón de perfil en inglés y fija en 32 px los iconos de grupos sin foto;
+  ambos cambios de interfaz se comprobaron en el navegador.
 - **Mac:** no cambia el contrato de plataforma. Compilar y probar los perfiles, teclado de la galería,
   ampliación y movimiento reducido con WKWebView. La nueva prueba de tiempo real es compartida y
   está omitida por defecto porque necesita el emulador; ver `docs/desarrollo.md`.
