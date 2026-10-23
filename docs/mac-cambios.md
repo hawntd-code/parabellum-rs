@@ -500,6 +500,9 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 - Pruebas: 125 unitarias correctas y una de P2P omitida por requerir internet. Recorrido reproducible
   con `pruebas/curseforge.py` (puente real, instalar,
   dependencias, compatibilidad, importar y verificar huellas en una carpeta de prueba).
+  El recorrido pasó sus 9 comprobaciones; la instancia importada llegó al menú principal con
+  Architectury y Fabric API. También se instaló Fabulously Optimized 6.5.0 desde CurseForge, mostrando
+  los dos archivos que sus autores exigen bajar a mano. Ver [pruebas-curseforge.md](pruebas-curseforge.md).
 - **Mac:** nada propio del sistema. Compilar y probar búsqueda, instalación, importación y los enlaces
   de descarga manual. No necesita otra clave ni cambiar la configuración integrada. La release de Mac
   se sigue publicando desde Mac. No hay reglas nuevas de Firebase para esta versión.

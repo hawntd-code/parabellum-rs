@@ -65,7 +65,7 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <br>
 <a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.36.0/Parabellum-0.36.0.zip"><img alt="Descargar Parabellum 0.36.0 para Windows" src="https://img.shields.io/badge/Descargar-v0.36.0-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
 <br><br>
-<sub>Windows 10 u 11 de 64 bits · zip portable · 22 oct 2026</sub>
+<sub>Windows 10 u 11 de 64 bits · zip de 10.2 MB · 22 oct 2026</sub>
 <br><br>
 </td>
 <td align="center" valign="top">
