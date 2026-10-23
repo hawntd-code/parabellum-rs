@@ -188,6 +188,20 @@ enlaza ni modifica las instancias reales. El informe queda en `resultado.txt` de
 de prueba. Las actualizaciones automáticas y los favoritos del contenido de CurseForge quedan para
 otra versión; los favoritos y actualizaciones de Modrinth siguen como antes.
 
+Para comprobar el portal real con una instancia Fabric 1.21.1 de prueba:
+
+1. Con `PARABELLUM_ROOT` en esa carpeta, instala `cf:448233` versión `cf:8053769` o
+   `cf:697845` versión `cf:5424446` mediante `--instalar <instancia> <proyecto> <versión>`.
+   La API devuelve `downloadUrl: null` para esos archivos y quedan pendientes.
+2. Abre Parabellum en la misma carpeta, pulsa **Continuar instalación** y **Obtener en CurseForge**.
+   En la página oficial, pulsa **Download** del archivo indicado (la página puede ofrecer también
+   otro botón para la versión más reciente).
+3. El portal se cierra tras recibir y verificar el archivo. El asistente reduce los pendientes,
+   actualiza el contenido y termina en **Instalación completada**. Comprueba la huella de los jars y
+   sus entradas en `.lanzador/curseforge.json`.
+4. Cierra y vuelve a abrir con un archivo aún pendiente: debe permitir continuar. **Ya lo descargué**
+   permite seleccionar otra copia; si no coincide con la huella esperada, el pendiente se conserva.
+
 ## Publicar una versión
 
 1. **Drive** (lo hace Juan): Ajustes › Acerca de › «Publicar esta versión» deja `_parabellum` con

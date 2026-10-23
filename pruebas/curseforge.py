@@ -139,7 +139,10 @@ def main():
     class Restricted(BaseHTTPRequestHandler):
         def do_POST(self):
             payload = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
-            self.reply([info if project == 419699 else api(f"/v1/mods/{project}") for project in payload.get("modIds", [])])
+            if "fileIds" in payload:
+                self.reply([blocked_file if file["id"] == blocked_file["id"] else file for file in files if file["id"] in payload["fileIds"]])
+            else:
+                self.reply([info if project == 419699 else api(f"/v1/mods/{project}") for project in payload.get("modIds", [])])
 
         def do_GET(self):
             path = self.path.split("?")[0]
@@ -161,6 +164,9 @@ def main():
         def log_message(self, *args):
             pass
 
+    if args.base:
+        seed_base(args.base.resolve(), root / "base")
+        passed("Base de prueba preparada mediante copias, sin enlaces a datos reales")
     with ThreadingHTTPServer(("127.0.0.1", 0), Restricted) as server:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -171,13 +177,24 @@ def main():
             assert not (restricted / "mods" / files[0]["fileName"]).exists()
             pending = json.loads((restricted / ".lanzador" / "curseforge-pendientes.json").read_text(encoding="utf-8"))
             assert pending[0]["fileId"] == files[0]["id"] and len(pending[0]["sha1"]) == 40
+            archive = root / "recorrido-restringido.zip"
+            manifest = {"manifestType": "minecraftModpack", "manifestVersion": 1, "name": "Modpack restringido", "version": "1.0",
+                        "minecraft": {"version": "1.21.1", "modLoaders": [{"id": "fabric-0.19.5", "primary": True}]},
+                        "files": [{"projectID": 419699, "fileID": blocked_file["id"], "required": True}], "overrides": "overrides"}
+            with zipfile.ZipFile(archive, "w") as output:
+                output.writestr("manifest.json", json.dumps(manifest))
+            run("--importar", str(archive), "Modpack restringido", bridge=f"http://127.0.0.1:{server.server_port}")
+            imported = root / "instancias/Modpack restringido"
+            queue = json.loads((imported / ".lanzador/curseforge-pendientes.json").read_text(encoding="utf-8"))
+            assert queue[0]["fileId"] == blocked_file["id"] and queue[0]["sha1"] == pending[0]["sha1"]
+            tracked = json.loads((imported / ".lanzador/archivos.json").read_text(encoding="utf-8"))
+            assert any(item["sha1"] == pending[0]["sha1"] for item in tracked)
+            assert not (imported / "mods" / blocked_file["fileName"]).exists()
+            passed("Modpack restringido: conserva el archivo exacto pendiente y su huella sin descargarlo")
         finally:
             server.shutdown()
             thread.join()
     passed("Autor sin descarga externa: ofrece su página y no descarga el archivo")
-    if args.base:
-        seed_base(args.base.resolve(), root / "base")
-        passed("Base de prueba preparada mediante copias, sin enlaces a datos reales")
     archive = root / "recorrido-curseforge.zip"
     manifest = {"manifestType": "minecraftModpack", "manifestVersion": 1, "name": "Recorrido CurseForge", "version": "1.0",
                 "minecraft": {"version": "1.21.1", "modLoaders": [{"id": "fabric-0.19.5", "primary": True}]},

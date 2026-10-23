@@ -23,12 +23,12 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
-- **0.36.1:** CurseForge es la fuente predeterminada al explorar sin una elección guardada. Incluye la
-  integración compartida de CurseForge, puente ya desplegado en Cloud Run e inclusión de
-  las mejoras de la 0.35.1. Entrega de Windows en GitHub y en Drive. Juan confirmó también la subida
-  del modpack ligero y que CurseForge funciona desde la escuela el 2026-10-22. Falta medir el tiempo
-  de descarga del nuevo ligero. Mac debe compilar y probar lo descrito en la entrada del 2026-10-22
-  antes de publicar.
+- **0.36.2:** asistente del portal de CurseForge terminado. El usuario descarga desde la página oficial
+  dentro del launcher y Parabellum verifica e instala los archivos; los pendientes se conservan.
+  Juan confirmó el recorrido real el 2026-10-23. Windows publicado en GitHub; `_parabellum` listo para
+  subir a Drive. La última versión confirmada en Drive sigue siendo la **0.36.1**, con el ligero ya
+  subido y CurseForge probado en la escuela (2026-10-22). Falta medir el tiempo del ligero.
+  Mac pasó las pruebas automáticas; falta probar su portal y selector en una Mac antes de publicarla.
 
 - Última revisión de los PR de Mac en Windows: 2026-10-20, PR #1 a #17 (todos mezclados).
 - **Publicado en Drive:** Windows **0.36.1** desde el 2026-10-22 (publicación confirmada por Juan;
@@ -507,9 +507,12 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   la recepción termina al comprobar el tamaño y SHA-1 exactos de la descarga iniciada en el portal.
 - Los errores aparecen junto al archivo; al completar se actualizan procedencia e integridad. No se
   inicia el juego mientras haya archivos obligatorios pendientes de este asistente.
-- Pruebas: 128 unitarias correctas y una de P2P omitida por requerir internet; comprobación de
-  JavaScript y revisión visual del asistente. Pendiente completar el recorrido con el exe final.
-- **Mac:** compilar y probar la ventana del portal, su descarga y el selector de archivo. No hay
+- Pruebas: 128 unitarias correctas en Windows (una de P2P omitida) y 136 en Mac (dos omitidas),
+  con ambos flujos de GitHub correctos en `2f08b38`. JavaScript sin errores; diez comprobaciones del
+  recorrido de CurseForge con el exe final, incluida la importación de un modpack restringido.
+  Juan confirmó el recorrido del portal. Se comprobaron los dos jars exactos, Entity Culling y
+  Nuit Interop, sus entradas de procedencia y la cola vacía. El zip contiene el mismo exe probado.
+- **Mac:** probar la ventana del portal, su descarga y el selector de archivo. No hay
   cambios en el contrato de plataforma; se usan los eventos de descarga compartidos de Tauri.
 
 ### 2026-10-22 · 0.36.1: CurseForge como fuente predeterminada

@@ -28,7 +28,9 @@ tras sus pruebas. La **0.36.1 ya está publicada en Drive** y el **modpack liger
 Queda medir el tiempo de descarga del nuevo ligero y probar su instalación desde una carpeta nueva.
 Antes de Firebase, Juan pidió pulir los archivos restringidos de CurseForge como **0.36.2**:
 página oficial dentro del launcher, recepción y verificación del archivo, y pendientes recuperables.
-Después sigue la **0.37.0**, reducir las escuchas de Firebase.
+**Terminada y probada por Juan el 2026-10-23:** descarga desde el portal, instalación verificada y
+continuación de pendientes. Entrega de Windows en GitHub y preparada para subir a Drive.
+Después sigue la **0.37.0**, reducir las escuchas de Firebase; todavía no se ha iniciado.
 
 Cada versión pasa la lista de la sección 10.1 de plan-diciembre.md. Si una versión necesita reglas de Firebase
 nuevas, Juan las publica antes.
@@ -424,7 +426,7 @@ instancia, que viven en `options.txt`.
 | **0.35.0** | 1a (reintentos, pedir antes, «revisando»), 1b (mods del CDN de Modrinth) y 2 (avisos de soporte) | `supportNotify` | Publicar las reglas; volver a publicar el paquete oficial (elegir antes cuál es el bueno) |
 | **0.36.0** | CurseForge: búsqueda, instalar con dependencias e importar modpacks; incluye la 0.35.1 | — | Incluida en la 0.36.1 publicada; CurseForge probado en la escuela |
 | **0.36.1** | CurseForge como fuente predeterminada; conserva la elección previa de Modrinth | — | Publicada en Drive y ligero subido (2026-10-22); queda medir e instalar desde una carpeta nueva |
-| **0.36.2** | Asistente con el portal oficial de CurseForge, recepción verificada y continuación de pendientes | — | Probar la descarga desde el portal y publicar la entrega en Drive |
+| **0.36.2** | Asistente con el portal oficial de CurseForge, recepción verificada y continuación de pendientes; probado por Juan | — | GitHub publicado; subir la entrega preparada a Drive |
 | **0.37.0** | 3, paso 1 (`userChats` y buzón de presencia) | `userChats`, `presenceInbox` | Publicar las reglas |
 | **0.38.0** | 3, paso 2 (WebSocket con respaldo SSE), primero en el canal de pruebas | — | Probarlo en la escuela |
 | **0.39.0** | 4 (errores con acción y la O después de F2) | — | — |

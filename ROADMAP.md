@@ -186,9 +186,10 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     conserva la preferencia por Modrinth y los data packs siguen usando Modrinth.
   - [x] *Prueba real:* CurseForge funciona correctamente desde la red de la escuela
     (probado y confirmado por Juan el 2026-10-22).
-  - [ ] **0.36.2, asistente de CurseForge antes de Firebase** (pedido de Juan): página oficial dentro
+  - [x] **0.36.2, asistente de CurseForge antes de Firebase** (pedido de Juan): página oficial dentro
     del launcher; recibir, verificar e instalar los archivos que el usuario descarga; conservar los
-    pendientes y continuar desde Biblioteca o la instancia.
+    pendientes y continuar desde Biblioteca o la instancia. Flujo real confirmado por Juan el
+    2026-10-23; entrega de Windows preparada y publicada en GitHub, pendiente subir a Drive.
   - [ ] **0.37.0 y 0.38.0:** una sola conexión a Firebase por persona (menos escuchas, y después el
     WebSocket de Firebase con respaldo SSE);
   - [ ] **0.39.0:** errores con una acción para resolverlos, y la O justo después de F2 abre esa captura;
