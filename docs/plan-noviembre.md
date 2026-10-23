@@ -8,10 +8,9 @@ en qué orden.
 1. el zip del paquete que tarda ~30 s;
 2. los avisos de soporte desde que se abre Parabellum;
 3. una sola conexión a Firebase por persona (después de CurseForge, añadido el 2026-10-22);
-4. los detalles menores: errores con una acción, y la O después de F2;
-5. E4, mundos en Drive;
-6. E5, tarjetas de Minecraft;
-7. E6.
+4. **0.39.0, entrega unificada:** botones para resolver errores, E4 (mundos en Drive) y E5 (tarjetas de Minecraft);
+5. E6;
+6. **al final, después de E6:** la O después de F2 abre la captura reciente, sin versión asignada.
 
 **No entra** (decisión de Juan):
 - el P2P desde la escuela (relevo propio);
@@ -35,7 +34,13 @@ el nuevo pedido de Juan. Perfiles, escritura animada, galería con navegación y
 y recibir. Juan confirmó también que las reglas nuevas ya están publicadas y funcionan correctamente.
 Pruebas y detalles en [0.37.0-chat.md](0.37.0-chat.md). **La 0.38.0 también está publicada**, confirmado
 por Juan el 2026-10-23: WebSocket compartido con respaldo SSE, sin reglas nuevas. El mismo ZIP está
-en Drive y GitHub; resultados en [0.38.0-firebase.md](0.38.0-firebase.md). Sigue la 0.39.0, sección 4.
+en Drive y GitHub; resultados en [0.38.0-firebase.md](0.38.0-firebase.md).
+
+**Reorganización de Juan (2026-10-23):** la **0.39.0 reúne en una sola entrega** los botones de error
+y todo lo previsto para la **0.40.0, 0.41.0 y 0.42.0**: mundos en Drive y tarjetas de Minecraft
+(secciones 4, 5 y 6). Esas tres versiones dejan de ser entregas separadas en este plan. Se trabaja por
+etapas internas, pero todas pertenecen a la 0.39.0. La apertura de la captura reciente con F2 → O se
+aplaza **hasta el final del roadmap, después de E6**, sin versión asignada (sección 9).
 
 Cada versión pasa la lista de la sección 10.1 de plan-diciembre.md. Si una versión necesita reglas de Firebase
 nuevas, Juan las publica antes.
@@ -252,7 +257,11 @@ en producción. Por eso SSE se queda como respaldo y el cambio va primero al can
 
 ---
 
-## 4. Detalles menores
+## 4. 0.39.0: botones para resolver errores
+
+Esta parte se entrega junto con mundos en Drive (sección 5) y tarjetas de Minecraft (sección 6),
+como una sola versión 0.39.0. Las mismas acciones de error se aplican a esos flujos y a las
+operaciones existentes del launcher.
 
 ### 4.1 Errores con una acción para resolverlos
 
@@ -280,24 +289,12 @@ en producción. Por eso SSE se queda como respaldo y el cambio va primero al can
 
 **Pruebas:** un caso por fila en la demostración (`demoInvoke` con el error) y capturas.
 
-### 4.2 Pulsar O justo después de F2 abre esa captura lista para mandar
-
-- **El puente (`puente.rs`)** ya conoce la carpeta `screenshots` de la instancia abierta. Anota la última
-  captura y su hora: la ve aparecer con un vigía de carpeta, o al pedirla.
-- **El mod (`mod/nucleo`, común a todas las versiones):** al pulsar O, pregunta al puente si hay una captura
-  de hace menos de 10 s. Si la hay, el panel abre en **Capturas** con esa captura elegida y el selector de
-  conversación abierto. Si no, abre como siempre.
-- No hace falta tocar cada versión (`mod/versiones`): todo pasa en el núcleo y el puente. Se compilan los 18
-  jars con `mod/compilar.py`.
-- **Pruebas:**
-  - `--abrir-juego` en 1.20.1, 1.21.1 y 26.3: F2 y luego O antes y después de los 10 s;
-  - que una captura vieja no se vuelva a ofrecer.
-
 ---
 
-## 5. E4: mundos en Drive
+## 5. 0.39.0 · E4: mundos en Drive
 
 El diseño está en plan-diciembre.md, sección 8. Aquí va cómo se construye.
+Incluye copias, revisiones, restauración y conflictos en la misma 0.39.0, junto con las secciones 4 y 6.
 
 ### 5.1 Permiso y cuenta
 
@@ -351,12 +348,16 @@ El diseño está en plan-diciembre.md, sección 8. Aquí va cómo se construye.
   otra; jugar en las dos sin subir y comprobar que sale el conflicto.
 - **Mundo grande (2 GB):** el tiempo, la memoria (sin cargar el zip entero) y que la ventana no se trabe.
 
-**Va primero al canal de pruebas.** Una sola versión con todo, o dos (respaldar en una, restaurar y
-conflictos en la siguiente).
+**Va primero al canal de pruebas como 0.39.0.** Respaldar, restaurar y resolver conflictos se
+implementan y verifican por etapas internas, pero forman parte de una sola entrega con los botones
+de error y las tarjetas de Minecraft. No se dividen en versiones 0.40.0 y 0.41.0.
 
 ---
 
-## 6. E5: tarjetas de Minecraft
+## 6. 0.39.0 · E5: tarjetas de Minecraft
+
+Se incorpora a la misma entrega que las secciones 4 y 5; el alcance antes previsto para la 0.42.0
+queda integrado en la 0.39.0.
 
 Hoy las tarjetas solo cambian ajustes de Parabellum (`ajustes.rs`). E5 agrega ajustes **del juego** de una
 instancia, que viven en `options.txt`.
@@ -446,10 +447,9 @@ instancia, que viven en `options.txt`.
 | **0.36.2** | Asistente con el portal oficial de CurseForge, recepción verificada y continuación de pendientes; probado por Juan | — | GitHub publicado; incluida en la 0.37.0 de Drive |
 | **0.37.0** | 3, paso 1, perfiles, escritura y galería; publicada en Drive y GitHub | `chatInbox`, `presenceInbox`, `typing`, `users/$uid/streamVersion` | Publicación y reglas funcionando confirmadas por Juan el 2026-10-23 |
 | **0.38.0** | 3, paso 2 (WebSocket compartido, renovación y respaldo SSE), publicada en Drive y GitHub | — | Publicación confirmada por Juan el 2026-10-23; registrar mediciones de escuela, suspensión y sesión larga |
-| **0.39.0** | 4 (errores con acción y la O después de F2) | — | — |
-| **0.40.0 – 0.41.0** | E4 (mundos en Drive), en el canal de pruebas y después estable | — | Agregar `drive.file` en Google Cloud |
-| **0.42.0** | E5 (tarjetas de Minecraft) | Lista de ajustes del juego | Publicar las reglas |
+| **0.39.0** | Una sola entrega: 4 (botones de error), 5 (E4, mundos en Drive: copias, revisiones, restauración y conflictos) y 6 (E5, tarjetas de Minecraft). Absorbe las antiguas 0.40.0, 0.41.0 y 0.42.0; primero pruebas y después estable | Lista de ajustes del juego | Agregar `drive.file` en Google Cloud y publicar las reglas |
 | **Después** | E6, en el orden de la sección 7 | Eventos | Según cada uno |
+| **Al final, después de E6** | F2 → O: abrir la captura reciente lista para compartir (sección 9), sin versión asignada | — | — |
 
 **Cómo se trabaja cada versión:**
 1. código con sus pruebas unitarias;
@@ -464,5 +464,23 @@ instancia, que viven en `options.txt`.
 - los cambios en Google Cloud.
 
 **Mac:** todo es código compartido. Lo único de sistema son las notificaciones del vigía de soporte
-(`plataforma::avisos`, que ya existe en los dos) y el vigía de carpeta del punto 4.2. Diego compila y prueba
+(`plataforma::avisos`, que ya existe en los dos) y el vigía de carpeta de la sección 9, aplazado hasta el final. Diego compila y prueba
 cada versión como siempre.
+
+---
+
+## 9. Última prioridad del roadmap: F2 → O abre la captura reciente
+
+**Aplazado por Juan el 2026-10-23 hasta después de E6, sin versión asignada.** No forma parte de la
+entrega unificada 0.39.0. Se conserva aquí el alcance para retomarlo al final:
+
+- **El puente (`puente.rs`)** ya conoce la carpeta `screenshots` de la instancia abierta. Anota la última
+  captura y su hora: la ve aparecer con un vigía de carpeta, o al pedirla.
+- **El mod (`mod/nucleo`, común a todas las versiones):** al pulsar O, pregunta al puente si hay una captura
+  de hace menos de 10 s. Si la hay, el panel abre en **Capturas** con esa captura elegida y el selector de
+  conversación abierto. Si no, abre como siempre.
+- No hace falta tocar cada versión (`mod/versiones`): todo pasa en el núcleo y el puente. Se compilan los 18
+  jars con `mod/compilar.py`.
+- **Pruebas:**
+  - `--abrir-juego` en 1.20.1, 1.21.1 y 26.3: F2 y luego O antes y después de los 10 s;
+  - que una captura vieja no se vuelva a ofrecer.

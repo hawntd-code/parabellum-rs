@@ -114,7 +114,8 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
   - barra de arriba y barra lateral;
   - paneles flotantes (descargas, juego e información), menús, avisos y pantalla de carga.
 - [x] **Estados**: esqueletos mientras carga; vacíos que explican qué hacer; los errores internos ya no salen tal cual
-- [ ] Después: más errores con una acción para resolverlos (hoy la tienen el modo escuela y el doctor)
+- [ ] **0.39.0:** más errores con una acción para resolverlos, junto con mundos en Drive y tarjetas de
+  Minecraft (hoy la tienen el modo escuela y el doctor).
 - [x] **Movimiento**:
   - entradas y transiciones coherentes y botones que se hunden;
   - cambio de tema con un círculo;
@@ -209,12 +210,15 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     ZIP de `_parabellum`, de 10 350 396 bytes. README y registro de Windows/Mac actualizados.
   - [ ] **0.38.0, seguimiento:** registrar la medición en la escuela, suspensión/reanudación y sesión
     larga. La confirmación de publicación no aporta todavía esos resultados específicos.
-  - [ ] **0.39.0:** errores con una acción para resolverlos, y la O justo después de F2 abre esa captura;
-  - [ ] **0.40.0 y 0.41.0, E4, mundos en Drive:** copias, revisiones, conflictos y restaurar con su instancia;
-  - [ ] **0.42.0, E5, tarjetas de Minecraft:** ajustes de `options.txt` por versión, pendientes hasta
-    cerrar el juego;
+  - [ ] **0.39.0, entrega unificada** (decisión de Juan, 2026-10-23): botones para resolver errores,
+    **E4, mundos en Drive** (copias, revisiones, conflictos y restaurar con su instancia) y **E5,
+    tarjetas de Minecraft** (ajustes de `options.txt` por versión, pendientes hasta cerrar el juego).
+    Absorbe lo previsto para la 0.40.0, 0.41.0 y 0.42.0; se implementa por etapas internas y se publica
+    como una sola versión. Detalle en [plan-noviembre.md](docs/plan-noviembre.md), secciones 4, 5 y 6.
   - [ ] **Después, E6:** subir solo lo que cambió de un mundo, configuraciones de mods, aplicar en vivo con
     el mod, eventos de la comunidad y lo que quede de Firebase.
+  - [ ] **Al final del roadmap, después de E6:** pulsar O justo después de F2 abre esa captura lista
+    para mandar. Sin versión asignada; se retira de la 0.39.0 por decisión de Juan.
 - [ ] **Pruebas reales pendientes**:
   - en la escuela: Modrinth sin modo escuela;
   - con amigos en sus casas: P2P y los «teletransportes»;
@@ -391,7 +395,6 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
 ### Después
 - [x] Doctor: buscar el mod culpable por mitades cuando el error no lo dice (0.29.0)
 - [ ] Resto del pulido: esqueletos de carga en Explorar, telemetría del servidor viva (números suaves y minigráficas), botones que se hunden, cambio de tema con un círculo
-- [ ] Mod: pulsar O justo después de F2 abre esa captura lista para mandar
 - [ ] Mac (Diego): `docs/mac.md` y `docs/mac-cambios.md`
 
 ### Fase 9: social

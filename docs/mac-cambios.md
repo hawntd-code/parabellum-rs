@@ -512,12 +512,15 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
     de soporte desde el inicio;
   - 0.36.0, CurseForge (adelantado por Juan el 2026-10-22);
   - 0.37.0, menos escuchas y acabado del chat (publicada; reglas funcionando, confirmado por Juan);
-  - 0.38.0, una sola conexión a Firebase (WebSocket);
-  - 0.39.0, errores con acción y la O después de F2;
-  - 0.40.0 a 0.42.0, E4 (mundos en Drive) y E5 (tarjetas de Minecraft).
+  - 0.38.0, una sola conexión a Firebase (WebSocket), publicada;
+  - **0.39.0, una sola entrega:** botones de error, E4 (mundos en Drive: copias, revisiones,
+    restauración y conflictos) y E5 (tarjetas de Minecraft). Absorbe las antiguas 0.40.0, 0.41.0 y
+    0.42.0 por decisión de Juan el 2026-10-23;
+  - después E6; **F2 → O queda al final del roadmap**, sin versión asignada.
 
   Todo es compartido. Lo de sistema: las notificaciones del vigía de soporte (`plataforma::avisos`, ya existe
-  en Mac) y un vigía de la carpeta de capturas.
+  en Mac) y un vigía de la carpeta de capturas, aplazado hasta el final. Este cambio reorganiza el
+  plan; no modifica código ni requiere recompilar lo publicado.
 
 ## Cambios de Windows
 
