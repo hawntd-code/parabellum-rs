@@ -32,7 +32,7 @@
     <td width="50%" valign="top"><b>🌐 Hostear partida</b><br>Convierte una instancia en un servidor en tu PC y tus amigos entran con <b>Unirse</b>, sin abrir puertos ni pasar IPs. Los ajustes del servidor se cambian como en Aternos, sin comandos.</td>
   </tr>
   <tr>
-    <td width="50%" valign="top"><b>💬 Amigos y mensajes</b><br>Ve a qué juega cada quien y únete a su partida. Chat y grupos con imágenes, respuestas y reacciones.</td>
+    <td width="50%" valign="top"><b>💬 Amigos y mensajes</b><br>Ve a qué juega cada quien y únete a su partida. Chat y grupos con imágenes, respuestas, reacciones, perfiles y escritura animada.</td>
     <td width="50%" valign="top"><b>🕹️ Dentro del juego</b><br>Con la tecla <b>O</b> se abre Parabellum dentro de Minecraft: amigos, mensajes, invitaciones y capturas, sin salir del mundo (Fabric, Forge y NeoForge, de la 1.16.5 a la 26.3).</td>
   </tr>
   <tr>
@@ -63,7 +63,7 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td align="center" valign="top">
 <br>
-<a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.36.2/Parabellum-0.36.2.zip"><img alt="Descargar Parabellum 0.36.2 para Windows" src="https://img.shields.io/badge/Descargar-v0.36.2-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
+<a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.37.0/Parabellum-0.37.0.zip"><img alt="Descargar Parabellum 0.37.0 para Windows" src="https://img.shields.io/badge/Descargar-v0.37.0-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
 <br><br>
 <sub>Windows 10 u 11 de 64 bits · zip de 10.2 MB · 23 oct 2026</sub>
 <br><br>
@@ -79,14 +79,14 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td valign="top">
 
-**Lo nuevo en la 0.36.2**
+**Lo nuevo en la 0.37.0**
 
-- **CurseForge dentro del launcher:** abre la página oficial del archivo y pulsa **Download**. Parabellum recibe la descarga, comprueba su versión y la coloca en su instancia.
-- **Continúa cuando quieras:** los archivos pendientes se conservan al cerrar y se retoman desde Biblioteca o la instancia. También puedes elegir un archivo que ya descargaste.
-- **Mods y modpacks:** el asistente incluye los archivos restringidos y sus dependencias, con verificación de tamaño y huella antes de instalar.
-- **CurseForge predeterminado:** se conserva tu elección previa de Modrinth y las mejoras del paquete ligero.
+- **Chat más cuidado:** avatar y puntos animados cuando alguien escribe, perfiles con estado y actividad, y transiciones al enviar y recibir.
+- **Galería de imágenes:** recorre las imágenes compartidas con flechas o teclado, miniaturas, autor, fecha y ampliación.
+- **Mensajes confiables:** confirmación del envío y reintentos sin duplicados. Las llegadas conservan la posición cuando lees más arriba.
+- **Menos escuchas de Firebase:** conversaciones y presencia agrupadas por usuario, con compatibilidad para versiones anteriores. Incluye el asistente de CurseForge.
 
-<sub>[Notas completas](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.36.2)</sub>
+<sub>[Notas completas](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.37.0)</sub>
 
 </td>
 <td valign="top">

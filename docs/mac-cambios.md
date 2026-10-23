@@ -23,22 +23,23 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
-- **0.36.2:** asistente del portal de CurseForge terminado. El usuario descarga desde la página oficial
-  dentro del launcher y Parabellum verifica e instala los archivos; los pendientes se conservan.
-  Juan confirmó el recorrido real el 2026-10-23. Windows publicado en GitHub; `_parabellum` listo para
-  subir a Drive. La última versión confirmada en Drive sigue siendo la **0.36.1**, con el ligero ya
-  subido y CurseForge probado en la escuela (2026-10-22). Falta medir el tiempo del ligero.
-  Mac pasó las pruebas automáticas; falta probar su portal y selector en una Mac antes de publicarla.
+- **0.37.0:** publicada en Drive y GitHub. Juan confirmó el 2026-10-23 que las reglas nuevas de
+  Firebase ya están publicadas y funcionan correctamente. Incluye menos escuchas, escritura animada,
+  perfiles y galería con navegación, además del asistente de CurseForge de la 0.36.2.
+  El ligero ya está subido y CurseForge está probado en la escuela; falta medir el tiempo del ligero.
+  Mac pasó las pruebas automáticas; quedan sus pruebas visuales del portal de CurseForge y del chat.
+  Sigue la 0.38.0 (WebSocket con respaldo SSE), todavía sin iniciar.
 
 - Última revisión de los PR de Mac en Windows: 2026-10-20, PR #1 a #17 (todos mezclados).
-- **Publicado en Drive:** Windows **0.36.1** desde el 2026-10-22 (publicación confirmada por Juan;
-  código de la entrega en `63509b3`), con el modpack ligero ya subido.
+- **Publicado en Drive:** Windows **0.37.0**, confirmada por Juan el 2026-10-23;
+  código de la entrega en `da5b22c`, con las reglas nuevas publicadas y funcionando.
   **Mac 0.33.0** desde el 2026-10-20 (Diego, compilada de `main` en `52de0a3`; ver «Versiones
   publicadas en Drive»).
-  - A Mac le faltan la 0.34.0 (E3) y la 0.35.0 (paquete ligero y avisos de soporte).
+  - A Mac le faltan las novedades de la 0.34.0 (E3), la 0.35.0 (paquete ligero y avisos de soporte),
+    la 0.36 (CurseForge) y la 0.37.0 (chat y escuchas).
   - De lo propio de Mac, solo la notificación del vigía de soporte (`avisos::show`).
-  - Se puede publicar directo una Mac 0.35.0 compilada de `main`: en «Lo que queda por probar en Mac»
-    está qué revisar antes (punto 0).
+  - Se puede publicar directo una Mac 0.37.0 compilada de `main`: revisar «Lo que queda por probar
+    en Mac» (punto 0), además del portal de CurseForge y el chat descritos en «Cambios de Windows».
   - Siguen pendientes las pruebas a mano de esa sección.
 - **Descargas en GitHub:** cada versión publicada tiene su release con el zip, y el README las enlaza:
   Windows como `v<versión>` y Mac como `mac-v<versión>` (la Mac 0.33.0 ya está, con tu zip de Drive tal
@@ -46,7 +47,7 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   la última de cada uno lado a lado, con lo nuevo y cómo instalarla. Cuando publiques una de Mac, súbela como release igual que la 0.33.0 (ver
   `docs/desarrollo.md` › «Publicar una versión») o avísale a Juan.
 - Mac: hechas las tareas 1 a 11 de `mac.md`. Queda la 12 (firma de Apple), que es decisión de Juan.
-  Las reglas de Firebase de la 0.27 ya están publicadas.
+  Las reglas de Firebase de la 0.37.0 ya están publicadas y funcionan, confirmado por Juan.
 
 ## Lo que queda por probar en Mac
 
@@ -132,6 +133,17 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
+
+- **0.37.0** · 2026-10-23 · Publicada por Juan en Drive y reglas nuevas de Firebase publicadas y
+  funcionando (confirmado por él). Código de Windows en `da5b22c`; mismo ZIP en
+  [GitHub](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.37.0),
+  de 10 243 719 bytes, SHA-256 `d86a00e20fdb0ff4c516fe2d790a0e9bf1ed1c5caf955e902cb1272b0eaf7d49`:
+  - **Escritura animada** con avatar y puntos, también en grupos.
+  - **Perfiles desde el chat:** nombre, estado, actividad y grupos en común.
+  - **Galería de imágenes:** flechas, teclado, miniaturas, autor, fecha, ampliación y transiciones.
+  - **Mensajes más fluidos:** confirmación, reintentos sin duplicados y posición de lectura conservada.
+  - **Menos escuchas de Firebase**, con compatibilidad para clientes anteriores. WebSocket sigue en
+    la 0.38.0. Incluye el asistente del portal de CurseForge de la 0.36.2.
 
 - **0.36.1** · 2026-10-22 · Publicada por Juan en Drive (confirmado por él). Código de la entrega
   de Windows en `63509b3`; también disponible en GitHub:
@@ -485,7 +497,7 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   - 0.35.0 (publicada el 2026-10-21), el paquete oficial baja sus mods del CDN de Modrinth y hay avisos
     de soporte desde el inicio;
   - 0.36.0, CurseForge (adelantado por Juan el 2026-10-22);
-  - 0.37.0, menos escuchas y acabado del chat (implementado; pendiente prueba real y reglas);
+  - 0.37.0, menos escuchas y acabado del chat (publicada; reglas funcionando, confirmado por Juan);
   - 0.38.0, una sola conexión a Firebase (WebSocket);
   - 0.39.0, errores con acción y la O después de F2;
   - 0.40.0 a 0.42.0, E4 (mundos en Drive) y E5 (tarjetas de Minecraft).
@@ -519,14 +531,14 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   La revisión final añade el botón de perfil en inglés y fija en 32 px los iconos de grupos sin foto;
   ambos cambios de interfaz se comprobaron en el navegador.
   Exe final de Windows compilado y arranque en WebView2 correcto (Ajustes muestra 0.37.0), sin iniciar
-  sesión en la copia de prueba. Colocado con respaldo de la 0.36.2 y ZIP del canal de pruebas verificado;
-  la entrega estable sigue pendiente de reglas y aceptación real.
+  sesión en la copia de prueba. Colocado con respaldo de la 0.36.2 y ZIP del canal de pruebas verificado.
+  Juan confirmó después la publicación estable y las reglas funcionando (2026-10-23).
 - **Mac:** no cambia el contrato de plataforma. Compilar y probar los perfiles, teclado de la galería,
   ampliación y movimiento reducido con WKWebView. La nueva prueba de tiempo real es compartida y
   está omitida por defecto porque necesita el emulador; ver `docs/desarrollo.md`.
-- **Antes de publicar:** Juan debe publicar `firebase-reglas.json` (`chatInbox`, `presenceInbox`,
-  `typing`, `users/$uid/streamVersion`) y probar con dos cuentas reales. No se declara publicada
-  esta versión en Drive ni en GitHub. WebSocket queda en la 0.38.0.
+- **Publicada:** Juan confirmó la 0.37.0 en Drive y las reglas de `firebase-reglas.json` (`chatInbox`,
+  `presenceInbox`, `typing`, `users/$uid/streamVersion`) publicadas y funcionando. Mismo ZIP en GitHub.
+  WebSocket queda en la 0.38.0.
 
 ### 2026-10-23 · 0.36.2: asistente del portal de CurseForge
 

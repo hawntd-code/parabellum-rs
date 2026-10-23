@@ -29,11 +29,12 @@ Queda medir el tiempo de descarga del nuevo ligero y probar su instalación desd
 Antes de Firebase, Juan pidió pulir los archivos restringidos de CurseForge como **0.36.2**:
 página oficial dentro del launcher, recepción y verificación del archivo, y pendientes recuperables.
 **Terminada y probada por Juan el 2026-10-23:** descarga desde el portal, instalación verificada y
-continuación de pendientes. Entrega de Windows en GitHub y preparada para subir a Drive.
-**0.37.0 implementada (2026-10-23):** reducir las escuchas y afinar la experiencia del chat, según
+continuación de pendientes. Entrega de Windows en GitHub e incluida en la 0.37.0 publicada en Drive.
+**0.37.0 publicada (confirmado por Juan el 2026-10-23):** reducir las escuchas y afinar la experiencia del chat, según
 el nuevo pedido de Juan. Perfiles, escritura animada, galería con navegación y transiciones al enviar
-y recibir. Pruebas y detalles en [0.37.0-chat.md](0.37.0-chat.md); faltan las reglas en producción y
-la prueba con dos cuentas reales antes de publicar la estable.
+y recibir. Juan confirmó también que las reglas nuevas ya están publicadas y funcionan correctamente.
+Pruebas y detalles en [0.37.0-chat.md](0.37.0-chat.md). Sigue la 0.38.0: WebSocket con respaldo SSE,
+primero en el canal de pruebas.
 
 Cada versión pasa la lista de la sección 10.1 de plan-diciembre.md. Si una versión necesita reglas de Firebase
 nuevas, Juan las publica antes.
@@ -435,8 +436,8 @@ instancia, que viven en `options.txt`.
 | **0.35.0** | 1a (reintentos, pedir antes, «revisando»), 1b (mods del CDN de Modrinth) y 2 (avisos de soporte) | `supportNotify` | Publicar las reglas; volver a publicar el paquete oficial (elegir antes cuál es el bueno) |
 | **0.36.0** | CurseForge: búsqueda, instalar con dependencias e importar modpacks; incluye la 0.35.1 | — | Incluida en la 0.36.1 publicada; CurseForge probado en la escuela |
 | **0.36.1** | CurseForge como fuente predeterminada; conserva la elección previa de Modrinth | — | Publicada en Drive y ligero subido (2026-10-22); queda medir e instalar desde una carpeta nueva |
-| **0.36.2** | Asistente con el portal oficial de CurseForge, recepción verificada y continuación de pendientes; probado por Juan | — | GitHub publicado; subir la entrega preparada a Drive |
-| **0.37.0** | 3, paso 1, perfiles, escritura y galería; implementada y probada en el emulador | `chatInbox`, `presenceInbox`, `typing`, `users/$uid/streamVersion` | Publicar reglas y probar con dos cuentas antes de la estable |
+| **0.36.2** | Asistente con el portal oficial de CurseForge, recepción verificada y continuación de pendientes; probado por Juan | — | GitHub publicado; incluida en la 0.37.0 de Drive |
+| **0.37.0** | 3, paso 1, perfiles, escritura y galería; publicada en Drive y GitHub | `chatInbox`, `presenceInbox`, `typing`, `users/$uid/streamVersion` | Publicación y reglas funcionando confirmadas por Juan el 2026-10-23 |
 | **0.38.0** | 3, paso 2 (WebSocket con respaldo SSE), primero en el canal de pruebas | — | Probarlo en la escuela |
 | **0.39.0** | 4 (errores con acción y la O después de F2) | — | — |
 | **0.40.0 – 0.41.0** | E4 (mundos en Drive), en el canal de pruebas y después estable | — | Agregar `drive.file` en Google Cloud |
