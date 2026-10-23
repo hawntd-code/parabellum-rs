@@ -33,8 +33,9 @@ continuación de pendientes. Entrega de Windows en GitHub e incluida en la 0.37.
 **0.37.0 publicada (confirmado por Juan el 2026-10-23):** reducir las escuchas y afinar la experiencia del chat, según
 el nuevo pedido de Juan. Perfiles, escritura animada, galería con navegación y transiciones al enviar
 y recibir. Juan confirmó también que las reglas nuevas ya están publicadas y funcionan correctamente.
-Pruebas y detalles en [0.37.0-chat.md](0.37.0-chat.md). La 0.38.0 ya implementa WebSocket con respaldo
-SSE y pasó la validación automática; primero se prepara para el canal de pruebas.
+Pruebas y detalles en [0.37.0-chat.md](0.37.0-chat.md). **La 0.38.0 también está publicada**, confirmado
+por Juan el 2026-10-23: WebSocket compartido con respaldo SSE, sin reglas nuevas. El mismo ZIP está
+en Drive y GitHub; resultados en [0.38.0-firebase.md](0.38.0-firebase.md). Sigue la 0.39.0, sección 4.
 
 Cada versión pasa la lista de la sección 10.1 de plan-diciembre.md. Si una versión necesita reglas de Firebase
 nuevas, Juan las publica antes.
@@ -444,7 +445,7 @@ instancia, que viven en `options.txt`.
 | **0.36.1** | CurseForge como fuente predeterminada; conserva la elección previa de Modrinth | — | Publicada en Drive y ligero subido (2026-10-22); queda medir e instalar desde una carpeta nueva |
 | **0.36.2** | Asistente con el portal oficial de CurseForge, recepción verificada y continuación de pendientes; probado por Juan | — | GitHub publicado; incluida en la 0.37.0 de Drive |
 | **0.37.0** | 3, paso 1, perfiles, escritura y galería; publicada en Drive y GitHub | `chatInbox`, `presenceInbox`, `typing`, `users/$uid/streamVersion` | Publicación y reglas funcionando confirmadas por Juan el 2026-10-23 |
-| **0.38.0** | 3, paso 2 (WebSocket compartido, renovación y respaldo SSE), compilado e instalado como candidato; ZIP de pruebas y borrador de GitHub preparados | — | Aceptar escuela, suspensión y sesión larga antes de la estable |
+| **0.38.0** | 3, paso 2 (WebSocket compartido, renovación y respaldo SSE), publicada en Drive y GitHub | — | Publicación confirmada por Juan el 2026-10-23; registrar mediciones de escuela, suspensión y sesión larga |
 | **0.39.0** | 4 (errores con acción y la O después de F2) | — | — |
 | **0.40.0 – 0.41.0** | E4 (mundos en Drive), en el canal de pruebas y después estable | — | Agregar `drive.file` en Google Cloud |
 | **0.42.0** | E5 (tarjetas de Minecraft) | Lista de ajustes del juego | Publicar las reglas |

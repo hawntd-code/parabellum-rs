@@ -202,11 +202,13 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
   - [x] **0.38.0, motor:** una conexión persistente para las escuchas con WebSocket de Firebase,
     renovación, reconexión y respaldo SSE. 133 unitarias y recorrido del chat correctos en ambos
     transportes; siete conexiones por cliente pasan a una en el escenario de referencia.
-    Windows compilada e instalada como candidato, Firebase real comprobado, ZIP de pruebas y
-    borrador de GitHub preparados.
+    Windows compilada, Firebase real comprobado y mismo ZIP verificado para la publicación.
     [Implementación y medición](docs/0.38.0-firebase.md).
-  - [ ] **0.38.0, aceptación y salida:** primero en el canal de pruebas; comprobar la escuela,
-    suspensión/reanudación y una sesión larga antes de publicar la estable.
+  - [x] **0.38.0, salida:** Juan confirmó la actualización publicada en Drive el 2026-10-23;
+    [GitHub](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.38.0) contiene el mismo
+    ZIP de `_parabellum`, de 10 350 396 bytes. README y registro de Windows/Mac actualizados.
+  - [ ] **0.38.0, seguimiento:** registrar la medición en la escuela, suspensión/reanudación y sesión
+    larga. La confirmación de publicación no aporta todavía esos resultados específicos.
   - [ ] **0.39.0:** errores con una acción para resolverlos, y la O justo después de F2 abre esa captura;
   - [ ] **0.40.0 y 0.41.0, E4, mundos en Drive:** copias, revisiones, conflictos y restaurar con su instancia;
   - [ ] **0.42.0, E5, tarjetas de Minecraft:** ajustes de `options.txt` por versión, pendientes hasta

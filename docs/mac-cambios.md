@@ -23,26 +23,27 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
-- **0.37.0:** publicada en Drive y GitHub. Juan confirmó el 2026-10-23 que las reglas nuevas de
-  Firebase ya están publicadas y funcionan correctamente. Incluye menos escuchas, escritura animada,
-  perfiles y galería con navegación, además del asistente de CurseForge de la 0.36.2.
+- **0.38.0:** publicada en Drive y GitHub, confirmada por Juan el 2026-10-23. Las escuchas comparten
+  WebSocket con reconexión, renovación de sesión y respaldo SSE. No requiere reglas nuevas: las de
+  la 0.37.0 ya estaban publicadas y funcionando. Conserva el chat con escritura animada, perfiles,
+  galería y el asistente de CurseForge.
   El ligero ya está subido y CurseForge está probado en la escuela; falta medir el tiempo del ligero.
   Mac pasó las pruebas automáticas; quedan sus pruebas visuales del portal de CurseForge y del chat.
-  La 0.38.0 (WebSocket con respaldo SSE) ya está implementada y pasó las pruebas automáticas de
-  Windows y Mac. Windows ya está compilada e instalada como candidato, con ZIP del canal de pruebas
-  y borrador de GitHub; queda aceptar la escuela, suspensión y sesión larga antes de la estable.
+  Windows pasó 133 pruebas y Mac 141; Firebase real y emulador comprobados. Queda registrar las
+  mediciones de escuela, suspensión y sesión larga; la confirmación de publicación no incluye esos
+  resultados específicos.
 
 - Última revisión de los PR de Mac en Windows: 2026-10-20, PR #1 a #17 (todos mezclados).
-- **Publicado en Drive:** Windows **0.37.0**, confirmada por Juan el 2026-10-23;
-  código de la entrega en `da5b22c`, con las reglas nuevas publicadas y funcionando.
+- **Publicado en Drive:** Windows **0.38.0**, confirmada por Juan el 2026-10-23;
+  código de la entrega en `9250224`, sin reglas nuevas.
   **Mac 0.33.0** desde el 2026-10-20 (Diego, compilada de `main` en `52de0a3`; ver «Versiones
   publicadas en Drive»).
   - A Mac le faltan las novedades de la 0.34.0 (E3), la 0.35.0 (paquete ligero y avisos de soporte),
-    la 0.36 (CurseForge) y la 0.37.0 (chat y escuchas).
+    la 0.36 (CurseForge), la 0.37.0 (chat y escuchas) y la 0.38.0 (WebSocket compartido).
   - De lo propio de Mac, solo la notificación del vigía de soporte (`avisos::show`).
-  - Para publicar una Mac con lo de la estable 0.37.0, usar `da5b22c` y revisar «Lo que queda por probar
-    en Mac» (punto 0), además del portal y el chat. `main` ya contiene la 0.38.0, que debe pasar primero
-    por el canal de pruebas y la comprobación de WebSocket/respaldo descrita en «Cambios de Windows».
+  - Para alcanzar la estable de Windows, compilar Mac 0.38.0 de `main` en `9250224` o más nuevo y revisar
+    «Lo que queda por probar en Mac» (punto 0), el portal, el chat y WebSocket/respaldo. Las pruebas
+    automáticas de Mac pasaron; falta su comprobación manual antes de publicarla.
   - Siguen pendientes las pruebas a mano de esa sección.
 - **Descargas en GitHub:** cada versión publicada tiene su release con el zip, y el README las enlaza:
   Windows como `v<versión>` y Mac como `mac-v<versión>` (la Mac 0.33.0 ya está, con tu zip de Drive tal
@@ -136,6 +137,16 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
+
+- **0.38.0** · 2026-10-23 · Publicada por Juan en Drive (confirmado por él). Código de Windows en
+  `9250224`; el ZIP exacto de `_parabellum` está también en
+  [GitHub](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.38.0),
+  de 10 350 396 bytes, SHA-256 `ab62d6bc1eaf4c565f5ea1fdcd32b5fc259f5dce6337cdaf9ba655e13a10b6f6`:
+  - **Una conexión de tiempo real compartida** para amigos, mensajes y soporte.
+  - **Reconexión y renovación de sesión**, con respaldo SSE automático si la red lo necesita.
+  - **Historial consistente** y reapertura del chat con datos ya disponibles.
+  - No requiere reglas nuevas. Windows pasó 133 pruebas y Mac 141; las comprobaciones manuales de
+    Mac y las mediciones específicas de escuela, suspensión y sesión larga quedan en seguimiento.
 
 - **0.37.0** · 2026-10-23 · Publicada por Juan en Drive y reglas nuevas de Firebase publicadas y
   funcionando (confirmado por él). Código de Windows en `da5b22c`; mismo ZIP en
@@ -530,13 +541,13 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 - En `9250224`: Windows pasó 133 unitarias y Mac 141, con `cargo check` correcto en ambos. El chat
   pasó en el emulador oficial con WebSocket y SSE: siete escuchas por cliente, una conexión con
   WebSocket frente a siete con SSE. Historial, reapertura y limpieza final correctos.
-- Windows compilada e instalada como candidato. Firebase real: una escucha sincronizó en 603 ms
+- Windows compilada e instalada. Firebase real: una escucha sincronizó en 603 ms
   por WebSocket, sus cinco actualizaciones llegaron y el SSE forzado también pasó. Marca restaurada
   y cero conexiones al terminar. Arranque nativo y versión 0.38.0 verificados; ZIP y hashes en la guía.
-  La entrega solo está preparada para pruebas y como borrador en GitHub; Drive estable sigue en 0.37.0.
+  Juan confirmó la publicación en Drive el 2026-10-23; GitHub tiene el mismo ZIP como estable 0.38.0.
 - **Mac:** no cambia el contrato de plataforma. Compilar y probar conexión, suspensión/reanudación,
   cierre de sesión y respaldo en una red que bloquee WebSocket. Comparar los contadores; primero
-  publicar en el canal de pruebas. La versión estable de Windows sigue siendo la 0.37.0.
+  publicar en el canal de pruebas. La versión estable de Windows ya es la 0.38.0.
 
 ### 2026-10-23 · 0.37.0: escuchas, perfiles y galería del chat
 
