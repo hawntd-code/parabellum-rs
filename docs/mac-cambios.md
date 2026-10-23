@@ -509,6 +509,10 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ### 2026-10-23 · 0.38.0: WebSocket compartido con respaldo SSE
 
+- El respaldo SSE aplica los mismos límites de historial al recibir cambios parciales: el hilo abierto
+  conserva los últimos 150 mensajes también si la red bloquea WebSocket. Mac recibe la corrección
+  compartida; no requiere código de plataforma ni reglas nuevas.
+
 - `firebase_ws.rs` agrupa las escuchas de cada `Database` en un socket. Conserva `Database::listen`,
   deduplica consultas idénticas y separa las consultas filtradas por etiquetas. Reconecta, reconstruye
   suscripciones, renueva el token dentro del canal y vuelve automáticamente a SSE si hace falta.

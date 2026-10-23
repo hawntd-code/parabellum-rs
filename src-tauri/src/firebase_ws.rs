@@ -161,7 +161,7 @@ impl Spec {
                 .as_array()
                 .is_some_and(|queries| queries.contains(&expected))
     }
-    fn trim(&self, value: &mut Value) {
+    pub(super) fn trim(&self, value: &mut Value) {
         let Some(object) = value.as_object_mut() else {
             return;
         };

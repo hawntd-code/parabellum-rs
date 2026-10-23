@@ -344,6 +344,8 @@ impl Database {
     }
 
     async fn stream(&self, path: &str, data: &mut Value, on_change: &(impl Fn(Value) + Send + Sync)) -> Result<(), String> {
+        // El respaldo mantiene la misma ventana que WebSocket también al recibir cambios parciales.
+        let spec = websocket::Spec::parse(path);
         // El servidor manda un keep-alive cada 30 s: sin nada en 45 s, la conexión se dio por perdida
         // (p. ej. tras suspender el PC o cambiar de red).
         const IDLE: Duration = Duration::from_secs(45);
@@ -392,6 +394,7 @@ impl Database {
                         if let Ok(message) = serde_json::from_str::<Value>(payload.trim()) {
                             metrics::add(&metrics::EVENTS, 1);
                             apply(data, event == "patch", &message);
+                            if let Some(spec) = &spec { spec.trim(data); }
                             on_change(data.clone());
                         }
                     }
