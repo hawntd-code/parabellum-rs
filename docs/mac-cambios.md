@@ -518,6 +518,9 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   GitHub Actions en `441f972`: Windows correcto y Mac correcto (137 pruebas y tres omitidas).
   La revisión final añade el botón de perfil en inglés y fija en 32 px los iconos de grupos sin foto;
   ambos cambios de interfaz se comprobaron en el navegador.
+  Exe final de Windows compilado y arranque en WebView2 correcto (Ajustes muestra 0.37.0), sin iniciar
+  sesión en la copia de prueba. Colocado con respaldo de la 0.36.2 y ZIP del canal de pruebas verificado;
+  la entrega estable sigue pendiente de reglas y aceptación real.
 - **Mac:** no cambia el contrato de plataforma. Compilar y probar los perfiles, teclado de la galería,
   ampliación y movimiento reducido con WKWebView. La nueva prueba de tiempo real es compartida y
   está omitida por defecto porque necesita el emulador; ver `docs/desarrollo.md`.
