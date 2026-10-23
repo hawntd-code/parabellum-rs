@@ -190,8 +190,15 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     del launcher; recibir, verificar e instalar los archivos que el usuario descarga; conservar los
     pendientes y continuar desde Biblioteca o la instancia. Flujo real confirmado por Juan el
     2026-10-23; entrega de Windows preparada y publicada en GitHub, pendiente subir a Drive.
-  - [ ] **0.37.0 y 0.38.0:** una sola conexión a Firebase por persona (menos escuchas, y después el
-    WebSocket de Firebase con respaldo SSE);
+  - [x] **0.37.0, menos escuchas y chat cuidado** (pedido de Juan, 2026-10-23): buzones de resúmenes
+    y presencia; compatibilidad con clientes anteriores; escritura con avatar y puntos animados;
+    perfiles desde la conversación; galería con flechas, teclado, autor, fecha, miniaturas y ampliación;
+    entrada de mensajes y reintentos con el mismo identificador, sin duplicados.
+    Ver [implementación y pruebas](docs/0.37.0-chat.md).
+  - [ ] **0.37.0, salida:** publicar las reglas nuevas y probar con dos cuentas reales antes de
+    publicar la entrega estable. En el emulador: 7 escuchas por cliente frente a 14, con ocho chats y
+    un amigo; 129 unitarias correctas y recorrido de dos clientes correcto.
+  - [ ] **0.38.0:** una sola conexión con WebSocket de Firebase y respaldo SSE;
   - [ ] **0.39.0:** errores con una acción para resolverlos, y la O justo después de F2 abre esa captura;
   - [ ] **0.40.0 y 0.41.0, E4, mundos en Drive:** copias, revisiones, conflictos y restaurar con su instancia;
   - [ ] **0.42.0, E5, tarjetas de Minecraft:** ajustes de `options.txt` por versión, pendientes hasta

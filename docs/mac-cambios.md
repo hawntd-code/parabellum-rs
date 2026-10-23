@@ -485,7 +485,8 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   - 0.35.0 (publicada el 2026-10-21), el paquete oficial baja sus mods del CDN de Modrinth y hay avisos
     de soporte desde el inicio;
   - 0.36.0, CurseForge (adelantado por Juan el 2026-10-22);
-  - 0.37.0 y 0.38.0, una sola conexión a Firebase (WebSocket);
+  - 0.37.0, menos escuchas y acabado del chat (implementado; pendiente prueba real y reglas);
+  - 0.38.0, una sola conexión a Firebase (WebSocket);
   - 0.39.0, errores con acción y la O después de F2;
   - 0.40.0 a 0.42.0, E4 (mundos en Drive) y E5 (tarjetas de Minecraft).
 
@@ -493,6 +494,33 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   en Mac) y un vigía de la carpeta de capturas.
 
 ## Cambios de Windows
+
+### 2026-10-23 · 0.37.0: escuchas, perfiles y galería del chat
+
+- `chat_inbox.rs` mantiene copias de metadatos y miembros en `chatInbox/{uid}` con actualizaciones
+  atómicas. `userChats` sigue siendo un índice de booleanos para los clientes anteriores. Se migra
+  una conversación al recibir su copia y el anuncio de protocolo de todos sus miembros. Si hay un
+  cliente anterior se conserva la escucha canónica. `presenceInbox` concentra los estados de los
+  amigos nuevos; los anteriores conservan su escucha de presencia.
+- `typing/{chat}` tiene una escucha solo al abrir el chat; se retira al cambiar o cerrar. Se mantiene
+  el eco de presencia anterior. Nuevos comandos compartidos: `perfil_jugador` (nombre y UUID públicos)
+  e `imagenes_chat` (páginas de metadatos). `enviar_mensaje` acepta `envio` y devuelve el id confirmado;
+  reintentar el mismo envío no crea otro mensaje.
+- `ui/chat-experience.js` conserva filas, foco y posición de lectura; anima las llegadas nuevas,
+  muestra escritura con avatar, perfil con estado y grupos en común, y una galería con flechas,
+  teclado, miniaturas, autor/fecha, ampliación y transición direccional. Respeta movimiento reducido
+  y tiene textos en español e inglés.
+- Verificado en Windows: 129 unitarias correctas y una prueba adicional de dos clientes contra el
+  emulador oficial. Incluye reintentos, escritura, ediciones/borrados, 305 mensajes de historial,
+  permisos, compatibilidad anterior y cierre sin escuchas pendientes. Ocho chats y un amigo:
+  7 escuchas por cliente frente a 14. Las reglas pasan `docs/probar-reglas.py`.
+  Perfil, envío, escritura, galería, teclado, ampliación y recuperación del foco revisados en navegador.
+- **Mac:** no cambia el contrato de plataforma. Compilar y probar los perfiles, teclado de la galería,
+  ampliación y movimiento reducido con WKWebView. La nueva prueba de tiempo real es compartida y
+  está omitida por defecto porque necesita el emulador; ver `docs/desarrollo.md`.
+- **Antes de publicar:** Juan debe publicar `firebase-reglas.json` (`chatInbox`, `presenceInbox`,
+  `typing`, `users/$uid/streamVersion`) y probar con dos cuentas reales. No se declara publicada
+  esta versión en Drive ni en GitHub. WebSocket queda en la 0.38.0.
 
 ### 2026-10-23 · 0.36.2: asistente del portal de CurseForge
 

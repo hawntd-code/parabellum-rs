@@ -36,6 +36,34 @@ Usa WebView2, que ya viene en Windows 10 y 11.
 Para revisar el diseño sin compilar: sirve la carpeta `ui/` con cualquier servidor estático; fuera de
 Tauri la interfaz usa datos de ejemplo.
 
+### Pruebas de chat y Firebase (0.37.0)
+
+`cargo test --release --locked` ejecuta las unitarias. El recorrido de tiempo real usa el
+[emulador oficial de Firebase](https://storage.googleapis.com/firebase-preview-drop/emulator/firebase-database-emulator-v4.11.2.jar),
+Java 21 y dos usuarios falsos locales, sin una sesión de Google ni datos reales:
+
+```
+java -jar firebase-database-emulator-v4.11.2.jar --host 127.0.0.1 --port 9399
+python docs/probar-reglas.py
+```
+
+Con el emulador abierto, desde `src-tauri`:
+
+```
+cargo test --release --locked chat37 -- --ignored --nocapture
+```
+
+Las reglas usan el espacio local `parabellum-prueba`; el motor usa `parabellum-chat37`.
+El recorrido vacía y prepara exclusivamente ese espacio local, prueba dos clientes, compatibilidad,
+reintentos sin duplicados, escritura, perfiles, páginas de imágenes y liberación de escuchas.
+La medición de referencia es ocho chats y un amigo por usuario: **7 escuchas frente a 14**.
+No representa una conexión única; el cambio de protocolo va en la 0.38.0.
+
+Para la revisión visual, servir la **raíz del repositorio** y abrir `/ui/?chat37`. Esa demostración
+incluye imágenes del propio repositorio y respuestas/escritura simuladas; no envía mensajes reales.
+La aceptación con dos cuentas en Windows, las reglas en producción y la publicación estable se
+registran aparte en [0.37.0-chat.md](0.37.0-chat.md).
+
 ## Carpeta portable
 
 Todo cuelga de la carpeta del .exe (o de `PARABELLUM_ROOT`):

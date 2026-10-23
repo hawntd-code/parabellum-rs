@@ -30,7 +30,10 @@ Antes de Firebase, Juan pidió pulir los archivos restringidos de CurseForge com
 página oficial dentro del launcher, recepción y verificación del archivo, y pendientes recuperables.
 **Terminada y probada por Juan el 2026-10-23:** descarga desde el portal, instalación verificada y
 continuación de pendientes. Entrega de Windows en GitHub y preparada para subir a Drive.
-Después sigue la **0.37.0**, reducir las escuchas de Firebase; todavía no se ha iniciado.
+**0.37.0 implementada (2026-10-23):** reducir las escuchas y afinar la experiencia del chat, según
+el nuevo pedido de Juan. Perfiles, escritura animada, galería con navegación y transiciones al enviar
+y recibir. Pruebas y detalles en [0.37.0-chat.md](0.37.0-chat.md); faltan las reglas en producción y
+la prueba con dos cuentas reales antes de publicar la estable.
 
 Cada versión pasa la lista de la sección 10.1 de plan-diciembre.md. Si una versión necesita reglas de Firebase
 nuevas, Juan las publica antes.
@@ -198,13 +201,19 @@ La cola del soporte (`soporte_escuchar_cola`) solo empieza cuando se abre la pá
 
 ### Qué se hace
 
-**Paso 1, menos escuchas (sin cambiar de protocolo):**
-- **`userChats/{uid}/{chatId}`:** un resumen por conversación (último mensaje, a qué hora y de quién) que
-  escribe quien manda el mensaje, en el mismo `patch`. La lista de Mensajes escucha **una** rama en vez de
-  una por conversación; los mensajes completos se escuchan solo en la conversación abierta.
+**Paso 1, menos escuchas (0.37.0, implementado sin cambiar de protocolo):**
+- **`chatInbox/{uid}/{chatId}`:** resumen y miembros de cada conversación, escritos en el mismo
+  `patch` que la operación canónica. `userChats/{uid}/{chatId}=true` se conserva para no romper los
+  clientes anteriores. Una escucha del buzón sustituye las escuchas por conversación cuando sus
+  miembros anuncian el protocolo nuevo; un chat con un cliente anterior conserva su escucha canónica.
 - **La presencia de los amigos en un buzón propio:** `presenceInbox/{uid}`, escrito por cada amigo al
   cambiar su estado. Una escucha en vez de una por amigo.
 - Las reglas, con sus pruebas, y una migración: si el resumen no existe, se arma la primera vez.
+- `typing/{chat}/{uid}` se escucha solo en la conversación abierta y caduca en la interfaz. El perfil
+  se consulta al abrirlo y las imágenes anteriores se paginan sin escuchar todo el historial.
+- **Medición en el emulador:** dos clientes, cada uno con ocho chats y un amigo: 7 escuchas por
+  cliente frente a las 14 anteriores. Abrir una conversación agrega tres (mensajes, reacciones y
+  escritura). Sigue siendo SSE; la conexión única corresponde al paso 2.
 
 **Paso 2, el protocolo de WebSocket de Firebase:** el que usan los SDK oficiales. Es un solo
 `wss://<base>/.ws?v=5&ns=<ns>` por persona y, por dentro, todas las escuchas (`q`) y escrituras (`p`, `m`):
@@ -427,7 +436,7 @@ instancia, que viven en `options.txt`.
 | **0.36.0** | CurseForge: búsqueda, instalar con dependencias e importar modpacks; incluye la 0.35.1 | — | Incluida en la 0.36.1 publicada; CurseForge probado en la escuela |
 | **0.36.1** | CurseForge como fuente predeterminada; conserva la elección previa de Modrinth | — | Publicada en Drive y ligero subido (2026-10-22); queda medir e instalar desde una carpeta nueva |
 | **0.36.2** | Asistente con el portal oficial de CurseForge, recepción verificada y continuación de pendientes; probado por Juan | — | GitHub publicado; subir la entrega preparada a Drive |
-| **0.37.0** | 3, paso 1 (`userChats` y buzón de presencia) | `userChats`, `presenceInbox` | Publicar las reglas |
+| **0.37.0** | 3, paso 1, perfiles, escritura y galería; implementada y probada en el emulador | `chatInbox`, `presenceInbox`, `typing`, `users/$uid/streamVersion` | Publicar reglas y probar con dos cuentas antes de la estable |
 | **0.38.0** | 3, paso 2 (WebSocket con respaldo SSE), primero en el canal de pruebas | — | Probarlo en la escuela |
 | **0.39.0** | 4 (errores con acción y la O después de F2) | — | — |
 | **0.40.0 – 0.41.0** | E4 (mundos en Drive), en el canal de pruebas y después estable | — | Agregar `drive.file` en Google Cloud |

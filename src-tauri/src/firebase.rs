@@ -89,6 +89,14 @@ pub struct Session {
 }
 
 impl Session {
+    #[cfg(test)]
+    pub(crate) fn emulator(uid: &str, namespace: &str) -> Self {
+        use base64::Engine;
+        let b64 = |value: Value| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(value.to_string());
+        let id = format!("{}.{}.", b64(serde_json::json!({"alg":"none","typ":"JWT"})), b64(serde_json::json!({"sub":uid,"user_id":uid,"uid":uid,"iat":1700000000,"exp":4102444800i64,"aud":namespace,"iss":format!("https://securetoken.google.com/{namespace}"),"firebase":{"sign_in_provider":"custom","identities":{}}})));
+        Self { api_key:String::new(), uid:uid.into(), token:tokio::sync::Mutex::new(Token {id,refresh:String::new(),expires:Instant::now()+Duration::from_secs(3600)}) }
+    }
+
     pub async fn sign_in_with_google(api_key: &str, google_id_token: &str) -> Result<Self, String> {
         let body = serde_json::json!({
             "postBody": format!("id_token={google_id_token}&providerId=google.com"),

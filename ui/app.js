@@ -2140,12 +2140,14 @@ async function signInGoogle() {
   const s = state.social;
   if (s?.signedIn && !s.connected) {
     state.social = await invoke("reconectar_amigos").catch(() => s);
+    chatExperience.syncClock();
     return renderFriends();
   }
   if (s?.signingIn) return;
   const remember = $("#google-remember")?.checked ?? true;
   try {
     state.social = await invoke("iniciar_sesion_google", { recordar: remember });
+    chatExperience.syncClock();
     renderFriends();
     if (state.social.notice) toast(state.social.notice);
     else toast(t(`Sesión iniciada como ${state.social.email}.`, `Signed in as ${state.social.email}.`));
@@ -2162,6 +2164,7 @@ async function signOutGoogle() {
   });
   if (!ok) return;
   state.social = await invoke("cerrar_sesion_google");
+  chatExperience.syncClock();
   renderFriends();
 }
 
@@ -2330,6 +2333,7 @@ function wireFriendsEvents() {
   listen("social", ({ payload }) => {
     const connected = !state.social?.connected && payload?.connected;
     state.social = payload;
+    chatExperience.syncClock();
     if (connected && state.page === "communities") enterCommunities();
     renderFriends();
     if (state.page === "chat" && state.chatOpen) renderChatHeader();
@@ -2522,6 +2526,7 @@ function allChats() {
 }
 
 function renderChatHeader() {
+  chatExperience.syncClock();
   const chat = currentChat();
   if (!chat) return;
   $("#chat-avatar").innerHTML = chat.kind === "grupo" ? chatAvatar(chat) : presenceHead(chat.name, chatFriend(chat));
@@ -2529,8 +2534,9 @@ function renderChatHeader() {
   if (canvas) drawHead(canvas, canvas.dataset.head);
   $("#chat-title").textContent = chat.name;
   let join = null;
-  $("#chat-avatar").classList.toggle("clickable", chat.kind === "grupo");
-  $("#chat-avatar").title = chat.kind === "grupo" ? t("Miembros del grupo", "Group members") : "";
+  $("#chat-avatar").classList.add("clickable");
+  $("#chat-avatar").title = chat.kind === "grupo" ? t("Miembros del grupo", "Group members") : t("Ver perfil", "View profile");
+  $("#chat-title").title = $("#chat-avatar").title;
   if (chat.kind === "grupo") {
     $("#chat-subtitle").textContent = chat.members.map((m) => m.name).join(", ");
     renderTyping();
@@ -2575,6 +2581,7 @@ async function openChat(id) {
   if (state.chatOpen !== id) state.chatReply = null;
   renderReplyBar();
   state.chatOpen = id;
+  state.chatTyping = null;
   state.chatMessages = null;
   $("#chat-empty").classList.add("hidden");
   $("#chat-conversation").classList.remove("hidden");
@@ -2593,6 +2600,7 @@ async function openChat(id) {
 }
 
 function closeChat() {
+  stopTyping();
   state.chatOpen = null;
   state.chatMessages = null;
   invoke("cerrar_chat").catch(() => {});
@@ -2624,17 +2632,12 @@ function pendingMessages() {
   return (state.chatPending ?? []).filter((p) => p.chat === state.chatOpen);
 }
 
-/** Quita los que ya llegaron de Firebase (mismo texto, tuyo, de hace poco). */
+/** Quita el envío local cuando Firebase confirma su mismo identificador. */
 function settlePending(messages) {
   if (!state.chatPending?.length) return;
-  const used = new Set();
   state.chatPending = state.chatPending.filter((p) => {
-    if (!p.sent || p.chat !== state.chatOpen) return true;
-    // Mandado hace rato y Firebase no lo devolvió (otra conversación abierta, se reconectó…): ya está.
-    if (Date.now() - p.at > 30000) return false;
-    const arrived = messages.find((m) => m.mine && !used.has(m.id) && m.text === p.text && m.at >= p.at - 120000);
-    if (arrived) used.add(arrived.id);
-    return !arrived;
+    if (p.chat !== state.chatOpen) return true;
+    return !messages.some(m => m.mine && m.id === (p.serverId ?? p.key));
   });
 }
 
@@ -2642,7 +2645,7 @@ function renderMessages() {
   const box = $("#chat-messages");
   settlePending(state.chatMessages ?? []);
   const me = (state.chatMessages ?? []).find((m) => m.mine)?.from;
-  const messages = [...(state.chatMessages ?? []), ...pendingMessages().map((p) => ({ id: p.key, from: me, mine: true, text: p.text, at: p.at, reply: p.reply, pending: !p.failed && !p.sent, failed: p.failed }))];
+  const messages = [...(state.chatMessages ?? []), ...pendingMessages().map((p) => ({ id: p.key, from: me, mine: true, text: p.text, at: p.at, reply: p.reply, pending: !p.failed, acknowledged:p.sent, failed: p.failed }))];
   const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
   // Mismo chat que la última vez: lo nuevo entra y lo demás se acomoda. Otro chat: se pinta de golpe.
   const same = state.chatShown === state.chatOpen;
@@ -2663,14 +2666,14 @@ function renderMessages() {
       html += `<div class="chat-day" data-key="d:${escapeHtml(day)}">${escapeHtml(dayLabel(m.at))}</div>`;
     }
     const continued = previous && previous.from === m.from && m.at - previous.at < 5 * 60000 && new Date(previous.at).toDateString() === day;
-    const author = group && !m.mine && !continued ? `<span class="bubble-author">${escapeHtml(m.name)}</span>` : "";
+    const author = group && !m.mine && !continued ? `<button class="bubble-author profile-entry" data-profile="${escapeHtml(m.from)}" title="${t("Ver perfil", "View profile")}">${escapeHtml(m.name)}</button>` : "";
     const share = !m.image && parseShare(m.text);
     const invite = !m.image && !share && parseInvite(m.text);
     const editing = state.chatEditing?.id === m.id;
     const body = editing
       ? `<textarea class="bubble-edit" rows="1" maxlength="2000" aria-label="${t("Editar mensaje", "Edit message")}">${escapeHtml(state.chatEditing.draft)}</textarea><span class="bubble-edit-hint">${t("Enter: guardar · Esc: cancelar", "Enter: save · Esc: cancel")}</span>`
       : m.image
-      ? `<button class="bubble-image" data-image="${escapeHtml(m.id)}" style="aspect-ratio:${m.width || 4}/${m.height || 3}">${
+      ? `<button class="bubble-image" data-image="${escapeHtml(m.id)}" aria-haspopup="dialog" aria-label="${escapeHtml(t(`Abrir imagen de ${m.name}`,`Open image from ${m.name}`))}" style="aspect-ratio:${m.width || 4}/${m.height || 3}">${
           state.chatImages?.[m.id] ? `<img src="${state.chatImages[m.id]}" alt="">` : `<span class="spinner tiny"></span>`
         }</button>`
       : share
@@ -2697,8 +2700,8 @@ function renderMessages() {
       : "";
     const time = new Date(m.at).toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
     const stamp = m.pending
-      ? `<span class="bubble-pending">${icon("clock")}${t("Enviando…", "Sending…")}</span>`
-      : `${m.edited ? `<span class="bubble-edited">${t("editado", "edited")}</span> · ` : ""}${escapeHtml(time)}`;
+      ? `<span class="bubble-pending">${icon(m.acknowledged ? "check" : "clock")}${m.acknowledged ? t("Enviado", "Sent") : t("Enviando…", "Sending…")}</span>`
+      : `${m.edited ? `<span class="bubble-edited">${t("editado", "edited")}</span> · ` : ""}${escapeHtml(time)}${m.mine ? `<span class="bubble-delivery" title="${t("Enviado", "Sent")}" aria-label="${t("Enviado", "Sent")}">${icon("check")}</span>` : ""}`;
     const failed = m.failed
       ? `<div class="bubble-failed">${t("No se envió", "Not sent")}<button data-pending-retry="${escapeHtml(m.id)}">${t("Reintentar", "Retry")}</button><button data-pending-drop="${escapeHtml(m.id)}">${t("Descartar", "Discard")}</button></div>`
       : "";
@@ -2711,7 +2714,7 @@ function renderMessages() {
   // Abajo si ya estabas abajo, si acabas de mandar algo o si es la primera vez que se ve este chat.
   const stick = nearBottom || !same || state.chatStick;
   state.chatStick = false;
-  const changed = setHtml(box, html, { scope: state.chatOpen ?? "", after: () => stick && (box.scrollTop = box.scrollHeight) });
+  const changed = chatExperience.updateMessages(box, html, {same,stick,known});
   // Si estás leyendo más arriba y llega algo de otro, un botón te lleva abajo.
   const arrived = known && messages.some((m) => !m.mine && !known.has(m.id));
   if (stick) showNewBelow(false);
@@ -3076,20 +3079,25 @@ async function sendChatText() {
   state.chatReply = null;
   renderReplyBar();
   // Se ve al momento (un poco transparente) hasta que Firebase lo confirma.
-  const pending = { key: `p:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`, chat: state.chatOpen, text, at: Date.now(), reply: reply ? { id: reply.id, name: reply.name, text: reply.text } : null };
+  const pending = { key: chatExperience.newMessageId(), chat: state.chatOpen, text, at: Date.now() + (state.socialClockOffset ?? 0), reply: reply ? { id: reply.id, name: reply.name, text: reply.text } : null };
   (state.chatPending ??= []).push(pending);
   renderMessages();
   await deliverPending(pending);
 }
 
 async function deliverPending(pending) {
+  if (pending.working) return;
+  pending.working = true;
   pending.failed = false;
+  if (state.chatOpen === pending.chat) renderMessages();
   try {
-    await invoke("enviar_mensaje", { chat: pending.chat, texto: pending.text, respuesta: pending.reply?.id ?? null });
+    pending.serverId = await invoke("enviar_mensaje", { chat: pending.chat, texto: pending.text, respuesta: pending.reply?.id ?? null, envio:pending.key });
     pending.sent = true;
   } catch (error) {
     pending.failed = true;
     toast(String(error), "error");
+  } finally {
+    pending.working = false;
   }
   if (state.chatOpen === pending.chat) renderMessages();
 }
@@ -3106,7 +3114,6 @@ function pendingAction(event) {
     state.chatPending = state.chatPending.filter((p) => p !== pending);
     renderMessages();
   } else {
-    pending.at = Date.now();
     state.chatStick = true;
     renderMessages();
     deliverPending(pending);
@@ -3120,21 +3127,27 @@ function noteTyping() {
   const text = $("#chat-input").value.trim();
   if (!state.chatOpen || !text) return stopTyping();
   const now = Date.now();
+  clearTimeout(state.typingTimer);
+  state.typingTimer = setTimeout(stopTyping,6000);
   if (state.typingSent?.chat === state.chatOpen && now - state.typingSent.at < 3000) return;
   state.typingSent = { chat: state.chatOpen, at: now };
   invoke("escribiendo", { chat: state.chatOpen }).catch(() => {});
 }
 
 function stopTyping() {
+  clearTimeout(state.typingTimer);
   if (!state.typingSent) return;
   state.typingSent = null;
   invoke("escribiendo", { chat: null }).catch(() => {});
 }
 
-/** Los amigos que están escribiendo en esa conversación (su presencia, de hace menos de 90 s). */
+/** Escritura reciente de los miembros; conserva el eco de presencia de los clientes anteriores. */
 function typingIn(chatId) {
   const friends = state.social?.friends?.friends ?? [];
-  return friends.filter((f) => f.online && f.presence?.typing === chatId && Date.now() - (f.lastSeen ?? 0) < 90000);
+  const now = Date.now() + (state.socialClockOffset ?? 0);
+  const chat = currentChat();
+  const modern = (chatId === state.chatOpen ? chat?.members ?? [] : []).filter(m => !m.you && typeof state.chatTyping?.[m.uid] === "number" && now - state.chatTyping[m.uid] < 8000 && state.chatTyping[m.uid] <= now + 2000).map(m => ({uid:m.uid,name:m.name}));
+  return [...modern,...friends.filter(f => !modern.some(m => m.uid === f.uid) && f.online && f.presence?.typing === chatId && now - (f.lastSeen ?? 0) < 9000)];
 }
 
 function typingText(names) {
@@ -3150,9 +3163,15 @@ function renderTyping() {
   if (!box) return;
   const typing = chat ? typingIn(chat.id) : [];
   const names = typing.map((f) => f.name);
-  box.classList.toggle("hidden", !names.length);
-  $("#chat-subtitle").classList.toggle("hidden", !!names.length);
-  if (names.length) box.innerHTML = `<i><b></b><b></b><b></b></i>${escapeHtml(typingText(chat.kind === "grupo" ? names : [chat.name]))}`;
+  box.classList.add("hidden");
+  $("#chat-subtitle").classList.remove("hidden");
+  const slot = $("#chat-typing-slot");
+  const signature = JSON.stringify(typing.map(f => [f.uid,f.name]));
+  if (slot.dataset.typing === signature) return;
+  slot.dataset.typing = signature;
+  slot.classList.toggle("active", !!names.length);
+  slot.innerHTML = names.length ? `<span class="typing-person">${presenceHead(names[0])}</span><span class="typing-pill"><i aria-hidden="true"><b></b><b></b><b></b></i><span>${escapeHtml(typingText(names))}</span></span>` : "";
+  for (const canvas of $$("canvas",slot)) drawHead(canvas,canvas.dataset.head);
 }
 
 // ---------- Emojis al escribir ----------
@@ -3736,7 +3755,7 @@ function wireChatEvents() {
   };
   $("#chat-send").onclick = sendChatText;
   $("#chat-input").addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       sendChatText();
     } else if (event.key === "Escape" && state.chatReply) {
@@ -3870,6 +3889,8 @@ function wireChatEvents() {
     messageMenu(row.querySelector(".bubble"), row.dataset.msg);
   });
   $("#chat-messages").onclick = (event) => {
+    const profile = event.target.closest("[data-profile]");
+    if (profile) return void chatExperience.profile(profile.dataset.profile);
     const reaction = event.target.closest("[data-reaction]");
     if (reaction) return void react(reaction.dataset.reaction, reaction.dataset.emoji);
     const reactTool = event.target.closest("[data-msg-react]");
@@ -3888,14 +3909,12 @@ function wireChatEvents() {
     if (install) return void installShared(install.dataset.shareInstall);
     const open = event.target.closest("[data-share-open]");
     if (open) return void navigate("instance", open.dataset.shareOpen);
-    const image = event.target.closest("[data-image] img");
+    const image = event.target.closest("[data-image]");
     if (!image) return;
-    $("#lightbox-image").src = image.src;
-    $("#lightbox-caption").textContent = "";
-    $("#lightbox").classList.remove("hidden");
+    mediaGallery.openChat(image.dataset.image);
   };
   $("#chat-more").onclick = (event) => chatMenu(event.currentTarget);
-  $("#chat-avatar").onclick = () => currentChat()?.kind === "grupo" && openGroupDialog("members");
+  $("#chat-avatar").onclick = () => chatExperience.openHeader();
   $("#chat-new-group").onclick = () => openGroupDialog("create");
   $("#group-ok").onclick = confirmGroupDialog;
   $("#group-friends").addEventListener("click", groupMemberAction);
@@ -4998,7 +5017,8 @@ function wireEvents() {
       closeModal("#report-dialog");
       if (!$("#image-dialog").classList.contains("hidden")) cancelChatImage();
       if (!state.exporting?.busy) closeModal("#export-dialog");
-      $("#lightbox").classList.add("hidden");
+      if (mediaGallery.visible()) mediaGallery.close();
+      closeModal("#player-dialog");
       if (!$("#confirm-dialog").classList.contains("hidden")) state.confirmCancel?.();
     } else if ((event.key === "n" || event.key === "N") && !isTyping() && !event.ctrlKey && !event.altKey) {
       event.preventDefault();
@@ -5280,6 +5300,7 @@ async function init() {
   renderHome();
   renderServers();
   state.social = await invoke("estado_social").catch(() => null);
+  chatExperience.syncClock();
   renderFriends();
   renderFriendServers();
   state.chats = await invoke("chats").catch(() => []);
@@ -5287,6 +5308,7 @@ async function init() {
   updateChatBadge();
   navigate("home", null, false);
   curseforgeAssistant.init();
+  initChatExperience();
   // Al volver a la ventana (o desde la bandeja) se piden los datos al momento, sin esperar avisos.
   let lastSync = Date.now();
   const resync = async () => {
@@ -5294,6 +5316,7 @@ async function init() {
     lastSync = Date.now();
     try {
       state.social = await invoke("estado_social");
+      chatExperience.syncClock();
       renderFriends();
       renderFriendServers();
       state.chats = await invoke("chats");
@@ -5992,9 +6015,7 @@ function contentAddMenu() {
 function openLightbox(index) {
   const image = state.projectData?.gallery[index];
   if (!image) return;
-  $("#lightbox-image").src = image.url;
-  $("#lightbox-caption").textContent = [image.title, image.description].filter(Boolean).join(" — ");
-  $("#lightbox").classList.remove("hidden");
+  mediaGallery.open(state.projectData.gallery.map((m,i) => ({key:String(i),src:m.url,name:state.projectData.title,caption:[m.title,m.description].filter(Boolean).join(" — ")})),index);
 }
 
 function wireExploreEvents() {
@@ -6105,7 +6126,7 @@ function wireExploreEvents() {
     const figure = event.target.closest("[data-image]");
     if (figure) openLightbox(Number(figure.dataset.image));
   };
-  $("#lightbox").onclick = () => $("#lightbox").classList.add("hidden");
+  $("#lightbox").onclick = event => { if (["lightbox","media-stage","media-canvas"].includes(event.target.id)) mediaGallery.close(); };
 
   // Ventana de instalar
   for (const id of ["#install-close", "#install-secondary"]) $(id).onclick = () => closeModal("#install-dialog");
@@ -7405,7 +7426,7 @@ function demoInvoke(command, args = {}) {
   if (command === "estado_social" || command === "iniciar_sesion_google" || command === "reconectar_amigos") {
     const now = Date.now();
     return soon({
-      available: true, signedIn: true, email: "gxxses@uabc.edu.mx", displayName: "Juan", signingIn: false, connecting: false, connected: true,
+      available: true, signedIn: true, email: "gxxses@uabc.edu.mx", displayName: "Juan", signingIn: false, connecting: false, connected: true, serverNow:now,
       error: null, warning: null, nameConflict: null, notice: null,
       me: { state: "playing", pack: "Better MC BMC4", world: "single", address: "silly-cat.sa.e4mc.link", lan: "192.168.1.20:51234" },
       friends: {
@@ -7431,7 +7452,7 @@ function demoInvoke(command, args = {}) {
   }
   if (command === "abrir_chat") {
     const now = Date.now();
-    const messages = args.chat === "g_demo"
+    const messages = window.demoChatMessages?.[args.chat] ?? (args.chat === "g_demo"
       ? [
           { id: "1", from: "f2", name: "Alex_mx", text: "¿Quién juega hoy en la tarde?", at: now - 7200e3, mine: false, image: false, reactions: [{ emoji: "👍", count: 2, mine: true, names: ["GxxseS", "Dani"] }] },
           { id: "2", from: "me", name: "GxxseS", text: "Yo, a las 5 abro mi mundo de Better MC", at: now - 7000e3, mine: true, image: false, reply: { id: "1", name: "Alex_mx", text: "¿Quién juega hoy en la tarde?" }, reactions: [{ emoji: "🔥", count: 1, mine: false, names: ["Alex_mx"] }, { emoji: "😂", count: 1, mine: false, names: ["Dani"] }] },
@@ -7442,12 +7463,38 @@ function demoInvoke(command, args = {}) {
           { id: "1", from: "f1", name: "Hawntd", text: "Oye, ¿ya instalaste Minecraft++?", at: now - 600e3, mine: false, image: false },
           { id: "2", from: "me", name: "GxxseS", text: "Sí, ya lo tengo", at: now - 500e3, mine: true, image: false },
           { id: "3", from: "f1", name: "Hawntd", text: "¿Abres tu mundo? Ya tengo el modpack", at: now - 120e3, mine: false, image: false },
-        ];
+          ...(location.search.includes("chat37") ? [
+            {id:"foto1",from:"f1",name:"Hawntd",image:true,width:1280,height:752,at:now-90000,mine:false},
+            {id:"foto2",from:"me",name:"GxxseS",image:true,width:1280,height:752,at:now-80000,mine:true},
+            {id:"foto3",from:"f1",name:"Hawntd",image:true,width:1280,height:752,at:now-70000,mine:false},
+          ] : []),
+        ]);
+    (window.demoChatMessages ??= {})[args.chat] = messages;
     setTimeout(() => window.dispatchEvent(new CustomEvent("demo-mensajes", { detail: { chat: args.chat, messages } })), 300);
     return soon(null);
   }
-  if (command === "imagen_chat") return soon(`data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#6d4bd8"/><text x="320" y="190" font-size="40" text-anchor="middle" fill="white">Captura</text></svg>')}`);
-  if (["cerrar_chat", "marcar_leido", "enviar_mensaje", "enviar_imagen", "salir_del_chat", "agregar_al_grupo", "renombrar_grupo", "reaccionar", "editar_grupo", "sacar_del_grupo", "pasar_grupo"].includes(command)) return soon(null);
+  if (command === "imagen_chat") return soon(args.mensaje === "foto1" ? "../docs/capturas/instancia.png" : args.mensaje === "foto2" ? "../docs/capturas/servidor.png" : args.mensaje === "foto3" ? "../docs/capturas/comunidades.png" : `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#6d4bd8"/><text x="320" y="190" font-size="40" text-anchor="middle" fill="white">Captura</text></svg>')}`);
+  if (command === "perfil_jugador") return soon({name:state.social?.friends?.friends?.find(f => f.uid === args.uid)?.name ?? "Alex_mx",uuid:""});
+  if (command === "imagenes_chat") return soon({images:(window.demoChatMessages?.[args.chat] ?? []).filter(m => m.image),more:false,cursor:null});
+  if (command === "enviar_mensaje") return new Promise(resolve => {
+    const key = args.envio ?? String(Date.now());
+    setTimeout(() => {
+      const messages = (window.demoChatMessages ??= {})[args.chat] ??= [];
+      if (!messages.some(m => m.id === key)) messages.push({id:key,from:"me",name:"GxxseS",text:args.texto,at:Date.now(),mine:true,image:false,reactions:[]});
+      window.dispatchEvent(new CustomEvent("demo-mensajes",{detail:{chat:args.chat,messages:[...messages]}}));
+      resolve(key);
+      if (location.search.includes("chat37")) {
+        const friend = args.chat === "g_demo" ? {uid:"f2",name:"Alex_mx"} : {uid:"f1",name:"Hawntd"};
+        setTimeout(() => window.dispatchEvent(new CustomEvent("demo-escribiendo",{detail:{chat:args.chat,users:{[friend.uid]:Date.now()}}})),800);
+        setTimeout(() => {
+          messages.push({id:String(Date.now()),from:friend.uid,name:friend.name,text:"¡Va! Nos vemos en el servidor.",at:Date.now(),mine:false,image:false,reactions:[]});
+          window.dispatchEvent(new CustomEvent("demo-escribiendo",{detail:{chat:args.chat,users:{}}}));
+          window.dispatchEvent(new CustomEvent("demo-mensajes",{detail:{chat:args.chat,messages:[...messages]}}));
+        },3200);
+      }
+    },600);
+  });
+  if (["cerrar_chat", "marcar_leido", "enviar_imagen", "salir_del_chat", "agregar_al_grupo", "renombrar_grupo", "reaccionar", "editar_grupo", "sacar_del_grupo", "pasar_grupo"].includes(command)) return soon(null);
   if (command === "invitar_amigo") return soon("Invitaste a tu amigo.");
   if (command === "reporte_problema") {
     const text = ["🛠 Parabellum 0.27.0 · Windows (x86_64) · 16 GB de RAM", "Instancia: Better MC BMC4 · Minecraft 1.20.1 · Forge 47.4.20 · 6 GB", "Se abrió hace 5 min", "Error:", "Rendering overlay", "java.lang.NullPointerException", "P2P:", "19:38:00 David se conectó: directo (36 ms)"];

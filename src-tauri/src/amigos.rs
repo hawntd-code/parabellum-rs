@@ -56,7 +56,7 @@ impl Presence {
     }
 
     fn to_json(&self, name: &str) -> Value {
-        let mut json = json!({ "name": name, "state": self.state, "updated": firebase::server_timestamp() });
+        let mut json = json!({ "name": name, "state": self.state, "updated": firebase::server_timestamp(), "protocol": 1 });
         let fields = [
             ("pack", &self.pack),
             ("packFolder", &self.pack_folder),
@@ -166,6 +166,7 @@ struct Inner {
     names: HashMap<String, String>,
     presence: HashMap<String, Value>,
     presence_listeners: HashMap<String, Listener>,
+    inbox_presence: HashMap<String, Value>,
     requests: Vec<Request>,
     mine: Presence,
     dirty: bool,
@@ -202,7 +203,11 @@ impl Social {
     ) -> Result<Arc<Self>, String> {
         let session = Session::sign_in_with_google(api_key, google_id_token).await?;
         let db = Arc::new(Database::new(database_url, session));
-        Ok(Arc::new(Social {
+        Ok(Self::from_database(db, changed, failed))
+    }
+
+    pub(crate) fn from_database(db: Arc<Database>, changed: impl Fn() + Send + Sync + 'static, failed: impl Fn(String) + Send + Sync + 'static) -> Arc<Self> {
+        Arc::new(Social {
             uid: db.session.uid.clone(),
             db,
             inner: Mutex::new(Inner { mine: Presence::online(), dirty: true, ..Default::default() }),
@@ -211,7 +216,7 @@ impl Social {
             changed: Box::new(changed),
             failed: Box::new(failed),
             presence_refreshed: Mutex::default(),
-        }))
+        })
     }
 
     /// Vuelve a leer la presencia de todos los amigos (por si una escucha se quedó atrás: p. ej. entra
@@ -291,6 +296,25 @@ impl Social {
                 failed,
             )
         };
+        let inbox = {
+            let weak = Arc::downgrade(self);
+            self.db.listen(format!("presenceInbox/{}", self.uid), move |data| {
+                if let Some(social) = weak.upgrade() {
+                    let mut inner = social.inner.lock().unwrap();
+                    inner.inbox_presence = data.as_object().into_iter().flatten().filter(|(_, p)| p["protocol"] == 1)
+                        .map(|(uid, p)| (uid.clone(), p.clone())).collect();
+                    let entries = inner.inbox_presence.clone();
+                    for (uid, presence) in entries {
+                        if inner.friend_ids.contains(&uid) {
+                            inner.presence.insert(uid.clone(), presence);
+                            inner.presence_listeners.remove(&uid);
+                        }
+                    }
+                    drop(inner);
+                    (social.changed)();
+                }
+            }, |_| {})
+        };
         let heartbeat = tauri::async_runtime::spawn(async move {
             loop {
                 match weak.upgrade() {
@@ -308,6 +332,7 @@ impl Social {
         tasks.push(friends);
         tasks.push(requests);
         tasks.push(invites);
+        tasks.push(inbox);
         tasks.push(Listener::task(heartbeat));
     }
 
@@ -339,6 +364,9 @@ impl Social {
             Err(DbError::Permission(_)) => return Err(ClaimError::Taken),
             Err(error) => return Err(ClaimError::Other(error.to_string())),
         }
+        // Es opcional mientras se publican las reglas nuevas. Los otros clientes conservan su
+        // escucha anterior si el perfil todavía no anuncia el buzón de la 0.37.
+        let _ = self.db.put(&format!("users/{}/streamVersion", self.uid), &json!(1)).await;
         let mut inner = self.inner.lock().unwrap();
         inner.name = Some(name.to_string());
         inner.dirty = true;
@@ -543,8 +571,14 @@ impl Social {
 
     pub async fn remove_friend(&self, uid: &str) -> Result<(), String> {
         let me = &self.uid;
-        let update = json!({ format!("friends/{me}/{uid}"): null, format!("friends/{uid}/{me}"): null });
-        self.db.patch("", &update).await.map(|_| ()).map_err(|e| e.to_string())
+        let original = json!({ format!("friends/{me}/{uid}"): null, format!("friends/{uid}/{me}"): null });
+        let mut update = original.clone();
+        update[format!("presenceInbox/{me}/{uid}")] = Value::Null;
+        update[format!("presenceInbox/{uid}/{me}")] = Value::Null;
+        match self.db.patch("", &update).await {
+            Err(DbError::Permission(_)) => self.db.patch("", &original).await.map(|_| ()).map_err(|e| e.to_string()),
+            result => result.map(|_| ()).map_err(|e| e.to_string()),
+        }
     }
 
     fn update_friends(self: &Arc<Self>, data: &Value) {
@@ -558,8 +592,13 @@ impl Social {
             }
             let added: Vec<String> = ids.difference(&inner.friend_ids).cloned().collect();
             inner.friend_ids = ids;
+            inner.dirty = true;
             inner.friends_loaded = true;
             for uid in &added {
+                if let Some(presence) = inner.inbox_presence.get(uid).cloned() {
+                    inner.presence.insert(uid.clone(), presence);
+                    continue;
+                }
                 let weak = Arc::downgrade(self);
                 let friend = uid.clone();
                 let listener = self.db.listen(
@@ -587,6 +626,8 @@ impl Social {
             });
         }
         (self.changed)();
+        let social = self.clone();
+        tauri::async_runtime::spawn(async move { social.publish(false).await; });
     }
 
     fn update_requests(&self, data: &Value) {
@@ -633,7 +674,17 @@ impl Social {
             (inner.mine.clone(), inner.name.clone().unwrap_or_default())
         };
         let sent = chrono::Utc::now().timestamp_millis();
-        match self.db.put(&format!("presence/{}", self.uid), &presence.to_json(&name)).await {
+        let published = presence.to_json(&name);
+        let mut update = serde_json::Map::new();
+        update.insert(format!("presence/{}", self.uid), published.clone());
+        for uid in self.inner.lock().unwrap().friend_ids.iter() {
+            update.insert(format!("presenceInbox/{uid}/{}", self.uid), published.clone());
+        }
+        let result = match self.db.patch("", &Value::Object(update)).await {
+            Err(DbError::Permission(_)) => self.db.put(&format!("presence/{}", self.uid), &published).await,
+            result => result.map(|r| r[format!("presence/{}", self.uid)].clone()),
+        };
+        match result {
             Ok(result) => {
                 if let Some(server) = result["updated"].as_i64() {
                     let local = (sent + chrono::Utc::now().timestamp_millis()) / 2;
@@ -654,8 +705,13 @@ impl Social {
         self.inner.lock().unwrap().presence_listeners.clear();
         self.inner.lock().unwrap().invite_listeners.clear();
         let name = self.name().unwrap_or_default();
-        let offline = json!({ "name": name, "state": "offline", "updated": firebase::server_timestamp() });
-        let _ = tokio::time::timeout(Duration::from_secs(3), self.db.put(&format!("presence/{}", self.uid), &offline)).await;
+        let offline = json!({ "name": name, "state": "offline", "updated": firebase::server_timestamp(), "protocol": 1 });
+        let mut update = serde_json::Map::new();
+        update.insert(format!("presence/{}", self.uid), offline.clone());
+        for uid in self.inner.lock().unwrap().friend_ids.iter() { update.insert(format!("presenceInbox/{uid}/{}", self.uid), offline.clone()); }
+        let _ = tokio::time::timeout(Duration::from_secs(3), async {
+            if self.db.patch("", &Value::Object(update)).await.is_err() { let _ = self.db.put(&format!("presence/{}", self.uid), &offline).await; }
+        }).await;
     }
 }
 

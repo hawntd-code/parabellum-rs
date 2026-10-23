@@ -20,6 +20,9 @@
         },
         "$other": {
           ".validate": false
+        },
+        "streamVersion": {
+          ".validate": "newData.val() === 1"
         }
       }
     },
@@ -608,6 +611,56 @@
             ".write": "auth != null && (auth.uid === $uid || (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin' || root.child('communityMembers').child($cid).child(auth.uid).child('caps').child('support').val() === true)) && root.child('supportTickets').child($cid).child($tid).child('by').val() === $uid",
             ".validate": "$tid.matches(/^t[0-9a-z]{10}$/) && newData.isNumber()"
           }
+        }
+      }
+    },
+    "chatInbox": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$chat": {
+          ".write": "auth != null && ((!newData.exists() && (auth.uid === $uid || (root.child('chats').child($chat).child('meta').child('owner').val() === auth.uid && newData.parent().parent().parent().child('chats').child($chat).child('members').child($uid).val() !== true))) || (newData.parent().parent().parent().child('chats').child($chat).child('members').child(auth.uid).val() === true && newData.parent().parent().parent().child('chats').child($chat).child('members').child($uid).val() === true))",
+          ".validate": "newData.hasChildren(['protocol','by','meta','members']) && newData.child('members').child($uid).val() === true && newData.child('members').child(auth.uid).val() === true",
+          "protocol": {
+            ".validate": "newData.val() === 1"
+          },
+          "by": {
+            ".validate": "newData.val() === auth.uid"
+          },
+          "meta": {
+            ".validate": "newData.hasChild('kind')",
+            "$field": {
+              ".validate": "newData.val() === newData.parent().parent().parent().parent().parent().child('chats').child($chat).child('meta').child($field).val()"
+            }
+          },
+          "members": {
+            "$member": {
+              ".validate": "newData.val() === true && newData.parent().parent().parent().parent().parent().child('chats').child($chat).child('members').child($member).val() === true"
+            }
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "presenceInbox": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$from": {
+          ".write": "auth != null && ((!newData.exists() && (auth.uid === $uid || auth.uid === $from)) || (auth.uid === $from && root.child('friends').child($from).child($uid).val() === true))",
+          ".validate": "newData.hasChildren(['name','state','updated','protocol']) && newData.child('protocol').val() === 1 && (newData.child('state').val() === 'online' || newData.child('state').val() === 'playing' || newData.child('state').val() === 'offline') && newData.child('updated').isNumber()",
+          "$field": {
+            ".validate": "newData.isNumber() || (newData.isString() && newData.val().length <= 200)"
+          }
+        }
+      }
+    },
+    "typing": {
+      "$chat": {
+        ".read": "auth != null && root.child('chats').child($chat).child('members').child(auth.uid).val() === true",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid && (!newData.exists() || root.child('chats').child($chat).child('members').child(auth.uid).val() === true)",
+          ".validate": "newData.isNumber() && newData.val() >= now - 15000 && newData.val() <= now + 1000"
         }
       }
     }

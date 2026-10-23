@@ -103,6 +103,10 @@ struct Inner {
     chat_ids: HashSet<String>,
     chats: HashMap<String, Value>,
     chat_listeners: HashMap<String, Listener>,
+    inbox: HashMap<String, Value>,
+    inbox_ready: bool,
+    modern: HashSet<String>,
+    migrating: HashSet<String>,
     reads: HashMap<String, i64>,
     names: HashMap<String, String>,
     asked_names: HashSet<String>,
@@ -118,6 +122,7 @@ struct Open {
     id: String,
     _messages: Listener,
     _reactions: Listener,
+    _typing: Listener,
 }
 
 /// Lo que escucha el juego de una conversación (ver puente.rs): sus mensajes y sus reacciones.
@@ -143,6 +148,8 @@ pub struct Chat {
     arrived: Arrived,
     /// Cambiaron los mensajes de la conversación abierta.
     messages: Messages,
+    typing_changed: Box<dyn Fn(String, Value) + Send + Sync>,
+    typing_chat: Mutex<Option<String>>,
 }
 
 fn random_text(len: usize) -> String {
@@ -200,6 +207,7 @@ impl Chat {
         changed: impl Fn() + Send + Sync + 'static,
         arrived: impl Fn(Summary) + Send + Sync + 'static,
         messages: impl Fn(String, Vec<Message>) + Send + Sync + 'static,
+        typing_changed: impl Fn(String, Value) + Send + Sync + 'static,
     ) -> Arc<Self> {
         Arc::new(Chat {
             uid: db.session.uid.clone(),
@@ -211,6 +219,8 @@ impl Chat {
             changed: Box::new(changed),
             arrived: Box::new(arrived),
             messages: Box::new(messages),
+            typing_changed: Box::new(typing_changed),
+            typing_chat: Mutex::default(),
         })
     }
 
@@ -247,9 +257,14 @@ impl Chat {
             },
             |_| {},
         );
+        let weak = Arc::downgrade(self);
+        let inbox = self.db.listen(format!("chatInbox/{}", self.uid), move |data| {
+            if let Some(chat) = weak.upgrade() { chat.update_inbox(data); }
+        }, |_| {});
         let mut tasks = self.tasks.lock().unwrap();
         tasks.push(chats);
         tasks.push(reads);
+        tasks.push(inbox);
     }
 
     /// Ya llegaron las conversaciones (con su último mensaje) y lo leído.
@@ -302,6 +317,7 @@ impl Chat {
         {
             let mut inner = self.inner.lock().unwrap();
             let last_at = data.pointer("/meta/lastAt").and_then(Value::as_i64).unwrap_or(0);
+            if data["protocol"] == 1 && inner.chats.get(id).is_some_and(|old| old["meta"]["lastAt"].as_i64().unwrap_or(0) > last_at) { return; }
             let last_uid = data.pointer("/meta/lastUid").and_then(Value::as_str).unwrap_or_default().to_string();
             // Solo es nuevo si ya se conocía el chat (al conectar llega todo lo anterior).
             if let Some(previous) = inner.last_seen.insert(id.to_string(), last_at) {
@@ -322,8 +338,12 @@ impl Chat {
         for uid in unknown {
             let chat = self.clone();
             tauri::async_runtime::spawn(async move {
-                if let Ok(Value::String(name)) = chat.db.get(&format!("users/{uid}/name")).await {
-                    chat.inner.lock().unwrap().names.insert(uid, name);
+                if let Ok(profile) = chat.db.get(&format!("users/{uid}")).await {
+                    let mut inner = chat.inner.lock().unwrap();
+                    if profile["streamVersion"] == 1 { inner.modern.insert(uid.clone()); }
+                    if let Some(name) = profile["name"].as_str() { inner.names.insert(uid, name.into()); }
+                    drop(inner);
+                    chat.trim_legacy();
                     (chat.changed)();
                 }
             });
@@ -331,6 +351,77 @@ impl Chat {
         (self.changed)();
         if let Some(summary) = arrived.and_then(|id| self.summary(&id)) {
             (self.arrived)(summary);
+        }
+        self.migrate_inbox(id, data);
+        self.trim_legacy();
+    }
+
+    fn update_inbox(self: &Arc<Self>, data: Value) {
+        let entries: Vec<(String, Value)> = data.as_object().into_iter().flatten()
+            .filter(|(id, value)| safe(id).is_ok() && crate::chat_inbox::valid(value, &self.uid))
+            .map(|(id, value)| (id.clone(), value.clone())).collect();
+        {
+            let mut inner = self.inner.lock().unwrap();
+            inner.inbox_ready = true;
+            inner.modern.insert(self.uid.clone());
+            inner.inbox.clear();
+            for (id, entry) in &entries {
+                if let Some(by) = entry["by"].as_str() { inner.modern.insert(by.into()); }
+                inner.inbox.insert(id.clone(), entry.clone());
+            }
+        }
+        for (id, entry) in entries {
+            if self.inner.lock().unwrap().chat_ids.contains(&id) { self.update_chat(&id, entry); }
+        }
+        // Las conversaciones existentes se copian una vez, sin cambiar el índice de los clientes viejos.
+        let existing = self.inner.lock().unwrap().chats.clone();
+        for (id, data) in existing { self.migrate_inbox(&id, data); }
+        self.trim_legacy();
+    }
+
+    fn migrate_inbox(self: &Arc<Self>, id: &str, data: Value) {
+        {
+            let mut inner = self.inner.lock().unwrap();
+            let same = inner.inbox.get(id).is_some_and(|old| old["meta"] == data["meta"] && old["members"] == data["members"]);
+            if !inner.inbox_ready || same || data["protocol"] == 1 || !inner.migrating.insert(id.into()) { return; }
+        }
+        let (chat, id) = (self.clone(), id.to_string());
+        tauri::async_runtime::spawn(async move {
+            let entry = json!({"protocol":1,"by":chat.uid,"meta":data["meta"],"members":data["members"]});
+            let _ = chat.db.put(&format!("chatInbox/{}/{id}", chat.uid), &entry).await;
+            chat.inner.lock().unwrap().migrating.remove(&id);
+        });
+    }
+
+    fn trim_legacy(&self) {
+        let mut inner = self.inner.lock().unwrap();
+        let done: Vec<String> = inner.chat_listeners.keys().filter(|id| inner.inbox.get(*id).zip(inner.chats.get(*id)).is_some_and(|(a,b)| a["meta"] == b["meta"] && a["members"] == b["members"])
+            && inner.chats.get(*id).is_some_and(|data| crate::chat_inbox::members(data).iter().all(|uid| inner.modern.contains(uid))))
+            .cloned().collect();
+        for id in done { inner.chat_listeners.remove(&id); }
+    }
+
+    /// La escritura canónica y los buzones se confirman juntos. Si aún están las reglas anteriores,
+    /// se usa el formato anterior: no se pierde el envío durante una actualización gradual.
+    async fn commit(&self, id: &str, mut update: Map<String, Value>) -> Result<(), String> {
+        let cached = self.inner.lock().unwrap().chats.get(id).cloned();
+        let before = match cached { Some(data) => data, None => self.db.get(&format!("chats/{id}")).await.unwrap_or(Value::Null) };
+        let original = update.clone();
+        crate::chat_inbox::add(id, &self.uid, &before, &mut update);
+        match self.db.patch("", &Value::Object(update)).await {
+            Ok(_) => Ok(()),
+            Err(crate::firebase::DbError::Permission(_)) => {
+                self.db.patch("", &Value::Object(original)).await.map_err(|e| e.to_string())?;
+                // Una edición concurrente puede invalidar la copia, aunque la operación canónica
+                // sea correcta. Relee y repara el buzón para que el aviso no se pierda.
+                if let Ok(fresh) = self.db.get(&format!("chats/{id}")).await {
+                    let mut repair = Map::new();
+                    crate::chat_inbox::add(id, &self.uid, &fresh, &mut repair);
+                    let _ = self.db.patch("", &Value::Object(repair)).await;
+                }
+                Ok(())
+            },
+            Err(e) => Err(e.to_string()),
         }
     }
 
@@ -423,11 +514,22 @@ impl Chat {
                 |_| {},
             )
         };
-        let open = Open { _messages: listen("messages".into(), false), _reactions: listen("reactions".into(), true), id };
+        let (weak, typing_id) = (Arc::downgrade(self), id.clone());
+        let typing = self.db.listen(format!("typing/{id}"), move |data| {
+            if let Some(chat) = weak.upgrade() {
+                if chat.open_chat().as_deref() == Some(&typing_id) { (chat.typing_changed)(typing_id.clone(), data); }
+            }
+        }, |_| {});
+        let open = Open { _messages: listen("messages".into(), false), _reactions: listen("reactions".into(), true), _typing: typing, id: id.clone() };
         let mut inner = self.inner.lock().unwrap();
         inner.messages = Value::Null;
         inner.reactions = Value::Null;
         inner.open = Some(open);
+        drop(inner);
+        let (chat, id) = (self.clone(), id.clone());
+        tauri::async_runtime::spawn(async move {
+            if let Ok(data) = chat.db.get(&format!("chats/{id}")).await { chat.update_chat(&id, data); }
+        });
         Ok(())
     }
 
@@ -561,26 +663,50 @@ impl Chat {
         for member in self.members_of(id) {
             update.insert(format!("userChats/{member}/{id}"), json!(true));
         }
-        self.db.patch("", &Value::Object(update)).await.map(|_| ()).map_err(|e| e.to_string())?;
+        self.commit(id, update).await?;
         let _ = self.mark_read(id).await;
         Ok(())
     }
 
     /// `reply_to`: el mensaje al que responde (de la misma conversación).
     pub async fn send_text(&self, id: &str, text: &str, reply_to: Option<&str>) -> Result<(), String> {
+        self.send_text_tracked(id, text, reply_to, None).await.map(|_| ())
+    }
+
+    /// El id estable de la interfaz hace inocuo reintentar si se perdió la confirmación de red.
+    pub async fn send_text_tracked(&self, id: &str, text: &str, reply_to: Option<&str>, delivery: Option<&str>) -> Result<String, String> {
+        let id = safe(id)?;
+        let key = delivery.map(str::to_string).unwrap_or_else(|| message_id(self.db.server_now()));
+        let bytes = key.as_bytes();
+        if bytes.len() != 20 || !bytes[..13].iter().all(u8::is_ascii_digit) || !bytes[13..].iter().all(u8::is_ascii_alphanumeric) {
+            return Err(t!("El identificador del envío no es válido.", "The delivery identifier is invalid."));
+        }
         let text = text.trim();
         if text.is_empty() {
-            return Ok(());
+            return Ok(key);
         }
         if text.chars().count() > MAX_TEXT {
             return Err(t!("El mensaje es muy largo (máximo {MAX_TEXT} letras).", "The message is too long (maximum {MAX_TEXT} characters)."));
+        }
+        let matches = |old: &Value| old["from"] == self.uid && old["text"] == text && old["reply"]["id"].as_str() == reply_to;
+        if delivery.is_some() {
+            let old = self.db.get(&format!("messages/{id}/{key}")).await.map_err(|e| e.to_string())?;
+            if old.is_object() {
+                return if matches(&old) { Ok(key) } else { Err(t!("Ese envío ya corresponde a otro mensaje.", "That delivery belongs to a different message.")) };
+            }
         }
         let name = self.my_name.lock().unwrap().clone();
         let mut message = json!({ "from": self.uid, "name": name, "text": text, "at": firebase::server_timestamp() });
         if let Some(original) = reply_to {
             message["reply"] = self.quote(safe(id)?, safe(original)?).await?;
         }
-        self.send(id, &message_id(self.db.server_now()), message, &preview(text), Map::new()).await
+        match self.send(id, &key, message, &preview(text), Map::new()).await {
+            Ok(()) => Ok(key),
+            Err(error) => {
+                if delivery.is_some() && self.db.get(&format!("messages/{id}/{key}")).await.is_ok_and(|old| matches(&old)) { Ok(key) }
+                else { Err(error) }
+            }
+        }
     }
 
     /// La copia corta de un mensaje para responderle: quién lo mandó y su vista previa.
@@ -653,6 +779,34 @@ impl Chat {
 
     // ================= Editar y borrar (solo los mensajes propios)
 
+    /// Solo datos públicos del jugador. La cuenta de Google y sus datos no salen de este método.
+    pub async fn profile(&self, uid: &str) -> Result<Value, String> {
+        let data = self.db.get(&format!("users/{}", safe(uid)?)).await.map_err(|e| e.to_string())?;
+        if !data["name"].is_string() { return Err(t!("Ese perfil ya no está disponible.", "That profile is no longer available.")); }
+        Ok(json!({"name":data["name"],"uuid":data["uuid"]}))
+    }
+
+    pub async fn set_typing(&self, id: Option<&str>) {
+        let id = id.and_then(|s| safe(s).ok()).map(str::to_string);
+        let previous = std::mem::replace(&mut *self.typing_chat.lock().unwrap(), id.clone());
+        if let Some(previous) = previous.filter(|old| Some(old) != id.as_ref()) { let _ = self.db.delete(&format!("typing/{previous}/{}", self.uid)).await; }
+        if let Some(id) = id { let _ = self.db.put(&format!("typing/{id}/{}", self.uid), &firebase::server_timestamp()).await; }
+    }
+
+    /// La galería pide metadatos por páginas; las imágenes solo se descargan cuando se ven.
+    pub async fn media_page(&self, id: &str, before: Option<&str>) -> Result<Value, String> {
+        let id = safe(id)?;
+        let end = match before { Some(before) => format!("&endAt=\"{}\"", safe(before)?), None => String::new() };
+        let data = self.db.get(&format!("messages/{id}?orderBy=\"$key\"&limitToLast=151{end}")).await.map_err(|e| e.to_string())?;
+        let mut entries: Vec<_> = data.as_object().into_iter().flatten().filter(|(key, _)| before != Some(key.as_str())).collect();
+        entries.sort_by_key(|(key, _)| *key);
+        let more = entries.len() >= 150;
+        let cursor = entries.first().map(|(key, _)| (*key).clone());
+        let images: Map<String, Value> = entries.into_iter().filter(|(_, m)| m["image"] == true).map(|(id, m)| (id.clone(), m.clone())).collect();
+        let names = self.inner.lock().unwrap().names.clone();
+        Ok(json!({"images":self.parse_messages(&Value::Object(images), &Value::Null, &names),"cursor":cursor,"more":more}))
+    }
+
     /// Los últimos mensajes de una conversación: los de la ventana si es la abierta; si no, de Firebase.
     async fn recent(&self, id: &str) -> Value {
         {
@@ -722,7 +876,7 @@ impl Chat {
         if self.is_last(id, message).await.is_some() {
             update.insert(format!("chats/{id}/meta/lastText"), json!(preview(text)));
         }
-        self.db.patch("", &Value::Object(update)).await.map(|_| ()).map_err(|e| e.to_string())
+        self.commit(id, update).await
     }
 
     /// Borra un mensaje propio para todos (con su imagen, si tenía).
@@ -751,7 +905,7 @@ impl Chat {
             update.insert(format!("chats/{id}/meta/lastName"), json!(name));
             update.insert(format!("chats/{id}/meta/lastUid"), json!(uid));
         }
-        self.db.patch("", &Value::Object(update)).await.map_err(|e| e.to_string())?;
+        self.commit(id, update).await?;
         let _ = std::fs::remove_file(self.images.join(format!("{id}-{message}.txt")));
         Ok(())
     }
@@ -770,7 +924,7 @@ impl Chat {
             format!("userChats/{me}/{id}"): true,
             format!("userChats/{friend}/{id}"): true,
         });
-        self.db.patch("", &update).await.map_err(|e| e.to_string())?;
+        self.commit(&id, update.as_object().unwrap().clone()).await?;
         Ok(id)
     }
 
@@ -798,7 +952,7 @@ impl Chat {
             meta["photo"] = json!(photo);
         }
         update.insert(format!("chats/{id}/meta"), meta);
-        self.db.patch("", &Value::Object(update)).await.map_err(|e| e.to_string())?;
+        self.commit(&id, update).await?;
         Ok(id)
     }
 
@@ -825,7 +979,7 @@ impl Chat {
             update.insert(format!("chats/{id}/members/{uid}"), json!(true));
             update.insert(format!("userChats/{uid}/{id}"), json!(true));
         }
-        self.db.patch("", &Value::Object(update)).await.map(|_| ()).map_err(|e| e.to_string())
+        self.commit(id, update).await
     }
 
     /// Cambia el nombre y la foto de un grupo. `photo`: None la deja igual; Some(None) la quita.
@@ -850,7 +1004,7 @@ impl Chat {
             }
             None => {}
         }
-        self.db.patch("", &Value::Object(update)).await.map(|_| ()).map_err(|e| e.to_string())
+        self.commit(id, update).await
     }
 
     pub async fn rename_group(&self, id: &str, name: &str) -> Result<(), String> {
@@ -870,7 +1024,7 @@ impl Chat {
             self.db.patch("", &Value::Object(claim)).await.map_err(|e| e.to_string())?;
         }
         let update = json!({ format!("chats/{id}/members/{uid}"): null, format!("userChats/{uid}/{id}"): null });
-        self.db.patch("", &update).await.map(|_| ()).map_err(|e| e.to_string())
+        self.commit(id, update.as_object().unwrap().clone()).await
     }
 
     /// Le pasa el grupo a otro miembro (deja de ser tuyo).
@@ -884,7 +1038,7 @@ impl Chat {
         if !claim.is_empty() {
             self.db.patch("", &Value::Object(claim)).await.map_err(|e| e.to_string())?;
         }
-        self.db.put(&format!("chats/{id}/meta/owner"), &json!(uid)).await.map(|_| ()).map_err(|e| e.to_string())
+        self.commit(id, Map::from_iter([(format!("chats/{id}/meta/owner"), json!(uid))])).await
     }
 
     /// Salir de un grupo, u ocultar una conversación directa (vuelve si el amigo escribe). Si eras el
@@ -903,7 +1057,7 @@ impl Chat {
                 }
             }
         }
-        self.db.patch("", &update).await.map(|_| ()).map_err(|e| e.to_string())
+        self.commit(id, update.as_object().unwrap().clone()).await
     }
 }
 

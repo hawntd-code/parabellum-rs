@@ -77,6 +77,7 @@ pub struct SocialView {
     notice: Option<String>,
     me: Option<Presence>,
     friends: Option<View>,
+    server_now: i64,
 }
 
 fn available(state: &AppState) -> bool {
@@ -135,6 +136,7 @@ pub fn view(app: &AppHandle) -> SocialView {
         notice: status.notice,
         me: social.as_ref().map(|s| s.my_presence()),
         friends: social.as_ref().map(|s| s.view()),
+        server_now: social.as_ref().map(|s| s.database().server_now()).unwrap_or_else(|| chrono::Utc::now().timestamp_millis()),
     }
 }
 
@@ -421,7 +423,7 @@ struct ChatMessages {
 }
 
 fn start_chat(app: &AppHandle, social: &Arc<Social>) {
-    let (list, arrived, messages) = (app.clone(), app.clone(), app.clone());
+    let (list, arrived, messages, typing) = (app.clone(), app.clone(), app.clone(), app.clone());
     let name = app.state::<AppState>().settings.lock().unwrap().username.clone();
     let images = app.state::<AppState>().paths.data.join("cache").join("chat");
     let service = Chat::new(
@@ -438,6 +440,7 @@ fn start_chat(app: &AppHandle, social: &Arc<Social>) {
         move |chat, list| {
             let _ = messages.emit("chat-mensajes", ChatMessages { chat, messages: list });
         },
+        move |chat, users| { let _ = typing.emit("chat-escribiendo", serde_json::json!({"chat":chat,"users":users})); },
     );
     service.start();
     *app.state::<AppState>().social.chat.lock().unwrap() = Some(service);
@@ -545,9 +548,15 @@ pub async fn marcar_leido(app: AppHandle, chat: String) -> Result<(), String> {
 
 /// `respuesta`: el mensaje al que responde.
 #[tauri::command]
-pub async fn enviar_mensaje(app: AppHandle, chat: String, texto: String, respuesta: Option<String>) -> Result<(), String> {
-    chat_ready(&app)?.send_text(&chat, &texto, respuesta.as_deref()).await
+pub async fn enviar_mensaje(app: AppHandle, chat: String, texto: String, respuesta: Option<String>, envio: Option<String>) -> Result<String, String> {
+    chat_ready(&app)?.send_text_tracked(&chat, &texto, respuesta.as_deref(), envio.as_deref()).await
 }
+
+#[tauri::command]
+pub async fn perfil_jugador(app: AppHandle, uid: String) -> Result<serde_json::Value, String> { chat_ready(&app)?.profile(&uid).await }
+
+#[tauri::command]
+pub async fn imagenes_chat(app: AppHandle, chat: String, antes: Option<String>) -> Result<serde_json::Value, String> { chat_ready(&app)?.media_page(&chat, antes.as_deref()).await }
 
 /// Pone tu reacción a un mensaje, o la quita (`emoji` vacío).
 #[tauri::command]
@@ -711,9 +720,10 @@ fn current_presence(app: &AppHandle) -> Option<(Presence, Option<(u16, String)>)
 /// La ventana avisa que estás escribiendo en esa conversación (None: la vaciaste o mandaste el mensaje).
 /// Va en tu presencia: tus amigos ven «está escribiendo…».
 #[tauri::command]
-pub fn escribiendo(app: AppHandle, chat: Option<String>) {
+pub async fn escribiendo(app: AppHandle, chat: Option<String>) {
     let chat = chat.filter(|c| !c.is_empty() && c.len() <= 120 && c.chars().all(|ch| ch.is_ascii_alphanumeric() || "-_".contains(ch)));
-    *app.state::<AppState>().social.typing.lock().unwrap() = chat.map(|c| (c, std::time::Instant::now()));
+    *app.state::<AppState>().social.typing.lock().unwrap() = chat.clone().map(|c| (c, std::time::Instant::now()));
+    if let Some(service) = chat_service(&app) { service.set_typing(chat.as_deref()).await; }
     // Se publica ya (no a los 2 s de la vuelta de la presencia), solo si cambió.
     if let (Some((presence, _)), Some(social)) = (current_presence(&app), social(&app)) {
         if presence != social.my_presence() {

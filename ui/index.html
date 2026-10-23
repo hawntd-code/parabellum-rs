@@ -446,14 +446,16 @@
               <div class="chat-empty" id="chat-empty"></div>
               <div class="chat-conversation hidden" id="chat-conversation">
                 <header class="chat-header">
-                  <div class="chat-avatar" id="chat-avatar"></div>
-                  <div class="grow"><b id="chat-title"></b><span id="chat-subtitle"></span><span class="chat-typing hidden" id="chat-typing"></span></div>
+                  <button class="chat-avatar profile-entry" id="chat-avatar" type="button" title="Ver perfil"></button>
+                  <div class="grow"><button class="chat-title profile-entry" id="chat-title" type="button"></button><span id="chat-subtitle"></span><span class="chat-typing hidden" id="chat-typing"></span></div>
+                  <button class="circle-btn" id="chat-media" title="Imágenes compartidas"><svg><use href="#i-image"/></svg></button>
                   <button class="circle-btn" id="chat-fav" title="Agregar a favoritos"><svg><use href="#i-star"/></svg></button>
                   <button class="btn primary small hidden" id="chat-join"><svg><use href="#i-play"/></svg><span>Unirse</span></button>
                   <button class="circle-btn" id="chat-more" title="Más"><svg><use href="#i-more"/></svg></button>
                 </header>
                 <div class="chat-messages" id="chat-messages"></div>
                 <button class="chat-new-below hidden" id="chat-new-below"></button>
+                <div class="chat-typing-slot" id="chat-typing-slot" aria-live="polite"></div>
                 <div class="chat-reply hidden" id="chat-reply"></div>
                 <div class="chat-composer">
                   <button class="circle-btn" id="chat-attach" title="Enviar una imagen (también puedes pegarla o arrastrarla aquí)"><svg><use href="#i-image"/></svg></button>
@@ -1075,9 +1077,18 @@
     </div>
   </div>
 
-  <div class="lightbox hidden" id="lightbox">
-    <img id="lightbox-image" alt="">
-    <p id="lightbox-caption"></p>
+  <div class="lightbox hidden" id="lightbox" role="dialog" aria-modal="true" aria-label="Visor de imágenes" tabindex="-1">
+    <header class="media-header"><div class="grow"><b id="media-author"></b><span id="media-date"></span></div><span id="media-count"></span><button class="circle-btn" id="media-zoom" title="Ampliar o ajustar"><svg><use href="#i-search"/></svg></button><button class="circle-btn" id="media-close" title="Cerrar (Esc)"><svg><use href="#i-close"/></svg></button></header>
+    <div class="media-stage" id="media-stage">
+      <button class="media-arrow" id="media-prev" title="Imagen anterior (←)"><svg><use href="#i-left"/></svg></button>
+      <div class="media-canvas" id="media-canvas"><img id="lightbox-image" alt=""><div class="media-status hidden" id="media-status" role="status"></div></div>
+      <button class="media-arrow" id="media-next" title="Imagen siguiente (→)"><svg><use href="#i-right"/></svg></button>
+    </div>
+    <footer class="media-footer"><p id="lightbox-caption"></p><div class="media-thumbnails" id="media-thumbnails" aria-label="Imágenes compartidas"></div><span class="media-keyboard-hint">← → · Esc</span></footer>
+  </div>
+
+  <div class="overlay hidden" id="player-dialog">
+    <div class="modal player-profile"><div class="profile-cover"></div><div id="player-avatar" class="profile-avatar"></div><button class="circle-btn profile-close" id="player-close" title="Cerrar"><svg><use href="#i-close"/></svg></button><div class="modal-body"><h2 id="player-name"></h2><p id="player-status" class="muted"></p><div id="player-details"></div><div class="profile-shared" id="player-shared"></div><div class="modal-actions"><button class="btn primary" id="player-message">Enviar mensaje</button></div></div></div>
   </div>
 
   <!-- ================= Confirmación ================= -->
@@ -1530,6 +1541,7 @@
   <script src="i18n.js"></script>
   <script src="markdown.js"></script>
   <script src="app.js"></script>
+  <script src="chat-experience.js"></script>
   <script src="curseforge.js"></script>
   <script src="hostear.js"></script>
   <script src="comunidad.js"></script>

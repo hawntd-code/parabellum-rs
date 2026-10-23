@@ -13,6 +13,9 @@ mod arranque;
 mod canal;
 mod catalog;
 mod chat;
+mod chat_inbox;
+#[cfg(test)]
+mod chat_realtime_tests;
 mod compartir;
 mod compat;
 mod comunidad;
@@ -4125,6 +4128,8 @@ fn main() {
             cuenta::cerrar_chat,
             cuenta::marcar_leido,
             cuenta::enviar_mensaje,
+            cuenta::perfil_jugador,
+            cuenta::imagenes_chat,
             cuenta::enviar_imagen,
             cuenta::imagen_chat,
             cuenta::editar_mensaje,
