@@ -40,6 +40,8 @@ const state = {
   loaderVersions: {},
   explore: {
     kind: "mod",
+    /** "modrinth" o "curseforge" (los data packs, solo en Modrinth). */
+    source: savedSource(),
     query: "",
     sort: "relevance",
     loader: "",
@@ -5377,6 +5379,18 @@ function modLoadersFor(instance) {
 
 const exploreTarget = () => state.instances.find((i) => i.id === state.explore.target) ?? null;
 
+/** Dónde se buscó la última vez en este PC. */
+function savedSource() {
+  try {
+    return localStorage.getItem("parabellum-fuente") === "curseforge" ? "curseforge" : "modrinth";
+  } catch {
+    return "modrinth";
+  }
+}
+
+/** Dónde se busca en la pestaña de ahora: CurseForge no tiene data packs que Parabellum instale. */
+const exploreSource = () => (state.explore.kind === "datapack" ? "modrinth" : state.explore.source);
+
 function installLabel(instance) {
   return instanceLabel(instance);
 }
@@ -5449,6 +5463,8 @@ function renderExploreFilters() {
   const modpack = e.kind === "modpack";
   const drive = e.kind === "drive";
   $("#filter-drive").classList.toggle("hidden", !drive);
+  $("#filter-source").classList.toggle("hidden", drive || e.kind === "datapack");
+  for (const chip of $$("#explore-sources [data-source]")) chip.classList.toggle("active", exploreSource() === chip.dataset.source);
   $("#explore-sort").classList.toggle("hidden", drive);
   $("#explore-categories").classList.toggle("hidden", drive);
   $("#filter-target").classList.toggle("hidden", modpack || drive);
@@ -5480,27 +5496,29 @@ async function loadExploreVersions() {
 
 async function loadCategories(kind) {
   const box = $("#explore-categories");
-  if (!state.explore.categoryList[kind]) {
+  const source = exploreSource();
+  const key = `${source}:${kind}`;
+  if (!state.explore.categoryList[key]) {
     try {
-      state.explore.categoryList[kind] = await invoke("categorias", { tipo: kind });
+      state.explore.categoryList[key] = await invoke("categorias", { tipo: kind, fuente: source });
     } catch {
       box.innerHTML = "";
       return;
     }
   }
-  if (state.explore.kind !== kind) return;
+  if (state.explore.kind !== kind || exploreSource() !== source) return;
   const groups = {};
-  for (const category of state.explore.categoryList[kind]) {
+  for (const category of state.explore.categoryList[key]) {
     if (loaderCategories.has(category.name)) continue;
     (groups[category.header] ??= []).push(category);
   }
   box.innerHTML = Object.entries(groups)
     .map(
       ([header, list]) => `<div class="filter-block"><h4>${escapeHtml(categoryHeaders[header] ?? header)}</h4><div class="filter-list">${list
-        .sort((a, b) => categoryName(a.name).localeCompare(categoryName(b.name), "es"))
+        .sort((a, b) => (a.label ?? categoryName(a.name)).localeCompare(b.label ?? categoryName(b.name), "es"))
         .map(
           (c) => `<button class="filter-item ${state.explore.categories.has(c.name) ? "active" : ""}" data-category="${escapeHtml(c.name)}">
-            <span class="cat-icon" style="--icon:url('${c.icon}')"></span>${escapeHtml(categoryName(c.name))}</button>`,
+            ${c.label ? (c.icon ? `<img class="cat-image" src="${escapeHtml(c.icon)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : "") : `<span class="cat-icon" style="--icon:url('${c.icon}')"></span>`}${escapeHtml(c.label ?? categoryName(c.name))}</button>`,
         )
         .join("")}</div></div>`,
     )
@@ -5525,7 +5543,7 @@ async function runExplore(append = false) {
   $("#explore-more").disabled = true;
   try {
     const result = await invoke("buscar_contenido", {
-      busqueda: { query: e.query, kind: e.kind, loaders, gameVersion, categories: [...e.categories], sort: e.sort, offset: append ? e.hits.length : 0 },
+      busqueda: { query: e.query, kind: e.kind, loaders, gameVersion, categories: [...e.categories], sort: e.sort, offset: append ? e.hits.length : 0, source: exploreSource() },
     });
     if (id !== e.requestId) return;
     e.hits = append ? [...e.hits, ...result.hits] : result.hits;
@@ -5533,7 +5551,7 @@ async function runExplore(append = false) {
     renderExploreResults(append ? e.hits.length - result.hits.length : 0);
   } catch (error) {
     if (id !== e.requestId) return;
-    if (/No se puede conectar con Modrinth|Cannot connect to Modrinth/.test(String(error)) && !e.autoDrive) {
+    if (exploreSource() === "modrinth" && /No se puede conectar con Modrinth|Cannot connect to Modrinth/.test(String(error)) && !e.autoDrive) {
       e.autoDrive = true;
       toast(t("Modrinth está bloqueado en esta red: aquí tienes los modpacks del catálogo de Drive.", "Modrinth is blocked on this network: here are the modpacks from the Drive catalog."));
       return selectExploreKind("drive");
@@ -5681,18 +5699,47 @@ async function installProject(projectId, versionId = null) {
 }
 
 function showInstallProblem(plan, projectId) {
+  // De CurseForge, cuando su autor no deja bajarlo fuera de ahí: se abre su página para bajarlo a mano.
+  const manual = plan.manualUrl;
   openInstallDialog({
-    alert: true,
-    title: t(`No se puede instalar ${plan.title}`, `${plan.title} cannot be installed`),
+    alert: !manual,
+    title: manual ? t(`${plan.title} se baja a mano`, `${plan.title} is downloaded by hand`) : t(`No se puede instalar ${plan.title}`, `${plan.title} cannot be installed`),
     text: plan.problem,
     items: [],
-    ok: state.page === "project" ? "" : t("Ver versiones", "See versions"),
+    ok: manual ? t("Abrir en CurseForge", "Open on CurseForge") : state.page === "project" ? "" : t("Ver versiones", "See versions"),
     secondary: t("Entendido", "Got it"),
     onOk: () => {
+      if (manual) return invoke("abrir_enlace", { url: manual }).catch((error) => toast(String(error), "error"));
       navigate("project", projectId);
       selectProjectTab("versions");
     },
   });
+}
+
+/** Lo de un modpack de CurseForge que hay que bajar a mano: sus autores no dejan bajarlo fuera de ahí. */
+function showManualDownloads(result) {
+  const list = result?.manual ?? [];
+  if (!list.length) return;
+  openInstallDialog({
+    alert: false,
+    title: t(`Falta bajar ${plural(list.length, "archivo", "archivos")} a mano`, `${plural(list.length, "file needs", "files need")} to be downloaded by hand`),
+    text: t(
+      `Sus autores no dejan bajarlos fuera de CurseForge. Abre cada uno, bájalo y ponlo en su carpeta de ${result.name}. Antes de jugar, Parabellum revisa que estén.`,
+      `Their authors do not allow downloading them outside CurseForge. Open each one, download it and put it in its folder of ${result.name}. Before playing, Parabellum checks that they are there.`,
+    ),
+    items: [],
+    ok: t("Abrir la carpeta", "Open the folder"),
+    secondary: t("Después", "Later"),
+    onOk: () => invoke("abrir_carpeta_contenido", { id: result.id, tipo: list[0].folder }).catch((error) => toast(String(error), "error")),
+  });
+  $("#install-list").innerHTML = list
+    .map(
+      (m) => `<div class="install-item"><span class="grow"><b>${escapeHtml(m.name)}</b><span class="faint"> · ${escapeHtml(m.folder)}/${escapeHtml(m.fileName)}</span></span>
+        <button class="btn small" data-manual-url="${escapeHtml(m.url)}">${icon("external")}${t("Abrir", "Open")}</button></div>`,
+    )
+    .join("");
+  // El diálogo no se cierra al abrir una: suelen ser varias.
+  $("#install-ok").onclick = () => invoke("abrir_carpeta_contenido", { id: result.id, tipo: list[0].folder }).catch((error) => toast(String(error), "error"));
 }
 
 function offerOptional(plan) {
@@ -5710,6 +5757,10 @@ function offerOptional(plan) {
 }
 
 function openInstallDialog({ alert, title, text, items, ok, secondary, onOk, single = false }) {
+  $("#install-list").onclick = (event) => {
+    const link = event.target.closest("[data-manual-url]");
+    if (link) invoke("abrir_enlace", { url: link.dataset.manualUrl }).catch((error) => toast(String(error), "error"));
+  };
   $("#install-alert").classList.toggle("hidden", !alert);
   $("#install-title").textContent = title;
   $("#install-text").textContent = text;
@@ -5772,7 +5823,7 @@ function renderProject() {
     <span>${icon("clock")}${t("Actualizado", "Updated")} ${escapeHtml(relativeDate(p.updated))}</span>`;
   renderProjectInstall();
   const body = $("#project-body");
-  body.replaceChildren(Markdown.toFragment(p.body || p.description));
+  body.replaceChildren(p.html ? Markdown.fromHtml(p.body || escapeHtml(p.description)) : Markdown.toFragment(p.body || p.description));
   const releases = p.gameVersions.filter((v) => /^\d+(\.\d+)+$/.test(v));
   const sides = { required: t("Necesario", "Required"), optional: t("Opcional", "Optional"), unsupported: t("No se usa", "Not used"), unknown: t("Sin datos", "Unknown") };
   $("#project-aside").innerHTML = `
@@ -5793,7 +5844,7 @@ function renderProject() {
     </div>
     <div class="card-panel"><h4>${t("Enlaces", "Links")}</h4>
       <div class="link-list">
-        <a href="https://modrinth.com/${escapeHtml(p.projectType)}/${escapeHtml(p.slug)}">${icon("external")}${t("Ver en Modrinth", "See on Modrinth")}</a>
+        <a href="${escapeHtml(p.pageUrl || `https://modrinth.com/${p.projectType}/${p.slug}`)}">${icon("external")}${p.id.startsWith("cf:") ? t("Ver en CurseForge", "See on CurseForge") : t("Ver en Modrinth", "See on Modrinth")}</a>
         ${p.links.map(([label, url]) => `<a href="${escapeHtml(url)}">${icon("external")}${escapeHtml(label)}</a>`).join("")}
       </div>
     </div>`;
@@ -5831,7 +5882,7 @@ function renderProjectInstall() {
           ? t(`Instalar en ${instance.name}`, `Install to ${instance.name}`)
           : t("Instalar", "Install");
   $("use", button).setAttribute("href", done ? "#i-check" : "#i-download");
-  const favorable = ["mod", "resourcepack", "shader"].includes(kind);
+  const favorable = !p.id.startsWith("cf:") && ["mod", "resourcepack", "shader"].includes(kind);
   $("#project-fav").classList.toggle("hidden", !favorable);
   $("#project-fav").classList.toggle("starred", isFavoriteMod(p.id));
   $("#project-fav").title = isFavoriteMod(p.id) ? t("Quitar de favoritos", "Remove from favorites") : t("Agregar a favoritos", "Add to favorites");
@@ -5977,6 +6028,21 @@ function wireExploreEvents() {
   };
   $("#explore-version").onchange = () => {
     state.explore.version = $("#explore-version").value;
+    runExplore();
+  };
+  $("#explore-sources").onclick = (event) => {
+    const chip = event.target.closest("[data-source]");
+    if (!chip || chip.dataset.source === state.explore.source) return;
+    state.explore.source = chip.dataset.source;
+    try {
+      localStorage.setItem("parabellum-fuente", chip.dataset.source);
+    } catch {
+      // Sin almacenamiento: se elige de nuevo la próxima vez.
+    }
+    // Las categorías de una no sirven en la otra.
+    state.explore.categories.clear();
+    renderExploreFilters();
+    loadCategories(state.explore.kind);
     runExplore();
   };
   $("#explore-loaders").onclick = (event) => {
@@ -6389,9 +6455,12 @@ async function installModpack(projectId, versionId = null) {
     const info = projectInfo(projectId);
     const result = await invoke("instalar_modpack", { proyecto: projectId, version: versionId, titulo: info.title ?? null, icono: info.icon ?? null });
     await reloadInstances();
-    toast(t(`${result.name} está lista para jugar. La encuentras en tu biblioteca.`, `${result.name} is ready to play. You will find it in your library.`));
+    toast(result.manual?.length
+      ? t(`Se importó ${result.name}. Faltan archivos que debes descargar a mano.`, `${result.name} was imported. Some files need to be downloaded by hand.`)
+      : t(`${result.name} está lista para jugar. La encuentras en tu biblioteca.`, `${result.name} is ready to play. You will find it in your library.`));
     if (result.warning) toast(result.warning, "error");
     if (result.notes?.length) toast(result.notes.join(" "));
+    showManualDownloads(result);
   } catch (error) {
     toast(String(error), "error");
   } finally {
@@ -6536,6 +6605,7 @@ async function importModpack(path = null) {
       if (result.warning) toast(result.warning, "error");
       if (result.notes?.length) toast(result.notes.join(" "));
       if (watching) navigate("instance", result.id);
+      showManualDownloads(result);
     }
   } catch (error) {
     $("#import-title").textContent = isCancelled(error) ? t("Cancelada", "Cancelled") : t("No se pudo instalar", "Could not install");
@@ -6556,6 +6626,7 @@ async function importModpackInBackground(path) {
     await reloadInstances();
     toast(result.kind === "base" ? t(`Se instaló ${result.name}.`, `${result.name} was installed.`) : t(`${result.name} está lista para jugar.`, `${result.name} is ready to play.`));
     if (result.warning) toast(result.warning, "error");
+    showManualDownloads(result);
   } catch (error) {
     toast(String(error), "error");
   }

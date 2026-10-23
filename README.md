@@ -25,7 +25,7 @@
 <table>
   <tr>
     <td width="50%" valign="top"><b>🎮 Jugar sin complicarte</b><br>Creas una instancia (Vanilla, Fabric, Quilt, Forge o NeoForge), pulsas <b>Jugar</b> y Parabellum baja lo que falte, también el Java correcto. Entras con tu nombre de jugador.</td>
-    <td width="50%" valign="top"><b>🧩 Mods y modpacks de Modrinth</b><br>Busca mods, resource packs, shaders, data packs y modpacks, y ve solo lo que sirve para tu instancia. Instala con sus dependencias y actualiza todo con un clic.</td>
+    <td width="50%" valign="top"><b>🧩 Modrinth y CurseForge</b><br>Busca mods, resource packs, shaders y modpacks en los dos, y data packs en Modrinth. Instala versiones compatibles con sus dependencias e importa los .zip de CurseForge. Las actualizaciones con un clic siguen disponibles para lo de Modrinth.</td>
   </tr>
   <tr>
     <td width="50%" valign="top"><b>🩺 El doctor</b><br>Si el juego se cierra, te dice por qué en palabras normales y lo arregla con un botón: el mod que choca, el loader que falta o la memoria que no alcanza. También puede <b>buscar el mod culpable</b> solo.</td>
@@ -63,9 +63,9 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td align="center" valign="top">
 <br>
-<a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.35.0/Parabellum-0.35.0.zip"><img alt="Descargar Parabellum 0.35.0 para Windows" src="https://img.shields.io/badge/Descargar-v0.35.0-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
+<a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/v0.36.0/Parabellum-0.36.0.zip"><img alt="Descargar Parabellum 0.36.0 para Windows" src="https://img.shields.io/badge/Descargar-v0.36.0-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
 <br><br>
-<sub>Windows 10 u 11 de 64 bits · zip de 10 MB · 21 oct 2026</sub>
+<sub>Windows 10 u 11 de 64 bits · zip portable · 22 oct 2026</sub>
 <br><br>
 </td>
 <td align="center" valign="top">
@@ -79,13 +79,13 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td valign="top">
 
-**Lo nuevo en la 0.35.0**
+**Lo nuevo en la 0.36.0**
 
-- **El paquete de tu comunidad baja más rápido:** los mods, desde Modrinth y todos a la vez.
-- Empieza a bajar **desde que abres la comunidad**.
-- **Avisos de soporte** desde que abres Parabellum: un número en Comunidades y una notificación de Windows.
+- **CurseForge junto a Modrinth:** elige dónde buscar e instala con las dependencias compatibles.
+- **Modpacks de CurseForge:** importa su .zip o instálalos desde Explorar. Si un autor exige descargar a mano, Parabellum te lleva a su página.
+- **El paquete ligero sin los jars de Fabric:** incluye la mejora de la 0.35.1 para reducir la espera de Drive.
 
-<sub>[Notas completas](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.35.0)</sub>
+<sub>[Notas completas](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.36.0)</sub>
 
 </td>
 <td valign="top">

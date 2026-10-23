@@ -195,6 +195,9 @@ pub struct SearchQuery {
     /// relevance, downloads, follows, newest o updated
     #[serde(default)]
     pub sort: String,
+    /// «curseforge» para buscar allá (curseforge.rs); vacío, en Modrinth.
+    #[serde(default)]
+    pub source: String,
     #[serde(default)]
     pub offset: u32,
 }
@@ -279,9 +282,13 @@ pub async fn search(query: &SearchQuery) -> Result<SearchResults, String> {
 #[derive(Serialize, Debug)]
 pub struct Category {
     pub name: String,
-    /// Icono SVG como data URL (se muestra con <img>, así no puede ejecutar nada).
+    /// Icono SVG como data URL (se muestra con <img>, así no puede ejecutar nada). En las de CurseForge, la
+    /// dirección de su imagen.
     pub icon: String,
     pub header: String,
+    /// El nombre que se muestra, si no es `name` (en CurseForge `name` es su id, «cf:…»).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 pub async fn categories(kind: &str) -> Result<Vec<Category>, String> {
@@ -303,6 +310,7 @@ pub async fn categories(kind: &str) -> Result<Vec<Category>, String> {
             name: text(c, "name"),
             icon: format!("data:image/svg+xml;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, svg)),
             header: text(c, "header"),
+            label: None,
         })
         .collect())
 }
@@ -318,6 +326,10 @@ pub struct Project {
     pub description: String,
     /// Descripción larga en Markdown (la interfaz la limpia antes de mostrarla).
     pub body: String,
+    /// `body` es HTML, no Markdown (la de CurseForge).
+    pub html: bool,
+    /// Su página en Modrinth o en CurseForge.
+    pub page_url: String,
     pub icon_url: Option<String>,
     pub project_type: String,
     pub author: String,
@@ -382,6 +394,8 @@ pub async fn project(id: &str) -> Result<Project, String> {
         title: text(&p, "title"),
         description: text(&p, "description"),
         body: text(&p, "body"),
+        html: false,
+        page_url: format!("https://modrinth.com/{}/{}", text(&p, "project_type"), text(&p, "slug")),
         icon_url: p["icon_url"].as_str().filter(|u| !u.is_empty()).map(String::from),
         project_type: text(&p, "project_type"),
         author,
@@ -500,7 +514,7 @@ fn native_first(mut versions: Vec<Version>, loaders: &[&str]) -> Vec<Version> {
 }
 
 /// Una versión de Modrinth que dice servir para el loader y la versión de Minecraft de la instancia.
-fn version_fits(version: &Version, loaders: &[&str], minecraft: &str) -> bool {
+pub(crate) fn version_fits(version: &Version, loaders: &[&str], minecraft: &str) -> bool {
     (loaders.is_empty() || version.loaders.iter().any(|l| loaders.contains(&l.as_str()))) && version.game_versions.iter().any(|g| g == minecraft)
 }
 
@@ -824,9 +838,19 @@ pub struct Plan {
     pub installed: bool,
     /// Por qué no se puede instalar (dependencia imposible o incompatibilidad).
     pub problem: Option<String>,
+    /// La página donde bajarlo a mano (CurseForge, cuando su autor no deja bajarlo fuera de ahí).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manual_url: Option<String>,
     /// El problema es del propio mod pedido: vale la pena probar otras versiones suyas.
     #[serde(skip)]
     check_main: bool,
+}
+
+impl Plan {
+    /// Un plan vacío de ese proyecto (se llena después).
+    pub fn new(project_id: String, title: String) -> Self {
+        Self { project_id, title, version_number: String::new(), files: Vec::new(), optional: Vec::new(), installed: false, problem: None, manual_url: None, check_main: false }
+    }
 }
 
 fn describe_target(instance: &Instance, kind: ContentType) -> String {
@@ -840,7 +864,7 @@ fn describe_target(instance: &Instance, kind: ContentType) -> String {
 
 /// Carpeta temporal de la instancia donde se bajan los mods candidatos para leer qué necesitan.
 /// Al instalar se usan desde aquí en lugar de volver a descargarlos.
-fn candidates_dir(instance: &Instance) -> std::path::PathBuf {
+pub(crate) fn candidates_dir(instance: &Instance) -> std::path::PathBuf {
     instance.state_dir().join("descargas")
 }
 
@@ -1064,6 +1088,7 @@ async fn plan_version(instance: &Instance, project_id: &str, version_id: Option<
             optional: Vec::new(),
             installed: true,
             problem: None,
+            manual_url: None,
             check_main: false,
         });
     }
@@ -1204,6 +1229,7 @@ async fn plan_version(instance: &Instance, project_id: &str, version_id: Option<
         optional: optional.iter().filter_map(|id| names.get(id).cloned()).collect(),
         installed: false,
         problem,
+        manual_url: None,
     })
 }
 
@@ -1505,6 +1531,7 @@ pub async fn find_by_mod_id(instance: &Instance, mod_id: &str, requirements: &[S
         categories: Vec::new(),
         sort: "relevance".into(),
         offset: 0,
+        source: String::new(),
     };
     if let Ok(results) = search(&query).await {
         candidates.extend(results.hits.into_iter().take(6).map(|h| h.id));

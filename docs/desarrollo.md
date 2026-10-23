@@ -151,6 +151,31 @@ pero se usa el maven. Un ligero así se nombra en `liteZip`, no en `liteArchive`
 bajar `remoteBase`: lo instalaría sin el loader. Así la 0.35.0 sigue con el completo. Si el loader no es de
 Fabric (o no hay `remoteBase`), el ligero se sigue nombrando en `liteArchive` como antes.
 
+## CurseForge (desde la 0.36.0)
+
+Explorar conserva las mismas pantallas y deja elegir Modrinth o CurseForge. Los ids `cf:<número>` se
+resuelven en `src-tauri/src/curseforge.rs`: categorías, búsqueda, proyecto, versiones y planes con
+dependencias. La versión de Minecraft y el loader se comprueban incluso si se elige un archivo concreto.
+`manifest.json` permite importar el `.zip` de CurseForge, instalando su loader y copiando `overrides`.
+Los archivos quedan con su SHA-1 y procedencia en `.lanzador/archivos.json` y `curseforge.json`.
+
+La clave **no va en el ejecutable ni en el repo**: vive en la variable del puente de Cloud Run.
+El despliegue y sus rutas están en [puente-curseforge/README.md](../puente-curseforge/README.md).
+El puente está publicado, escala de 0 a 3 instancias y se comprobó con categorías y búsquedas reales.
+Los jars y zips se bajan directamente del CDN de CurseForge. Cuando el autor no permite descargas
+externas, la interfaz ofrece su página; no se inventa ni se fuerza un enlace de descarga.
+
+Recorrido reproducible con el ejecutable final, **siempre en una carpeta de prueba**:
+
+```powershell
+python pruebas/curseforge.py --exe src-tauri/target/release/Parabellum.exe --root ../_verificacion-curseforge --base ../Parabellum/base
+```
+
+`--base` es opcional: copia archivos compartidos de Minecraft 1.21.1 para ahorrar descargas; nunca
+enlaza ni modifica las instancias reales. El informe queda en `resultado.txt` dentro de la carpeta
+de prueba. Las actualizaciones automáticas y los favoritos del contenido de CurseForge quedan para
+otra versión; los favoritos y actualizaciones de Modrinth siguen como antes.
+
 ## Publicar una versión
 
 1. **Drive** (lo hace Juan): Ajustes › Acerca de › «Publicar esta versión» deja `_parabellum` con
@@ -205,7 +230,7 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--exportar <instancia> <carpeta> [con-mundos] [sin-base]` | Paquete para Drive o USB (modpack, su versión ligera y la base de Minecraft; `sin-base`, sin la base) |
 | `--instalar-ligero <id>` | Instala con el paquete ligero de la carpeta `paquetes` y los mods del CDN de Modrinth, como desde Drive (para medir) |
 | `--exportar-mrpack <instancia> <archivo.mrpack>` | Modpack en formato de Modrinth |
-| `--importar <archivo> [nombre]` | Instala un .mrpack o un paquete de Parabellum |
+| `--importar <archivo> [nombre]` | Instala un .mrpack, un .zip de CurseForge o un paquete de Parabellum |
 | `--externas` | Instancias de CurseForge, Prism y MultiMC en este PC |
 | `--importar-externa <carpeta>` | Copia una de ellas a Parabellum, con su loader |
 | `--instalar-modpack <proyecto> [versión]` | Instala un modpack de Modrinth como instancia nueva |

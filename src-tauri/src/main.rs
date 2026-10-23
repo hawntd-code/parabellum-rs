@@ -21,6 +21,7 @@ mod content;
 mod diagnostico;
 mod cuenta;
 mod culpable;
+mod curseforge;
 mod descargas;
 mod download;
 mod favoritos;
@@ -975,20 +976,30 @@ fn abrir_registro(state: State<AppState>, id: String) -> Result<(), String> {
     plataforma::open_path(&folder)
 }
 
-// ================= Modrinth: explorar, instalar y actualizar contenido
+// ================= Modrinth y CurseForge: explorar, instalar y actualizar contenido
+// Lo de CurseForge lleva «cf:» delante del id (curseforge.rs) y sale con las mismas formas.
 
 #[tauri::command]
 async fn buscar_contenido(busqueda: modrinth::SearchQuery) -> Result<modrinth::SearchResults, String> {
+    if busqueda.source == "curseforge" {
+        return curseforge::search(&busqueda).await;
+    }
     modrinth::search(&busqueda).await
 }
 
 #[tauri::command]
-async fn categorias(tipo: String) -> Result<Vec<modrinth::Category>, String> {
+async fn categorias(tipo: String, fuente: Option<String>) -> Result<Vec<modrinth::Category>, String> {
+    if fuente.as_deref() == Some("curseforge") {
+        return curseforge::categories(&tipo).await;
+    }
     modrinth::categories(&tipo).await
 }
 
 #[tauri::command]
 async fn proyecto(id: String) -> Result<modrinth::Project, String> {
+    if curseforge::is_curseforge(&id) {
+        return curseforge::project(&id).await;
+    }
     modrinth::project(&id).await
 }
 
@@ -1000,6 +1011,17 @@ async fn versiones_proyecto(
     tipo: String,
     instancia: Option<String>,
 ) -> Result<Vec<modrinth::Version>, String> {
+    if curseforge::is_curseforge(&id) {
+        return match instancia {
+            Some(instance_id) if tipo != "modpack" => {
+                let instance = instance_or_error(&state, &instance_id)?;
+                let kind = modrinth::ContentType::parse(&tipo).ok_or(t!("Tipo de contenido desconocido.", "Unknown content type."))?;
+                let loaders = modrinth::instance_loaders(&instance, kind)?;
+                curseforge::project_versions(&id, &loaders, &[instance.minecraft_version.as_str()]).await
+            }
+            _ => curseforge::project_versions(&id, &[], &[]).await,
+        };
+    }
     // Los modpacks se instalan como instancia nueva: todas sus versiones, con el loader que sea.
     if tipo == "modpack" {
         return modrinth::project_versions(&id, modrinth::MODPACK_LOADERS, &[]).await;
@@ -1026,14 +1048,16 @@ struct InstalledProjects {
     versions: Vec<String>,
 }
 
-/// Proyectos (y versiones exactas) de Modrinth instalados en la instancia, para marcar "Instalado".
+/// Proyectos (y versiones exactas) de Modrinth y de CurseForge instalados en la instancia, para marcar
+/// "Instalado".
 #[tauri::command]
 async fn proyectos_instalados(state: State<'_, AppState>, id: String) -> Result<InstalledProjects, String> {
     let instance = instance_or_error(&state, &id)?;
     let files = modrinth::identify(&instance).await;
+    let (cf_projects, cf_files) = curseforge::installed(&instance);
     Ok(InstalledProjects {
-        projects: files.iter().filter_map(|f| f.project_id.clone()).collect(),
-        versions: files.into_iter().filter_map(|f| f.version_id).collect(),
+        projects: files.iter().filter_map(|f| f.project_id.clone()).chain(cf_projects).collect(),
+        versions: files.into_iter().filter_map(|f| f.version_id).chain(cf_files).collect(),
     })
 }
 
@@ -1046,6 +1070,9 @@ async fn preparar_instalacion(
     version: Option<String>,
 ) -> Result<modrinth::Plan, String> {
     let instance = instance_or_error(&state, &id)?;
+    if curseforge::is_curseforge(&proyecto) {
+        return curseforge::plan(&instance, &proyecto, version.as_deref()).await;
+    }
     modrinth::plan(&instance, &proyecto, version.as_deref()).await
 }
 
@@ -1066,10 +1093,13 @@ async fn instalar_contenido(state: State<'_, AppState>, id: String, archivos: Ve
         .retry("instalar_contenido", serde_json::json!({ "id": id, "archivos": archivos }));
     job.instance(Some(id.clone()));
     let progress = job.progress("instalar");
-    job.run(modrinth::install(&instance, &archivos, move |count, total, bytes, total_bytes| {
+    let report = move |count, total, bytes, total_bytes: u64| {
         progress(t!("Descargando {name}… {count} de {total}", "Downloading {name}… {count} of {total}"), bytes as f64 / total_bytes.max(1) as f64);
-    }))
-    .await
+    };
+    if archivos.iter().any(|f| curseforge::is_curseforge(&f.project_id)) {
+        return job.run(curseforge::install(&instance, &archivos, report)).await;
+    }
+    job.run(modrinth::install(&instance, &archivos, report)).await
 }
 
 #[tauri::command]
@@ -1134,6 +1164,9 @@ struct Imported {
     /// Arreglos que se aplicaron solos para que abra en este PC.
     #[serde(default)]
     notes: Vec<String>,
+    /// Lo de un modpack de CurseForge que hay que bajar a mano (su autor no deja bajarlo fuera de ahí).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    manual: Vec<curseforge::Manual>,
 }
 
 /// Aviso de lo que quedó sin reponer, o None si está todo.
@@ -1356,19 +1389,46 @@ async fn import_modpack(
             warning = missing_warning(&integridad::repair(&instance.game_dir, false, progress.clone()).await);
             notes = apply_known_fixes(&instance, default_ram, progress.clone()).await;
         }
-        return Ok(Imported { id: installed.folder, name: installed.name, kind: installed.kind, updated: installed.updated, warning, notes });
+        return Ok(Imported { id: installed.folder, name: installed.name, kind: installed.kind, updated: installed.updated, warning, notes, manual: Vec::new() });
+    }
+
+    // Modpack de CurseForge (el .zip con manifest.json que exporta su app)
+    if let Some(pack) = curseforge::read_modpack(file)? {
+        let name = instances::unique_name(display_name.as_deref().unwrap_or(&pack.name), paths)?;
+        let instance = modpack_instance(&name, &pack.minecraft, pack.loader.as_ref(), paths, progress.clone()).await?;
+        let report = progress.clone();
+        let manual = match curseforge::install_modpack_files(&pack, file, &instance.game_dir, move |stage, f| report(stage, 0.4 + f * 0.55)).await {
+            Ok(manual) => manual,
+            Err(error) => {
+                // Una instancia a medias no sirve; es nueva, así que no tiene nada del jugador.
+                let _ = std::fs::remove_dir_all(&instance.folder);
+                return Err(error);
+            }
+        };
+        instances::set_game_language(&instance.game_dir);
+        let mut source = source;
+        source["name"] = serde_json::json!(pack.name);
+        source["version"] = serde_json::json!(pack.version);
+        let _ = instances::set_field(&instance, "modpack", source);
+        if let Some(bytes) = icon {
+            let _ = instances::set_icon_bytes(&instance, &bytes);
+        }
+        progress(t!("Revisando que abra en este PC…", "Checking that it opens on this PC…"), 0.99);
+        let notes = match instances::find(paths, &instance.id) {
+            Some(current) => apply_known_fixes(&current, default_ram, progress.clone()).await,
+            None => Vec::new(),
+        };
+        progress(t!("Listo", "Done"), 1.0);
+        return Ok(Imported { id: Some(instance.id), name, kind: "modpack".into(), updated: false, warning: None, notes, manual });
     }
 
     // .mrpack
-    let info = mrpack::read(file)?.ok_or(t!("No es un modpack: elige un .mrpack o un paquete de Parabellum (.zip con lanzador-pack.json).", "It is not a modpack: choose a .mrpack or a Parabellum package (.zip with lanzador-pack.json)."))?;
-    let loader = info.loader.as_ref().map(|(name, _)| parse_loader(name)).transpose()?;
+    let info = mrpack::read(file)?.ok_or(t!(
+        "No es un modpack: elige un .mrpack, un modpack de CurseForge (.zip con manifest.json) o un paquete de Parabellum (.zip con lanzador-pack.json).",
+        "It is not a modpack: choose a .mrpack, a CurseForge modpack (.zip with manifest.json) or a Parabellum package (.zip with lanzador-pack.json)."
+    ))?;
     let name = instances::unique_name(display_name.as_deref().unwrap_or(&info.name), paths)?;
-    let report = progress.clone();
-    let (version_id, loader_version) =
-        install_game(&info.minecraft, loader, info.loader.as_ref().map(|(_, v)| v.as_str()), paths, move |stage, f| report(stage, f * 0.4))
-            .await?;
-    let game = GameVersion { version_id: &version_id, minecraft: &info.minecraft, loader: loader.map(|l| l.name()).zip(loader_version.as_deref()) };
-    let instance = instances::create(&name, &game, paths)?;
+    let instance = modpack_instance(&name, &info.minecraft, info.loader.as_ref(), paths, progress.clone()).await?;
     let report = progress.clone();
     if let Err(error) = mrpack::install_files(&info, file, &instance.game_dir, move |stage, f| report(stage, 0.4 + f * 0.6)).await {
         // Una instancia a medias no sirve; es nueva, así que no tiene nada del jugador.
@@ -1394,7 +1454,21 @@ async fn import_modpack(
         None => Vec::new(),
     };
     progress(t!("Listo", "Done"), 1.0);
-    Ok(Imported { id: Some(instance.id), name, kind: "modpack".into(), updated: false, warning: missing_warning(&completed), notes })
+    Ok(Imported { id: Some(instance.id), name, kind: "modpack".into(), updated: false, warning: missing_warning(&completed), notes, manual: Vec::new() })
+}
+
+/// La instancia nueva de un modpack: Minecraft con su loader (el 40 % de la barra) y su carpeta.
+async fn modpack_instance(
+    name: &str,
+    minecraft: &str,
+    loader: Option<&(String, String)>,
+    paths: &Paths,
+    progress: impl Fn(String, f64) + Send + Sync + Clone + 'static,
+) -> Result<instances::Instance, String> {
+    let kind = loader.map(|(name, _)| parse_loader(name)).transpose()?;
+    let (version_id, loader_version) = install_game(minecraft, kind, loader.map(|(_, v)| v.as_str()), paths, move |stage, f| progress(stage, f * 0.4)).await?;
+    let game = GameVersion { version_id: &version_id, minecraft, loader: kind.map(|l| l.name()).zip(loader_version.as_deref()) };
+    instances::create(name, &game, paths)
 }
 
 fn progress_emitter(app: &AppHandle, task: &'static str) -> impl Fn(String, f64) + Send + Sync + Clone + 'static {
@@ -1535,7 +1609,7 @@ async fn import_external(folder: &Path, paths: &Paths, progress: impl Fn(String,
     let _ = instances::set_field(&instance, "importadaDe", serde_json::json!({ "launcher": external.launcher, "carpeta": external.folder }));
     let completed = integridad::repair(&instance.game_dir, false, progress.clone()).await;
     progress(t!("Listo", "Done"), 1.0);
-    Ok(Imported { id: Some(instance.id), name, kind: "instancia".into(), updated: false, warning: missing_warning(&completed), notes: Vec::new() })
+    Ok(Imported { id: Some(instance.id), name, kind: "instancia".into(), updated: false, warning: missing_warning(&completed), notes: Vec::new(), manual: Vec::new() })
 }
 
 #[tauri::command]
@@ -1559,11 +1633,17 @@ async fn instalar_modpack(
     tarea: Option<String>,
 ) -> Result<Imported, String> {
     let retry = serde_json::json!({ "proyecto": proyecto, "version": version, "titulo": titulo, "icono": icono });
-    let job = descargas::start(tarea, "modpack", titulo.clone().unwrap_or_else(|| t!("Modpack de Modrinth", "Modrinth modpack")))
+    let curse = curseforge::is_curseforge(&proyecto);
+    let fallback = if curse { t!("Modpack de CurseForge", "CurseForge modpack") } else { t!("Modpack de Modrinth", "Modrinth modpack") };
+    let job = descargas::start(tarea, "modpack", titulo.clone().unwrap_or(fallback))
         .queued()
         .icon(icono.filter(|url| url.starts_with("https://")))
         .retry("instalar_modpack", retry);
-    let imported = job.run(install_modrinth_modpack(&state, &proyecto, version.as_deref(), &job)).await?;
+    let imported = if curse {
+        job.run(install_curseforge_modpack(&state, &proyecto, version.as_deref(), &job)).await?
+    } else {
+        job.run(install_modrinth_modpack(&state, &proyecto, version.as_deref(), &job)).await?
+    };
     job.instance(imported.id.clone());
     Ok(imported)
 }
@@ -1580,6 +1660,29 @@ async fn install_modrinth_modpack(state: &AppState, proyecto: &str, version: Opt
     };
     let source = serde_json::json!({
         "source": "modrinth",
+        "projectId": download.project_id,
+        "versionId": download.version_id,
+        "versionNumber": download.version_number,
+    });
+    let running: HashSet<String> = state.games.lock().unwrap().keys().cloned().collect();
+    let ram = state.settings.lock().unwrap().ram_gb;
+    let result = import_modpack(&download.file, &paths, Some(download.title.clone()), icon, source, &running, ram, progress).await;
+    let _ = std::fs::remove_file(&download.file);
+    result
+}
+
+async fn install_curseforge_modpack(state: &AppState, proyecto: &str, version: Option<&str>, job: &descargas::Job) -> Result<Imported, String> {
+    let paths = state.paths.clone();
+    let progress = job.progress("importar");
+    progress(t!("Descargando el modpack…", "Downloading the modpack…"), 0.0);
+    let download = curseforge::download_modpack(proyecto, version, &paths.data.join("temporal")).await?;
+    job.title(download.title.clone());
+    let icon = match &download.icon_url {
+        Some(url) => curseforge::download_icon(url).await,
+        None => None,
+    };
+    let source = serde_json::json!({
+        "source": "curseforge",
         "projectId": download.project_id,
         "versionId": download.version_id,
         "versionNumber": download.version_number,
@@ -3187,18 +3290,24 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             Ok(out)
         }
         "--buscar" => {
+            // --buscar <texto> [tipo] [loader] [versión] [curseforge]
             let query = modrinth::SearchQuery {
                 query: args.get(1).cloned().unwrap_or_default(),
                 kind: args.get(2).cloned().unwrap_or_else(|| "mod".into()),
-                loaders: args.get(3).map(|l| vec![l.clone()]).unwrap_or_default(),
-                game_version: args.get(4).cloned(),
+                loaders: args.get(3).filter(|l| !l.is_empty()).map(|l| vec![l.clone()]).unwrap_or_default(),
+                game_version: args.get(4).cloned().filter(|v| !v.is_empty()),
                 categories: Vec::new(),
                 sort: "relevance".into(),
                 offset: 0,
+                source: args.get(5).cloned().unwrap_or_default(),
             };
             let started = std::time::Instant::now();
-            let results = tauri::async_runtime::block_on(modrinth::search(&query))?;
-            let route = if modrinth::via_bridge() { "por el puente" } else { "directo" };
+            let results = if query.source == "curseforge" {
+                tauri::async_runtime::block_on(curseforge::search(&query))?
+            } else {
+                tauri::async_runtime::block_on(modrinth::search(&query))?
+            };
+            let route = if query.source == "curseforge" { "CurseForge por su puente" } else if modrinth::via_bridge() { "por el puente" } else { "directo" };
             let mut out = format!("{} resultados ({route}, {:.1} s)\n", results.total, started.elapsed().as_secs_f64());
             for hit in results.hits.iter().take(10) {
                 out += &format!("  {} ({}) por {} · {} descargas · {:?}\n", hit.title, hit.slug, hit.author, hit.downloads, hit.categories);
@@ -3209,7 +3318,12 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
             let project = args.get(2).ok_or("Falta el proyecto.")?;
             let started = std::time::Instant::now();
-            let plan = tauri::async_runtime::block_on(modrinth::plan(&instance, project, args.get(3).map(String::as_str)))?;
+            let curse = curseforge::is_curseforge(project);
+            let plan = if curse {
+                tauri::async_runtime::block_on(curseforge::plan(&instance, project, args.get(3).map(String::as_str)))?
+            } else {
+                tauri::async_runtime::block_on(modrinth::plan(&instance, project, args.get(3).map(String::as_str)))?
+            };
             let mut out = format!("{} {}\n", plan.title, plan.version_number);
             for file in &plan.files {
                 out += &format!(
@@ -3227,7 +3341,10 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             if plan.installed {
                 out += "  YA INSTALADA\n";
             } else if let Some(problem) = &plan.problem {
-                out += &format!("  NO SE PUEDE: {problem}\n");
+                out += &format!("  NO SE PUEDE: {problem}{}\n", plan.manual_url.as_ref().map(|u| format!(" ({u})")).unwrap_or_default());
+            } else if curse {
+                tauri::async_runtime::block_on(curseforge::install(&instance, &plan.files, |_, _, _, _| {}))?;
+                out += &format!("  INSTALADO en {:.1} s\n", started.elapsed().as_secs_f64());
             } else {
                 tauri::async_runtime::block_on(modrinth::install(&instance, &plan.files, |_, _, _, _| {}))?;
                 out += &format!("  INSTALADO en {:.1} s\n", started.elapsed().as_secs_f64());
@@ -3347,6 +3464,13 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             let started = std::time::Instant::now();
             let temp = paths.data.join("temporal");
             let result = tauri::async_runtime::block_on(async {
+                if curseforge::is_curseforge(project) {
+                    let download = curseforge::download_modpack(project, args.get(2).map(String::as_str), &temp).await?;
+                    let source = serde_json::json!({ "source": "curseforge", "projectId": download.project_id, "versionId": download.version_id });
+                    let result = import_modpack(&download.file, paths, Some(download.title.clone()), None, source, &HashSet::new(), settings.ram_gb, |_, _| {}).await;
+                    let _ = std::fs::remove_file(&download.file);
+                    return result;
+                }
                 let download = modrinth::download_modpack(project, args.get(2).map(String::as_str), &temp).await?;
                 let icon = match &download.icon_url {
                     Some(url) => modrinth::download_icon(url).await,
@@ -3366,6 +3490,9 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             for note in &result.notes {
                 out += &format!("ARREGLO: {note}
 ");
+            }
+            for file in &result.manual {
+                out += &format!("MANUAL: {}/{} — {}\n", file.folder, file.file_name, file.url);
             }
             Ok(out)
         }

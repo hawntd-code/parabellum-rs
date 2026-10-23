@@ -23,6 +23,10 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
+- **0.36.0:** integración compartida de CurseForge, puente ya desplegado en Cloud Run e inclusión de
+  las mejoras de la 0.35.1. Entrega de Windows en GitHub; la publicación de Drive sigue siendo un paso
+  aparte. Mac debe compilar y probar lo descrito en la entrada del 2026-10-22 antes de publicar.
+
 - Última revisión de los PR de Mac en Windows: 2026-10-20, PR #1 a #17 (todos mezclados).
 - **Publicado en Drive:** Windows **0.35.0** desde el 2026-10-21 (Juan; el exe publicado es idéntico
   al compilado de `main` en `84a59e8`), con la regla `supportNotify` ya publicada.
@@ -467,14 +471,40 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 - **[plan-noviembre.md](plan-noviembre.md)** (2026-10-20). Por versión:
   - 0.35.0 (publicada el 2026-10-21), el paquete oficial baja sus mods del CDN de Modrinth y hay avisos
     de soporte desde el inicio;
-  - 0.36.0 y 0.37.0, una sola conexión a Firebase (WebSocket);
-  - 0.38.0, errores con acción y la O después de F2;
-  - 0.39.0 a 0.41.0, E4 (mundos en Drive) y E5 (tarjetas de Minecraft).
+  - 0.36.0, CurseForge (adelantado por Juan el 2026-10-22);
+  - 0.37.0 y 0.38.0, una sola conexión a Firebase (WebSocket);
+  - 0.39.0, errores con acción y la O después de F2;
+  - 0.40.0 a 0.42.0, E4 (mundos en Drive) y E5 (tarjetas de Minecraft).
 
   Todo es compartido. Lo de sistema: las notificaciones del vigía de soporte (`plataforma::avisos`, ya existe
   en Mac) y un vigía de la carpeta de capturas.
 
 ## Cambios de Windows
+
+### 2026-10-22 · 0.36.0: CurseForge junto a Modrinth
+
+- `curseforge.rs` adapta búsqueda, categorías, proyectos, versiones y planes a las estructuras ya
+  compartidas con Modrinth. Los identificadores llevan `cf:`. Instala archivos compatibles con la
+  versión de Minecraft y el loader, con dependencias obligatorias y huellas SHA-1.
+- Explorar permite elegir Modrinth o CurseForge. La página del proyecto limpia las descripciones HTML
+  con el mismo filtro del Markdown. Los archivos que no permiten descargas externas abren su página
+  y los modpacks muestran cuáles faltan, con sus carpetas de destino.
+- Se importan los `.zip` de CurseForge con `manifest.json`, su loader y `overrides`; también desde
+  Explorar. Quedan índices de procedencia e integridad y se comprueban antes de jugar. Las versiones
+  elegidas a mano tampoco pueden saltarse la compatibilidad.
+- `puente-curseforge/` es una función Python, ya desplegada en el mismo proyecto de Google Cloud.
+  Guarda la clave solo en el servidor, permite las rutas que usa el launcher, comprime y guarda
+  temporalmente las respuestas. Los archivos van directo del CDN. Escala de 0 a 3 instancias.
+- `build.rs` integra solo los campos de configuración que usa el ejecutable; excluye la clave de
+  CurseForge. Incluye además todo lo de la 0.35.1 (el paquete ligero sin jars del loader).
+- Pruebas: 125 unitarias correctas y una de P2P omitida por requerir internet. Recorrido reproducible
+  con `pruebas/curseforge.py` (puente real, instalar,
+  dependencias, compatibilidad, importar y verificar huellas en una carpeta de prueba).
+- **Mac:** nada propio del sistema. Compilar y probar búsqueda, instalación, importación y los enlaces
+  de descarga manual. No necesita otra clave ni cambiar la configuración integrada. La release de Mac
+  se sigue publicando desde Mac. No hay reglas nuevas de Firebase para esta versión.
+- **Pendiente para después:** favoritos y actualizaciones automáticas de CurseForge y probar la búsqueda
+  desde la red de la escuela. La publicación en Drive y la nueva medición del paquete ligero quedan a Juan.
 
 ### 2026-10-22 · 0.35.1: el paquete ligero ya no trae el loader
 

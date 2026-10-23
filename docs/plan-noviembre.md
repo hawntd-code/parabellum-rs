@@ -7,7 +7,7 @@ en qué orden.
 **Entra:**
 1. el zip del paquete que tarda ~30 s;
 2. los avisos de soporte desde que se abre Parabellum;
-3. una sola conexión a Firebase por persona;
+3. una sola conexión a Firebase por persona (después de CurseForge, añadido el 2026-10-22);
 4. los detalles menores: errores con una acción, y la O después de F2;
 5. E4, mundos en Drive;
 6. E5, tarjetas de Minecraft;
@@ -15,7 +15,13 @@ en qué orden.
 
 **No entra** (decisión de Juan):
 - el P2P desde la escuela (relevo propio);
-- lo que depende de terceros: cuentas de Microsoft, CurseForge, Forge viejo y la firma de código.
+- lo que depende de terceros: cuentas de Microsoft, Forge viejo y la firma de código.
+
+**Cambio de prioridad (Juan, 2026-10-22):** CurseForge se adelantó a Firebase como **0.36.0**.
+La clave ya está en el puente de Cloud Run, que devuelve categorías y búsquedas reales. Se incorporan
+la importación de modpacks `.zip`, la búsqueda y la instalación con dependencias; los autores que no
+permiten descargas externas llevan a su página. Actualizar automáticamente ese contenido queda para
+otra versión. El detalle técnico y la prueba reproducible están en [desarrollo.md](desarrollo.md).
 
 Cada versión pasa la lista de la sección 10.1 de plan-diciembre.md. Si una versión necesita reglas de Firebase
 nuevas, Juan las publica antes.
@@ -27,7 +33,7 @@ este plan:
 - para el equipo, el número cuenta las solicitudes en las que lo último lo escribió quien pidió ayuda (las
   nuevas y las que el jugador contestó), y «esperando» en la cola usa la misma regla.
 
-**0.35.1** (2026-10-22, sin publicar): el ligero tampoco trae las bibliotecas del loader de Fabric, que eran
+**0.35.1** (incluida en la 0.36.0): el ligero tampoco trae las bibliotecas del loader de Fabric, que eran
 los 7 jars que Drive todavía revisaba (de 13 a 15 s). Bajan de maven.fabricmc.net (`remoteBase`) y el
 ligero se nombra en `liteZip`, que la 0.35.0 no conoce. Detalle en
 [desarrollo.md](desarrollo.md) › «El paquete ligero».
@@ -409,11 +415,12 @@ instancia, que viven en `options.txt`.
 | Versión | Qué | Reglas nuevas | Juan |
 |---|---|---|---|
 | **0.35.0** | 1a (reintentos, pedir antes, «revisando»), 1b (mods del CDN de Modrinth) y 2 (avisos de soporte) | `supportNotify` | Publicar las reglas; volver a publicar el paquete oficial (elegir antes cuál es el bueno) |
-| **0.36.0** | 3, paso 1 (`userChats` y buzón de presencia) | `userChats`, `presenceInbox` | Publicar las reglas |
-| **0.37.0** | 3, paso 2 (WebSocket con respaldo SSE), primero en el canal de pruebas | — | Probarlo en la escuela |
-| **0.38.0** | 4 (errores con acción y la O después de F2) | — | — |
-| **0.39.0 – 0.40.0** | E4 (mundos en Drive), en el canal de pruebas y después estable | — | Agregar `drive.file` en Google Cloud |
-| **0.41.0** | E5 (tarjetas de Minecraft) | Lista de ajustes del juego | Publicar las reglas |
+| **0.36.0** | CurseForge: búsqueda, instalar con dependencias e importar modpacks; incluye la 0.35.1 | — | Publicar en Drive y volver a publicar el paquete oficial |
+| **0.37.0** | 3, paso 1 (`userChats` y buzón de presencia) | `userChats`, `presenceInbox` | Publicar las reglas |
+| **0.38.0** | 3, paso 2 (WebSocket con respaldo SSE), primero en el canal de pruebas | — | Probarlo en la escuela |
+| **0.39.0** | 4 (errores con acción y la O después de F2) | — | — |
+| **0.40.0 – 0.41.0** | E4 (mundos en Drive), en el canal de pruebas y después estable | — | Agregar `drive.file` en Google Cloud |
+| **0.42.0** | E5 (tarjetas de Minecraft) | Lista de ajustes del juego | Publicar las reglas |
 | **Después** | E6, en el orden de la sección 7 | Eventos | Según cada uno |
 
 **Cómo se trabaja cada versión:**

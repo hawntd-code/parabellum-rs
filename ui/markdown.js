@@ -175,12 +175,17 @@ const Markdown = (() => {
 
   /** Devuelve un fragmento listo para insertar (nunca HTML sin limpiar). */
   function toFragment(markdown) {
+    return fromHtml(render(markdown ?? ""));
+  }
+
+  /** Lo mismo para una descripción que ya es HTML (las de CurseForge): solo se limpia. */
+  function fromHtml(html) {
     // DOMParser crea un documento inerte: no ejecuta nada ni carga imágenes.
-    const parsed = new DOMParser().parseFromString(`<body>${render(markdown ?? "")}</body>`, "text/html");
+    const parsed = new DOMParser().parseFromString(`<body>${html ?? ""}</body>`, "text/html");
     const fragment = document.createDocumentFragment();
     clean(parsed.body, fragment);
     return fragment;
   }
 
-  return { toFragment, render, safeUrl };
+  return { toFragment, fromHtml, render, safeUrl };
 })();

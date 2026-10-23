@@ -94,6 +94,7 @@ const HTML_EN = {
   "De dónde salen": "Where they come from",
   "Volver a leer": "Reload",
   "Instalar en": "Install to",
+  "Buscar en": "Search on",
   "Todas": "All",
   "Instalar": "Install",
   "Descripción": "Description",

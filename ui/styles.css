@@ -729,6 +729,7 @@ body.booting .app { visibility: hidden; }
 .filter-list { display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow-y: auto; margin: 0 -4px; }
 .filter-item { border-color: transparent; border-radius: var(--r); height: 32px; justify-content: flex-start; width: 100%; padding: 0 8px; }
 .cat-icon { width: 16px; height: 16px; flex: none; background: currentColor; -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+.cat-image { width: 16px; height: 16px; flex: none; object-fit: contain; border-radius: 3px; }
 select.compact { width: auto; min-width: 170px; height: 42px; background-color: var(--card); border-color: transparent; }
 .explore-note { margin: -4px 0 14px; padding: 12px 14px; border-radius: var(--r-lg); border: 1px solid var(--accent); background: var(--accent-softer); }
 

@@ -74,7 +74,7 @@ El orden importa: cada fase usa lo que construyó la anterior.
 - [x] **Modpacks de Forge y NeoForge**: .mrpack, de Modrinth y de Drive; los paquetes para Drive incluyen lo que Forge genera y no nombra en su JSON (juego parcheado, fmlcore, mapeos)
 - [x] **Importar de otro launcher**: CurseForge, Prism y MultiMC se encuentran solos (o se elige la carpeta); se copian mods, mundos y opciones y el loader lo instala Parabellum
 - [x] *Prueba:* Better MC BMC4 (Forge 47.4.20, 444 mods) llega al menú; desde cero, Forge 1.20.1, NeoForge 1.21.1, Forge 26.1.2 y NeoForge 26.1.2 se instalan y llegan al menú; Better MC [BMC6] (NeoForge, 228 mods) importado de CurseForge llega al menú; paquetes de Forge y NeoForge exportados e instalados en una carpeta vacía sin internet llegan al menú
-- [ ] (Opcional, en pausa) CurseForge: requiere solicitar una clave de API y respetar qué autores permiten descargas externas. Juan lo dejó de lado el 2026-10-12: los archivos de CurseForge que piden los modpacks se siguen bajando como hasta ahora
+- [x] CurseForge retomado en la 0.36.0 (Juan, 2026-10-22): buscar e instalar contenido e importar modpacks; clave solo en el puente y descargas manuales cuando el autor no permite descargas externas.
 - [x] Probar Forge 1.12.2: abre (0.16.0, con Java 8 los argumentos van en la línea de comandos)
 
 ### Modpacks completos e íntegros (0.10.1)
@@ -168,19 +168,25 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
       del loader;
     - **avisos de soporte desde que se abre Parabellum:** `soporte::Watcher` y la regla `supportNotify`,
       con el número en el botón de Comunidades y la notificación de Windows.
-  - [x] **0.35.1, el ligero ya no trae el loader** (hecha el 2026-10-22, sin publicar): las 7 bibliotecas
+  - [x] **0.35.1, el ligero ya no trae el loader** (incluida en la 0.36.0): las 7 bibliotecas
     de Fabric (`remoteBase`) bajan de maven.fabricmc.net, que pasa el filtro de la escuela, y el ligero ya
     no lleva ningún jar: 0.11 MB contra 4.05 MB. Va en `liteZip` para que la 0.35.0 siga con el completo
     (lo instalaría sin el loader). Probado con el exe de la 0.35.0 publicado.
-  - [ ] *Prueba:* Juan: publicar la 0.35.1, volver a publicar el paquete oficial y medir cuánto tarda en
+  - [ ] *Prueba:* Juan: publicar la 0.36.0 en Drive, volver a publicar el paquete oficial y medir cuánto tarda en
     empezar el ligero desde Drive (antes, de 13 a 15 s).
   - [ ] *Prueba:* Juan: pulsar «Jugar» en otra PC (o en una carpeta nueva) con el paquete ya publicado con
     la 0.35.0 (hecho el 2026-10-21).
-  - [ ] **0.36.0 y 0.37.0:** una sola conexión a Firebase por persona (menos escuchas, y después el
+  - [x] **0.36.0, CurseForge antes de Firebase** (decisión de Juan, 2026-10-22): selector de fuente en
+    Explorar; mods, resource packs, shaders y modpacks; versiones compatibles y dependencias;
+    importar el `.zip` con `manifest.json`, loader y overrides. El puente público en Cloud Run guarda
+    la clave; los archivos bajan directo del CDN con SHA-1. Lo restringido se descarga a mano desde su
+    página. Las actualizaciones automáticas de contenido de CurseForge quedan para otra versión.
+  - [ ] *Prueba real:* CurseForge desde la red de la escuela.
+  - [ ] **0.37.0 y 0.38.0:** una sola conexión a Firebase por persona (menos escuchas, y después el
     WebSocket de Firebase con respaldo SSE);
-  - [ ] **0.38.0:** errores con una acción para resolverlos, y la O justo después de F2 abre esa captura;
-  - [ ] **0.39.0 y 0.40.0, E4, mundos en Drive:** copias, revisiones, conflictos y restaurar con su instancia;
-  - [ ] **0.41.0, E5, tarjetas de Minecraft:** ajustes de `options.txt` por versión, pendientes hasta
+  - [ ] **0.39.0:** errores con una acción para resolverlos, y la O justo después de F2 abre esa captura;
+  - [ ] **0.40.0 y 0.41.0, E4, mundos en Drive:** copias, revisiones, conflictos y restaurar con su instancia;
+  - [ ] **0.42.0, E5, tarjetas de Minecraft:** ajustes de `options.txt` por versión, pendientes hasta
     cerrar el juego;
   - [ ] **Después, E6:** subir solo lo que cambió de un mundo, configuraciones de mods, aplicar en vivo con
     el mod, eventos de la comunidad y lo que quede de Firebase.
@@ -198,7 +204,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     servidor de Juan.
 - [ ] **Sin fecha**:
   - cuentas premium de Microsoft (depende de que Microsoft apruebe la app);
-  - CurseForge (en pausa);
+  - actualizar automáticamente el contenido instalado desde CurseForge;
   - Forge 1.8–1.12.1, 1.13.2, 1.14.2 y 1.14.3.
 
 ### 0.25.0: que se sienta fluido (pedido de Juan)
@@ -524,7 +530,7 @@ Instalando Better MC [FORGE] - BMC4 desde Modpacks en el PC de Juan (Iris Xe) sa
 - [x] **Doctor rediseñado**: arriba la imagen de la instancia, su estado («1 problema impide abrirlo», «Todo en orden», «Ya abre») y loader, versión y mods revisados; los hallazgos en una lista con su marca (impide abrir, posible causa, para saber), los archivos como fichas y la línea del registro aparte; el arreglo recomendado resaltado sin competir con el botón principal; «Probar y arreglar solo» muestra los pasos mientras trabaja. Los cierres con error también se explican aquí (ya no hay una ventana aparte)
 - [x] *Prueba:* servidor vanilla de prueba con un cliente falso de Minecraft 1.21.1: al renombrar al anfitrión con el servidor encendido se recarga la lista blanca, el nombre viejo queda fuera (`not_whitelisted`), el nuevo entra y es administrador, su inventario pasó al nombre nuevo, y con la comprobación activa quien usa el nombre sin jugar desde Parabellum sale a los 10 s. NeoForge 1.21.1: JEI, Sophisticated Backpacks y Create se instalan con sus versiones de NeoForge; un JEI de Forge metido a mano lo detecta el doctor y «Probar y arreglar solo» lo quita y llega al menú
 - [ ] Inicio de sesión con **Microsoft** (premium): falta que Microsoft apruebe a Parabellum para usar la API de Minecraft (registro de la app en Azure + solicitud; hoy casi no aprueban launchers independientes)
-- [ ] **CurseForge** junto a Modrinth (buscar e instalar de los dos): en pausa por decisión de Juan (2026-10-12); haría falta la clave de API, que se solicita a CurseForge con un formulario
+- [x] **CurseForge** junto a Modrinth (0.36.0): búsqueda, instalación con dependencias y modpacks, mediante el puente propio. Lo siguiente son las actualizaciones automáticas de ese contenido.
 
 ### 0.14.0: amigos, Inicio y Servidores (pedido de Juan)
 - [x] **Servidores › De tus amigos**: los servidores a los que te invitaron, los mundos abiertos de tus amigos, los servidores públicos donde están jugando (Unirse abre el mismo modpack y entra) y los que hostean sin haberte invitado (la presencia dice qué hostea; la dirección solo la ven los invitados). Se actualiza solo

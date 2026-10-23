@@ -164,7 +164,11 @@ fn load(folder: &Path) -> Option<Instance> {
         .and_then(|p| Some(t!("{} · paquete del {}", "{} · package from {}", p["name"].as_str()?, stamp_date(p["version"].as_str().unwrap_or_default()))))
         .or_else(|| {
             let m = &json["modpack"];
-            let source = if m["source"] == "modrinth" { "Modrinth".to_string() } else { t!("archivo", "file") };
+            let source = match m["source"].as_str() {
+                Some("modrinth") => "Modrinth".to_string(),
+                Some("curseforge") => "CurseForge".to_string(),
+                _ => t!("archivo", "file"),
+            };
             Some(format!("{} {} · {source}", m["name"].as_str()?, m["version"].as_str().unwrap_or_default()))
         });
     Some(Instance {

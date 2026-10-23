@@ -2,6 +2,7 @@
 src-tauri/target/
 src-tauri/target-check/
 src-tauri/gen/
+__pycache__/
 
 # Datos de usuario: viven junto al .exe, no aquí
 instancias/
