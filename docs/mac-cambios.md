@@ -558,6 +558,10 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 - Mac: recompilar y probar pestañas/portal en WebKit. No cambia el contrato de plataforma; sigue
   vigente el requisito de macOS 14 para la conexión alternativa del portal. Validación y límites
   en [0.39.2-red-automatica.md](0.39.2-red-automatica.md). Candidato, sin publicación estable.
+- Validación: 164 pruebas Windows y 168 Mac sin fallos; nueve recorridos del exe con bloqueos por
+  proceso y reposición exacta desde Mojang/Drive. Computer Use comprobó el portal directo y la
+  descarga de More Overlays con huella correcta, español oscuro e inglés claro.
+  Copia habitual Windows actualizada, con respaldo. [Borrador de pruebas](https://github.com/hawntd-code/parabellum-rs/releases/tag/untagged-09a6132cee8818d5f212).
 
 ### 2026-10-24 · Entrega 0.39.1 comprobada y preparada
 

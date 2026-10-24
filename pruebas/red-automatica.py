@@ -80,6 +80,10 @@ def main():
 
         def run(folder, *commands, fallback=False):
             folder.mkdir(parents=True, exist_ok=True)
+            settings = folder/'datos/ajustes.json'
+            if not settings.exists():
+                settings.parent.mkdir(parents=True, exist_ok=True)
+                settings.write_text('{"language":"es","username":"PruebaRed","closeToTray":false}', encoding='utf-8')
             env = {**os.environ, 'PARABELLUM_ROOT': str(folder), 'USERPROFILE': str(root/'usuario')}
             for key in ('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy'):
                 env[key] = address
@@ -96,12 +100,17 @@ def main():
 
         normal = root/'normal'
         (normal/'datos').mkdir(parents=True)
-        (normal/'datos/ajustes.json').write_text('{"schoolMode":true,"username":"PruebaRed","closeToTray":false}', encoding='utf-8')
+        (normal/'datos/ajustes.json').write_text('{"language":"es","schoolMode":true,"username":"PruebaRed","closeToTray":false}', encoding='utf-8')
         output = run(normal, '--probar-red')
         for service in ('Mojang', 'Modrinth', 'Portal'):
             assert f'{service}: Direct' in output, output
         assert not any(host.endswith('.run.app') for host in hosts)
         passed('Red normal y ajuste antiguo: acceso directo sin puentes', output)
+
+        output = run(root/'curseforge-cloud', '--buscar', 'Architectury', 'mod', 'fabric', '1.21.1', 'curseforge')
+        assert 'CurseForge por su puente' in output and any(host.startswith('curseforge-') for host in hosts), output
+        assert 'api.modrinth.com' not in hosts
+        passed('CurseForge conserva su API en Cloud', output)
 
         output = run(root/'respaldo-mr', '--buscar', 'Architectury', 'mod', 'fabric', '1.21.1', 'curseforge', fallback=True)
         assert 'Mostramos los resultados de Modrinth' in output and 'directo' in output, output
@@ -139,7 +148,7 @@ def main():
                 folder = root/label
                 seed_base(args.base.resolve(), folder/'base')
                 index = json.loads((folder/'base/assets/indexes/17.json').read_text(encoding='utf-8'))
-                entry = min(index['objects'].values(), key=lambda item: item['size'])
+                entry = min((item for item in index['objects'].values() if item['size'] > 0), key=lambda item: item['size'])
                 digest = entry['hash']
                 resource = folder/'base/assets/objects'/digest[:2]/digest
                 assert resource.is_file() and entry['size'] > 0
