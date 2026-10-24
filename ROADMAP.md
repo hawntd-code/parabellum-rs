@@ -219,6 +219,9 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     Computer Use comprobó respaldo en Drive, restauración y recuperación del mundo anterior con datos
     sintéticos. Pasaron 152 pruebas de Windows y 156 de Mac. Faltan el recorrido entre equipos físicos,
     Minecraft real y las tarjetas con las reglas nuevas publicadas; ver [resultados](docs/0.39.0-implementacion.md).
+    **Incidencias nuevas de Juan:** portal de CurseForge sin CSS/descarga en la escuela y pérdida del
+    origen/contenido de CurseForge al compartir una instancia. Diagnóstico y propuesta pendientes de
+    implementación en [curseforge-red-y-compartir.md](docs/curseforge-red-y-compartir.md).
   - [ ] **Después, E6:** subir solo lo que cambió de un mundo, configuraciones de mods, aplicar en vivo con
     el mod, eventos de la comunidad y lo que quede de Firebase.
   - [ ] **Al final del roadmap, después de E6:** pulsar O justo después de F2 abre esa captura lista

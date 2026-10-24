@@ -28,6 +28,8 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   ambos temas y respaldo/restauración/recuperación de copia previa en Drive con un mundo sintético.
   Faltan dos equipos físicos, Minecraft real y publicar las reglas nuevas para probar tarjetas en el
   paquete oficial. Mac requiere OAuth/Llavero, bloqueo de Java y restauración nativa. No está publicada estable.
+  Juan agregó dos incidencias de CurseForge: portal incompleto en la escuela y pérdida de contenido al
+  compartir. [Diagnóstico y propuesta](curseforge-red-y-compartir.md); todavía no están corregidas.
 
 - **0.38.0:** publicada en Drive y GitHub, confirmada por Juan el 2026-10-23. Las escuchas comparten
   WebSocket con reconexión, renovación de sesión y respaldo SSE. No requiere reglas nuevas: las de
