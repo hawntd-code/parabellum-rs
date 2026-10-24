@@ -58,7 +58,7 @@ const curseforgeAssistant = {
     list.innerHTML = files.map(file => {
       const notice = this.notices.get(file.fileId);
       const active = ["downloading", "verifying"].includes(notice?.stage);
-      return `<div class="cf-file ${notice?.stage === "error" ? "has-error" : ""}"><span class="cf-file-icon">${icon(active ? "clock" : "puzzle")}</span><div class="grow"><b>${escapeHtml(file.name)}</b><span class="cf-file-name">${escapeHtml(file.fileName)}</span><span class="cf-file-status">${escapeHtml(notice?.message ?? t("Pendiente de descargar", "Waiting for download"))}</span><div class="cf-file-actions"><button class="btn primary small" data-cf-open="${file.fileId}" ${active ? "disabled" : ""}>${icon("external")}${t("Obtener en CurseForge", "Get on CurseForge")}</button><button class="btn small" data-cf-pick="${file.fileId}" ${active ? "disabled" : ""}>${t("Ya lo descargué", "Already downloaded")}</button></div></div></div>`;
+      return `<div class="cf-file ${notice?.stage === "error" ? "has-error" : ""}"><span class="cf-file-icon">${icon(active ? "clock" : "puzzle")}</span><div class="grow"><b>${escapeHtml(file.name)}</b><span class="cf-file-name">${escapeHtml(file.fileName)}</span><span class="cf-file-status">${escapeHtml(notice?.message ?? t("Pendiente de descargar", "Waiting for download"))}</span><div class="cf-file-actions"><button class="btn primary small" data-cf-open="${file.fileId}" ${active ? "disabled" : ""}>${icon("external")}${t("Obtener en CurseForge", "Get on CurseForge")}</button><button class="btn small" data-cf-alternative="${file.fileId}" title="${t("Para páginas sin estilos o descargas que no comienzan. Conecta el portal completo mediante Parabellum.", "For unstyled pages or downloads that do not start. Connect the complete portal through Parabellum.")}" ${active ? "disabled" : ""}>${t("Conexión alternativa", "Alternative connection")}</button><button class="btn small" data-cf-pick="${file.fileId}" ${active ? "disabled" : ""}>${t("Ya lo descargué", "Already downloaded")}</button></div></div></div>`;
     }).join("") || `<div class="cf-complete">${icon("check")}<b>${t("Archivos verificados e instalados", "Files verified and installed")}</b></div>`;
   },
   async open(id) {
@@ -68,9 +68,9 @@ const curseforgeAssistant = {
     openModal("#curseforge-dialog");
     this.render();
   },
-  async action(command, fileId) {
+  async action(command, fileId, alternative = false) {
     try {
-      await invoke(command, { id: this.instance, archivo: Number(fileId) });
+      await invoke(command, { id: this.instance, archivo: Number(fileId), alternativa: alternative });
       await this.refresh();
     } catch (error) {
       this.notices.set(Number(fileId), { stage: "error", message: friendlyError(String(error)) });
@@ -81,8 +81,10 @@ const curseforgeAssistant = {
     $("#cf-assistant-list").onclick = event => {
       const open = event.target.closest("[data-cf-open]");
       const pick = event.target.closest("[data-cf-pick]");
+      const alternative = event.target.closest("[data-cf-alternative]");
       if (open) this.action("curseforge_abrir_portal", open.dataset.cfOpen);
       else if (pick) this.action("curseforge_elegir_archivo", pick.dataset.cfPick);
+      else if (alternative) this.action("curseforge_abrir_portal", alternative.dataset.cfAlternative, true);
     };
     $("#cf-assistant-close").onclick = $("#cf-assistant-later").onclick = () => closeModal("#curseforge-dialog");
     listen("curseforge-manual", async ({payload}) => {

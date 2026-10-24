@@ -18,6 +18,12 @@ use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, CHACHA20_POLY1305, NONCE_L
 use super::AgentDownload;
 
 pub const NAME: &str = "macOS";
+/// WKWebView permite configurar un proxy por vista desde macOS 14.
+pub fn web_proxy_supported() -> bool {
+    Command::new("/usr/bin/sw_vers").arg("-productVersion").output().ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|v| v.trim().split('.').next()?.parse::<u32>().ok()).is_some_and(|major| major >= 14)
+}
 pub const MOJANG_OS: &str = "osx";
 pub const JAVA_RUNTIME_PLATFORM: &str = if cfg!(target_arch = "aarch64") { "mac-os-arm64" } else { "mac-os" };
 // El programa, dentro de Parabellum.app/Contents/MacOS. Al actualizarse se cambia la app entera

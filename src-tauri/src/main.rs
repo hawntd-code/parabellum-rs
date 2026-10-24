@@ -27,6 +27,7 @@ mod cuenta;
 mod culpable;
 mod curseforge;
 mod curseforge_manual;
+mod curseforge_portal;
 mod descargas;
 mod download;
 mod favoritos;
@@ -683,6 +684,7 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
         return Err(t!("Este juego ya está abierto.", "This game is already open."));
     }
     // Si «Buscar el mod culpable» quedó a medias (se cerró Parabellum), los mods vuelven a como estaban.
+    curseforge_manual::reuse(&paths, &instance)?;
     if curseforge_manual::pending_count(&instance)? > 0 {
         return Err(t!("Completa los archivos pendientes de CurseForge antes de jugar. Puedes continuar desde la Biblioteca.", "Complete the pending CurseForge files before playing. You can continue from the Library."));
     }
@@ -1425,21 +1427,26 @@ async fn import_modpack(
             }
         };
         curseforge_manual::register(&instance, &manual)?;
+        let manual = curseforge_manual::reuse(paths, &instance)?;
         instances::set_game_language(&instance.game_dir);
         let mut source = source;
         source["name"] = serde_json::json!(pack.name);
         source["version"] = serde_json::json!(pack.version);
-        let _ = instances::set_field(&instance, "modpack", source);
+        instances::set_field(&instance, "modpack", source)?;
         if let Some(bytes) = icon {
             let _ = instances::set_icon_bytes(&instance, &bytes);
         }
-        progress(t!("Revisando que abra en este PC…", "Checking that it opens on this PC…"), 0.99);
+        progress(if manual.is_empty() { t!("Comprobando la instalación…", "Verifying installation…") }
+            else { t!("Esperando los archivos de CurseForge…", "Waiting for the CurseForge files…") }, 0.99);
         let notes = match instances::find(paths, &instance.id) {
-            Some(current) => apply_known_fixes(&current, default_ram, progress.clone()).await,
-            None => Vec::new(),
+            Some(current) if manual.is_empty() => apply_known_fixes(&current, default_ram, progress.clone()).await,
+            _ => Vec::new(),
         };
-        progress(t!("Listo", "Done"), 1.0);
-        return Ok(Imported { id: Some(instance.id), name, kind: "modpack".into(), updated: false, warning: None, notes, manual });
+        let warning = if manual.is_empty() {
+            missing_warning(&integridad::repair(&instance.game_dir, true, progress.clone()).await)
+        } else { Some(t!("Faltan {} archivos de CurseForge. Completa la instalación antes de jugar.", "{} CurseForge files are missing. Complete installation before playing.", manual.len())) };
+        progress(if warning.is_some() { t!("Instalación pendiente", "Installation pending") } else { t!("Listo", "Done") }, 1.0);
+        return Ok(Imported { id: Some(instance.id), name, kind: "modpack".into(), updated: false, warning, notes, manual });
     }
 
     // .mrpack
@@ -1716,30 +1723,35 @@ async fn install_curseforge_modpack(state: &AppState, proyecto: &str, version: O
 
 /// Arma en este PC una instancia que compartió un amigo por el chat. Devuelve su id.
 #[tauri::command]
-async fn instalar_compartida(state: State<'_, AppState>, texto: String, tarea: Option<String>) -> Result<String, String> {
-    let recipe = compartir::decode(&texto).ok_or(t!("Esa instancia compartida no se puede leer.", "That shared instance cannot be read."))?;
+async fn instalar_compartida(state: State<'_, AppState>, texto: String, tarea: Option<String>) -> Result<Imported, String> {
+    let recipe = compartir::decode(&texto).ok_or(t!("Esta receta es incompleta o necesita una actualización. Pide que vuelvan a compartir el original con Parabellum actualizado, o que exporten el paquete completo.", "This recipe is incomplete or needs an update. Ask them to share the original again with updated Parabellum, or export the complete package."))?;
     match recipe.source.as_str() {
-        "modrinth" => {
+        "modrinth" | "curseforge" => {
             let project = recipe.project.clone().unwrap_or_default();
-            let imported = instalar_modpack(state, project, recipe.version.clone(), Some(recipe.name.clone()), None, tarea).await?;
-            imported.id.ok_or(t!("No se creó la instancia.", "The instance was not created."))
+            instalar_modpack(state, project, recipe.version.clone(), Some(recipe.name.clone()), None, tarea).await
         }
         "catalogo" => {
             let id = recipe.catalog.clone().unwrap_or_default();
-            let installed = instalar_de_catalogo(state, id, None, tarea).await.map_err(|error| {
+            let installed = instalar_de_catalogo(state.clone(), id, None, tarea).await.map_err(|error| {
                 if error == descargas::cancelled_error() {
                     return error;
                 }
                 t!("{error} Pídele a quien la compartió que la suba al catálogo de Drive, o que te pase el paquete por USB.", "{error} Ask whoever shared it to upload it to the Drive catalog, or to give you the package on a USB drive.")
             })?;
-            installed.id.ok_or(t!("No se creó la instancia.", "The instance was not created."))
+            let instance = installed.id.as_deref().and_then(|id| instances::find(&state.paths, id));
+            let manual = match instance.as_ref() { Some(i) => curseforge_manual::reuse(&state.paths, i)?, None => Vec::new() };
+            let warning = match instance.as_ref() { Some(i) => missing_warning(&integridad::repair(&i.game_dir, true, |_, _| {}).await), None => None };
+            Ok(Imported { id: installed.id, name: recipe.name, kind: "modpack".into(), updated: false,
+                warning, notes: Vec::new(), manual })
         }
-        _ => {
+        "mods" => {
             let job = descargas::start(tarea, "compartida", recipe.name.clone()).queued().retry("instalar_compartida", serde_json::json!({ "texto": texto }));
             let instance = job.run(install_recipe_mods(&recipe, &state.paths, job.progress("compartida"))).await?;
             job.instance(Some(instance.id.clone()));
-            Ok(instance.id)
+            let warning = missing_warning(&integridad::repair(&instance.game_dir, true, |_, _| {}).await);
+            Ok(Imported { id: Some(instance.id), name: instance.name, kind: "modpack".into(), updated: false, warning, notes: Vec::new(), manual: Vec::new() })
         }
+        _ => Err(t!("Origen de instancia no compatible.", "Unsupported instance source.")),
     }
 }
 
@@ -3612,6 +3624,12 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             };
             Ok(report)
         }
+        "--probar-portal" => {
+            let page = args.get(1).ok_or("Falta la página oficial.")?;
+            let alternative = args.get(2).is_some_and(|v| v == "alternativa");
+            let result = tauri::async_runtime::block_on(curseforge_portal::diagnose(page, paths.logs.join("curseforge-portal.log"), alternative))?;
+            serde_json::to_string_pretty(&result).map_err(|e| e.to_string())
+        }
         "--probar-receta" => {
             // Comparte una instancia (su receta, como por el chat) y la vuelve a armar como otra instancia.
             let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
@@ -3622,6 +3640,13 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                 let mut report = format!("receta ({} letras): {}\n", text.chars().count(), text);
                 if decoded.source != "mods" {
                     report += &format!("viene de «{}»: se instala desde ahí\n", decoded.source);
+                    if decoded.source == "curseforge" && args.get(2).is_some_and(|a| a == "instalar") {
+                        let download = curseforge::download_modpack(decoded.project.as_deref().unwrap(), decoded.version.as_deref(), &paths.data.join("temporal")).await?;
+                        let source = serde_json::json!({ "source": "curseforge", "projectId": download.project_id, "versionId": download.version_id });
+                        let imported = import_modpack(&download.file, paths, Some(decoded.name), None, source, &HashSet::new(), settings.ram_gb, |stage, _| eprintln!("{stage}")).await;
+                        let _ = std::fs::remove_file(download.file);
+                        report += &serde_json::to_string_pretty(&imported?).map_err(|e| e.to_string())?;
+                    }
                     return Ok::<String, String>(report);
                 }
                 let copy = install_recipe_mods(&decoded, paths, |_, _| {}).await?;

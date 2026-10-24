@@ -3450,12 +3450,20 @@ async function installFavoritesHere() {
 
 // ---------- Instancias compartidas (ver compartir.rs: viaja una receta, no los archivos) ----------
 const SHARE_PREFIX = "parabellum:instancia:";
+const SHARE_PREFIX_V2 = "parabellum:instancia2:";
 
 function parseShare(text) {
-  if (!text?.startsWith(SHARE_PREFIX)) return null;
+  const prefix = text?.startsWith(SHARE_PREFIX_V2) ? SHARE_PREFIX_V2 : SHARE_PREFIX;
+  if (!text?.startsWith(prefix)) return null;
   try {
-    const recipe = JSON.parse(text.slice(SHARE_PREFIX.length));
-    return recipe?.n && recipe?.mc ? recipe : null;
+    const recipe = JSON.parse(text.slice(prefix.length).split("\n")[0]);
+    if (!recipe?.n || !recipe?.mc) return null;
+    const exact = recipe.p && recipe.v;
+    recipe.unavailable = !["modrinth", "curseforge", "catalogo", "mods"].includes(recipe.s)
+      || (recipe.s === "curseforge" && (prefix !== SHARE_PREFIX_V2 || !/^cf:[1-9]\d*$/.test(recipe.p) || !/^cf:[1-9]\d*$/.test(recipe.v)))
+      || (recipe.s === "mods" && prefix !== SHARE_PREFIX_V2)
+      || (recipe.s === "modrinth" && !exact) || (recipe.s === "catalogo" && !recipe.c) || !!recipe.x;
+    return recipe;
   } catch {
     return null;
   }
@@ -3463,7 +3471,8 @@ function parseShare(text) {
 
 /** La instancia que ya tiene este PC (el mismo modpack de Modrinth, o el mismo nombre). */
 function sharedOwned(recipe) {
-  if (recipe.s === "modrinth" && recipe.p) return state.instances.find((i) => i.modpackProject === recipe.p);
+  if (recipe.unavailable) return null;
+  if (["modrinth", "curseforge"].includes(recipe.s)) return state.instances.find((i) => i.modpackProject === recipe.p && i.modpackVersion === recipe.v);
   return state.instances.find((i) => i.name.toLowerCase() === recipe.n.toLowerCase());
 }
 
@@ -3471,7 +3480,11 @@ function shareCardHtml(recipe, message) {
   const loader = recipe.l && !["vanilla", "none"].includes(recipe.l.toLowerCase()) ? ` · ${recipe.l}` : "";
   const mods = recipe.k ? ` · ${plural(recipe.k, "mod", "mods")}` : "";
   const source =
-    recipe.s === "modrinth"
+    recipe.unavailable
+      ? t("Receta incompleta. Pide volver a compartir el original con Parabellum actualizado.", "Incomplete recipe. Ask them to share the original again with updated Parabellum.")
+      : recipe.s === "curseforge"
+      ? t(`Modpack original de CurseForge · archivo ${recipe.v}`, `Original CurseForge modpack · file ${recipe.v}`)
+      : recipe.s === "modrinth"
       ? t("Modpack de Modrinth", "Modrinth modpack")
       : recipe.s === "catalogo"
         ? t("Del catálogo de Drive", "From the Drive catalog")
@@ -3480,7 +3493,7 @@ function shareCardHtml(recipe, message) {
   const installing = state.shareInstalling === message.id;
   let action = "";
   if (owned) action = `<button class="btn small" data-share-open="${escapeHtml(owned.id)}">${icon("play")}${t("Abrir", "Open")}</button>`;
-  else if (!message.mine)
+  else if (!message.mine && !recipe.unavailable)
     action = `<button class="btn primary small" data-share-install="${escapeHtml(message.id)}" ${state.shareInstalling ? "disabled" : ""}>${
       installing ? `<span class="spinner tiny"></span>${escapeHtml(state.shareProgress ?? t("Instalando…", "Installing…"))}` : `${icon("download")}${t("Instalar", "Install")}`
     }</button>`;
@@ -3491,6 +3504,10 @@ function shareCardHtml(recipe, message) {
 async function shareInstance(chat, id) {
   const instance = state.instances.find((i) => i.id === id);
   if (!chat || !instance) return;
+  if (!instance.modpackProject) return openExport(id);
+  if (!(await confirmAction({ title: t("Compartir el modpack original", "Share the original modpack"),
+    text: t("Se instalará la misma versión publicada, con sus archivos y configuraciones originales. Para conservar tus mods añadidos y ajustes, cancela y usa «Exportar mi copia» en el menú de compartir.", "The same published version will be installed, with its original files and settings. To keep your added mods and settings, cancel and choose «Export my copy» in the share menu."),
+    ok: t("Compartir original", "Share original"), primary: true }))) return;
   toast(t(`Compartiendo ${instance.name}…`, `Sharing ${instance.name}…`));
   try {
     await invoke("compartir_instancia", { chat, id });
@@ -3505,7 +3522,8 @@ function shareMenu(anchor) {
   if (!state.instances.length) return toast(t("Todavía no tienes instancias para compartir.", "You have no instances to share yet."), "error");
   const items = [...state.instances]
     .sort((a, b) => (b.lastPlayed ?? 0) - (a.lastPlayed ?? 0))
-    .map((i) => ({ icon: "cubes", label: i.name, sub: `Minecraft ${i.minecraftVersion}${i.loader && i.loader !== "Vanilla" ? ` · ${i.loader}` : ""}`, action: () => shareInstance(state.chatOpen, i.id) }));
+    .flatMap((i) => [{ icon: "cubes", label: i.name, sub: t("Compartir original", "Share original"), action: () => shareInstance(state.chatOpen, i.id) },
+      { icon: "download", label: t(`Exportar mi copia de ${i.name}`, `Export my copy of ${i.name}`), sub: t("Incluye tus cambios y configuraciones", "Include your changes and settings"), action: () => openExport(i.id) }]);
   contextMenu(anchor, items);
 }
 
@@ -3515,6 +3533,7 @@ function shareWithMenu(anchor, id) {
   const chats = allChats();
   const talking = new Set(chats.filter((c) => c.kind === "directo").flatMap((c) => c.members.map((m) => m.uid)));
   const items = [
+    { icon: "download", label: t("Exportar mi copia", "Export my copy"), sub: t("Conservar mods añadidos y configuraciones", "Keep added mods and settings"), action: () => openExport(id) },
     ...chats.map((c) => ({ ...(c.kind === "grupo" ? { icon: "chat" } : { head: c.name }), label: c.name, action: () => shareInstance(c.id, id) })),
     ...(state.social?.friends?.friends ?? [])
       .filter((f) => !talking.has(f.uid))
@@ -3538,16 +3557,20 @@ function shareWithMenu(anchor, id) {
 async function installShared(messageId) {
   const message = (state.chatMessages ?? []).find((m) => m.id === messageId);
   const recipe = message && parseShare(message.text);
-  if (!recipe || state.shareInstalling) return;
+  if (!recipe || recipe.unavailable || state.shareInstalling) return;
   state.shareInstalling = messageId;
   state.shareJob = newJob();
   state.shareProgress = null;
   renderMessages();
   try {
-    const id = await invoke("instalar_compartida", { texto: message.text, tarea: state.shareJob });
+    const imported = await invoke("instalar_compartida", { texto: message.text, tarea: state.shareJob });
     await reloadInstances();
-    toast(t(`Lista: ${recipe.n}. Ya puedes jugarla.`, `Ready: ${recipe.n}. You can play it now.`));
-    navigate("instance", id);
+    const pending = imported.manual?.length ?? 0;
+    if (pending) toast(t(`Faltan ${pending} archivos de CurseForge. Completa la instalación.`, `${pending} CurseForge files are missing. Complete installation.`));
+    else if (imported.warning) toast(imported.warning, "error");
+    else toast(t(`Instalación verificada: ${recipe.n}.`, `Installation verified: ${recipe.n}.`));
+    if (imported.id) navigate("instance", imported.id);
+    if (pending) await curseforgeAssistant.open(imported.id);
   } catch (error) {
     toast(String(error), "error");
   } finally {

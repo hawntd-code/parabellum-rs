@@ -41,6 +41,7 @@ final class Panel {
     private static final int AMIGOS = 0, MENSAJES = 1, CAPTURAS = 2;
     private static final int PRIMARIO = 0, NORMAL = 1, PELIGRO = 2, SUAVE = 3;
     static final String COMPARTIR = "parabellum:instancia:";
+    static final String COMPARTIR2 = "parabellum:instancia2:";
     static final String INVITACION = "parabellum:invitacion:";
     private static final Color FILA = new Color(0x2a, 0x28, 0x32, 120);
     private static final Color CITA = new Color(0, 0, 0, 46);
@@ -1061,7 +1062,7 @@ final class Panel {
     }
 
     private static boolean tarjeta(String texto) {
-        return texto != null && (texto.startsWith(INVITACION) || texto.startsWith(COMPARTIR));
+        return texto != null && (texto.startsWith(INVITACION) || texto.startsWith(COMPARTIR) || texto.startsWith(COMPARTIR2));
     }
 
     private void medir(Lienzo l, Fila f, double maximo) {
@@ -2186,7 +2187,7 @@ final class Panel {
         String texto = texto(m, "text");
         if (texto == null) return "";
         if (texto.startsWith(INVITACION)) return T.t("Invitación", "Invite");
-        if (texto.startsWith(COMPARTIR)) return T.t("Instancia compartida", "Shared instance");
+        if (texto.startsWith(COMPARTIR) || texto.startsWith(COMPARTIR2)) return T.t("Instancia compartida", "Shared instance");
         return texto.replaceAll("\\s+", " ").trim();
     }
 

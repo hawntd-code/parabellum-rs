@@ -43,6 +43,8 @@ pub struct Instance {
     pub modpack: Option<String>,
     /// Proyecto de Modrinth del modpack (para marcarlo como instalado al explorar).
     pub modpack_project: Option<String>,
+    /// Archivo exacto del modpack; compartir no debe confundir otra versión con esta.
+    pub modpack_version: Option<String>,
     /// Versión de Java elegida para esta instancia (si no, la que pide la versión de Minecraft).
     pub java_major: Option<u32>,
 }
@@ -175,6 +177,7 @@ fn load(folder: &Path) -> Option<Instance> {
         created,
         icon,
         modpack_project: json["modpack"]["projectId"].as_str().map(String::from),
+        modpack_version: json["modpack"]["versionId"].as_str().map(String::from),
         modpack,
         name: json["name"].as_str().unwrap_or(&id).to_string(),
         minecraft_version,

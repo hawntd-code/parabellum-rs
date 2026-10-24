@@ -1354,6 +1354,7 @@ mod tests {
             icon: None,
             modpack: None,
             modpack_project: None,
+            modpack_version: None,
             java_major: None,
         }
     }

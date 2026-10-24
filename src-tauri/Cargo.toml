@@ -1,6 +1,6 @@
 [package]
 name = "parabellum"
-version = "0.39.0"
+version = "0.39.1"
 description = "Parabellum: launcher de Minecraft no premium"
 edition = "2021"
 publish = false
@@ -15,7 +15,7 @@ serde_json = "1"
 
 [dependencies]
 # custom-protocol: la interfaz va dentro del .exe (sin servidor de desarrollo)
-tauri = { version = "2", features = ["custom-protocol", "tray-icon"] }
+tauri = { version = "2", features = ["custom-protocol", "tray-icon", "macos-proxy"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["fs", "io-util", "sync", "time", "macros", "rt-multi-thread", "net"] }

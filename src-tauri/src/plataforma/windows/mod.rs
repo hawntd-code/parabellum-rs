@@ -13,6 +13,7 @@ use std::sync::OnceLock;
 use super::AgentDownload;
 
 pub const NAME: &str = "Windows";
+pub fn web_proxy_supported() -> bool { true }
 pub const MOJANG_OS: &str = "windows";
 pub const JAVA_RUNTIME_PLATFORM: &str = if cfg!(target_arch = "aarch64") { "windows-arm64" } else { "windows-x64" };
 pub const EXECUTABLE: &str = "Parabellum.exe";

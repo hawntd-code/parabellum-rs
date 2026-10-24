@@ -23,13 +23,14 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
-- **0.39.0:** candidato de pruebas instalado en Windows, con respaldo de la 0.38.0 y borrador de GitHub.
+- **0.39.0:** publicada y funcionando, confirmado por Juan el 2026-10-23.
   La revisión `ffa9fc2` pasó 152 pruebas de Windows y 156 de Mac. Computer Use comprobó español/inglés,
   ambos temas y respaldo/restauración/recuperación de copia previa en Drive con un mundo sintético.
   Faltan dos equipos físicos, Minecraft real y publicar las reglas nuevas para probar tarjetas en el
-  paquete oficial. Mac requiere OAuth/Llavero, bloqueo de Java y restauración nativa. No está publicada estable.
+  paquete oficial. Son verificaciones específicas pendientes, independientes de la publicación confirmada.
+  Mac requiere OAuth/Llavero, bloqueo de Java y restauración nativa.
   Juan agregó dos incidencias de CurseForge: portal incompleto en la escuela y pérdida de contenido al
-  compartir. [Diagnóstico y propuesta](curseforge-red-y-compartir.md); todavía no están corregidas.
+  compartir. Correcciones autorizadas para la [0.39.1](0.39.1-curseforge.md), en desarrollo.
 
 - **0.38.0:** publicada en Drive y GitHub, confirmada por Juan el 2026-10-23. Las escuchas comparten
   WebSocket con reconexión, renovación de sesión y respaldo SSE. No requiere reglas nuevas: las de
@@ -42,14 +43,14 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   resultados específicos.
 
 - Última revisión de los PR de Mac en Windows: 2026-10-20, PR #1 a #17 (todos mezclados).
-- **Publicado en Drive:** Windows **0.38.0**, confirmada por Juan el 2026-10-23;
-  código de la entrega en `9250224`, sin reglas nuevas.
+- **Publicado en Drive:** Windows **0.39.0**, confirmada por Juan el 2026-10-23;
+  código de la entrega en `ffa9fc2`.
   **Mac 0.33.0** desde el 2026-10-20 (Diego, compilada de `main` en `52de0a3`; ver «Versiones
   publicadas en Drive»).
   - A Mac le faltan las novedades de la 0.34.0 (E3), la 0.35.0 (paquete ligero y avisos de soporte),
     la 0.36 (CurseForge), la 0.37.0 (chat y escuchas) y la 0.38.0 (WebSocket compartido).
   - De lo propio de Mac, solo la notificación del vigía de soporte (`avisos::show`).
-  - Para alcanzar la estable de Windows, compilar Mac 0.38.0 de `main` en `9250224` o más nuevo y revisar
+  - Para alcanzar la estable de Windows, compilar Mac 0.39.0 de `main` en `ffa9fc2` o más nuevo y revisar
     «Lo que queda por probar en Mac» (punto 0), el portal, el chat y WebSocket/respaldo. Las pruebas
     automáticas de Mac pasaron; falta su comprobación manual antes de publicarla.
   - Siguen pendientes las pruebas a mano de esa sección.
@@ -145,6 +146,14 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
+
+- **0.39.0** · 2026-10-23 · Publicada por Juan y funcionando, confirmado por él. Código `ffa9fc2`;
+  ZIP exacto de `_parabellum`, 10 573 870 bytes, SHA-256
+  `24f64bed9ce30dd29db60e7df177a098bc8ded88cbcf28343fee4f14ff3a75b8`.
+  [GitHub](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.39.0).
+  - Acciones para resolver errores, copias y restauración de mundos en Drive.
+  - Tarjetas de ajustes de Minecraft, con aplicación al cerrar el juego.
+  - Mac y pruebas específicas entre equipos continúan en seguimiento; no se infieren de la publicación.
 
 - **0.38.0** · 2026-10-23 · Publicada por Juan en Drive (confirmado por él). Código de Windows en
   `9250224`; el ZIP exacto de `_parabellum` está también en
@@ -531,6 +540,16 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   plan; no modifica código ni requiere recompilar lo publicado.
 
 ## Cambios de Windows
+
+### 2026-10-23 · 0.39.1 en desarrollo: conservar CurseForge al compartir
+
+- Receta con proveedor/proyecto/archivo exactos, protocolo nuevo y rechazo de recetas parciales.
+- Resultado de importación completo hasta el chat; distingue pendientes, avisos e instalación verificada.
+- Exportación de la copia personalizada y caché por SHA-1/tamaño para archivos ya recibidos.
+- Portal alternativo por ventana, conservando TLS y restringiendo dominios; servicio separado de la API.
+- Mac: recompilar código y mods compartidos. Proxy por WKWebView requiere macOS 14; macOS 13 mantiene
+  portal directo, selección de archivos y caché. Contrato `web_proxy_supported` implementado en ambos.
+- Resultados y límites en [0.39.1-curseforge.md](0.39.1-curseforge.md); no publicada todavía.
 
 ### 2026-10-23 · Ajustar la posición de Mundos en Recursos
 

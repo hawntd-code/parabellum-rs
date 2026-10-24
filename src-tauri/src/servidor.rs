@@ -186,6 +186,7 @@ impl ServerConfig {
             icon: None,
             modpack: self.modpack.clone(),
             modpack_project: self.modpack_project.clone(),
+            modpack_version: None,
             java_major: Some(self.java_major),
         }
     }

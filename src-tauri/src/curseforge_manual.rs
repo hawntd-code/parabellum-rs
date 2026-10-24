@@ -69,7 +69,8 @@ fn official_page(url: &reqwest::Url) -> bool {
 }
 
 fn download_origin(url: &reqwest::Url) -> bool {
-    official_page(url) || (url.scheme() == "https" && matches!(url.host_str(), Some("edge.forgecdn.net" | "media.forgecdn.net" | "mediafilez.forgecdn.net")))
+    official_page(url) || (url.scheme() == "https" && url.port_or_known_default() == Some(443) && url.username().is_empty() && url.password().is_none()
+        && matches!(url.host_str(), Some("edge.forgecdn.net" | "media.forgecdn.net" | "mediafilez.forgecdn.net")))
 }
 
 /// Se guarda solo después de instalar la parte automática; ningún enlace CDN se inventa.
@@ -96,6 +97,49 @@ pub fn validate(files: &[Manual]) -> Result<(), String> {
 fn matches_file(source: &Path, expected: &Manual) -> bool {
     source.metadata().is_ok_and(|m| m.is_file() && m.len() == expected.size)
         && crate::integridad::sha1_file(source).is_some_and(|hash| hash.eq_ignore_ascii_case(&expected.sha1))
+}
+
+fn cache_path(paths: &crate::paths::Paths, file: &Manual) -> PathBuf {
+    paths.data.join("curseforge-verificados").join(file.sha1.to_ascii_lowercase())
+}
+
+/// Guarda únicamente bytes recibidos y verificados; la caché no sustituye la autorización del portal.
+fn cache(paths: &crate::paths::Paths, source: &Path, file: &Manual) -> Result<(), String> {
+    if !valid(file) || !matches_file(source, file) { return Err(t!("El archivo no coincide con la versión esperada.", "The file does not match the expected version.")); }
+    let target = cache_path(paths, file);
+    if matches_file(&target, file) { return Ok(()); }
+    std::fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
+    let temp = target.with_extension(format!("{}-{}.part", std::process::id(), ATTEMPT.fetch_add(1, Ordering::Relaxed)));
+    std::fs::copy(source, &temp).map_err(|e| e.to_string())?;
+    if !matches_file(&temp, file) { let _ = std::fs::remove_file(temp); return Err(t!("La copia cambió durante la verificación.", "The copy changed during verification.")); }
+    if target.exists() { std::fs::remove_file(&target).map_err(|e| e.to_string())?; }
+    std::fs::rename(temp, target).map_err(|e| e.to_string())
+}
+
+/// Reutiliza la versión exacta de una descarga anterior o de otra instancia local. No consulta
+/// Modrinth ni construye enlaces CDN. Las instancias de origen se leen sin modificarlas.
+pub fn reuse(paths: &crate::paths::Paths, instance: &Instance) -> Result<Vec<Manual>, String> {
+    let pending = load(instance)?;
+    if pending.is_empty() { return Ok(pending); }
+    validate(&pending)?;
+    receive_existing(instance, &pending)?;
+    let others = instances::list(paths);
+    for file in pending {
+        let cached = cache_path(paths, &file);
+        let source = if matches_file(&cached, &file) { Some(cached) } else {
+            std::iter::once(instance).chain(others.iter().filter(|i| i.id != instance.id)).find_map(|other| {
+                let folder = other.game_dir.join(&file.folder);
+                [folder.join(&file.file_name), folder.join(format!("{}.disabled", file.file_name))]
+                    .into_iter().find(|p| matches_file(p, &file))
+            })
+        };
+        if let Some(source) = source {
+            // La caché es una optimización: un disco lleno no invalida una instalación ya recibida.
+            let _ = cache(paths, &source, &file);
+            receive(instance, file.file_id, &source)?;
+        }
+    }
+    load(instance)
 }
 
 /// No confía en el nombre que le haya puesto el navegador. Repetir la recepción es inocuo.
@@ -174,6 +218,7 @@ async fn receive_download(app: AppHandle, instance: Instance, file: Manual, labe
     // La página se cierra después de copiar el archivo: el navegador puede tener abierto el temporal.
     match result {
         Ok(()) => {
+            let _ = cache(&app.state::<AppState>().paths, &temp, &file);
             notice(&app, &instance.id, &file, "installed", t!("{} verificado e instalado.", "{} verified and installed.", file.name));
             if let Some(window) = app.get_webview_window(&label) { let _ = window.close(); }
         }
@@ -220,6 +265,7 @@ fn related_name(path: &Path, expected: &str) -> bool {
 
 #[tauri::command]
 pub async fn curseforge_pendientes(state: State<'_, AppState>) -> Result<Vec<Queue>, String> {
+    let paths = state.paths.clone();
     let instances = instances::list(&state.paths);
     let running: Vec<String> = state.games.lock().unwrap().keys().cloned().collect();
     tauri::async_runtime::spawn_blocking(move || {
@@ -227,7 +273,7 @@ pub async fn curseforge_pendientes(state: State<'_, AppState>) -> Result<Vec<Que
         for instance in instances {
             let files = load(&instance)?;
             if files.is_empty() { continue; }
-            if !running.contains(&instance.id) { receive_existing(&instance, &files)?; }
+            if !running.contains(&instance.id) { reuse(&paths, &instance)?; }
             let files = load(&instance)?;
             if !files.is_empty() { queues.push(Queue { id: instance.id, name: instance.name, files }); }
         }
@@ -249,7 +295,8 @@ pub async fn curseforge_preparar(state: State<'_, AppState>, id: String, proyect
     job.run(curseforge::install(&instance, &plan.files, move |_, _, bytes, total| {
         progress(t!("Instalando los archivos disponibles…", "Installing available files…"), bytes as f64 / total.max(1) as f64);
     })).await?;
-    register(&instance, &plan.manual)
+    register(&instance, &plan.manual)?;
+    reuse(&state.paths, &instance).map(|_| ())
 }
 
 #[tauri::command]
@@ -262,23 +309,34 @@ pub async fn curseforge_elegir_archivo(app: AppHandle, state: State<'_, AppState
     let Some(chosen) = chosen else { return Ok(()); };
     let path = chosen.into_path().map_err(|e| e.to_string())?;
     ensure_closed(&state, &id)?;
-    tauri::async_runtime::spawn_blocking(move || receive(&instance, archivo, &path)).await.map_err(|e| e.to_string())??;
+    let paths = state.paths.clone();
+    let file = expected.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        receive(&instance, archivo, &path)?;
+        let _ = cache(&paths, &path, &file);
+        Ok::<_, String>(())
+    }).await.map_err(|e| e.to_string())??;
     notice(&app, &id, &expected, "installed", t!("Archivo verificado e instalado.", "File verified and installed."));
     Ok(())
 }
 
 #[tauri::command]
-pub async fn curseforge_abrir_portal(app: AppHandle, state: State<'_, AppState>, id: String, archivo: u64) -> Result<(), String> {
+pub async fn curseforge_abrir_portal(app: AppHandle, state: State<'_, AppState>, id: String, archivo: u64, alternativa: Option<bool>) -> Result<(), String> {
     ensure_closed(&state, &id)?;
     let instance = super::instance_or_error(&state, &id)?;
     let file = picked(&instance, archivo)?;
     let mut identity = std::collections::hash_map::DefaultHasher::new();
     instance.id.hash(&mut identity);
-    let label = format!("curseforge-portal-{archivo}-{}", identity.finish());
+    let alternative = alternativa.unwrap_or(false);
+    let label = format!("curseforge-portal-{archivo}-{}-{}", identity.finish(), u8::from(alternative));
     if let Some(window) = app.get_webview_window(&label) {
         window.set_focus().map_err(|e| e.to_string())?;
         return Ok(());
     }
+    let proxy = if alternative {
+        if !crate::plataforma::web_proxy_supported() { return Err(t!("La conexión alternativa requiere macOS 14 o posterior. Puedes elegir el archivo descargado o usar la caché verificada.", "The alternative connection requires macOS 14 or later. You can choose a downloaded file or use the verified cache.")); }
+        Some(crate::curseforge_portal::start(state.paths.logs.join("curseforge-portal.log")).await?)
+    } else { None };
     let nonce = ATTEMPT.fetch_add(1, Ordering::Relaxed);
     let temporary = instance.state_dir().join("curseforge-entrada");
     std::fs::create_dir_all(&temporary).map_err(|e| e.to_string())?;
@@ -287,7 +345,12 @@ pub async fn curseforge_abrir_portal(app: AppHandle, state: State<'_, AppState>,
     let completed = Arc::new(AtomicU8::new(0));
     let (handle, instance_id, expected, close_label) = (app.clone(), id.clone(), file.clone(), label.clone());
     let (closed_handle, closed_id, closed_file) = (app.clone(), id.clone(), file.clone());
-    let window = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(file.url.parse().map_err(|_| "URL inválida")?))
+    let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(file.url.parse().map_err(|_| "URL inválida")?));
+    // WebView2 no admite opciones de proxy distintas para un mismo perfil de navegador activo.
+    // El perfil de esta ventana se separa del principal y se elimina al liberar el navegador.
+    let profile = proxy.as_ref().map(|_| temporary.join(format!("perfil-{}-{nonce}", std::process::id())));
+    if let Some(proxy) = &proxy { builder = builder.proxy_url(proxy.url.clone()).data_directory(profile.as_ref().unwrap().clone()); }
+    let window = builder
         .title(t!("{} · CurseForge · pulsa Descargar para instalar", "{} · CurseForge · click Download to install", file.name))
         .inner_size(1100.0, 760.0).min_inner_size(800.0, 600.0)
         // Sin scripts inyectados ni permisos IPC: es el sitio oficial, con sus controles visibles.
@@ -311,6 +374,15 @@ pub async fn curseforge_abrir_portal(app: AppHandle, state: State<'_, AppState>,
         }).build().map_err(|e| e.to_string())?;
     window.on_window_event(move |event| {
         if matches!(event, tauri::WindowEvent::Destroyed) {
+            if let Some(proxy) = &proxy { proxy.close(); }
+            if let Some(profile) = profile.clone() {
+                tauri::async_runtime::spawn(async move {
+                    for _ in 0..12 {
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        if std::fs::remove_dir_all(&profile).is_ok() || !profile.exists() { break; }
+                    }
+                });
+            }
             notice(&closed_handle, &closed_id, &closed_file, "waiting", t!("Puedes volver a abrir la página para continuar.", "You can reopen the page to continue."));
         }
     });
@@ -336,6 +408,24 @@ mod tests {
         assert!(related_name(Path::new("mod (12).jar"), "mod.jar"));
         assert!(!related_name(Path::new("mod.jar.crdownload"), "mod.jar"));
         assert!(!related_name(Path::new("mod-extra.jar"), "mod.jar"));
+    }
+    #[test]
+    fn cache_reutiliza_solo_huella_exacta_y_sobrevive_a_la_instancia_original() {
+        let root = std::env::temp_dir().join(format!("parabellum-cache-{}", ATTEMPT.fetch_add(1, Ordering::Relaxed)));
+        let paths = crate::paths::Paths::new(&root);
+        let instance = Instance { id: "nuevo".into(), name: "Nuevo".into(), folder: paths.instances.join("nuevo"), game_dir: paths.instances.join("nuevo"), ..Default::default() };
+        let source = root.join("descarga.jar");
+        paths.ensure_created().unwrap();
+        std::fs::write(&source, b"xyz").unwrap();
+        assert!(cache(&paths, &source, &file()).is_err());
+        register(&instance, &[file()]).unwrap();
+        assert_eq!(reuse(&paths, &instance).unwrap().len(), 1);
+        std::fs::write(&source, b"abc").unwrap();
+        cache(&paths, &source, &file()).unwrap();
+        std::fs::remove_file(source).unwrap();
+        assert!(reuse(&paths, &instance).unwrap().is_empty());
+        assert_eq!(std::fs::read(instance.game_dir.join("mods/mod.jar")).unwrap(), b"abc");
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn recibe_solo_version_exacta_y_conserva_pendientes_al_reabrir() {

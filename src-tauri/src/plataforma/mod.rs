@@ -20,6 +20,7 @@
 //!   PLAYIT_AGENT            el agente de playit.gg para este sistema (None si no hay).
 //!
 //! Funciones
+//!   web_proxy_supported()          proxy por ventana (Windows; macOS 14 o posterior).
 //!   data_root(exe)                 la carpeta de Parabellum (instancias, base, datos…).
 //!   java_binary(home, windowed)    el ejecutable de Java dentro de un runtime.
 //!   make_executable(ruta)          marcar un archivo descargado como programa (en Windows no hace falta).
