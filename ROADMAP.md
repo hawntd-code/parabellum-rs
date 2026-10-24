@@ -114,8 +114,8 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
   - barra de arriba y barra lateral;
   - paneles flotantes (descargas, juego e información), menús, avisos y pantalla de carga.
 - [x] **Estados**: esqueletos mientras carga; vacíos que explican qué hacer; los errores internos ya no salen tal cual
-- [ ] **0.39.0:** más errores con una acción para resolverlos, junto con mundos en Drive y tarjetas de
-  Minecraft (hoy la tienen el modo escuela y el doctor).
+- [x] **0.39.0, candidato de pruebas:** errores con una acción para resolverlos, junto con mundos en
+  Drive y tarjetas de Minecraft. Pendiente la validación real antes de publicar estable.
 - [x] **Movimiento**:
   - entradas y transiciones coherentes y botones que se hunden;
   - cambio de tema con un círculo;
@@ -215,6 +215,10 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     tarjetas de Minecraft** (ajustes de `options.txt` por versión, pendientes hasta cerrar el juego).
     Absorbe lo previsto para la 0.40.0, 0.41.0 y 0.42.0; se implementa por etapas internas y se publica
     como una sola versión. Detalle en [plan-noviembre.md](docs/plan-noviembre.md), secciones 4, 5 y 6.
+    Candidato de Windows compilado e instalado con respaldo de la 0.38.0; borrador de GitHub preparado.
+    Computer Use comprobó respaldo en Drive, restauración y recuperación del mundo anterior con datos
+    sintéticos. Pasaron 152 pruebas de Windows y 156 de Mac. Faltan el recorrido entre equipos físicos,
+    Minecraft real y las tarjetas con las reglas nuevas publicadas; ver [resultados](docs/0.39.0-implementacion.md).
   - [ ] **Después, E6:** subir solo lo que cambió de un mundo, configuraciones de mods, aplicar en vivo con
     el mod, eventos de la comunidad y lo que quede de Firebase.
   - [ ] **Al final del roadmap, después de E6:** pulsar O justo después de F2 abre esa captura lista

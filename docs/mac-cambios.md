@@ -23,6 +23,12 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
+- **0.39.0:** candidato de pruebas instalado en Windows, con respaldo de la 0.38.0 y borrador de GitHub.
+  La revisión `ffa9fc2` pasó 152 pruebas de Windows y 156 de Mac. Computer Use comprobó español/inglés,
+  ambos temas y respaldo/restauración/recuperación de copia previa en Drive con un mundo sintético.
+  Faltan dos equipos físicos, Minecraft real y publicar las reglas nuevas para probar tarjetas en el
+  paquete oficial. Mac requiere OAuth/Llavero, bloqueo de Java y restauración nativa. No está publicada estable.
+
 - **0.38.0:** publicada en Drive y GitHub, confirmada por Juan el 2026-10-23. Las escuchas comparten
   WebSocket con reconexión, renovación de sesión y respaldo SSE. No requiere reglas nuevas: las de
   la 0.37.0 ya estaban publicadas y funcionando. Conserva el chat con escritura animada, perfiles,
