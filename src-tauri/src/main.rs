@@ -56,6 +56,7 @@ mod juego;
 mod p2p;
 mod puente;
 mod reporte;
+mod red;
 mod respaldos;
 mod packs;
 mod paths;
@@ -139,8 +140,8 @@ struct Progress {
 struct Versions {
     /// false: sin acceso a Mojang (por ejemplo, en la red de la escuela).
     mojang: bool,
-    /// En modo escuela la lista es la del espejo de Drive.
-    school: bool,
+    /// Restricción detectada automáticamente: se usa el espejo de Drive.
+    mirror: bool,
     releases: Vec<mojang::Release>,
     installed: Vec<String>,
     /// Versiones que están en el catálogo de Drive (se bajan de ahí aunque Mojang esté bloqueado).
@@ -358,9 +359,9 @@ fn listar_instancias(state: State<AppState>) -> Vec<Instance> {
 async fn listar_versiones(state: State<'_, AppState>) -> Result<Versions, String> {
     let installed = mojang::installed_versions(&state.paths);
     let loaders = loaders::installed(&state.paths);
-    let school = espejo::school_mode();
+    let automatic = red::alternative(red::Service::Mojang).await;
     let releases = async {
-        if school {
+        if automatic {
             Err(String::new())
         } else {
             mojang::list().await
@@ -371,10 +372,10 @@ async fn listar_versiones(state: State<'_, AppState>) -> Result<Versions, String
     let mut drive: Vec<String> = catalog.entries.iter().filter(|e| e.manifest.is_base()).map(|e| e.manifest.minecraft_version.clone()).collect();
     drive.extend(mirror.iter().map(|r| r.id.clone()).filter(|v| !drive.contains(v)).collect::<Vec<_>>());
     Ok(match releases {
-        Ok(releases) => Versions { mojang: true, school, releases, installed, drive, loaders, message: None },
-        // En modo escuela, o sin Mojang: las versiones del espejo de Drive.
-        Err(_) if school => Versions { mojang: false, school, releases: mirror, installed, drive, loaders, message: None },
-        Err(message) => Versions { mojang: false, school, releases: mirror, installed, drive, loaders, message: Some(message) },
+        Ok(releases) => Versions { mojang: true, mirror: false, releases, installed, drive, loaders, message: None },
+        // Con restricción de red, o sin Mojang: las versiones del espejo de Drive.
+        Err(_) if automatic => Versions { mojang: false, mirror: true, releases: mirror, installed, drive, loaders, message: None },
+        Err(message) => Versions { mojang: false, mirror: !mirror.is_empty(), releases: mirror, installed, drive, loaders, message: Some(message) },
     })
 }
 
@@ -394,12 +395,12 @@ struct LoaderGames {
 #[tauri::command]
 async fn versiones_compatibles(state: State<'_, AppState>, loader: String) -> Result<LoaderGames, String> {
     let loader = parse_loader(&loader)?;
-    // Las del espejo de Drive (en modo escuela, o si el servidor del loader no responde).
+    // Las del espejo de Drive (con restricción de red, o si el servidor del loader no responde).
     let mirror = || async {
         let remote = espejo::remote(&state.paths).await.ok().flatten();
         remote.map(|r| espejo::minecraft_versions(&r).into_iter().map(|v| v.id).filter(|v| !espejo::loader_versions(&r, loader, v).is_empty()).collect::<Vec<_>>()).unwrap_or_default()
     };
-    if espejo::school_mode() {
+    if red::alternative(red::loader(loader)).await {
         return Ok(LoaderGames { online: true, games: mirror().await, message: None });
     }
     Ok(match loaders::game_versions(loader).await {
@@ -430,7 +431,7 @@ async fn versiones_loader(state: State<'_, AppState>, loader: String, minecraft:
         .filter(|i| i.loader == loader.name() && i.minecraft == minecraft)
         .map(|i| i.loader_version)
         .collect();
-    let online = if espejo::school_mode() { Err(String::new()) } else { loaders::loader_versions(loader, &minecraft).await };
+    let online = if red::alternative(red::loader(loader)).await { Err(String::new()) } else { loaders::loader_versions(loader, &minecraft).await };
     Ok(match online {
         Ok(versions) => LoaderVersions {
             online: true,
@@ -439,7 +440,7 @@ async fn versiones_loader(state: State<'_, AppState>, loader: String, minecraft:
             installed,
             message: None,
         },
-        // En modo escuela (o sin conexión con el loader): las del espejo de Drive y las instaladas.
+        // Con restricción de red (o sin conexión con el loader): las del espejo de Drive y las instaladas.
         Err(message) => {
             let mut found: Vec<String> = espejo::remote(&state.paths).await.ok().flatten().map(|r| espejo::loader_versions(&r, loader, &minecraft)).unwrap_or_default();
             found.extend(installed.iter().filter(|v| !found.contains(v)).cloned().collect::<Vec<_>>());
@@ -456,13 +457,13 @@ async fn versiones_loader(state: State<'_, AppState>, loader: String, minecraft:
     })
 }
 
-/// Descarga (o completa) una versión vanilla. En modo escuela, de Google Drive: el espejo (espejo.rs) o
+/// Descarga (o completa) una versión vanilla. Con restricción de red, de Google Drive: el espejo (espejo.rs) o
 /// la base del catálogo, sin intentar Mojang, que ahí está bloqueado. Si no, de Mojang, y si Mojang no
 /// responde, de Drive. Sin conexión sirve si ya estaba descargada.
 async fn install_vanilla(version: &str, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<(), String> {
     let installed = mojang::installed_versions(paths).iter().any(|v| v == version);
     let mut mojang_error = None;
-    if !espejo::school_mode() {
+    if !red::alternative(red::Service::Mojang).await {
         let release = match mojang::list().await {
             Ok(releases) => releases.into_iter().find(|r| r.id == version).ok_or(t!("Mojang no tiene la versión {version}.", "Mojang does not have version {version}.")),
             Err(message) => Err(message),
@@ -493,8 +494,8 @@ async fn install_vanilla(version: &str, paths: &Paths, progress: impl Fn(String,
         (Some(mojang), None) => mojang,
         (None, Some(drive)) => drive,
         (None, None) => t!(
-            "Minecraft {version} no está en Google Drive. Desactiva el modo escuela (con internet) o pide a quien publica que la suba.",
-            "Minecraft {version} is not on Google Drive. Turn off school mode (with internet) or ask whoever publishes to upload it."
+            "Minecraft {version} no está en el espejo de Drive. Reintenta desde otra red o pide a quien publica que la suba.",
+            "Minecraft {version} is not in the Drive mirror. Retry from another network or ask the publisher to upload it."
         ),
     })
 }
@@ -536,14 +537,14 @@ async fn install_loader(
     progress: impl Fn(String, f64) + Send + Sync + Clone + 'static,
 ) -> Result<(String, String), String> {
     let requested = requested.map(str::trim).filter(|v| !v.is_empty());
-    if espejo::school_mode() {
+    if red::alternative(red::loader(loader)).await {
         // Ya instalado: no hace falta Drive.
         if let Some(found) = requested.and_then(|v| loaders::installed_id(loader, minecraft, v, paths).map(|id| (id, v.to_string()))) {
             return Ok(found);
         }
         return espejo::install_loader(loader, minecraft, requested, paths, progress).await?.ok_or(t!(
-            "{} para Minecraft {minecraft} no está en Google Drive. Desactiva el modo escuela (con internet) o pide a quien publica que lo suba.",
-            "{} for Minecraft {minecraft} is not on Google Drive. Turn off school mode (with internet) or ask whoever publishes to upload it.",
+            "{} para Minecraft {minecraft} no está en el espejo de Drive. Reintenta desde otra red o pide a quien publica que lo suba.",
+            "{} for Minecraft {minecraft} is not in the Drive mirror. Retry from another network or ask the publisher to upload it.",
             loader.name()
         ));
     }
@@ -1001,11 +1002,51 @@ fn abrir_registro(state: State<AppState>, id: String) -> Result<(), String> {
 // Lo de CurseForge lleva «cf:» delante del id (curseforge.rs) y sale con las mismas formas.
 
 #[tauri::command]
-async fn buscar_contenido(busqueda: modrinth::SearchQuery) -> Result<modrinth::SearchResults, String> {
+async fn buscar_contenido(mut busqueda: modrinth::SearchQuery) -> Result<modrinth::SearchResults, String> {
+    let mut fallback = false;
     if busqueda.source == "curseforge" {
-        return curseforge::search(&busqueda).await;
+        match curseforge::search(&busqueda).await {
+            Ok(result) => return Ok(result),
+            Err(error) if provider_unavailable(&error) => {
+                fallback = true;
+                busqueda.source = "modrinth".into();
+                busqueda.categories.clear(); // Los ids de categorías no son equivalentes entre proveedores.
+                busqueda.offset = 0;
+            }
+            Err(error) => return Err(error),
+        }
     }
-    modrinth::search(&busqueda).await
+    match modrinth::search(&busqueda).await {
+        Ok(mut result) => {
+            if fallback { result.fallback = Some(t!("CurseForge no está disponible. Mostramos los resultados de Modrinth.", "CurseForge is unavailable. Showing Modrinth results.")); }
+            Ok(result)
+        }
+        Err(error) if provider_unavailable(&error) => Ok(modrinth::SearchResults {
+            hits: Vec::new(), total: 0, source: "drive".into(),
+            fallback: Some(t!("Los proveedores no están disponibles. Puedes buscar en el catálogo de Drive.", "The providers are unavailable. You can search the Drive catalog.")),
+        }),
+        Err(error) => Err(error),
+    }
+}
+
+fn provider_unavailable(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.contains("no se puede conectar") || lower.contains("cannot connect")
+        || lower.contains("puente de curseforge todavía no está listo") || lower.contains("curseforge bridge is not ready")
+        || lower.split(|c: char| !c.is_ascii_digit()).any(|code| matches!(code, "500" | "502" | "503" | "504"))
+}
+
+#[cfg(test)]
+mod provider_tests {
+    #[test]
+    fn respaldo_solo_por_indisponibilidad() {
+        for error in ["Cannot connect to CurseForge", "No se puede conectar con Modrinth", "CurseForge respondió 503 Service Unavailable."] {
+            assert!(super::provider_unavailable(error));
+        }
+        for error in ["CurseForge respondió 401.", "Modrinth respondió 403.", "429 Too Many Requests", "Archivo 500321 inválido", "Sin resultados"] {
+            assert!(!super::provider_unavailable(error));
+        }
+    }
 }
 
 #[tauri::command]
@@ -1336,10 +1377,14 @@ async fn verify_base(instance: &Instance, paths: &Paths, report: &mut integridad
     // Su Java: contra el espejo (sin internet de Mojang) o contra la lista de Mojang.
     let Some(java) = launch::version_files(&instance.version_id, paths).ok().and_then(|v| v.own_java().cloned()) else { return };
     progress(t!("Revisando Java {}…", "Checking Java {}…", java.major), 0.5);
-    let fixed = match espejo::verify_java(&java.name, paths, progress.clone()).await {
-        Ok(Some(fixed)) => Ok(fixed),
-        _ if espejo::school_mode() => return,
-        _ => mojang::verify_java(&java.name, java.major, paths).await,
+    let fixed = if red::alternative(red::Service::Mojang).await {
+        espejo::verify_java(&java.name, paths, progress.clone()).await.map(|fixed| fixed.unwrap_or(0))
+    } else {
+        match mojang::verify_java(&java.name, java.major, paths).await {
+            Ok(fixed) => Ok(fixed),
+            Err(error) => espejo::verify_java(&java.name, paths, progress.clone()).await
+                .and_then(|fixed| fixed.ok_or(error)),
+        }
     };
     match fixed {
         Ok(0) => {}
@@ -2283,19 +2328,9 @@ fn quitar_descarga(id: Option<String>) {
     descargas::remove(id.as_deref());
 }
 
-/// El botón «Modo escuela» de arriba (ver espejo.rs).
+/// Al volver a la ventana se vuelve a comprobar la ruta en la próxima operación.
 #[tauri::command]
-fn modo_escuela(app: AppHandle, state: State<AppState>, activo: bool) -> Result<Settings, String> {
-    let settings = {
-        let mut settings = state.settings.lock().unwrap();
-        settings.school_mode = activo;
-        settings.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
-        settings.clone()
-    };
-    espejo::set_school_mode(activo);
-    let _ = app.emit("ajustes", settings.clone());
-    Ok(settings)
-}
+fn actualizar_red() { red::invalidate(); }
 
 /// Descargas simultáneas (1 a 3) y límite de velocidad en MB/s (0 = sin límite), desde el panel.
 #[tauri::command]
@@ -3012,14 +3047,14 @@ fn system_ram_gb() -> u32 {
 ///   --playit                                        estado de la cuenta y del túnel de playit.gg
 ///   --catalogo                                      modpacks y versiones de Drive y de la carpeta paquetes
 ///   --espejo [filtro]                               qué tiene el espejo de Minecraft en Drive (y el espacio)
+///   --probar-red                                    rutas automáticas por servicio, sin descargar contenido
 ///   --espejo-subir <todo|v1,v2…> [sin-loaders] [sin-servidores]  lo arma y lo sube (quien publica)
 ///   --instalar-catalogo <id> [reparar]              instala, actualiza o repara (bajando solo lo que cambió)
 ///   --publicar-launcher <carpeta> [notas] [pruebas] prepara _parabellum (en Mac, _parabellum-mac; con «pruebas», _parabellum-pruebas) para subirla a Drive
 ///   --subir-launcher-drive <carpeta>                la sube a Drive (con el permiso de «Conectar Drive»)
 fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<String, String> {
-    // PARABELLUM_ESCUELA=1: como con el modo escuela activado (para probar sin cambiar los ajustes).
-    espejo::set_school_mode(settings.school_mode || std::env::var_os("PARABELLUM_ESCUELA").is_some());
     match args[0].as_str() {
+        "--probar-red" => Ok(tauri::async_runtime::block_on(red::diagnostic())),
         "--espejo" => {
             // Qué tiene el espejo de Minecraft en Drive (y, con el permiso de Drive, cuánto espacio queda).
             let config = config::Config::load(paths);
@@ -3335,13 +3370,10 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                 source: args.get(5).cloned().unwrap_or_default(),
             };
             let started = std::time::Instant::now();
-            let results = if query.source == "curseforge" {
-                tauri::async_runtime::block_on(curseforge::search(&query))?
-            } else {
-                tauri::async_runtime::block_on(modrinth::search(&query))?
-            };
-            let route = if query.source == "curseforge" { "CurseForge por su puente" } else if modrinth::via_bridge() { "por el puente" } else { "directo" };
+            let results = tauri::async_runtime::block_on(buscar_contenido(query))?;
+            let route = if results.source == "curseforge" { "CurseForge por su puente" } else if results.source == "drive" { "catálogo Drive" } else if modrinth::via_bridge() { "por el puente" } else { "directo" };
             let mut out = format!("{} resultados ({route}, {:.1} s)\n", results.total, started.elapsed().as_secs_f64());
+            if let Some(message) = &results.fallback { out += &format!("{message}\n"); }
             for hit in results.hits.iter().take(10) {
                 out += &format!("  {} ({}) por {} · {} descargas · {:?}\n", hit.title, hit.slug, hit.author, hit.downloads, hit.categories);
             }
@@ -4078,7 +4110,6 @@ fn main() {
             {
                 let settings = app.state::<AppState>().settings.lock().unwrap().clone();
                 descargas::init(app.handle(), settings.download_parallel, settings.download_limit_mb);
-                espejo::set_school_mode(settings.school_mode);
                 canal::set(&settings.update_channel);
             }
             {
@@ -4221,7 +4252,7 @@ fn main() {
             pregenerar_mundo,
             buscar_culpable,
             detener_busqueda,
-            modo_escuela,
+            actualizar_red,
             confirmar_arranque,
             canal_actualizaciones,
             comunidad::comunidades,

@@ -292,7 +292,6 @@ const HTML_EN = {
   "Lo que dice el registro": "What the log says",
   "Arreglar lo recomendado": "Fix the recommended",
   "Probar y arreglar solo": "Test and fix on its own",
-  "Modo escuela": "School mode",
   "Comunidades": "Communities",
   "Código de invitación": "Invite code",
   "Crear comunidad": "Create community",

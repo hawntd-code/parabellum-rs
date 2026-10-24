@@ -19,7 +19,6 @@ use sha1::{Digest, Sha1};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::loaders::{self, compare_versions, Loader};
@@ -31,20 +30,6 @@ pub const INDEX_FILE: &str = "espejo.indice";
 const FORMAT: u32 = 1;
 /// Tamaño de cada capa: Drive limita las descargas de cada archivo, así se reparten.
 const LAYER_LIMIT: u64 = 2_000_000_000;
-
-// ================= Modo escuela
-
-static SCHOOL: AtomicBool = AtomicBool::new(false);
-
-/// Modo escuela (el botón de arriba): todo se baja de Google Drive y no se intenta Mojang ni los
-/// servidores de los loaders, que en la escuela están bloqueados (y cada intento tarda en fallar).
-pub fn school_mode() -> bool {
-    SCHOOL.load(Ordering::Relaxed)
-}
-
-pub fn set_school_mode(on: bool) {
-    SCHOOL.store(on, Ordering::Relaxed);
-}
 
 // ================= Índice
 

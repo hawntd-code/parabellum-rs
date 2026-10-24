@@ -241,6 +241,17 @@ Para comprobar el portal real con una instancia Fabric 1.21.1 de prueba:
 
 ## Publicar una versión
 
+Desde el candidato **0.39.2** la conexión es automática. La API de CurseForge conserva su servicio
+de Cloud; Modrinth usa el origen directo salvo restricción comprobada. Minecraft, Java y loaders
+usan el espejo de Drive si la red restringe sus orígenes. El portal comprueba también los hosts de
+estilos y archivos. No se configura un proxy global. Drive queda al final de Explorar.
+
+Para comprobar la decisión sin descargar contenido, ejecuta `--probar-red` con `PARABELLUM_ROOT`
+en una carpeta de prueba. El informe queda en `datos/logs/comando.txt`. `Direct` es acceso oficial,
+`Restricted` habilita el respaldo de ese servicio, `Offline` no confirma internet y `Unavailable`
+indica fallo del proveedor. La decisión caduca en 60 segundos y se invalida al volver al launcher.
+Pruebas y límites: [0.39.2-red-automatica.md](0.39.2-red-automatica.md).
+
 1. **Drive** (lo hace Juan): Ajustes › Acerca de › «Publicar esta versión» deja `_parabellum` con
    `Parabellum-<versión>.zip`, su `.json` y `LEEME.txt`; «Subir a Drive» la sube y manda la anterior a la
    papelera de Drive. Con línea de comandos: `--publicar-launcher <carpeta> [notas] [pruebas]`. Si la

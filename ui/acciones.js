@@ -36,7 +36,6 @@ window.errorRecovery = (() => {
       ?? (state.current && !/soporte|comunidad/.test(context?.command ?? "") ? state.current : null));
     const ids = [...(context?.ids ?? []), ...[...text.matchAll(/⟦accion:([a-z-]+)(?::[^⟧]*)?⟧/g)].map(m => m[1])];
     const message = strip(text);
-    if (suggestsSchool(message)) ids.push("escuela");
     if (/sin espacio|disco.*lleno|disk.*full|os error 112|not enough.*space/i.test(message)) ids.push("recursos");
     if (/Java.*(dañad|no está|no se encontr|missing|damaged|not found)/i.test(message)) ids.push("reparar-java");
     if (/archivo.*(dañad|no coincide)|checksum|hash mismatch|corrupt/i.test(message)) ids.push("verificar");
@@ -56,7 +55,6 @@ window.errorRecovery = (() => {
           window.dispatchEvent(new CustomEvent("operacion-recuperada", { detail: { command: context.command, args: context.args, result } }));
           toast(t("La operación terminó.", "The operation completed."));
         });
-      else if (id === "escuela") add(id, t("Activar modo escuela", "Turn on school mode"), "school", async () => { if (!state.settings.schoolMode) await toggleSchool(); });
       else if (id === "recursos") add(id, t("Ver espacio y recursos", "View storage and resources"), "sliders", () => openSettings("resources"));
       else if ((id === "verificar" || id === "reparar-java") && instance)
         add("verificar", id === "reparar-java" ? t("Reparar Java", "Repair Java") : t("Verificar la instancia", "Check instance"), "refresh", async () => {

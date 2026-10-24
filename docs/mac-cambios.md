@@ -542,6 +542,20 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-24 · 0.39.2: rutas automáticas y Drive al final
+
+- Se retira el interruptor y el ajuste compartible de modo escuela. El valor antiguo se ignora al
+  cargar los ajustes. Drive queda después de Modpacks; el portal elige su conexión automáticamente.
+- CurseForge conserva su API en Cloud. Modrinth usa su API directa, y solo pasa al puente tras un
+  fallo repetido con conectividad de control. Minecraft, Java, loaders y servidores usan el espejo
+  ante restricciones; se conserva el respaldo existente si falla el origen oficial.
+- La búsqueda predeterminada intenta CurseForge → Modrinth → Drive por indisponibilidad. Un resultado
+  vacío no cambia de fuente. Los archivos automáticos de CurseForge solo se recuperan de Modrinth
+  si coinciden SHA-1 y tamaño; la receta del pack y los archivos manuales mantienen su origen.
+- Mac: recompilar y probar pestañas/portal en WebKit. No cambia el contrato de plataforma; sigue
+  vigente el requisito de macOS 14 para la conexión alternativa del portal. Validación y límites
+  en [0.39.2-red-automatica.md](0.39.2-red-automatica.md). Candidato, sin publicación estable.
+
 ### 2026-10-24 · Entrega 0.39.1 comprobada y preparada
 
 - Revisión `42ee320`: 158 pruebas Windows, 162 Mac y siete Python del servicio en cada sistema,

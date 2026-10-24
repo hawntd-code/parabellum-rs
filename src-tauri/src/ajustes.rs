@@ -50,7 +50,6 @@ pub const REGISTRY: &[Shareable] = &[
     },
     Shareable { id: "launcher.download_parallel", kind: Kind::Range(1, 3), since: "0.33.0", es: "Descargas a la vez", en: "Simultaneous downloads", get: |s| json!(s.download_parallel), set: |s, v| s.download_parallel = v.as_u64().map(|n| n as u32).unwrap_or(s.download_parallel) },
     Shareable { id: "launcher.game_panel", kind: Kind::Bool, since: "0.33.0", es: "Parabellum dentro del juego", en: "Parabellum inside the game", get: |s| json!(s.game_panel), set: |s, v| s.game_panel = v.as_bool().unwrap_or(s.game_panel) },
-    Shareable { id: "launcher.school_mode", kind: Kind::Bool, since: "0.33.0", es: "Modo escuela", en: "School mode", get: |s| json!(s.school_mode), set: |s, v| s.school_mode = v.as_bool().unwrap_or(s.school_mode) },
 ];
 
 fn pick(es: &'static str, en: &'static str) -> &'static str {
@@ -142,7 +141,7 @@ pub fn apply(app: &AppHandle, op: &Operation) -> Result<Outcome, String> {
     Ok(outcome)
 }
 
-/// Guarda todos los ajustes y aplica sus efectos: memoria, descargas, modo escuela, canal, idioma,
+/// Guarda todos los ajustes y aplica sus efectos: memoria, descargas, canal, idioma,
 /// tamaño de la ventana. Es lo que hacía `guardar_ajustes`; ahora lo usan la ventana y las tarjetas.
 pub fn save_all(app: &AppHandle, mut ajustes: Settings) -> Result<Settings, String> {
     let state = app.state::<AppState>();
@@ -165,7 +164,6 @@ pub fn save_all(app: &AppHandle, mut ajustes: Settings) -> Result<Settings, Stri
     ajustes.save(&state.paths).map_err(|e| t!("No se pudieron guardar los ajustes: {e}", "Could not save the settings: {e}"))?;
     *state.settings.lock().unwrap() = ajustes.clone();
     crate::descargas::configure(ajustes.download_parallel, ajustes.download_limit_mb);
-    crate::espejo::set_school_mode(ajustes.school_mode);
     crate::canal::set(&ajustes.update_channel);
     if language_changed {
         crate::idioma::set(&ajustes.language);
@@ -243,7 +241,8 @@ mod tests {
 
     #[test]
     fn el_registro_tiene_lo_del_plan() {
-        for id in ["launcher.message_sound", "launcher.notifications", "launcher.ram_gb", "launcher.download_limit_mb", "launcher.download_parallel", "launcher.game_panel", "launcher.school_mode"] {
+        assert!(find("launcher.school_mode").is_none());
+        for id in ["launcher.message_sound", "launcher.notifications", "launcher.ram_gb", "launcher.download_limit_mb", "launcher.download_parallel", "launcher.game_panel"] {
             assert!(find(id).is_some(), "{id}");
         }
         let described = describe(&Settings::default());

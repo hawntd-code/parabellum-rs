@@ -190,7 +190,7 @@ pub async fn search(query: &SearchQuery) -> Result<SearchResults, String> {
     let hits: Vec<Hit> = list.as_array().into_iter().flatten().map(hit).collect();
     // CurseForge no da más de 10 000 resultados por búsqueda: si llega una página llena, hay más.
     let total = if hits.len() as u32 >= modrinth::PAGE_SIZE { (query.offset + modrinth::PAGE_SIZE * 2) as u64 } else { (query.offset as usize + hits.len()) as u64 };
-    Ok(SearchResults { hits, total })
+    Ok(SearchResults { hits, total, source: "curseforge".into(), fallback: None })
 }
 
 fn hit(m: &Value) -> Hit {
@@ -637,6 +637,35 @@ fn slug_installed(info: &Value, installed_ids: &HashSet<String>) -> bool {
 
 // ================= Instalar
 
+/// Otra fuente solo sirve si ofrece exactamente los mismos bytes. La receta sigue siendo CurseForge.
+fn equivalent(file: &FileDownload, remote: &modrinth::RemoteFile) -> bool {
+    file.sha1.as_deref().is_some_and(|hash| hash.eq_ignore_ascii_case(&remote.sha1))
+        && file.size == Some(remote.size) && remote.size > 0
+        && reqwest::Url::parse(&remote.url).ok().is_some_and(|url|
+            url.scheme() == "https" && url.host_str() == Some("cdn.modrinth.com")
+                && url.port().is_none() && url.username().is_empty() && url.password().is_none())
+}
+
+async fn download_files(files: Vec<FileDownload>, progress: impl Fn(usize, usize, u64, u64) + Send + Sync + 'static) -> Result<(), String> {
+    let report = std::sync::Arc::new(progress);
+    let first = report.clone();
+    let Err(original) = download::download_all(files.clone(), move |a, b, c, d| first(a, b, c, d)).await else { return Ok(()) };
+    crate::descargas::check()?;
+    let pending: Vec<_> = files.into_iter().filter(|file|
+        std::fs::metadata(&file.path).ok().is_none_or(|meta| Some(meta.len()) != file.size)).collect();
+    if pending.is_empty() { return Err(original); }
+    let hashes: Vec<_> = pending.iter().filter_map(|file| file.sha1.clone()).collect();
+    let Ok(found) = modrinth::files_by_hash(&hashes).await else { return Err(original) };
+    let mut retry = Vec::new();
+    for mut file in pending {
+        let Some(remote) = file.sha1.as_deref().and_then(|hash| found.get(hash)).filter(|remote| equivalent(&file, remote)) else { return Err(original) };
+        file.url = remote.url.clone();
+        retry.push(file);
+    }
+    download::download_all(retry, move |a, b, c, d| report(a, b, c, d)).await
+        .map_err(|error| format!("{original}\n{error}"))
+}
+
 /// Baja los archivos del plan (del CDN, comprobando el SHA-1), manda a la papelera los que reemplazan y los
 /// anota en `.lanzador/curseforge.json`.
 pub async fn install(instance: &Instance, files: &[PlannedFile], progress: impl Fn(usize, usize, u64, u64) + Send + Sync + 'static) -> Result<(), String> {
@@ -662,7 +691,7 @@ pub async fn install(instance: &Instance, files: &[PlannedFile], progress: impl 
         downloads.push(FileDownload { url: file.url.clone(), path, sha1: Some(file.sha1.clone()), size: Some(file.size) });
         targets.push((file, kind, folder, name));
     }
-    download::download_all(downloads, progress).await?;
+    download_files(downloads, progress).await?;
     let _ = std::fs::remove_dir_all(modrinth::candidates_dir(instance));
     let mut index = load_index(instance);
     for (file, kind, folder, name) in targets {
@@ -870,7 +899,7 @@ pub async fn install_modpack_files(pack: &Pack, zip_path: &Path, game_dir: &Path
         .map(|r| FileDownload { url: r.url.clone(), path: game_dir.join(&r.path), sha1: Some(r.sha1.clone()), size: Some(r.size) })
         .collect();
     let report = progress.clone();
-    download::download_all(downloads, move |count, total, bytes, total_bytes| {
+    download_files(downloads, move |count, total, bytes, total_bytes| {
         report(
             t!("Descargando mods… {count} de {total} ({:.0} de {:.0} MB)", "Downloading mods… {count} of {total} ({:.0} of {:.0} MB)", bytes as f64 / 1048576.0, total_bytes as f64 / 1048576.0),
             0.05 + 0.85 * bytes as f64 / total_bytes.max(1) as f64,
@@ -973,6 +1002,18 @@ pub async fn download_icon(url: &str) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn respaldo_exige_misma_huella_tamano_y_cdn() {
+        let file = FileDownload { url: "https://edge.forgecdn.net/original.jar".into(), path: PathBuf::from("mod.jar"), sha1: Some("a".repeat(40)), size: Some(123) };
+        let remote = modrinth::RemoteFile { url: "https://cdn.modrinth.com/data/p/versions/v/mod.jar".into(), sha1: "a".repeat(40), sha512: "b".repeat(128), size: 123 };
+        assert!(equivalent(&file, &remote));
+        assert!(!equivalent(&file, &modrinth::RemoteFile { sha1: "c".repeat(40), ..remote.clone() }));
+        assert!(!equivalent(&file, &modrinth::RemoteFile { size: 124, ..remote.clone() }));
+        for url in ["http://cdn.modrinth.com/mod.jar", "https://cdn.modrinth.com.ejemplo.com/mod.jar", "https://cdn.modrinth.com@ejemplo.com/mod.jar", "https://ejemplo.com/mod.jar"] {
+            assert!(!equivalent(&file, &modrinth::RemoteFile { url: url.into(), ..remote.clone() }));
+        }
+    }
 
     #[test]
     fn loaders_del_manifiesto() {

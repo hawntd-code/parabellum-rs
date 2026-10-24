@@ -225,6 +225,9 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     1.631 overrides coincidentes y menú principal del pack comprobado. [Resultados](docs/0.39.1-curseforge.md).
   - [ ] **Validación externa de la 0.39.1:** portal desde la escuela, intercambio entre dos equipos y
     WebKit nativo en Mac; confirmar publicación antes de tratarla como estable.
+  - [ ] **0.39.2, ajuste previo a E6 (2026-10-24):** conservar la API de CurseForge en Cloud,
+    retirar el interruptor de modo escuela, resolver las rutas automáticamente, ordenar el respaldo
+    CurseForge → Modrinth → Drive y mover Drive después de Modpacks. [Detalle y pruebas](docs/0.39.2-red-automatica.md).
   - [ ] **Después, E6:** subir solo lo que cambió de un mundo, configuraciones de mods, aplicar en vivo con
     el mod, eventos de la comunidad y lo que quede de Firebase.
   - [ ] **Al final del roadmap, después de E6:** pulsar O justo después de F2 abre esa captura lista

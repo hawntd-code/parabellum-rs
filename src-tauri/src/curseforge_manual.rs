@@ -321,13 +321,13 @@ pub async fn curseforge_elegir_archivo(app: AppHandle, state: State<'_, AppState
 }
 
 #[tauri::command]
-pub async fn curseforge_abrir_portal(app: AppHandle, state: State<'_, AppState>, id: String, archivo: u64, alternativa: Option<bool>) -> Result<(), String> {
+pub async fn curseforge_abrir_portal(app: AppHandle, state: State<'_, AppState>, id: String, archivo: u64) -> Result<(), String> {
     ensure_closed(&state, &id)?;
     let instance = super::instance_or_error(&state, &id)?;
     let file = picked(&instance, archivo)?;
     let mut identity = std::collections::hash_map::DefaultHasher::new();
     instance.id.hash(&mut identity);
-    let alternative = alternativa.unwrap_or(false);
+    let alternative = crate::red::alternative(crate::red::Service::Portal).await;
     let label = format!("curseforge-portal-{archivo}-{}-{}", identity.finish(), u8::from(alternative));
     if let Some(window) = app.get_webview_window(&label) {
         window.set_focus().map_err(|e| e.to_string())?;

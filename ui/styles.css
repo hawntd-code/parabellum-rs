@@ -621,17 +621,7 @@ body.booting .app { visibility: hidden; }
 .splash-status { min-height: 18px; color: var(--muted); font-size: 13px; text-align: center; max-width: 360px; }
 #splash-skip { margin-top: 4px; }
 
-/* ---------- Modo escuela (barra de arriba) ---------- */
-.school-pill {
-  display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; margin-right: 6px; border-radius: 999px;
-  border: 1px solid transparent; background: transparent; color: var(--muted); font-weight: 650; font-size: 13px;
-  transition: background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
-}
-.school-pill svg { width: 18px; height: 18px; }
-.school-pill:hover { background: var(--card); color: var(--text); }
-.school-pill.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-fg); }
-.school-pill.on:hover { background: var(--accent); color: var(--on-accent); }
-@media (max-width: 980px) { .school-pill span { display: none; } .school-pill { padding: 0 8px; } }
+
 .create-grid .label ~ .label { margin-top: 14px; }
 
 /* ================= Fase 3: gestión de instancias ================= */
@@ -1367,9 +1357,9 @@ button.update-chip:hover { background: var(--accent); color: var(--on-accent); }
 #cm-pack-tabs { align-self: flex-start; }
 .cm-pick-loading { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 40px 0; color: var(--muted); font-size: 13px; }
 .cm-join-preview { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; color: var(--muted); }
-.school-hint { display: flex; align-items: center; gap: 10px; margin: 8px 0; padding: 8px 10px 8px 12px; border-radius: var(--r); background: var(--accent-soft); color: var(--text); font-size: 13px; }
-.school-hint svg { width: 18px; height: 18px; flex: none; color: var(--accent-fg); }
-.school-hint span { flex: 1; }
+.network-hint { display: flex; align-items: center; gap: 10px; margin: 8px 0; padding: 8px 10px 8px 12px; border-radius: var(--r); background: var(--accent-soft); color: var(--text); font-size: 13px; }
+.network-hint svg { width: 18px; height: 18px; flex: none; color: var(--accent-fg); }
+.network-hint span { flex: 1; }
 .toast-action svg { width: 15px; height: 15px; }
 .chat-composer .btn { height: 42px; }
 .group-friends { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }

@@ -38,9 +38,6 @@
         <span id="crumb-text" data-tauri-drag-region>Inicio</span>
       </div>
       <div class="topbar-right" data-tauri-drag-region>
-        <button class="school-pill" id="school-toggle" aria-pressed="false" title="Modo escuela">
-          <svg><use href="#i-school"/></svg><span>Modo escuela</span>
-        </button>
         <button class="download-indicator hidden" id="download-indicator" title="Descargas" aria-haspopup="dialog" aria-expanded="false">
           <svg><use href="#i-download"/></svg>
           <span id="download-percent"></span>
@@ -138,12 +135,12 @@
             <div class="explore-main">
               <h1 class="section-title">Explorar</h1>
               <div class="tabs" id="explore-kinds">
-                <button class="tab" data-kind="drive"><svg><use href="#i-cloud"/></svg>Drive</button>
                 <button class="tab active" data-kind="mod"><svg><use href="#i-puzzle"/></svg>Mods</button>
                 <button class="tab" data-kind="resourcepack"><svg><use href="#i-image"/></svg>Resource packs</button>
                 <button class="tab" data-kind="shader"><svg><use href="#i-sun-sparkle"/></svg>Shaders</button>
                 <button class="tab" data-kind="datapack"><svg><use href="#i-globe"/></svg>Data packs</button>
                 <button class="tab" data-kind="modpack"><svg><use href="#i-cubes"/></svg>Modpacks</button>
+                <button class="tab" data-kind="drive"><svg><use href="#i-cloud"/></svg>Drive</button>
               </div>
               <div class="content-toolbar">
                 <div class="search grow">
@@ -671,7 +668,7 @@
             <svg><use href="#i-search"/></svg>
             <input id="new-search" placeholder="Buscar versión (p. ej. 1.21)" autocomplete="off" spellcheck="false">
           </div>
-          <div class="school-hint hidden" id="new-school-hint"></div>
+          <div class="network-hint hidden" id="new-network-hint"></div>
           <div class="version-list" id="new-versions"></div>
           <div class="hidden" id="loader-version-box">
             <label class="label" for="loader-version" id="loader-version-label">Versión de Fabric</label>

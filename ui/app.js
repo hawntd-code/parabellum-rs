@@ -45,6 +45,7 @@ const state = {
     kind: "mod",
     /** "modrinth" o "curseforge" (los data packs, solo en Modrinth). */
     source: savedSource(),
+    resolvedSource: null,
     query: "",
     sort: "relevance",
     loader: "",
@@ -307,11 +308,6 @@ function toast(message, kind = "info") {
     whenDone(leave, () => element.remove(), 360);
   };
   setTimeout(dismiss, recovery?.actions.length ? 20000 : kind === "error" ? 7000 : 3500);
-}
-
-/** Un error de red de Mojang o de un loader, con el modo escuela apagado: en la escuela, eso lo arregla. */
-function suggestsSchool(message) {
-  return !state.settings?.schoolMode && /servidores de (Mojang|Fabric|Quilt|Forge|NeoForge)|(Mojang|Fabric|Quilt|Forge|NeoForge)('s)? servers/i.test(String(message));
 }
 
 function contextMenu(anchor, items, { matchWidth = false, emojis = null, at = null } = {}) {
@@ -2372,7 +2368,6 @@ function wireFriendsEvents() {
   });
   listen("ajustes", ({ payload }) => {
     state.settings = payload;
-    renderSchool();
     renderSidebar();
     renderSettings();
     renderSteps();
@@ -4271,21 +4266,13 @@ async function showCustomStep() {
   updateCreateArt();
   $("#new-versions").innerHTML = `<div class="version-empty">${t("Cargando versiones…", "Loading versions…")}</div>`;
   state.versions = await invoke("listar_versiones");
-  $("#new-school-hint").classList.add("hidden");
-  if (state.versions.school) {
-    $("#new-status").textContent = t("Modo escuela: las versiones que están en Google Drive y las que ya tienes.", "School mode: the versions on Google Drive and the ones you already have.");
+  const hint = $("#new-network-hint");
+  hint.classList.add("hidden");
+  if (state.versions.mirror) {
+    hint.innerHTML = `${icon("download")}<span>${escapeHtml(t("Usamos el espejo de Drive porque Mojang no está disponible en esta red.", "Using the Drive mirror because Mojang is unavailable on this network."))}</span>`;
+    hint.classList.remove("hidden");
+    $("#new-status").textContent = t("Las versiones del espejo y las que ya tienes en este equipo.", "Versions from the mirror and those already on this computer.");
   } else if (!state.versions.mojang) {
-    if (state.versions.drive?.length) {
-      // Sin Mojang (la escuela): las versiones de Drive sirven, y el modo escuela evita esperar a Mojang.
-      const hint = $("#new-school-hint");
-      hint.innerHTML = `${icon("school")}<span>${escapeHtml(t("No hay conexión con Mojang: estas versiones salen de Google Drive.", "There is no connection with Mojang: these versions come from Google Drive."))}</span><button class="btn small" id="new-school">${escapeHtml(t("Activar modo escuela", "Turn on school mode"))}</button>`;
-      hint.classList.remove("hidden");
-      $("#new-school").onclick = async () => {
-        await toggleSchool();
-        if (state.settings.schoolMode) showCustomStep();
-      };
-      return renderVersions();
-    }
     $("#new-status").textContent = `${state.versions.message} ${
       state.versions.drive?.length
         ? t("Puedes usar las versiones ya descargadas en este PC y las que están en Google Drive.", "You can use the versions already downloaded on this PC and the ones on Google Drive.")
@@ -4332,7 +4319,7 @@ function versionOptions() {
   const drive = new Set(v.drive ?? []);
   let options = v.mojang
     ? v.releases.map((r) => ({ ...r, installed: installed.has(r.id), drive: drive.has(r.id) }))
-    : v.school
+    : v.mirror
       ? [...v.releases, ...v.installed.filter((id) => !v.releases.some((r) => r.id === id)).map((id) => ({ id, type: "release", releaseTime: null }))].map((r) => ({
           ...r,
           installed: installed.has(r.id),
@@ -4412,7 +4399,7 @@ function updateCreateStatus() {
       ? t("Ya está descargada: la instancia se crea al momento.", "It is already downloaded: the instance is created right away.")
       : option.installed
         ? t(`Se descargará ${name} ${chosen} (tarda unos segundos).`, `${name} ${chosen} will be downloaded (it takes a few seconds).`)
-        : state.versions?.school
+        : state.versions?.mirror
           ? t(`Se descargará de Google Drive: Minecraft ${option.id} con su Java y ${name} ${chosen}.`, `It will be downloaded from Google Drive: Minecraft ${option.id} with its Java and ${name} ${chosen}.`)
           : t(`Se descargará Minecraft ${option.id} con su Java${option.drive ? " (de Google Drive)" : ""} y ${name} ${chosen}.`, `Minecraft ${option.id} will be downloaded with its Java${option.drive ? " (from Google Drive)" : ""} and ${name} ${chosen}.`);
 }
@@ -4634,7 +4621,6 @@ async function loadJava() {
 // ======================================================================
 function wireEvents() {
   $("#win-min").onclick = () => appWindow?.minimize();
-  $("#school-toggle").onclick = () => toggleSchool();
   // Los botones de la pantalla de carga (minimizar y cerrar, como los de arriba).
   for (const button of $$("[data-win]")) button.onclick = () => (button.dataset.win === "min" ? appWindow?.minimize() : $("#win-close").click());
   $("#win-max").onclick = () => appWindow?.toggleMaximize();
@@ -5287,36 +5273,6 @@ async function bootSplash() {
   return false;
 }
 
-/** El botón «Modo escuela» de arriba. */
-function renderSchool() {
-  const on = !!state.settings?.schoolMode;
-  const button = $("#school-toggle");
-  button.classList.toggle("on", on);
-  button.setAttribute("aria-pressed", String(on));
-  button.title = on
-    ? t("Modo escuela activado: Minecraft, los loaders y los servidores se bajan del Google Drive de Parabellum. Clic para desactivarlo.", "School mode on: Minecraft, loaders and servers download from Parabellum's Google Drive. Click to turn it off.")
-    : t("Modo escuela: Minecraft, los loaders y los servidores se bajan del Google Drive de Parabellum, sin intentar Mojang (para redes que lo bloquean, como la de la escuela).", "School mode: Minecraft, loaders and servers download from Parabellum's Google Drive without trying Mojang (for networks that block it, like the school's).");
-}
-
-async function toggleSchool() {
-  const on = !state.settings.schoolMode;
-  try {
-    state.settings = await invoke("modo_escuela", { activo: on });
-    state.versions = null;
-    state.loaderGames = {};
-    state.loaderVersions = {};
-    renderSchool();
-    if (on && state.page === "explore" && state.explore.kind !== "drive") selectExploreKind("drive");
-    toast(
-      on
-        ? t("Modo escuela activado: Minecraft, los loaders y los servidores se bajan de Google Drive.", "School mode on: Minecraft, loaders and servers download from Google Drive.")
-        : t("Modo escuela desactivado: se baja de Mojang y de los servidores de cada loader.", "School mode off: downloads come from Mojang and each loader's servers."),
-    );
-  } catch (error) {
-    toast(String(error), "error");
-  }
-}
-
 async function init() {
   // Esta versión arranca: lo primero, antes de tocar internet (ver arranque.rs).
   const failedUpdate = invoke("confirmar_arranque").catch(() => null);
@@ -5329,7 +5285,6 @@ async function init() {
   state.settings = initial.settings;
   state.instances = initial.instances;
   applyTheme(state.settings.theme);
-  renderSchool();
   invoke("lista_descargas").then(onDownloads, () => onDownloads([]));
   state.systemRam = initial.systemRamGb;
   state.version = initial.version;
@@ -5367,6 +5322,20 @@ async function init() {
   const resync = async () => {
     if (Date.now() - lastSync < 4000) return;
     lastSync = Date.now();
+    await invoke("actualizar_red").catch(() => {});
+    state.versions = null;
+    state.loaderGames = {};
+    state.loaderVersions = {};
+    state.explore.versionsLoaded = false;
+    if (state.explore.resolvedSource) {
+      state.explore.resolvedSource = null;
+      state.explore.categories.clear();
+      if (state.page === "explore" && state.explore.kind !== "drive") {
+        renderExploreFilters();
+        loadCategories(state.explore.kind);
+        runExplore();
+      }
+    }
     try {
       state.social = await invoke("estado_social");
       chatExperience.syncClock();
@@ -5469,7 +5438,7 @@ function savedSource() {
 }
 
 /** Dónde se busca en la pestaña de ahora: CurseForge no tiene data packs que Parabellum instale. */
-const exploreSource = () => (state.explore.kind === "datapack" ? "modrinth" : state.explore.source);
+const exploreSource = () => (state.explore.kind === "datapack" ? "modrinth" : state.explore.resolvedSource ?? state.explore.source);
 
 function installLabel(instance) {
   return instanceLabel(instance);
@@ -5514,6 +5483,7 @@ async function setExploreTarget(id) {
 /** Abre Explorar para agregar contenido a una instancia (desde su pestaña Contenido). */
 function openExploreFor(instanceId, contentKind) {
   state.explore.kind = contentToExplore[contentKind] ?? "mod";
+  state.explore.resolvedSource = null;
   state.explore.categories.clear();
   navigate("explore");
   setExploreTarget(instanceId);
@@ -5522,7 +5492,11 @@ function openExploreFor(instanceId, contentKind) {
 
 function selectExploreKind(kind) {
   const e = state.explore;
-  if (e.kind !== kind) e.categories.clear();
+  if (e.kind !== kind) {
+    e.categories.clear();
+    e.resolvedSource = null;
+  }
+  ++e.requestId;
   e.kind = kind;
   for (const tab of $$("#explore-kinds .tab[data-kind]")) tab.classList.toggle("active", tab.dataset.kind === kind);
   $("#explore-search").placeholder = exploreKinds[kind].placeholder;
@@ -5608,6 +5582,13 @@ async function loadCategories(kind) {
 let exploreTimer = null;
 function queueExplore() {
   clearTimeout(exploreTimer);
+  if (state.explore.resolvedSource) {
+    state.explore.resolvedSource = null;
+    state.explore.categories.clear();
+    renderExploreFilters();
+    loadCategories(state.explore.kind);
+  }
+  ++state.explore.requestId;
   exploreTimer = setTimeout(() => runExplore(), 280);
 }
 
@@ -5615,6 +5596,7 @@ async function runExplore(append = false) {
   const e = state.explore;
   if (e.kind === "drive") return renderDrive();
   const id = ++e.requestId;
+  const source = exploreSource();
   const instance = exploreTarget();
   const modpack = e.kind === "modpack";
   const loaders = modpack ? (e.loader ? [e.loader] : []) : e.kind !== "mod" ? [] : instance ? modLoadersFor(instance) : e.loader ? [e.loader] : [];
@@ -5623,23 +5605,30 @@ async function runExplore(append = false) {
   $("#explore-more").disabled = true;
   try {
     const result = await invoke("buscar_contenido", {
-      busqueda: { query: e.query, kind: e.kind, loaders, gameVersion, categories: [...e.categories], sort: e.sort, offset: append ? e.hits.length : 0, source: exploreSource() },
+      busqueda: { query: e.query, kind: e.kind, loaders, gameVersion, categories: [...e.categories], sort: e.sort, offset: append ? e.hits.length : 0, source },
     });
     if (id !== e.requestId) return;
+    if (result.source === "drive") {
+      if (result.fallback) toast(result.fallback);
+      return selectExploreKind("drive");
+    }
+    if (result.source && result.source !== source) {
+      e.resolvedSource = result.source;
+      e.categories.clear();
+      append = false;
+      renderExploreFilters();
+      loadCategories(e.kind);
+      if (result.fallback) toast(result.fallback);
+    }
     e.hits = append ? [...e.hits, ...result.hits] : result.hits;
     e.total = result.total;
     renderExploreResults(append ? e.hits.length - result.hits.length : 0);
   } catch (error) {
     if (id !== e.requestId) return;
-    if (exploreSource() === "modrinth" && /No se puede conectar con Modrinth|Cannot connect to Modrinth/.test(String(error)) && !e.autoDrive) {
-      e.autoDrive = true;
-      toast(t("Modrinth está bloqueado en esta red: aquí tienes los modpacks del catálogo de Drive.", "Modrinth is blocked on this network: here are the modpacks from the Drive catalog."));
-      return selectExploreKind("drive");
-    }
     $("#explore-results").innerHTML = `<div class="content-empty">${window.errorRecovery.panel(error)}</div>`;
     $("#explore-more").classList.add("hidden");
   } finally {
-    $("#explore-more").disabled = false;
+    if (id === e.requestId) $("#explore-more").disabled = false;
   }
 }
 
@@ -6096,8 +6085,9 @@ function wireExploreEvents() {
   };
   $("#explore-sources").onclick = (event) => {
     const chip = event.target.closest("[data-source]");
-    if (!chip || chip.dataset.source === state.explore.source) return;
+    if (!chip || chip.dataset.source === exploreSource()) return;
     state.explore.source = chip.dataset.source;
+    state.explore.resolvedSource = null;
     try {
       localStorage.setItem("parabellum-fuente", chip.dataset.source);
     } catch {
@@ -7733,7 +7723,6 @@ function demoInvoke(command, args = {}) {
       { id: "launcher.download_limit_mb", label: "Límite de descarga (MB/s, 0 sin límite)", kind: "choice", min: null, max: null, options: [0, 1, 2, 5, 10, 20], since: "0.33.0", value: 0 },
       { id: "launcher.download_parallel", label: "Descargas a la vez", kind: "range", min: 1, max: 3, options: [], since: "0.33.0", value: 2 },
       { id: "launcher.game_panel", label: "Parabellum dentro del juego", kind: "bool", min: null, max: null, options: [], since: "0.33.0", value: true },
-      { id: "launcher.school_mode", label: "Modo escuela", kind: "bool", min: null, max: null, options: [], since: "0.33.0", value: false },
     ],
     applied: {},
     tickets: [
@@ -7754,7 +7743,7 @@ function demoInvoke(command, args = {}) {
       m("m000000000003", "f2", "Alex_mx", "texto", "Hola Dani, al paquete le falta memoria. Prueba con este ajuste y me dices.", now - 14e5),
       m("m000000000004", "f2", "Alex_mx", "tarjeta", "🛠 Ajuste propuesto: Memoria para el juego (GB) → 6", now - 13.9e5, { card: card("o000000000001", "launcher.ram_gb", 6) }),
       m("m000000000007", "f2", "Alex_mx", "tarjeta", "Renderizado → 8", now - 8e5, { card: { ...card("o000000000003", "minecraft.renderDistance", 8), scope: "instancia", target: { package: "parabellum-oficial", minecraft: "26.3", contentHash: "sha256:" + "a".repeat(64) } } }),
-      ...(player ? [] : [m("m000000000005", "f3", "Dani", "acuse", "✓ Ajuste aplicado en mi PC", now - 12e5, { ack: { op: "o000000000001", result: "aplicada" } }), m("m000000000006", "f2", "Alex_mx", "tarjeta", "🛠 Ajuste propuesto: Modo escuela → Activado", now - 6e5, { card: card("o000000000002", "launcher.school_mode", true) })]),
+      ...(player ? [] : [m("m000000000005", "f3", "Dani", "acuse", "✓ Ajuste aplicado en mi PC", now - 12e5, { ack: { op: "o000000000001", result: "aplicada" } }), m("m000000000006", "f2", "Alex_mx", "tarjeta", "🛠 Ajuste propuesto: Parabellum dentro del juego → Activado", now - 6e5, { card: card("o000000000002", "launcher.game_panel", true) })]),
     ];
   };
   if (command === "soporte") return later({ staff: !player, tickets: player ? sd.tickets.filter((x) => x.by === "f3") : sd.tickets }, 300);
@@ -7852,7 +7841,7 @@ function demoInvoke(command, args = {}) {
   if (command === "precargar_paquete") return Promise.resolve(false);
   if (command === "estado_canal") return Promise.resolve({ channel: state.settings.updateChannel ?? "estable", backTo: null });
   if (command === "canal_actualizaciones") return Promise.resolve({ ...state.settings, updateChannel: args.canal });
-  if (command === "modo_escuela") return Promise.resolve({ ...state.settings, schoolMode: args.activo });
+  if (command === "actualizar_red") return Promise.resolve(null);
   if (command === "ajustes_descargas") return Promise.resolve(Object.assign(settings, { downloadParallel: args.simultaneas, downloadLimitMb: args.limite }));
   if (["duplicar_instancia", "eliminar_instancia", "activar_contenido", "eliminar_contenido", "detener", "agregar_contenido", "elegir_contenido", "cambiar_loader"].includes(command))
     return Promise.reject("Modo demostración: esta acción solo funciona en Parabellum.exe.");

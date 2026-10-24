@@ -48,6 +48,7 @@ jobs:
         working-directory: .
         run: |
           node pruebas/compartir-ui.cjs
+          node pruebas/red-ui.cjs
           python3 puente-portal/test_portal.py
 
       - name: Compilar y empaquetar (Parabellum.app y .dmg)

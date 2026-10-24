@@ -618,6 +618,10 @@ async fn vanilla_json(minecraft: &str, paths: &Paths) -> Result<Value, String> {
     if let Some(json) = std::fs::read_to_string(paths.version_json(minecraft)).ok().and_then(|t| serde_json::from_str(&t).ok()) {
         return Ok(json);
     }
+    if crate::red::alternative(crate::red::Service::Mojang).await {
+        crate::install_vanilla(minecraft, paths, |_, _| {}).await?;
+        return serde_json::from_str(&std::fs::read_to_string(paths.version_json(minecraft)).map_err(|e| e.to_string())?).map_err(|e| e.to_string());
+    }
     let release = mojang::list().await?.into_iter().find(|r| r.id == minecraft).ok_or(t!("Mojang no tiene la versión {minecraft}.", "Mojang does not have version {minecraft}."))?;
     serde_json::from_str(&download::get_text(&release.url).await.map_err(|_| mojang::unavailable())?).map_err(|e| e.to_string())
 }
@@ -671,6 +675,12 @@ async fn build(
     let major = java_major(instance, &version);
     {
         let progress = progress.clone();
+        if java_executable(major, paths).is_none() && crate::red::alternative(crate::red::Service::Mojang).await {
+            crate::install_vanilla(&instance.minecraft_version, paths, progress.clone()).await?;
+            if java_executable(major, paths).is_none() {
+                return Err(t!("Java {major} no está disponible en el espejo de Drive.", "Java {major} is unavailable in the Drive mirror."));
+            }
+        }
         mojang::ensure_java(major, paths, move |stage, fraction| progress(stage, 0.02 + 0.1 * fraction)).await?;
     }
     let java = java_executable(major, paths).ok_or(t!("Falta Java {major}.", "Java {major} is missing."))?;
@@ -749,7 +759,7 @@ async fn build(
 
 // ================= Software del servidor
 
-/// El software del servidor. En modo escuela, del espejo de Google Drive; si no, de Mojang y del loader,
+/// El software del servidor. Con restricción de red, del espejo de Google Drive; si no, de Mojang y del loader,
 /// y si no responden, del espejo. Del espejo puede venir otra versión del loader (la más nueva que tenga
 /// para esa versión de Minecraft): queda en `config`.
 async fn software(
@@ -766,12 +776,12 @@ async fn software(
         let wanted = wanted.clone();
         async move { crate::espejo::install_server(&minecraft, wanted.as_ref().map(|(l, v)| (*l, v.as_str())), &folder, &paths, progress).await }
     };
-    let found = if crate::espejo::school_mode() {
+    let found = if crate::red::alternative(loader.map(crate::red::loader).unwrap_or(crate::red::Service::Mojang)).await {
         let found = from_mirror(progress.clone()).await?;
         if found.is_none() {
             return Err(t!(
-                "El servidor de {} {} no está en Google Drive. Desactiva el modo escuela (con internet) o pide a quien publica que lo suba.",
-                "The {} {} server is not on Google Drive. Turn off school mode (with internet) or ask whoever publishes to upload it.",
+                "El servidor de {} {} no está en el espejo de Drive. Reintenta desde otra red o pide a quien publica que lo suba.",
+                "The {} {} server is not in the Drive mirror. Retry from another network or ask the publisher to upload it.",
                 config.loader,
                 config.minecraft
             ));

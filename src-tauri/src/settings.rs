@@ -48,9 +48,6 @@ pub struct Settings {
     pub download_parallel: u32,
     /// Límite de velocidad de las descargas en MB/s (0 = sin límite).
     pub download_limit_mb: f64,
-    /// Modo escuela: Minecraft, los loaders y los servidores se bajan del espejo de Google Drive
-    /// (espejo.rs) y no se intenta Mojang ni los servidores de los loaders.
-    pub school_mode: bool,
     /// Canal de actualizaciones: "estable" o "pruebas" (ver canal.rs).
     pub update_channel: String,
 }
@@ -106,7 +103,6 @@ impl Default for Settings {
             favorites_owner: None,
             download_parallel: 1,
             download_limit_mb: 0.0,
-            school_mode: false,
             update_channel: crate::canal::STABLE.into(),
         }
     }
@@ -231,6 +227,14 @@ pub fn dashed(uuid: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn modo_escuela_antiguo_no_se_conserva() {
+        let settings: Settings = serde_json::from_str(r#"{"schoolMode":true,"ramGb":6}"#).unwrap();
+        assert_eq!(settings.ram_gb, 6);
+        let saved = serde_json::to_value(settings).unwrap();
+        assert!(saved.get("schoolMode").is_none());
+    }
 
     #[test]
     fn offline_uuid_matches_minecraft() {

@@ -27,14 +27,14 @@ const CDN: &str = "https://cdn.modrinth.com/";
 const INDEX_FILE: &str = "modrinth.json";
 pub fn unavailable() -> String {
     t!(
-        "No se puede conectar con Modrinth: esta red lo bloquea y el puente de Parabellum tampoco respondió.",
-        "Cannot connect to Modrinth: this network blocks it and the Parabellum bridge did not answer either."
+        "No se puede conectar con Modrinth. Comprueba la conexión y vuelve a intentarlo.",
+        "Cannot connect to Modrinth. Check the connection and try again."
     )
 }
 
 // ================= HTTP
 
-/// Por dónde se llega a Modrinth en esta sesión (se decide con la primera petición).
+/// Última ruta realmente utilizada; la detección no queda fijada a toda la sesión.
 static ROUTE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(ROUTE_UNKNOWN);
 const ROUTE_UNKNOWN: u8 = 0;
 const ROUTE_DIRECT: u8 = 1;
@@ -56,31 +56,29 @@ fn filtered(response: &reqwest::Response) -> bool {
     response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|t| t.contains("html"))
 }
 
-/// Primero directo a Modrinth. Si la red no deja (no conecta, el filtro corta la conexión o contesta él),
-/// por el puente, y la sesión sigue por ahí. En modo escuela, el puente primero. Si el puente falla,
-/// directo como último intento (otra red, o el puente caído).
+/// Directo salvo restricción comprobada. Los errores del proveedor no habilitan el puente.
 async fn send(build: impl Fn(&str) -> reqwest::RequestBuilder) -> Result<Value, String> {
     use std::sync::atomic::Ordering::Relaxed;
     let bridge = bridge();
-    let route = ROUTE.load(Relaxed);
-    let bridge_first = bridge.is_some() && (route == ROUTE_BRIDGE || (route == ROUTE_UNKNOWN && crate::espejo::school_mode()));
-    let mut order: Vec<(&str, u8)> = vec![(API, ROUTE_DIRECT)];
-    if let Some(bridge) = bridge.as_deref() {
-        order.insert(if bridge_first { 0 } else { 1 }, (bridge, ROUTE_BRIDGE));
-    }
-    for (i, (base, kind)) in order.iter().enumerate() {
-        let mut request = build(base).header(reqwest::header::USER_AGENT, USER_AGENT);
-        // Sin saber todavía si esta red deja pasar: hay filtros que no rechazan, solo no contestan.
-        if *kind == ROUTE_DIRECT && i == 0 && route == ROUTE_UNKNOWN && order.len() > 1 {
-            request = request.timeout(std::time::Duration::from_secs(8));
+    let restricted = crate::red::alternative(crate::red::Service::Modrinth).await;
+    let first = if restricted { bridge.as_deref().unwrap_or(API) } else { API };
+    let send = |base: &str| build(base).header(reqwest::header::USER_AGENT, USER_AGENT)
+        .timeout(std::time::Duration::from_secs(20));
+    let mut response = send(first).send().await;
+    if first == API && response.as_ref().map_or(true, filtered) {
+        // La red pudo cambiar desde la última comprobación.
+        crate::red::invalidate();
+        if crate::red::alternative(crate::red::Service::Modrinth).await {
+            if let Some(bridge) = bridge.as_deref() { response = send(bridge).send().await; }
         }
-        match request.send().await {
+    }
+    match response {
             Ok(response) if !filtered(&response) => {
-                ROUTE.store(*kind, Relaxed);
+                let via_bridge = response.url().as_str().starts_with(bridge.as_deref().unwrap_or("\0"));
+                ROUTE.store(if via_bridge { ROUTE_BRIDGE } else { ROUTE_DIRECT }, Relaxed);
                 return answer(response).await;
             }
-            _ => continue,
-        }
+            _ => (),
     }
     Err(unavailable())
 }
@@ -224,6 +222,8 @@ pub struct Hit {
 pub struct SearchResults {
     pub hits: Vec<Hit>,
     pub total: u64,
+    pub source: String,
+    pub fallback: Option<String>,
 }
 
 pub const PAGE_SIZE: u32 = 20;
@@ -276,7 +276,7 @@ pub async fn search(query: &SearchQuery) -> Result<SearchResults, String> {
             server_side: text(hit, "server_side"),
         })
         .collect();
-    Ok(SearchResults { hits, total: result["total_hits"].as_u64().unwrap_or(0) })
+    Ok(SearchResults { hits, total: result["total_hits"].as_u64().unwrap_or(0), source: "modrinth".into(), fallback: None })
 }
 
 #[derive(Serialize, Debug)]

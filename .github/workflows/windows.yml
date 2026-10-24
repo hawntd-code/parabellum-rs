@@ -47,4 +47,5 @@ jobs:
         working-directory: .
         run: |
           node pruebas/compartir-ui.cjs
+          node pruebas/red-ui.cjs
           python puente-portal/test_portal.py

@@ -286,7 +286,6 @@ function settingEffect(id) {
       "launcher.download_limit_mb": t("Desde la próxima descarga.", "From the next download."),
       "launcher.download_parallel": t("Desde la próxima descarga.", "From the next download."),
       "launcher.game_panel": t("La próxima vez que abras el juego.", "The next time you open the game."),
-      "launcher.school_mode": t("Al instante: las descargas van por el espejo de Drive.", "Right away: downloads go through the Drive mirror."),
     }[id] ?? t("Al instante.", "Right away.")
   );
 }
