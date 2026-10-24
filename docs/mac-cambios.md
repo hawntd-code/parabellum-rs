@@ -541,6 +541,15 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-24 · Evitar que el desafío del portal bloquee la descarga
+
+- Las conexiones nuevas esperan un cupo (hasta 45 s, con 32 manejadores locales acotados), en
+  lugar de recibir inmediatamente un error de proxy si Chromium conserva seis conexiones.
+- Los túneles sin bytes en ninguna dirección durante 15 s se cierran y liberan el cupo; una
+  transferencia activa renueva su actividad. Se mantienen seis túneles activos por ventana y
+  ocho globales en el servicio, sin ampliar la capacidad pública autorizada.
+- Mac: nada adicional al recompilar; requiere la misma comprobación nativa pendiente de WebKit.
+
 ### 2026-10-24 · Recursos del portal actual de CurseForge
 
 - La comprobación visual identificó `static-beta.curseforge.com` como origen oficial de CSS y

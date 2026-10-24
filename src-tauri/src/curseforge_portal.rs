@@ -2,7 +2,7 @@
 //! remoto transporta bytes cifrados y solo permite los hosts del portal, nunca la API ni otras webs.
 use std::{path::PathBuf, time::Duration};
 use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream}, sync::{watch, Semaphore}};
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
 
 pub const ENDPOINT: &str = "https://curseforge-portal-86460886589.us-central1.run.app";
 const HOSTS: &[&str] = &["curseforge.com", "www.curseforge.com", "static.curseforge.com", "static-beta.curseforge.com", "media.forgecdn.net",
@@ -66,21 +66,22 @@ pub async fn start(log_path: PathBuf) -> Result<PortalProxy, String> {
     let (stop, mut closed) = watch::channel(false);
     tauri::async_runtime::spawn(async move {
         let limit = Arc::new(Semaphore::new(6));
+        let waiting = Arc::new(Semaphore::new(32));
         loop {
             tokio::select! {
                 _ = closed.changed() => break,
                 accepted = listener.accept() => {
                     let Ok((mut stream, _)) = accepted else { break };
-                    let Ok(permit) = limit.clone().try_acquire_owned() else {
+                    let Ok(permit) = waiting.clone().try_acquire_owned() else {
                         let _ = stream.write_all(b"HTTP/1.1 503 Busy\r\nConnection: close\r\n\r\n").await;
                         continue;
                     };
-                    let (client, mut closed, path) = (client.clone(), closed.clone(), log_path.clone());
+                    let (client, mut closed, path, limit) = (client.clone(), closed.clone(), log_path.clone(), limit.clone());
                     tauri::async_runtime::spawn(async move {
                         let _permit = permit;
                         tokio::select! {
                             _ = closed.changed() => (),
-                            _ = tokio::time::timeout(Duration::from_secs(900), tunnel(stream, client, path)) => (),
+                            _ = tokio::time::timeout(Duration::from_secs(900), tunnel(stream, client, path, limit)) => (),
                         }
                     });
                 }
@@ -90,7 +91,7 @@ pub async fn start(log_path: PathBuf) -> Result<PortalProxy, String> {
     Ok(PortalProxy { url, stop })
 }
 
-async fn tunnel(mut stream: TcpStream, client: reqwest::Client, path: PathBuf) -> Result<(), String> {
+async fn tunnel(mut stream: TcpStream, client: reqwest::Client, path: PathBuf, limit: Arc<Semaphore>) -> Result<(), String> {
     let request = tokio::time::timeout(Duration::from_secs(10), async {
         let mut header = Vec::new();
         while header.len() < 8192 {
@@ -103,6 +104,16 @@ async fn tunnel(mut stream: TcpStream, client: reqwest::Client, path: PathBuf) -
         let _ = stream.write_all(b"HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n").await;
         return Err("Destino no permitido".into());
     };
+    // Chromium conserva conexiones de la comprobación humana y abre más para CSS y la descarga.
+    // Esperar un cupo evita convertir esa ráfaga normal en un error de proxy irrecuperable.
+    let _active = match tokio::time::timeout(Duration::from_secs(45), limit.acquire_owned()).await {
+        Ok(Ok(permit)) => permit,
+        _ => {
+            log(&path, host, "sin-cupo");
+            let _ = stream.write_all(b"HTTP/1.1 503 Busy\r\nConnection: close\r\n\r\n").await;
+            return Err("Sin cupo para conectar".into());
+        }
+    };
     let opened = client.post(format!("{ENDPOINT}/open")).json(&serde_json::json!({"host": host})).send().await;
     let opened = match opened.and_then(reqwest::Response::error_for_status) {
         Ok(response) => response,
@@ -114,11 +125,14 @@ async fn tunnel(mut stream: TcpStream, client: reqwest::Client, path: PathBuf) -
     stream.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await.map_err(|e| e.to_string())?;
     log(&path, host, "conectado");
     let (mut reader, mut writer) = stream.into_split();
+    let started = tokio::time::Instant::now();
+    let activity = AtomicU64::new(0);
     let send = async {
         let mut bytes = vec![0; 65536];
         loop {
             let size = reader.read(&mut bytes).await.map_err(|e| e.to_string())?;
             if size == 0 { return Ok::<_, String>(()); }
+            activity.store(started.elapsed().as_millis() as u64, Ordering::Relaxed);
             client.post(format!("{ENDPOINT}/send")).header("X-Portal-Session", key).body(bytes[..size].to_vec())
                 .send().await.and_then(reqwest::Response::error_for_status).map_err(|e| e.to_string())?;
         }
@@ -129,10 +143,19 @@ async fn tunnel(mut stream: TcpStream, client: reqwest::Client, path: PathBuf) -
             if response.status() == reqwest::StatusCode::GONE { return Ok::<_, String>(()); }
             let bytes = response.error_for_status().map_err(|e| e.to_string())?.bytes().await.map_err(|e| e.to_string())?;
             if bytes.len() > 65536 { return Err("Respuesta demasiado grande".into()); }
+            if !bytes.is_empty() { activity.store(started.elapsed().as_millis() as u64, Ordering::Relaxed); }
             writer.write_all(&bytes).await.map_err(|e| e.to_string())?;
         }
     };
-    let result = tokio::select! { result = send => result, result = receive => result };
+    let idle = async {
+        loop {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            if (started.elapsed().as_millis() as u64).saturating_sub(activity.load(Ordering::Relaxed)) >= 15_000 {
+                return Ok::<_, String>(());
+            }
+        }
+    };
+    let result = tokio::select! { result = send => result, result = receive => result, result = idle => result };
     // Espera el cierre antes de devolver el diagnóstico: al terminar un CLI, las tareas en segundo
     // plano se cancelan. El Drop sigue cubriendo el cierre de ventana y la cancelación del túnel.
     remote.close().await;
