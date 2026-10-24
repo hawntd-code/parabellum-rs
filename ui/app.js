@@ -548,9 +548,9 @@ function goForward() {
 function enterExplore() {
   const e = state.explore;
   fillTargetSelect($("#explore-instance"));
+  loadExploreVersions();
   if (e.initialized) return;
   e.initialized = true;
-  loadExploreVersions();
   if (e.target === null) {
     const modded = [...state.instances]
       .filter((i) => i.loader !== "Vanilla")

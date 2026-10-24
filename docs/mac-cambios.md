@@ -544,6 +544,9 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ### 2026-10-24 · 0.39.2: rutas automáticas y Drive al final
 
+- Seguimiento de interfaz: al volver a Explorar se renueva la lista de versiones si cambió la red.
+  Las tarjetas históricas de modo escuela explican la selección automática y ya no ofrecen acciones.
+  Mac: mismo comportamiento al recompilar, sin adaptación adicional.
 - Se retira el interruptor y el ajuste compartible de modo escuela. El valor antiguo se ignora al
   cargar los ajustes. Drive queda después de Modpacks; el portal elige su conexión automáticamente.
 - CurseForge conserva su API en Cloud. Modrinth usa su API directa, y solo pasa al puente tras un

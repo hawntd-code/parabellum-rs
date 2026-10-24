@@ -312,7 +312,8 @@ function cardHtml(m, acks) {
     const valid = c.v === 1 && c.kind === "setting" && ((c.scope === "launcher" && c.setting.startsWith("launcher.")) || (c.scope === "instancia" && c.setting.startsWith("minecraft.") && c.target)) && c.official === support.open?.community;
     const known = community.detail?.id === support.open?.community;
     const stale = known && !isStaffMember(community.detail.members.find((x) => x.uid === m.from));
-    if (!valid) actions = `<span class="cm-chip warn">${icon("alert")}${t("Esta tarjeta no es válida", "This card is not valid")}</span>`;
+    if (c.setting === "launcher.school_mode") actions = `<span class="cm-chip">${icon("check")}${t("La conexión ahora se resuelve automáticamente.", "The connection is now selected automatically.")}</span>`;
+    else if (!valid) actions = `<span class="cm-chip warn">${icon("alert")}${t("Esta tarjeta no es válida", "This card is not valid")}</span>`;
     else if (record?.result === "aplicada")
       actions = `<span class="cm-chip ok">${icon("check")}${t("Aplicada en este PC", "Applied on this PC")}</span><button class="btn small" data-sp-undo="${escapeHtml(c.op)}" ${busy ? "disabled" : ""}>${icon("reply")}${t("Deshacer", "Undo")}</button>`;
     else if (["pendiente", "pendiente-deshacer"].includes(record?.result)) actions = `<span class="cm-chip">${icon("clock")}${record.result === "pendiente" ? t("Se aplicará al cerrar Minecraft", "Will apply when Minecraft closes") : t("Se deshará al cerrar Minecraft", "Will undo when Minecraft closes")}</span>${record.result === "pendiente" ? `<button class="btn small" data-sp-undo="${escapeHtml(c.op)}" ${busy ? "disabled" : ""}>${t("Cancelar", "Cancel")}</button>` : ""}`;

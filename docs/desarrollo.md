@@ -239,7 +239,7 @@ Para comprobar el portal real con una instancia Fabric 1.21.1 de prueba:
 4. Cierra y vuelve a abrir con un archivo aún pendiente: debe permitir continuar. **Ya lo descargué**
    permite seleccionar otra copia; si no coincide con la huella esperada, el pendiente se conserva.
 
-## Publicar una versión
+## Conexión automática
 
 Desde el candidato **0.39.2** la conexión es automática. La API de CurseForge conserva su servicio
 de Cloud; Modrinth usa el origen directo salvo restricción comprobada. Minecraft, Java y loaders
@@ -251,6 +251,8 @@ en una carpeta de prueba. El informe queda en `datos/logs/comando.txt`. `Direct`
 `Restricted` habilita el respaldo de ese servicio, `Offline` no confirma internet y `Unavailable`
 indica fallo del proveedor. La decisión caduca en 60 segundos y se invalida al volver al launcher.
 Pruebas y límites: [0.39.2-red-automatica.md](0.39.2-red-automatica.md).
+
+## Publicar una versión
 
 1. **Drive** (lo hace Juan): Ajustes › Acerca de › «Publicar esta versión» deja `_parabellum` con
    `Parabellum-<versión>.zip`, su `.json` y `LEEME.txt`; «Subir a Drive» la sube y manda la anterior a la

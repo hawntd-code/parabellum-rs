@@ -5,6 +5,7 @@ const vm = require('node:vm');
 const app = fs.readFileSync('ui/app.js', 'utf8');
 const source = app.match(/^const exploreSource = .*$/m)[0];
 const search = app.slice(app.indexOf('async function runExplore('), app.indexOf('const modpackInstalled ='));
+const entering = app.slice(app.indexOf('function enterExplore()'), app.indexOf('/** Cambiar de tema'));
 const nodes = new Map();
 const events = [];
 const e = { kind: 'modpack', source: 'curseforge', query: 'ATM', categories: new Set(['cf:1']), loader: '', version: '', sort: 'relevance', hits: [], requestId: 0 };
@@ -13,12 +14,16 @@ const context = vm.createContext({
   $: id => { if (!nodes.has(id)) nodes.set(id, { classList: { add() {} }, innerHTML: '', disabled: false }); return nodes.get(id); },
   skeleton: { results: () => 'cargando' }, exploreTarget: () => null,
   renderExploreResults: from => events.push(['render', from]), renderExploreFilters() {}, loadCategories() {}, renderDrive() {},
+  fillTargetSelect() {}, loadExploreVersions: () => events.push(['versions']),
   toast: text => events.push(['toast', text]), selectExploreKind: kind => { e.kind = kind; ++e.requestId; events.push(['kind', kind]); },
   window: { errorRecovery: { panel: error => String(error) } },
 });
-vm.runInContext(source + '\n' + search, context);
+vm.runInContext(source + '\n' + search + '\n' + entering, context);
 const run = append => { context.append = append; return vm.runInContext('runExplore(append)', context); };
 (async () => {
+  e.initialized = true;
+  vm.runInContext('enterExplore()', context);
+  assert.ok(events.some(event => event[0] === 'versions'));
   context.invoke = async () => ({ source: 'curseforge', hits: [], total: 0 });
   await run(false);
   assert.equal(e.kind, 'modpack'); // Cero resultados no significa caída del proveedor.

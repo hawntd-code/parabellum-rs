@@ -8,9 +8,9 @@ const node = () => ({ addEventListener() {}, classList: { add() {}, remove() {},
 const context = vm.createContext({
   console, setTimeout, clearTimeout,
   window: { addEventListener() {}, dispatchEvent() {} }, document: { addEventListener() {} },
-  state: { instances: [{ id: "local", name: "Prueba" }], current: null, settings: { schoolMode: false } },
+  state: { instances: [{ id: "local", name: "Prueba" }], current: null, settings: {} },
   t: (es) => es, icon: (name) => `<svg>${name}</svg>`, escapeHtml: (value) => String(value).replaceAll("<", "&lt;").replaceAll(">", "&gt;"),
-  friendlyError: String, suggestsSchool: (text) => text.includes("Mojang bloqueado"),
+  friendlyError: String,
   invoke: () => new Promise(() => {}), listen: () => Promise.resolve(),
   $: (selector) => { if (!elements.has(selector)) elements.set(selector, node()); return elements.get(selector); },
   $$: () => [], community: { id: "c", detail: { id: "c", members: [{ uid: "me", you: true, role: "member" }, { uid: "staff", role: "admin" }] } },
@@ -25,6 +25,7 @@ assert.equal(recovery.present(recovery.capture("enviar_mensaje", { texto: "priva
 assert.equal(recovery.present(recovery.capture("contenido", { datos: "x".repeat(20000) }, "No respondió ⟦accion:reintentar⟧")).actions.length, 0);
 assert.equal(recovery.present(recovery.capture("contenido", {}, "Descarga cancelada")).actions.length, 0);
 assert.ok(!recovery.panel(text).includes("⟦"));
+assert.ok(!recovery.present("Mojang bloqueado ⟦accion:escuela⟧").actions.some(action => action.id === "escuela"));
 assert.equal(recovery.present(recovery.capture("verificar_instancia", { id: "local" }, "Java no está ⟦accion:recursos⟧ ⟦accion:carpeta⟧")).actions.length, 2);
 
 vm.runInContext(fs.readFileSync(root + "/ui/soporte.js", "utf8"), context);
@@ -46,5 +47,9 @@ run(`support.applied = {}; community.detail.members[1].role = "member";`);
 assert.ok(!run(`cardHtml(message,{})`).includes("data-sp-apply"));
 assert.equal(run(`settingValue("minecraft.fov",90)`), "90°");
 assert.equal(run(`settingValue("minecraft.graphics",2)`), "Fabulosos");
+run(`message.card = {...message.card, setting: "launcher.school_mode", scope: "launcher", target: null}; support.applied.o = {result: "aplicada"};`);
+assert.ok(run(`cardHtml(message,{})`).includes("automáticamente"));
+assert.ok(!run(`cardHtml(message,{})`).includes("data-sp-undo"));
+assert.ok(!run(`cardHtml(message,{})`).includes("data-sp-apply"));
 console.log("Recuperación: marcas ocultas, comandos permitidos, límites y cancelación: OK");
 console.log("Tarjetas: aplicar, pendiente, cancelar, deshacer, conflicto y rol actual: OK");
