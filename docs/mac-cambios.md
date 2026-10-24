@@ -541,6 +541,14 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-24 · Recursos del portal actual de CurseForge
+
+- La comprobación visual identificó `static-beta.curseforge.com` como origen oficial de CSS y
+  JavaScript. Se agrega explícitamente al cliente CONNECT y al servicio; se mantienen los límites,
+  HTTPS y la lista cerrada de destinos. Pruebas de contrato para ese host en Rust y Python.
+- Mac: recompilar para incluir el dominio; nada adicional al contrato existente. La validación
+  nativa de WebKit en macOS 14+ sigue pendiente en un equipo Mac.
+
 ### 2026-10-24 · Relevo del portal: cerrar sesiones y limitar cuerpos HTTP
 
 - El cliente espera el cierre remoto antes de terminar un diagnóstico; el servidor libera conexiones

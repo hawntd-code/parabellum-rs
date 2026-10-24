@@ -56,6 +56,13 @@ class PortalTest(unittest.TestCase):
         remote.close()
         self.assertEqual(portal.portal_curseforge(Request("/receive", key=key))[1], 410)
 
+    def test_recursos_oficiales_del_portal_actual(self):
+        stream = unittest.mock.Mock()
+        with patch.object(portal.socket, "create_connection", return_value=stream) as connect:
+            response = portal.portal_curseforge(Request("/open", b'{"host":"static-beta.curseforge.com"}'))
+        self.assertEqual(response[1], 200)
+        connect.assert_called_once_with(("static-beta.curseforge.com", 443), timeout=15)
+
     def test_limite_y_caducidad(self):
         for n in range(portal.MAX_SESSIONS):
             portal.SESSIONS[str(n)] = portal.Tunnel(socket.socket())

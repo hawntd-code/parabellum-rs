@@ -5,7 +5,7 @@ use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream}, sy
 use std::sync::Arc;
 
 pub const ENDPOINT: &str = "https://curseforge-portal-86460886589.us-central1.run.app";
-const HOSTS: &[&str] = &["curseforge.com", "www.curseforge.com", "static.curseforge.com", "media.forgecdn.net",
+const HOSTS: &[&str] = &["curseforge.com", "www.curseforge.com", "static.curseforge.com", "static-beta.curseforge.com", "media.forgecdn.net",
     "mediafilez.forgecdn.net", "edge.forgecdn.net", "static.forgecdn.net", "static-assets.overwolf.com", "challenges.cloudflare.com"];
 
 pub struct PortalProxy {
@@ -194,6 +194,7 @@ mod tests {
     #[test]
     fn solo_connect_a_hosts_del_portal_y_puerto_443() {
         assert_eq!(host("CONNECT www.curseforge.com:443 HTTP/1.1\r\nHost: www.curseforge.com\r\n\r\n"), Some("www.curseforge.com"));
+        assert_eq!(host("CONNECT static-beta.curseforge.com:443 HTTP/1.1\r\n\r\n"), Some("static-beta.curseforge.com"));
         for target in ["127.0.0.1:443", "api.curseforge.com:443", "www.curseforge.com.ejemplo.com:443", "www.curseforge.com:80", "user@www.curseforge.com:443"] {
             assert_eq!(host(&format!("CONNECT {target} HTTP/1.1\r\n\r\n")), None);
         }

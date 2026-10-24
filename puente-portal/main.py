@@ -12,7 +12,7 @@ import time
 import functions_framework
 
 HOSTS = frozenset({
-    "curseforge.com", "www.curseforge.com", "static.curseforge.com",
+    "curseforge.com", "www.curseforge.com", "static.curseforge.com", "static-beta.curseforge.com",
     "media.forgecdn.net", "mediafilez.forgecdn.net", "edge.forgecdn.net",
     "static.forgecdn.net", "static-assets.overwolf.com", "challenges.cloudflare.com",
 })
