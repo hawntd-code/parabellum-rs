@@ -23,6 +23,15 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
+- **0.39.2:** última estable de Windows, publicada en Drive y confirmada por Juan el 2026-10-24.
+  El ZIP exacto de `_parabellum` está en [GitHub](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.39.2).
+  Incluye las correcciones de compartir CurseForge de la 0.39.1 y la conexión automática: API de
+  CurseForge en Cloud, respaldo CurseForge → Modrinth → Drive y Drive después de Modpacks, sin
+  interruptor de modo escuela. Código del exe `85a8256`; 164 pruebas Windows, 168 Mac y nueve
+  recorridos de red controlados pasados. Computer Use comprobó español/inglés, ambos temas y una
+  descarga exacta del portal directo. La red física de la escuela, dos equipos y WebKit nativo
+  continúan en seguimiento; no se dan por comprobados por confirmar la publicación.
+
 - **0.39.0:** publicada y funcionando, confirmado por Juan el 2026-10-23.
   La revisión `ffa9fc2` pasó 152 pruebas de Windows y 156 de Mac. Computer Use comprobó español/inglés,
   ambos temas y respaldo/restauración/recuperación de copia previa en Drive con un mundo sintético.
@@ -30,8 +39,8 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   paquete oficial. Son verificaciones específicas pendientes, independientes de la publicación confirmada.
   Mac requiere OAuth/Llavero, bloqueo de Java y restauración nativa.
   Juan agregó dos incidencias de CurseForge: portal incompleto en la escuela y pérdida de contenido al
-  compartir. Candidato [0.39.1](0.39.1-curseforge.md) preparado y probado en Windows el 2026-10-24;
-  falta validarlo desde la escuela y confirmar su publicación estable.
+  compartir. Las correcciones [0.39.1](0.39.1-curseforge.md), preparadas y probadas el 2026-10-24,
+  están incluidas en la 0.39.2 publicada.
 
 - **0.38.0:** publicada en Drive y GitHub, confirmada por Juan el 2026-10-23. Las escuchas comparten
   WebSocket con reconexión, renovación de sesión y respaldo SSE. No requiere reglas nuevas: las de
@@ -44,14 +53,15 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   resultados específicos.
 
 - Última revisión de los PR de Mac en Windows: 2026-10-20, PR #1 a #17 (todos mezclados).
-- **Publicado en Drive:** Windows **0.39.0**, confirmada por Juan el 2026-10-23;
-  código de la entrega en `ffa9fc2`.
+- **Publicado en Drive:** Windows **0.39.2**, confirmada por Juan el 2026-10-24;
+  código del ejecutable en `85a8256`.
   **Mac 0.33.0** desde el 2026-10-20 (Diego, compilada de `main` en `52de0a3`; ver «Versiones
   publicadas en Drive»).
   - A Mac le faltan las novedades de la 0.34.0 (E3), la 0.35.0 (paquete ligero y avisos de soporte),
-    la 0.36 (CurseForge), la 0.37.0 (chat y escuchas) y la 0.38.0 (WebSocket compartido).
+    la 0.36 (CurseForge), la 0.37.0 (chat y escuchas), la 0.38.0 (WebSocket compartido), la 0.39.0
+    (mundos y tarjetas de Minecraft) y las correcciones de CurseForge y red de la 0.39.1/0.39.2.
   - De lo propio de Mac, solo la notificación del vigía de soporte (`avisos::show`).
-  - Para alcanzar la estable de Windows, compilar Mac 0.39.0 de `main` en `ffa9fc2` o más nuevo y revisar
+  - Para alcanzar la estable de Windows, compilar Mac 0.39.2 de `main` en `85a8256` o más nuevo y revisar
     «Lo que queda por probar en Mac» (punto 0), el portal, el chat y WebSocket/respaldo. Las pruebas
     automáticas de Mac pasaron; falta su comprobación manual antes de publicarla.
   - Siguen pendientes las pruebas a mano de esa sección.
@@ -68,7 +78,7 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 La Mac 0.33.0 ya está publicada (trae lo de la 0.29.0 a la 0.33.0). Lo que falta probar a mano, en este
 orden:
 
-0. **Antes de publicar la Mac 0.35.0** (compilada de `main` en `84a59e8` o más nuevo):
+0. **Antes de publicar Mac al día con Windows 0.39.2** (compilada de `main` en `85a8256` o más nuevo):
    - `cargo test`: hay pruebas nuevas en `packs` (el paquete ligero) y `soporte` (el vigía).
    - **Paquete ligero.** Instala el paquete oficial de la comunidad de Juan desde Comunidades › Jugar en
      una carpeta de prueba (`PARABELLUM_ROOT`). Tiene que bajar «Bajando los mods de Modrinth…» y quedar
@@ -92,7 +102,7 @@ orden:
      Finder (Descargas), Safari y Chrome probado el 2026-10-18 (PR #16); desde «Recientes» no se puede
      (ver el PR #16).
    - Pregenerar un servidor Fabric y «Buscar el mod culpable» en una instancia con un mod roto.
-   - 0.30.0: la pantalla de carga, el botón «Modo escuela» y el chat (mandar, borrador, emojis,
+   - 0.30.0: la pantalla de carga y el chat (mandar, borrador, emojis,
      buscar, «está escribiendo…» con Juan).
 3. ~~**Código:** el `TODO(mac)` de `plataforma/macos/arrastre.rs`: `clipboard_image` con NSPasteboard
    (lo que la ventana no sabe pegar, como un archivo copiado en Finder).~~ — hecho en el PR #15, con
@@ -147,6 +157,15 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
+
+- **0.39.2** · 2026-10-24 · Publicada por Juan, confirmado por él. Código del exe `85a8256`;
+  ZIP exacto de `_parabellum`, 10 754 630 bytes, SHA-256
+  `4d989af455f7687bc546349d792691937ba14668603d14a4155d6be44737e629`.
+  [GitHub](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.39.2).
+  - Conexión automática, API de CurseForge en Cloud y respaldo CurseForge → Modrinth → Drive.
+  - Drive después de Modpacks y retiro del interruptor de modo escuela.
+  - Instancias compartidas con proveedor y versión exactos; portal con selección automática de conexión.
+  - No requiere reglas nuevas. Siguen pendientes las pruebas físicas de escuela/dos equipos y Mac nativo.
 
 - **0.39.0** · 2026-10-23 · Publicada por Juan y funcionando, confirmado por él. Código `ffa9fc2`;
   ZIP exacto de `_parabellum`, 10 573 870 bytes, SHA-256
@@ -542,6 +561,15 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-24 · Publicación estable de Windows 0.39.2
+
+- Juan confirmó la publicación en Drive. GitHub recibe el ZIP exacto de `_parabellum` como
+  `v0.39.2` estable; README, roadmap y planes actualizados. La 0.39.1 queda integrada en esta entrega.
+- No se cambia el ejecutable ni se repiten las pruebas ya pasadas: se verifican ZIP, manifiesto y
+  huellas de la publicación. [Resultados y límites](0.39.2-red-automatica.md).
+- Mac: nada de código nuevo; recompilar desde `85a8256` o más nuevo y completar su revisión nativa
+  antes de publicar. La confirmación de Windows no publica una versión de Mac.
+
 ### 2026-10-24 · 0.39.2: rutas automáticas y Drive al final
 
 - Seguimiento de interfaz: al volver a Explorar se renueva la lista de versiones si cambió la red.
@@ -557,11 +585,11 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   si coinciden SHA-1 y tamaño; la receta del pack y los archivos manuales mantienen su origen.
 - Mac: recompilar y probar pestañas/portal en WebKit. No cambia el contrato de plataforma; sigue
   vigente el requisito de macOS 14 para la conexión alternativa del portal. Validación y límites
-  en [0.39.2-red-automatica.md](0.39.2-red-automatica.md). Candidato, sin publicación estable.
+  en [0.39.2-red-automatica.md](0.39.2-red-automatica.md). Publicación estable confirmada después por Juan.
 - Validación: 164 pruebas Windows y 168 Mac sin fallos; nueve recorridos del exe con bloqueos por
   proceso y reposición exacta desde Mojang/Drive. Computer Use comprobó el portal directo y la
   descarga de More Overlays con huella correcta, español oscuro e inglés claro.
-  Copia habitual Windows actualizada, con respaldo. [Borrador de pruebas](https://github.com/hawntd-code/parabellum-rs/releases/tag/untagged-09a6132cee8818d5f212).
+  Copia habitual Windows actualizada, con respaldo. [Entrega publicada](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.39.2).
 
 ### 2026-10-24 · Entrega 0.39.1 comprobada y preparada
 

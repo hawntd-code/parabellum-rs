@@ -4,10 +4,11 @@ Pedido de Juan el 2026-10-20, después de publicar la 0.34.0 (E3). Sigue a [plan
 que tiene el porqué de cada etapa. Aquí está el **cómo**: qué se hace, en qué archivos, con qué pruebas y
 en qué orden.
 
-**Estado 2026-10-24:** Juan confirmó la 0.39.0 publicada y funcionando. El candidato
-[0.39.1 de CurseForge](0.39.1-curseforge.md) está preparado: ambas descargas del portal alternativo
-pasaron en Windows, ATM10SKY llegó al menú y las pruebas automáticas de Windows/Mac pasaron.
-Falta validarlo desde la escuela y confirmar la publicación antes de E6; F2 → O sigue al final.
+**Estado 2026-10-24:** Juan confirmó la **0.39.2 publicada**; es la última estable de Windows.
+Incluye [las correcciones de CurseForge de la 0.39.1](0.39.1-curseforge.md) y la
+[conexión automática de la 0.39.2](0.39.2-red-automatica.md). Pasaron 164 pruebas Windows, 168 Mac,
+nueve recorridos de red controlados y Computer Use. La red física de la escuela, dos equipos y
+WebKit nativo continúan en seguimiento. Lo siguiente del plan es E6; F2 → O sigue al final.
 
 **Entra:**
 1. el zip del paquete que tarda ~30 s;
@@ -354,9 +355,10 @@ Incluye copias, revisiones, restauración y conflictos en la misma 0.39.0, junto
   otra; jugar en las dos sin subir y comprobar que sale el conflicto.
 - **Mundo grande (2 GB):** el tiempo, la memoria (sin cargar el zip entero) y que la ventana no se trabe.
 
-**Va primero al canal de pruebas como 0.39.0.** Respaldar, restaurar y resolver conflictos se
-implementan y verifican por etapas internas, pero forman parte de una sola entrega con los botones
-de error y las tarjetas de Minecraft. No se dividen en versiones 0.40.0 y 0.41.0.
+**Se preparó en el canal de pruebas y se publicó como 0.39.0.** Respaldar, restaurar y resolver
+conflictos se implementaron por etapas internas dentro de una sola entrega con los botones de
+error y las tarjetas de Minecraft. Se conservan en la 0.39.2 publicada; las comprobaciones físicas
+pendientes siguen en seguimiento. No se dividen en versiones 0.40.0 y 0.41.0.
 
 ---
 
@@ -453,7 +455,9 @@ instancia, que viven en `options.txt`.
 | **0.36.2** | Asistente con el portal oficial de CurseForge, recepción verificada y continuación de pendientes; probado por Juan | — | GitHub publicado; incluida en la 0.37.0 de Drive |
 | **0.37.0** | 3, paso 1, perfiles, escritura y galería; publicada en Drive y GitHub | `chatInbox`, `presenceInbox`, `typing`, `users/$uid/streamVersion` | Publicación y reglas funcionando confirmadas por Juan el 2026-10-23 |
 | **0.38.0** | 3, paso 2 (WebSocket compartido, renovación y respaldo SSE), publicada en Drive y GitHub | — | Publicación confirmada por Juan el 2026-10-23; registrar mediciones de escuela, suspensión y sesión larga |
-| **0.39.0** | Una sola entrega: 4 (botones de error), 5 (E4, mundos en Drive: copias, revisiones, restauración y conflictos) y 6 (E5, tarjetas de Minecraft). Absorbe las antiguas 0.40.0, 0.41.0 y 0.42.0; primero pruebas y después estable | Lista de ajustes del juego | Agregar `drive.file` en Google Cloud y publicar las reglas |
+| **0.39.0** | Una sola entrega publicada: 4 (botones de error), 5 (E4, mundos en Drive) y 6 (E5, tarjetas de Minecraft). Absorbe las antiguas 0.40.0, 0.41.0 y 0.42.0 | Lista de ajustes del juego | Publicación confirmada el 2026-10-23; verificaciones específicas en seguimiento |
+| **0.39.1** | Recetas exactas y portal de CurseForge, integrada en la 0.39.2 | — | ATM10SKY y ambos mods probados en Windows |
+| **0.39.2** | Conexión automática, respaldo CurseForge → Modrinth → Drive, retiro de modo escuela y Drive al final | — | Publicada en Drive el 2026-10-24, confirmada por Juan; GitHub sincronizado; pruebas físicas de escuela/dos equipos y Mac en seguimiento |
 | **Después** | E6, en el orden de la sección 7 | Eventos | Según cada uno |
 | **Al final, después de E6** | F2 → O: abrir la captura reciente lista para compartir (sección 9), sin versión asignada | — | — |
 

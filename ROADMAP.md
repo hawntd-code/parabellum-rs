@@ -114,8 +114,8 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
   - barra de arriba y barra lateral;
   - paneles flotantes (descargas, juego e información), menús, avisos y pantalla de carga.
 - [x] **Estados**: esqueletos mientras carga; vacíos que explican qué hacer; los errores internos ya no salen tal cual
-- [x] **0.39.0, candidato de pruebas:** errores con una acción para resolverlos, junto con mundos en
-  Drive y tarjetas de Minecraft. Pendiente la validación real antes de publicar estable.
+- [x] **0.39.0, publicada:** errores con una acción para resolverlos, junto con mundos en
+  Drive y tarjetas de Minecraft. La última estable es la 0.39.2; siguen las comprobaciones específicas.
 - [x] **Movimiento**:
   - entradas y transiciones coherentes y botones que se hunden;
   - cambio de tema con un círculo;
@@ -219,16 +219,16 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     Computer Use comprobó respaldo en Drive, restauración y recuperación del mundo anterior con datos
     sintéticos. Pasaron 152 pruebas de Windows y 156 de Mac. Faltan el recorrido entre equipos físicos,
     Minecraft real y las tarjetas con las reglas nuevas publicadas; ver [resultados](docs/0.39.0-implementacion.md).
-  - [x] **0.39.1, candidato preparado (2026-10-24):** conservar origen y archivo exactos al compartir,
+  - [x] **0.39.1, integrada en la 0.39.2 publicada (2026-10-24):** conservar origen y archivo exactos al compartir,
     distinguir copia personalizada, propagar pendientes e integridad, conexión alternativa y caché,
     probar ATM10SKY y preparar entrega. Ambos mods se descargaron por el portal alternativo en Windows;
     1.631 overrides coincidentes y menú principal del pack comprobado. [Resultados](docs/0.39.1-curseforge.md).
-  - [ ] **Validación externa de la 0.39.1:** portal desde la escuela, intercambio entre dos equipos y
-    WebKit nativo en Mac; confirmar publicación antes de tratarla como estable.
-  - [x] **0.39.2, candidato previo a E6 preparado (2026-10-24):** conservar la API de CurseForge en Cloud,
+  - [ ] **Seguimiento externo de la 0.39.1/0.39.2:** portal desde la escuela, intercambio entre dos equipos y
+    WebKit nativo en Mac. La publicación de Windows ya está confirmada; esas pruebas siguen pendientes.
+  - [x] **0.39.2, publicada (confirmación de Juan, 2026-10-24):** conservar la API de CurseForge en Cloud,
     retirar el interruptor de modo escuela, resolver las rutas automáticamente, ordenar el respaldo
     CurseForge → Modrinth → Drive y mover Drive después de Modpacks. Nueve recorridos del ejecutable,
-    Computer Use y pruebas Windows/Mac pasados. Falta validar desde la escuela y confirmar salida estable.
+    Computer Use y pruebas Windows/Mac pasados. ZIP exacto de Drive sincronizado con GitHub y README.
     [Detalle y pruebas](docs/0.39.2-red-automatica.md).
   - [ ] **Después, E6:** subir solo lo que cambió de un mundo, configuraciones de mods, aplicar en vivo con
     el mod, eventos de la comunidad y lo que quede de Firebase.

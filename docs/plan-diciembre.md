@@ -399,7 +399,9 @@ El orden sigue las dependencias. Lo que se dice que «cabe» es lo razonable, no
 - **Lo siguiente:** [plan-noviembre.md](plan-noviembre.md). Primero lo que necesita el lanzamiento (el
   zip del paquete, los avisos de soporte y Firebase, ya publicados hasta la 0.38.0). Por decisión de
   Juan el 2026-10-23, la **0.39.0 reúne botones de error, E4 y E5** en una sola entrega y absorbe lo
-  previsto para la 0.40.0, 0.41.0 y 0.42.0. Después va E6; F2 → O queda al final, sin versión asignada.
+  previsto para la 0.40.0, 0.41.0 y 0.42.0. La **0.39.2 está publicada** (confirmado por Juan el
+  2026-10-24), con las correcciones de CurseForge y la conexión automática; ver
+  [resultados y seguimiento](0.39.2-red-automatica.md). Después va E6; F2 → O queda al final, sin versión asignada.
 
 **Antes de diciembre**: E0, E1, E2 y E3 caben si las decisiones 1–3 llegan pronto. E4 es posible en el
 canal de pruebas. E5 y E6 quedan para después. Si algo se atrasa, se recorta E3 a soporte sin tarjetas

@@ -241,7 +241,7 @@ Para comprobar el portal real con una instancia Fabric 1.21.1 de prueba:
 
 ## Conexión automática
 
-Desde el candidato **0.39.2** la conexión es automática. La API de CurseForge conserva su servicio
+Desde la **0.39.2**, publicada en Windows el 2026-10-24, la conexión es automática. La API de CurseForge conserva su servicio
 de Cloud; Modrinth usa el origen directo salvo restricción comprobada. Minecraft, Java y loaders
 usan el espejo de Drive si la red restringe sus orígenes. El portal comprueba también los hosts de
 estilos y archivos. No se configura un proxy global. Drive queda al final de Explorar.

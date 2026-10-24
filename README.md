@@ -37,7 +37,7 @@
   </tr>
   <tr>
     <td width="50%" valign="top"><b>🛡️ Comunidades</b><br>Únete con un código a la comunidad de un servidor. <b>Jugar</b> instala el paquete oficial de mods y te deja dentro del servidor. Si cambiaste mods, te avisa y lo deja como el oficial con un clic.</td>
-    <td width="50%" valign="top"><b>🏫 Modo escuela</b><br>En redes que bloquean Minecraft o Modrinth, Parabellum baja todo de Google Drive: versiones, loaders, Java y mods.</td>
+    <td width="50%" valign="top"><b>🏫 Conexión automática</b><br>En Windows, Parabellum detecta restricciones de la red y elige el respaldo correspondiente: puentes para los servicios y espejo de Drive para Minecraft, loaders y Java.</td>
   </tr>
   <tr>
     <td width="50%" valign="top"><b>⬇️ Descargas</b><br>Cola de descargas con avance, cancelar, reintentar y límite de velocidad. Si algo falla, al reintentar sigue donde quedó.</td>
@@ -63,9 +63,9 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td align="center" valign="top">
 <br>
-<a href="https://github.com/hawntd-code/parabellum-rs/releases/download/v0.39.0/Parabellum-0.39.0.zip"><img alt="Descargar Parabellum 0.39.0 para Windows" src="https://img.shields.io/badge/Descargar-v0.39.0-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
+<a href="https://github.com/hawntd-code/parabellum-rs/releases/download/v0.39.2/Parabellum-0.39.2.zip"><img alt="Descargar Parabellum 0.39.2 para Windows" src="https://img.shields.io/badge/Descargar-v0.39.2-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
 <br><br>
-<sub>Windows 10 u 11 de 64 bits · zip de 10.6 MB · 23 oct 2026</sub>
+<sub>Windows 10 u 11 de 64 bits · zip de 10.8 MB · 24 oct 2026</sub>
 <br><br>
 </td>
 <td align="center" valign="top">
@@ -79,13 +79,14 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td valign="top">
 
-**Lo nuevo en la 0.39.0**
+**Lo nuevo en la 0.39.2**
 
-- **Mundos en Drive:** copias privadas, historial y restauración con recuperación de la copia anterior.
-- **Ajustes desde el chat:** tarjetas de Minecraft para aplicar recomendaciones y deshacer cambios.
-- **Errores con solución:** acciones para resolver problemas de conexión, Java, sesión y mundos abiertos.
+- **Conexión automática:** orígenes oficiales y respaldos según el acceso de la red, sin activar modo escuela.
+- **Drive al final de Explorar:** después de Modpacks; búsqueda de respaldo CurseForge → Modrinth → Drive.
+- **CurseForge al compartir:** conserva la versión exacta y las configuraciones originales del modpack.
+- **Archivos pendientes:** el portal elige la conexión y Parabellum verifica e instala lo descargado.
 
-<sub>[Notas completas](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.39.0)</sub>
+<sub>[Notas completas](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.39.2)</sub>
 
 </td>
 <td valign="top">
@@ -170,7 +171,9 @@ Sale porque Parabellum no tiene una firma de pago, no porque haya algo malo. Pas
 <details>
 <summary><b>En mi escuela no carga Minecraft o Modrinth.</b></summary>
 
-Pulsa **Modo escuela** arriba en la ventana: Parabellum baja Minecraft, los loaders y Java de Google Drive. Los mods de Modrinth funcionan aunque la red los bloquee, sin hacer nada.
+En **Windows 0.39.2**, Parabellum comprueba el acceso y elige automáticamente los puentes o el espejo de Drive cuando detecta restricciones. Puedes abrir el catálogo de **Drive** al final de **Explorar**, después de **Modpacks**.
+
+En la **Mac 0.33.0**, activa **Modo escuela** arriba para descargar Minecraft, los loaders y Java desde Drive.
 </details>
 
 <details>

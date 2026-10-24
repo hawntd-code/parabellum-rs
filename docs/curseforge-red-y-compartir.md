@@ -1,7 +1,10 @@
 # CurseForge: portal incompleto en la escuela e instancias compartidas
 
-Anotación de Juan del 2026-10-23. Diagnóstico y propuesta previos a la siguiente iteración.
-Los cambios de comportamiento de este documento todavía no están implementados.
+Anotación de Juan del 2026-10-23. Este documento conserva el diagnóstico y la propuesta originales.
+**Estado 2026-10-24:** las correcciones se implementaron en la 0.39.1 y están incluidas en la
+**0.39.2 publicada**, confirmada por Juan. Ver [implementación](0.39.1-curseforge.md) y
+[entrega y seguimiento](0.39.2-red-automatica.md). Las propuestas siguientes describen el estado
+anterior; la prueba desde la red física de la escuela continúa pendiente.
 
 ## Casos disponibles
 
