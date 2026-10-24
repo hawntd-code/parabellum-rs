@@ -219,9 +219,12 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     Computer Use comprobó respaldo en Drive, restauración y recuperación del mundo anterior con datos
     sintéticos. Pasaron 152 pruebas de Windows y 156 de Mac. Faltan el recorrido entre equipos físicos,
     Minecraft real y las tarjetas con las reglas nuevas publicadas; ver [resultados](docs/0.39.0-implementacion.md).
-  - [ ] **0.39.1, correcciones de CurseForge autorizadas:** conservar origen y archivo exactos al compartir,
+  - [x] **0.39.1, candidato preparado (2026-10-24):** conservar origen y archivo exactos al compartir,
     distinguir copia personalizada, propagar pendientes e integridad, conexión alternativa y caché,
-    probar ATM10SKY y preparar entrega. [Implementación](docs/0.39.1-curseforge.md).
+    probar ATM10SKY y preparar entrega. Ambos mods se descargaron por el portal alternativo en Windows;
+    1.631 overrides coincidentes y menú principal del pack comprobado. [Resultados](docs/0.39.1-curseforge.md).
+  - [ ] **Validación externa de la 0.39.1:** portal desde la escuela, intercambio entre dos equipos y
+    WebKit nativo en Mac; confirmar publicación antes de tratarla como estable.
   - [ ] **Después, E6:** subir solo lo que cambió de un mundo, configuraciones de mods, aplicar en vivo con
     el mod, eventos de la comunidad y lo que quede de Firebase.
   - [ ] **Al final del roadmap, después de E6:** pulsar O justo después de F2 abre esa captura lista

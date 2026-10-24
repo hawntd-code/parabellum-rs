@@ -30,7 +30,8 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   paquete oficial. Son verificaciones específicas pendientes, independientes de la publicación confirmada.
   Mac requiere OAuth/Llavero, bloqueo de Java y restauración nativa.
   Juan agregó dos incidencias de CurseForge: portal incompleto en la escuela y pérdida de contenido al
-  compartir. Correcciones autorizadas para la [0.39.1](0.39.1-curseforge.md), en desarrollo.
+  compartir. Candidato [0.39.1](0.39.1-curseforge.md) preparado y probado en Windows el 2026-10-24;
+  falta validarlo desde la escuela y confirmar su publicación estable.
 
 - **0.38.0:** publicada en Drive y GitHub, confirmada por Juan el 2026-10-23. Las escuchas comparten
   WebSocket con reconexión, renovación de sesión y respaldo SSE. No requiere reglas nuevas: las de
@@ -540,6 +541,17 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   plan; no modifica código ni requiere recompilar lo publicado.
 
 ## Cambios de Windows
+
+### 2026-10-24 · Entrega 0.39.1 comprobada y preparada
+
+- Revisión `42ee320`: 158 pruebas Windows, 162 Mac y siete Python del servicio en cada sistema,
+  sin fallos; estados del chat comprobados también en JavaScript. Los 18 mods compartidos compilados.
+- Computer Use: ambos archivos exactos se descargaron por el portal alternativo, se verificaron
+  y dejaron cero pendientes. ATM10SKY reinstalado desde la receta conserva 1.631 overrides y
+  llegó al menú en 259 s. Detalle, huellas y límites en [0.39.1-curseforge.md](0.39.1-curseforge.md).
+- Candidato instalado y entrega en canal de pruebas; la estable de Drive/GitHub continúa 0.39.0.
+- Mac: compilar de esta revisión o más nueva y probar WebKit en macOS 14+. macOS 13 conserva
+  portal directo, selección manual y caché. No se publicó una versión nueva de Mac.
 
 ### 2026-10-24 · Evitar que el desafío del portal bloquee la descarga
 

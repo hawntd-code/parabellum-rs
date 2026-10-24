@@ -4,8 +4,10 @@ Pedido de Juan el 2026-10-20, después de publicar la 0.34.0 (E3). Sigue a [plan
 que tiene el porqué de cada etapa. Aquí está el **cómo**: qué se hace, en qué archivos, con qué pruebas y
 en qué orden.
 
-**Estado 2026-10-23:** Juan confirmó la 0.39.0 publicada y funcionando. Continúa la
-[0.39.1 de CurseForge](0.39.1-curseforge.md) antes de E6; F2 → O sigue al final.
+**Estado 2026-10-24:** Juan confirmó la 0.39.0 publicada y funcionando. El candidato
+[0.39.1 de CurseForge](0.39.1-curseforge.md) está preparado: ambas descargas del portal alternativo
+pasaron en Windows, ATM10SKY llegó al menú y las pruebas automáticas de Windows/Mac pasaron.
+Falta validarlo desde la escuela y confirmar la publicación antes de E6; F2 → O sigue al final.
 
 **Entra:**
 1. el zip del paquete que tarda ~30 s;

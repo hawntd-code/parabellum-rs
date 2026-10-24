@@ -44,7 +44,7 @@ La [opción de distribución de CurseForge](https://support.curseforge.com/suppo
 controla el acceso de terceros por API. El problema de red del portal y esa decisión del autor son
 condiciones distintas. Referencia adicional: [términos de la API](https://support.curseforge.com/support/solutions/articles/9000207405-curseforge-3rd-party-api-terms-and-conditions).
 
-## Compartir: fallo confirmado en el código
+## Compartir: fallo original, corregido en la 0.39.1
 
 - `compartir::instances_source` solo reconoce `modrinth`, aunque el instalador ya guarda el origen
   y los identificadores de CurseForge en `instancia.json`.
@@ -128,10 +128,16 @@ planificación, preparar el diagnóstico del portal con los dos mods indicados; 
 cuando haya evidencia del fallo en la escuela. Ninguna de estas incidencias se marca resuelta por las
 pruebas anteriores de Drive de la 0.39.0.
 
-- [ ] Receta de CurseForge conserva proyecto/archivo exactos y no invoca Modrinth.
-- [ ] Destinatario nuevo instala también los overrides; cliente antiguo rechaza la receta nueva.
-- [ ] Instalación incompleta conserva los dos pendientes y no anuncia «Ya puedes jugarla».
-- [ ] Instancia personalizada no pierde silenciosamente modificaciones ni archivos.
+- [x] Receta de CurseForge conserva proyecto/archivo exactos y no invoca Modrinth.
+- [x] Raíz nueva instala los overrides: 1.631 coinciden con el ZIP oficial; protocolo nuevo con
+  indicación de actualizar para clientes anteriores. Falta el envío entre dos equipos físicos.
+- [x] Instalación incompleta conserva los dos pendientes y no anuncia «Ya puedes jugarla».
+- [x] Instancia personalizada ofrece exportar la copia completa con las categorías elegidas.
 - [ ] Portal de ambos mods: CSS, JavaScript y descarga verificados desde la escuela.
-- [ ] Recepción valida huella/tamaño, coloca cada archivo y reanuda la instalación.
-- [ ] Pruebas de Windows y Mac; revisión nativa de los recorridos modificados.
+- [x] Recepción valida huella/tamaño, coloca cada archivo y reanuda la instalación; se comprobó
+  el Download oficial de ambos archivos mediante la conexión alternativa y la caché verificada.
+- [x] Pruebas automáticas Windows/Mac y revisión nativa Windows. La comprobación nativa Mac
+  queda pendiente en un Mac real; la conexión alternativa requiere macOS 14+.
+
+Resultados de la corrección del 2026-10-24 y límites de cada prueba en
+[0.39.1-curseforge.md](0.39.1-curseforge.md). ATM10SKY compartido llegó al menú principal en 259 s.
