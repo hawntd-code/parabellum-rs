@@ -524,6 +524,12 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-23 · Ajustar la posición de Mundos en Recursos
+
+- La fila de Mundos queda después de los límites del deslizador de memoria, con el mismo espacio
+  que los otros ajustes. Evita separar los rótulos de RAM de su control.
+- Mac: nada adicional; el cambio es compartido y queda incluido al recompilar la 0.39.0.
+
 ### 2026-10-23 · 0.39.0 en desarrollo: errores, mundos en Drive y ajustes de Minecraft
 
 - Entrega unificada autorizada por Juan: botones de error, mundos en Drive y tarjetas de ajustes del
