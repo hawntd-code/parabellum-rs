@@ -42,3 +42,9 @@ jobs:
 
       - name: Pruebas
         run: cargo test --release
+
+      - name: Recetas del chat y límites del portal
+        working-directory: .
+        run: |
+          node pruebas/compartir-ui.cjs
+          python puente-portal/test_portal.py

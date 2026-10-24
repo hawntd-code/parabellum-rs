@@ -44,6 +44,12 @@ jobs:
       - name: Pruebas
         run: cargo test --release
 
+      - name: Recetas del chat y límites del portal
+        working-directory: .
+        run: |
+          node pruebas/compartir-ui.cjs
+          python3 puente-portal/test_portal.py
+
       - name: Compilar y empaquetar (Parabellum.app y .dmg)
         if: ${{ inputs.build }}
         run: mac/empaquetar.sh

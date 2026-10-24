@@ -4,6 +4,7 @@ Cloud Run: un proceso, máximo una instancia, 20 hilos, concurrencia 20, timeout
 No comparte la clave ni el servicio de la API. No acepta destinos elegidos por URL.
 """
 import secrets
+import json
 import socket
 import threading
 import time
@@ -27,6 +28,7 @@ class Tunnel:
     def __init__(self, stream):
         self.stream = stream
         self.created = time.monotonic()
+        self.touched = self.created
         self.bytes = 0
         self.sending = threading.Lock()
         self.receiving = threading.Lock()
@@ -49,7 +51,7 @@ def discard(key):
 def cleanup():
     now = time.monotonic()
     with LOCK:
-        expired = [key for key, tunnel in SESSIONS.items() if now - tunnel.created > TTL]
+        expired = [key for key, tunnel in SESSIONS.items() if now - tunnel.created > TTL or now - tunnel.touched > 60]
     for key in expired:
         discard(key)
 
@@ -61,13 +63,24 @@ def portal_curseforge(request):
         return ({"service": "portal-curseforge", "protocol": 1}, 200, headers)
     if request.method != "POST":
         return ("Método no permitido", 405, headers)
-    # HTTP/2 puede omitir Content-Length cuando la petición no lleva cuerpo.
-    if (request.content_length is None and request.path not in {"/receive", "/close"}) or (request.content_length or 0) > MAX_CHUNK:
+    # HTTP/2 puede omitir Content-Length incluso con cuerpo. La lectura acotada mantiene
+    # el mismo límite para peticiones con longitud conocida o transferencia por fragmentos.
+    if (request.content_length or 0) > MAX_CHUNK:
         return ("Tamaño no permitido", 413, headers)
     cleanup()
     action = request.path
+    data = b""
+    if action in {"/open", "/send"}:
+        data = request.stream.read(MAX_CHUNK + 1)
+        if len(data) > MAX_CHUNK:
+            return ("Tamaño no permitido", 413, headers)
     if action == "/open":
-        body = request.get_json(silent=True) or {}
+        try:
+            body = json.loads(data)
+        except (ValueError, UnicodeDecodeError):
+            return ("Solicitud inválida", 400, headers)
+        if not isinstance(body, dict):
+            return ("Solicitud inválida", 400, headers)
         host = body.get("host")
         if not isinstance(host, str) or host not in HOSTS:
             return ("Destino no permitido", 403, headers)
@@ -91,6 +104,8 @@ def portal_curseforge(request):
     key = request.headers.get("X-Portal-Session", "")
     with LOCK:
         tunnel = SESSIONS.get(key)
+        if tunnel is not None:
+            tunnel.touched = time.monotonic()
     if tunnel is None:
         return ("Conexión terminada", 410, headers)
     try:
@@ -98,9 +113,6 @@ def portal_curseforge(request):
             discard(key)
             return (b"", 200, headers)
         if action == "/send":
-            data = request.get_data(cache=False)
-            if len(data) > MAX_CHUNK:
-                return ("Tamaño no permitido", 413, headers)
             with tunnel.sending:
                 tunnel.stream.sendall(data)
             count = len(data)

@@ -541,6 +541,14 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-24 · Relevo del portal: cerrar sesiones y limitar cuerpos HTTP
+
+- El cliente espera el cierre remoto antes de terminar un diagnóstico; el servidor libera conexiones
+  abandonadas tras 60 segundos y limita también cuerpos sin `Content-Length` a 64 KiB.
+- Los controles vacíos declaran longitud cero: el frontal de Cloud Run rechazaba la recepción con 411.
+- Ambos workflows comprueban también los estados del chat en JavaScript y los límites del relevo en Python.
+- Mac: nada adicional al recompilar la 0.39.1; mismos límites y protocolo que Windows.
+
 ### 2026-10-23 · 0.39.1 en desarrollo: conservar CurseForge al compartir
 
 - Receta con proveedor/proyecto/archivo exactos, protocolo nuevo y rechazo de recetas parciales.

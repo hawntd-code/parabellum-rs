@@ -1,6 +1,7 @@
 """Contrato y límites del relevo, sin Google Cloud ni tráfico externo."""
 import importlib.util
 import json
+import io
 import socket
 import sys
 import types
@@ -19,6 +20,7 @@ class Request:
         self.path, self.body, self.method = path, body, method
         self.headers = {"X-Portal-Session": key}
         self.content_length = len(body)
+        self.stream = io.BytesIO(body)
 
     def get_json(self, silent=False):
         return json.loads(self.body)
@@ -70,6 +72,13 @@ class PortalTest(unittest.TestCase):
         self.assertEqual(portal.portal_curseforge(Request("/receive", key="test"))[1], 204)
         self.assertIn("test", portal.SESSIONS)
 
+    def test_libera_conexiones_abandonadas(self):
+        tunnel = portal.Tunnel(socket.socket())
+        tunnel.touched -= 61
+        portal.SESSIONS["abandonada"] = tunnel
+        portal.cleanup()
+        self.assertFalse(portal.SESSIONS)
+
     def test_http2_sin_content_length_en_peticiones_vacias(self):
         stream = unittest.mock.Mock()
         stream.recv.return_value = b"TLS"
@@ -77,7 +86,11 @@ class PortalTest(unittest.TestCase):
         request = Request("/receive", key="test")
         request.content_length = None
         self.assertEqual(portal.portal_curseforge(request)[:2], (b"TLS", 200))
-        request.path = "/send"
+        request = Request("/send", b"TLS", key="test")
+        request.content_length = None
+        self.assertEqual(portal.portal_curseforge(request)[1], 200)
+        request = Request("/send", b"x" * 65537, key="test")
+        request.content_length = None
         self.assertEqual(portal.portal_curseforge(request)[1], 413)
 
 

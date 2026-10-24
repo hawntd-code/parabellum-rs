@@ -15,12 +15,25 @@ pub struct PortalProxy {
 impl PortalProxy { pub fn close(&self) { let _ = self.stop.send(true); } }
 impl Drop for PortalProxy { fn drop(&mut self) { self.close(); } }
 
-struct RemoteSession { client: reqwest::Client, key: String }
+fn control(client: &reqwest::Client, action: &str, key: &str) -> reqwest::RequestBuilder {
+    // El frontal de Cloud Run responde 411 a POST vacíos sin longitud, aunque HTTP/2 la omita.
+    client.post(format!("{ENDPOINT}/{action}")).header("X-Portal-Session", key)
+        .header(reqwest::header::CONTENT_LENGTH, "0").body(Vec::<u8>::new())
+}
+
+struct RemoteSession { client: reqwest::Client, key: String, closed: bool }
+impl RemoteSession {
+    async fn close(&mut self) {
+        self.closed = control(&self.client, "close", &self.key).timeout(Duration::from_secs(5)).send().await
+            .is_ok_and(|r| r.status().is_success() || r.status() == reqwest::StatusCode::GONE);
+    }
+}
 impl Drop for RemoteSession {
     fn drop(&mut self) {
+        if self.closed { return; }
         let (client, key) = (self.client.clone(), self.key.clone());
         tauri::async_runtime::spawn(async move {
-            let _ = client.post(format!("{ENDPOINT}/close")).header("X-Portal-Session", key).body(Vec::<u8>::new()).send().await;
+            let _ = control(&client, "close", &key).send().await;
         });
     }
 }
@@ -97,7 +110,7 @@ async fn tunnel(mut stream: TcpStream, client: reqwest::Client, path: PathBuf) -
     };
     let session: serde_json::Value = opened.json().await.map_err(|e| e.to_string())?;
     let key = session["session"].as_str().filter(|s| s.len() < 100).ok_or("Respuesta inválida")?;
-    let _remote = RemoteSession { client: client.clone(), key: key.into() };
+    let mut remote = RemoteSession { client: client.clone(), key: key.into(), closed: false };
     stream.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await.map_err(|e| e.to_string())?;
     log(&path, host, "conectado");
     let (mut reader, mut writer) = stream.into_split();
@@ -112,8 +125,7 @@ async fn tunnel(mut stream: TcpStream, client: reqwest::Client, path: PathBuf) -
     };
     let receive = async {
         loop {
-            let response = client.post(format!("{ENDPOINT}/receive")).header("X-Portal-Session", key).body(Vec::<u8>::new())
-                .send().await.map_err(|e| e.to_string())?;
+            let response = control(&client, "receive", key).send().await.map_err(|e| e.to_string())?;
             if response.status() == reqwest::StatusCode::GONE { return Ok::<_, String>(()); }
             let bytes = response.error_for_status().map_err(|e| e.to_string())?.bytes().await.map_err(|e| e.to_string())?;
             if bytes.len() > 65536 { return Err("Respuesta demasiado grande".into()); }
@@ -121,6 +133,9 @@ async fn tunnel(mut stream: TcpStream, client: reqwest::Client, path: PathBuf) -
         }
     };
     let result = tokio::select! { result = send => result, result = receive => result };
+    // Espera el cierre antes de devolver el diagnóstico: al terminar un CLI, las tareas en segundo
+    // plano se cancelan. El Drop sigue cubriendo el cierre de ventana y la cancelación del túnel.
+    remote.close().await;
     log(&path, host, if result.is_ok() { "cerrado" } else { "interrumpido" });
     result
 }
@@ -168,6 +183,14 @@ pub async fn diagnose(page: &str, log_path: PathBuf, alternative: bool) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn controles_vacios_llevan_longitud_explicita_para_cloud_run() {
+        for action in ["receive", "close"] {
+            let request = control(&reqwest::Client::new(), action, "sesion-de-prueba").build().unwrap();
+            assert_eq!(request.headers()[reqwest::header::CONTENT_LENGTH], "0");
+            assert_eq!(request.method(), reqwest::Method::POST);
+        }
+    }
     #[test]
     fn solo_connect_a_hosts_del_portal_y_puerto_443() {
         assert_eq!(host("CONNECT www.curseforge.com:443 HTTP/1.1\r\nHost: www.curseforge.com\r\n\r\n"), Some("www.curseforge.com"));
