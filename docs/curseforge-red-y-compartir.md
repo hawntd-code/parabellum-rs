@@ -76,6 +76,51 @@ Propuesta de comportamiento:
 5. **Mensajes anteriores:** las recetas ya enviadas sin identidad de CurseForge no permiten recuperar
    con certeza el pack original. Pedir volver a compartir desde el remitente actualizado.
 
+## Pruebas fuera de la escuela, 2026-10-23
+
+Se ejecutaron con el candidato Windows 0.39.0, cuyo SHA-256 es
+`b6c6fe782bc228047beced80b860ff020d9b2dcc121c809e3637c6dae9d01b16`, en una raíz de prueba
+separada. No se cambiaron la red de Windows, el ejecutable habitual ni las instancias del jugador.
+
+`pruebas/curseforge-red.py` pasó diez comprobaciones:
+
+1. Useful Slime: archivo 6282838, 609.239 bytes y SHA-1 oficial coincidente.
+2. More Overlays: archivo 6981252, 112.984 bytes y SHA-1 oficial coincidente.
+3. Los dos archivos se conservan como pendientes exactos; no aparecen instalados.
+4. Reabrir el proceso y repetir conserva la cola sin duplicados.
+5. Respuesta HTTP 403: error y pendientes conservados.
+6. Respuesta HTTP 429: error y pendientes conservados.
+7. Respuesta HTTP 503: error y pendientes conservados.
+8. HTML de bloqueo con estado 200 en lugar del JSON: error y pendientes conservados.
+9. API disponible y CDN bloqueado: falla la descarga sin declararla completa.
+10. Puente remoto bloqueado: error de conexión y pendientes conservados.
+
+Los metadatos reales del puente indicaron `downloadUrl` vacío para ambos archivos. Para el recorrido
+de fallos se usó un servidor local con esos metadatos y dependencias omitidas para aislar cada archivo.
+El bloqueo usa un proxy limitado al proceso de prueba y escucha solo en `127.0.0.1`; se confirmó el
+intento de conexión a `edge.forgecdn.net` y al puente público. No es una prueba de todo ATM10SKY.
+
+También pasaron las tres pruebas de `curseforge_manual::tests`: nombres y orígenes válidos, rechazo
+de contenido incorrecto y recuperación de una entrada completa conservando los pendientes parciales.
+
+Una sonda compilada con `compartir.rs` sin modificar reprodujo el fallo de origen. Con identificación
+de archivos simulada (dos jars sin versión de Modrinth), la receta de CurseForge quedó como `mods`,
+con dos omitidos y sin proyecto ni versión. Como control, el mismo metadato con origen `modrinth`
+sí conserva su identidad. Es una reproducción de la lógica con dependencias simuladas, no el envío
+de un chat ni una reinstalación completa del pack.
+
+Repetición de la prueba de red, desde la raíz del repositorio (elige una carpeta de prueba nueva):
+
+```powershell
+python pruebas/curseforge-red.py --exe src-tauri/target/release/Parabellum.exe --root ../_prueba-cf-red-nueva --mods "../Parabellum/instancias/All the Mods 10_ To the Sky   ATM10SKY/mods"
+```
+
+**Límite:** estas comprobaciones no ejercitan CSS/JavaScript del portal en el WebView, ni reproducen
+la política exacta de la escuela. Falta identificar el recurso o destino que falla allí y hacer la
+validación final desde esa red. Los bloqueos HTTP/CDN y la pérdida de origen pueden probarse aquí.
+Los resultados locales están en `_verificacion-curseforge-red-03/resultados.json` y en
+`_verificacion-curseforge-red-02/receta.json` y `recepcion-unitarias.txt`, fuera del repositorio.
+
 ## Orden y aceptación
 
 Primero corregir compartir y el estado de instalación, que tienen causas verificadas. En paralelo de
