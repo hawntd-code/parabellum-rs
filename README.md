@@ -6,8 +6,8 @@
 
 **El launcher de Minecraft para jugar con tus amigos.**<br>Mods, modpacks, servidores propios y chat en una sola ventana, sin cuenta premium.
 
-<a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/latest"><img alt="Descargar para Windows" src="https://img.shields.io/github/v/release/juanrojasgarcialin/parabellum-rs?filter=v*&label=Descargar%20para%20Windows&style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D&color=7f50f2"></a>
-<a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/mac-v0.33.0"><img alt="Descargar para Mac" src="https://img.shields.io/badge/Descargar_para_Mac-v0.33.0-7f50f2?style=for-the-badge&logo=apple&logoColor=white"></a>
+<a href="https://github.com/hawntd-code/parabellum-rs/releases/latest"><img alt="Descargar para Windows" src="https://img.shields.io/github/v/release/hawntd-code/parabellum-rs?filter=v*&label=Descargar%20para%20Windows&style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D&color=7f50f2"></a>
+<a href="https://github.com/hawntd-code/parabellum-rs/releases/tag/mac-v0.33.0"><img alt="Descargar para Mac" src="https://img.shields.io/badge/Descargar_para_Mac-v0.33.0-7f50f2?style=for-the-badge&logo=apple&logoColor=white"></a>
 
 ![Windows 10 y 11](https://img.shields.io/badge/Windows-10_·_11-2b2b33?style=flat-square) ![Mac con chip Apple](https://img.shields.io/badge/Mac-chip_Apple-2b2b33?style=flat-square&logo=apple&logoColor=white) ![Minecraft hasta la 26.3](https://img.shields.io/badge/Minecraft-hasta_la_26.3-2b2b33?style=flat-square) ![Español e inglés](https://img.shields.io/badge/idioma-español_·_English-2b2b33?style=flat-square)
 
@@ -37,7 +37,7 @@
   </tr>
   <tr>
     <td width="50%" valign="top"><b>🛡️ Comunidades</b><br>Únete con un código a la comunidad de un servidor. <b>Jugar</b> instala el paquete oficial de mods y te deja dentro del servidor. Si cambiaste mods, te avisa y lo deja como el oficial con un clic.</td>
-    <td width="50%" valign="top"><b>🏫 Conexión automática</b><br>En Windows, Parabellum detecta restricciones de la red y elige el respaldo correspondiente: puentes para los servicios y espejo de Drive para Minecraft, loaders y Java.</td>
+    <td width="50%" valign="top"><b>🏫 Conexión automática</b><br>En Windows, Parabellum detecta si la red bloquea algo y cambia solo a servidores de respaldo para buscar mods, y a una copia en Drive para Minecraft, los loaders y Java.</td>
   </tr>
   <tr>
     <td width="50%" valign="top"><b>⬇️ Descargas</b><br>Cola de descargas con avance, cancelar, reintentar y límite de velocidad. Si algo falla, al reintentar sigue donde quedó.</td>
@@ -70,7 +70,7 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 </td>
 <td align="center" valign="top">
 <br>
-<a href="https://github.com/juanrojasgarcialin/parabellum-rs/releases/download/mac-v0.33.0/Parabellum-Mac-0.33.0.zip"><img alt="Descargar Parabellum 0.33.0 para Mac" src="https://img.shields.io/badge/Descargar-v0.33.0-7f50f2?style=for-the-badge&logo=apple&logoColor=white"></a>
+<a href="https://github.com/hawntd-code/parabellum-rs/releases/download/mac-v0.33.0/Parabellum-Mac-0.33.0.zip"><img alt="Descargar Parabellum 0.33.0 para Mac" src="https://img.shields.io/badge/Descargar-v0.33.0-7f50f2?style=for-the-badge&logo=apple&logoColor=white"></a>
 <br><br>
 <sub>Mac con chip Apple y macOS 13 o más nuevo · zip de 9.6 MB · 20 oct 2026</sub>
 <br><br>
@@ -81,10 +81,10 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 
 **Lo nuevo en la 0.39.2**
 
-- **Conexión automática:** orígenes oficiales y respaldos según el acceso de la red, sin activar modo escuela.
+- **Conexión automática:** servidores oficiales y de respaldo según lo que bloquee la red, sin activar modo escuela.
 - **Drive al final de Explorar:** después de Modpacks; búsqueda de respaldo CurseForge → Modrinth → Drive.
 - **CurseForge al compartir:** conserva la versión exacta y las configuraciones originales del modpack.
-- **Archivos pendientes:** el portal elige la conexión y Parabellum verifica e instala lo descargado.
+- **Archivos pendientes:** la página de CurseForge se abre con la conexión que funcione, y Parabellum comprueba e instala lo que descargues.
 
 <sub>[Notas completas](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.39.2)</sub>
 
@@ -98,7 +98,7 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 - Chat nuevo, con imágenes desde Finder, Safari o Chrome.
 - Si una actualización no arranca, **vuelve sola** a la anterior.
 
-<sub>[Notas completas](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/mac-v0.33.0)</sub>
+<sub>[Notas completas](https://github.com/hawntd-code/parabellum-rs/releases/tag/mac-v0.33.0)</sub>
 
 </td>
 </tr>
@@ -133,7 +133,7 @@ Después escribe tu nombre de jugador, crea una instancia y pulsa **Jugar**. No 
     <td width="50%"><img src="docs/capturas/instancia.png" alt="Los mods de una instancia"><br><sub><b>Instancia</b>: sus mods, packs, shaders y mundos.</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/capturas/servidor.png" alt="Un servidor hosteado desde el PC"><br><sub><b>Hostear partida</b>: tu servidor, con P2P, red local y consola.</sub></td>
+    <td><img src="docs/capturas/servidor.png" alt="Un servidor hosteado desde el PC"><br><sub><b>Hostear partida</b>: tu servidor, con conexión directa entre PCs, red local y consola.</sub></td>
     <td><img src="docs/capturas/servidores.png" alt="La lista de servidores"><br><sub><b>Servidores</b>: los tuyos, los de tus amigos y los guardados.</sub></td>
   </tr>
   <tr>
@@ -171,7 +171,7 @@ Sale porque Parabellum no tiene una firma de pago, no porque haya algo malo. Pas
 <details>
 <summary><b>En mi escuela no carga Minecraft o Modrinth.</b></summary>
 
-En **Windows 0.39.2**, Parabellum comprueba el acceso y elige automáticamente los puentes o el espejo de Drive cuando detecta restricciones. Puedes abrir el catálogo de **Drive** al final de **Explorar**, después de **Modpacks**.
+En **Windows 0.39.2**, Parabellum revisa el acceso y, si detecta restricciones, cambia solo a servidores de respaldo o a la copia en Drive. Puedes abrir el catálogo de **Drive** al final de **Explorar**, después de **Modpacks**.
 
 En la **Mac 0.33.0**, activa **Modo escuela** arriba para descargar Minecraft, los loaders y Java desde Drive.
 </details>

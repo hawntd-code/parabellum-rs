@@ -169,6 +169,8 @@ escribir en Drive; los demás jugadores nunca lo ven). Después, «Subir a Drive
 la misma estructura que la carpeta local; lo que ya está igual no se vuelve a subir. La cuenta tiene
 que poder editar esa carpeta.
 
+Los respaldos de mundos (desde la 0.39.0) piden un **segundo permiso de Google**, aparte del de la cuenta: el alcance `drive.file`, que solo ve y modifica los archivos que crea Parabellum (la carpeta «Parabellum/Mundos», que se busca por sus propiedades y no por su nombre). Su token va en `datos/drive-mundos.bin`, cifrado con DPAPI en Windows o con el Llavero en Mac, y desconectar Drive para mundos lo borra. Código: `src-tauri/src/drive_mundos.rs`.
+
 **El paquete ligero (desde la 0.35.0).** Al exportar un modpack (y al publicar el paquete oficial de una
 comunidad) junto al zip completo sale `<Modpack> (ligero).zip`: el mismo paquete sin los mods,
 resource packs y shaders que están en Modrinth. El `.json` los lista en `remote` (ruta, enlace de
@@ -252,6 +254,21 @@ en una carpeta de prueba. El informe queda en `datos/logs/comando.txt`. `Direct`
 indica fallo del proveedor. La decisión caduca en 60 segundos y se invalida al volver al launcher.
 Pruebas y límites: [0.39.2-red-automatica.md](0.39.2-red-automatica.md).
 
+### Puentes en Cloud Run
+
+Son funciones de Google Cloud en el proyecto de Firebase de Parabellum (plan Blaze), y solo aceptan las
+rutas que usa el launcher:
+
+- [`puente-modrinth/`](../puente-modrinth/README.md): la API de Modrinth (búsqueda, proyectos y
+  versiones). Modrinth va directo y solo usa el puente como respaldo. Los archivos bajan del CDN de
+  Modrinth y no pasan por el puente. Su dirección está en `BRIDGE` de `src-tauri/src/modrinth.rs`.
+- [`puente-curseforge/`](../puente-curseforge/README.md): la API de CurseForge, que siempre pasa por aquí
+  porque la clave vive solo en el servidor. Los archivos bajan del CDN de CurseForge. Su dirección está
+  en `BRIDGE` de `src-tauri/src/curseforge.rs`.
+
+El portal de CurseForge también corre en Cloud Run (carpeta `puente-portal/`); su dirección está en
+`ENDPOINT` de `src-tauri/src/curseforge_portal.rs`.
+
 ## Publicar una versión
 
 1. **Drive** (lo hace Juan): Ajustes › Acerca de › «Publicar esta versión» deja `_parabellum` con
@@ -282,10 +299,20 @@ Windows (de ella sale solo el botón de Windows). Las de Windows se titulan «Pa
 
 La carpeta de Drive y las claves de Google y Firebase se integran al compilar desde
 `config-integrada.json` en la raíz del proyecto (no está en el repositorio): `driveFolderId`,
-`driveApiKey`, `googleClientId`, `googleClientSecret`, `firebaseApiKey` y `firebaseDatabaseUrl`.
+`driveApiKey`, `googleClientId`, `googleClientSecret`, `firebaseApiKey`, `firebaseDatabaseUrl` y
+`supportName` (el nombre de jugador que recibe los «Reportar problema»).
 Sin ese archivo se compila igual, sin catálogo de Drive. Un `lanzador-config.json` junto al exe
 sustituye los valores que traiga. Las reglas de la base de datos de Firebase están en
 `firebase-reglas.json`.
+
+Variables de entorno, solo para pruebas (con `PARABELLUM_ROOT` apuntando a una carpeta de prueba):
+
+- `PARABELLUM_CURSEFORGE_PUENTE` y `PARABELLUM_MODRINTH_PUENTE`: la dirección de cada
+  [puente](#puentes-en-cloud-run), para probar uno local.
+- `PARABELLUM_FIREBASE_EMULADOR`: la base de datos del emulador de Firebase, por ejemplo
+  `http://127.0.0.1:9399?ns=parabellum-prueba`. Sustituye a `firebaseDatabaseUrl`.
+- `PARABELLUM_ESPERA_ARRANQUE`: segundos que espera el vigía de actualización a que la versión nueva
+  confirme que arrancó (90 por defecto).
 
 ## Diagnóstico
 
@@ -313,16 +340,20 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--instalar-datapack <instancia> <mundo> <proyecto>` | Instala un data pack de Modrinth en un mundo |
 | `--revisar <instancia>` | La revisión de antes de jugar (lo que abriría el doctor) |
 | `--diagnosticar <instancia>` | Qué falla: revisión de mods (dependencias, loader, versión del juego, repetidos) y el último informe de fallo, con sus arreglos |
+| `--reporte <instancia>` | El resumen que enviaría «Reportar problema» de esa instancia |
 | `--arreglar <instancia>` | Probar y arreglar: abre el juego hasta el menú principal y, si no llega, aplica los arreglos recomendados y repite (hasta 5 veces) |
 | `--verificar <instancia> [rapido]` | Comprueba la huella de cada archivo del modpack y repone lo que falte o esté dañado (`rapido`: solo lo que falte) |
 | `--crear-servidor <instancia> [nombre] [mundo]` | Servidor dedicado a partir de la instancia (sin aceptar el EULA) |
 | `--probar-servidor <servidor> [segundos]` | Lo enciende, espera a que esté listo y lo apaga; si no arranca, explica por qué |
 | `--playit` | Estado de la cuenta y del túnel de playit.gg |
 | `--probar-receta <instancia>` | Comparte la instancia como por el chat y la vuelve a armar como otra instancia (compara los archivos) |
+| `--probar-gestion <instancia>` | Prueba la gestión de la instancia (duplicar, editar, icono y mods) sobre una **copia**; la original no se toca |
 | `--probar-sonido [archivo.wav]` | Toca el sonido de mensaje nuevo (y lo guarda si se da un archivo) |
 | `--ping <dirección>` | Estado de un servidor como en la lista de Multijugador: icono, mensaje, jugadores, versión (con SRV) |
 | `--abrir-juego <instancia> [segundos] [con-mod\|sin-mod] [servidor]` | Abre el juego con el mod de Parabellum y lo deja abierto ese tiempo (para probar el panel dentro del juego; ver `mod/README.md`). Con un servidor, entra directo a él |
 | `--probar-p2p <puerto> [segundos]` | Abre un túnel P2P en este PC hacia un servidor encendido y le hace ping; con segundos lo deja abierto (puerto en `datos/logs/p2p-puerto.txt`) |
+| `--probar-red` | Ruta automática de cada servicio (Mojang, loaders, Modrinth y el portal de CurseForge: `Direct`, `Restricted`, `Offline` o `Unavailable`), sin descargar contenido |
+| `--probar-portal <página oficial> [alternativa]` | Diagnostica la página oficial de CurseForge por el portal (con `alternativa`, por la conexión alternativa); cada host queda en `datos/logs/curseforge-portal.log` |
 | `--convertir-imagen <entrada> <salida.png>` | Abre una imagen con Windows (HEIC, TIFF…) y la guarda como PNG |
 | `--probar-favoritos` | Con la sesión guardada: lee los favoritos de la cuenta, escribe uno de prueba (y lo borra) y comprueba las reglas de Firebase |
 | `--probar-tiempo-real [veces]` | Con la sesión de Google guardada y `PARABELLUM_ROOT` aislado: sincronización, transporte y latencia; restaura su marca temporal en los leídos propios |

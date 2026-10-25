@@ -67,6 +67,8 @@ ligero se nombra en `liteZip`, que la 0.35.0 no conoce. Detalle en
 
 ## 1. El zip del paquete oficial tarda ~30 s en empezar
 
+**Estado:** hecho en la 0.35.0 (2026-10-21). El ligero sin el loader, de la 0.35.1, va en la 0.36.1 (2026-10-22). Falta medir la descarga desde Drive.
+
 ### Qué pasa (medido el 2026-10-20)
 
 Primer byte de cada zip del catálogo, pedido igual que Parabellum (`drive.usercontent.google.com`, con
@@ -96,7 +98,7 @@ trae el shader Complementary Reimagined. Juan decide cuál es el bueno y lo vuel
 
 **a) Ya (en la versión que lo incluya):**
 - **Reintentar los 500 y los cortes** de la descarga del paquete: dos veces, con 2 s y 5 s de espera, como
-  ya hace `catalog::download_text`. Hoy un 500 a los 30 s deja al jugador con un error.
+  ya hace `catalog::download_text`. Antes, un 500 a los 30 s dejaba al jugador con un error.
 - **Pedir el zip antes:** al abrir la página de la comunidad, si el paquete oficial está en «falta» o «hay
   versión nueva», empezar a bajarlo en segundo plano. Tiene un tope: un paquete a la vez, y solo si pesa
   menos de 200 MB y no se está jugando. Cuando el jugador pulsa «Jugar», ya va avanzado o terminó.
@@ -150,15 +152,17 @@ comprobar la instalación desde una carpeta nueva.
 
 ## 2. Avisos de soporte desde que se abre Parabellum
 
+**Estado:** hecho en la 0.35.0 (2026-10-21).
+
 ### Qué pasa
 
-La cola del soporte (`soporte_escuchar_cola`) solo empieza cuando se abre la página Comunidades.
+Antes, la cola del soporte (`soporte_escuchar_cola`) solo empezaba al abrir la página Comunidades.
 
-- **Si no entraste en esa sesión:** no te enteras de que te respondieron, y el equipo no ve llegar
+- **Si no entrabas en esa sesión:** no te enterabas de que te habían respondido, y el equipo no veía llegar
   solicitudes nuevas.
-- **No hay contador** en el botón del escudo, como el de Mensajes.
-- **Para el jugador hay que escuchar cada solicitud** (hasta 8 escuchas por comunidad), porque nada que
-  pueda leer cambia cuando el staff contesta.
+- **No había contador** en el botón del escudo, como el de Mensajes.
+- **Para el jugador había que escuchar cada solicitud** (hasta 8 escuchas por comunidad), porque nada que
+  pudiera leer cambiaba cuando el staff contestaba.
 
 ### Qué se hace
 
@@ -198,17 +202,19 @@ La cola del soporte (`soporte_escuchar_cola`) solo empieza cuando se abre la pá
   sale una sola vez;
 - reglas: un jugador no puede escribir en el `supportNotify` de otro; un ex miembro del staff, tampoco.
 
-**Juan:** publicar las reglas nuevas antes de esa versión.
+**Juan:** publicó las reglas nuevas antes de esa versión.
 
 ---
 
 ## 3. Una sola conexión a Firebase por persona
 
+**Estado:** paso 1 hecho en la 0.37.0 (2026-10-23) y paso 2 en la 0.38.0 (2026-10-23). Falta registrar la medición en la escuela, la suspensión y la sesión larga.
+
 ### Qué pasa (medido)
 
-- **Cada escucha es una conexión aparte** (`firebase::Database::listen`, SSE por HTTP/1.1). Con 7 amigos
-  y 8 conversaciones son **24 conexiones** TLS abiertas a la vez. El tráfico es mínimo (~1.3 KB por
-  minuto); lo que pesa es abrirlas: al iniciar se ve la espera, y con comunidades y soporte son más.
+- **Cada escucha era una conexión aparte** (`firebase::Database::listen`, SSE por HTTP/1.1). Con 7 amigos
+  y 8 conversaciones eran **24 conexiones** TLS abiertas a la vez. El tráfico era mínimo (~1.3 KB por
+  minuto); lo que pesaba era abrirlas: al iniciar se veía la espera, y con comunidades y soporte eran más.
 - **HTTP/2 no sirve:** Firebase Realtime Database solo ofrece HTTP/1.1 (ALPN, comprobado el 2026-10-20), así
   que no se pueden juntar varias escuchas en una conexión.
 
@@ -265,13 +271,15 @@ en producción. Por eso SSE se queda como respaldo y el cambio va primero al can
 
 ## 4. 0.39.0: botones para resolver errores
 
+**Estado:** hecho en la 0.39.0 (2026-10-23).
+
 Esta parte se entrega junto con mundos en Drive (sección 5) y tarjetas de Minecraft (sección 6),
 como una sola versión 0.39.0. Las mismas acciones de error se aplican a esos flujos y a las
 operaciones existentes del launcher.
 
 ### 4.1 Errores con una acción para resolverlos
 
-**Hoy** solo el modo escuela pone un botón en el aviso de error (`suggestsSchool`), además del doctor.
+**Antes** solo el modo escuela ponía un botón en el aviso de error (`suggestsSchool`), además del doctor.
 
 **Qué se hace:**
 - **Errores con su acción:** el motor puede agregarle al mensaje una marca
@@ -298,6 +306,8 @@ operaciones existentes del launcher.
 ---
 
 ## 5. 0.39.0 · E4: mundos en Drive
+
+**Estado:** hecho en la 0.39.0 (2026-10-23).
 
 El diseño está en plan-diciembre.md, sección 8. Aquí va cómo se construye.
 Incluye copias, revisiones, restauración y conflictos en la misma 0.39.0, junto con las secciones 4 y 6.
@@ -364,10 +374,12 @@ pendientes siguen en seguimiento. No se dividen en versiones 0.40.0 y 0.41.0.
 
 ## 6. 0.39.0 · E5: tarjetas de Minecraft
 
+**Estado:** hecho en la 0.39.0 (2026-10-23).
+
 Se incorpora a la misma entrega que las secciones 4 y 5; el alcance antes previsto para la 0.42.0
 queda integrado en la 0.39.0.
 
-Hoy las tarjetas solo cambian ajustes de Parabellum (`ajustes.rs`). E5 agrega ajustes **del juego** de una
+Antes, las tarjetas solo cambiaban ajustes de Parabellum (`ajustes.rs`). E5 agregó ajustes **del juego** de una
 instancia, que viven en `options.txt`.
 
 ### 6.1 El registro
@@ -447,19 +459,19 @@ instancia, que viven en `options.txt`.
 
 ## 8. Orden y versiones
 
-| Versión | Qué | Reglas nuevas | Juan |
-|---|---|---|---|
-| **0.35.0** | 1a (reintentos, pedir antes, «revisando»), 1b (mods del CDN de Modrinth) y 2 (avisos de soporte) | `supportNotify` | Publicar las reglas; volver a publicar el paquete oficial (elegir antes cuál es el bueno) |
-| **0.36.0** | CurseForge: búsqueda, instalar con dependencias e importar modpacks; incluye la 0.35.1 | — | Incluida en la 0.36.1 publicada; CurseForge probado en la escuela |
-| **0.36.1** | CurseForge como fuente predeterminada; conserva la elección previa de Modrinth | — | Publicada en Drive y ligero subido (2026-10-22); queda medir e instalar desde una carpeta nueva |
-| **0.36.2** | Asistente con el portal oficial de CurseForge, recepción verificada y continuación de pendientes; probado por Juan | — | GitHub publicado; incluida en la 0.37.0 de Drive |
-| **0.37.0** | 3, paso 1, perfiles, escritura y galería; publicada en Drive y GitHub | `chatInbox`, `presenceInbox`, `typing`, `users/$uid/streamVersion` | Publicación y reglas funcionando confirmadas por Juan el 2026-10-23 |
-| **0.38.0** | 3, paso 2 (WebSocket compartido, renovación y respaldo SSE), publicada en Drive y GitHub | — | Publicación confirmada por Juan el 2026-10-23; registrar mediciones de escuela, suspensión y sesión larga |
-| **0.39.0** | Una sola entrega publicada: 4 (botones de error), 5 (E4, mundos en Drive) y 6 (E5, tarjetas de Minecraft). Absorbe las antiguas 0.40.0, 0.41.0 y 0.42.0 | Lista de ajustes del juego | Publicación confirmada el 2026-10-23; verificaciones específicas en seguimiento |
-| **0.39.1** | Recetas exactas y portal de CurseForge, integrada en la 0.39.2 | — | ATM10SKY y ambos mods probados en Windows |
-| **0.39.2** | Conexión automática, respaldo CurseForge → Modrinth → Drive, retiro de modo escuela y Drive al final | — | Publicada en Drive el 2026-10-24, confirmada por Juan; GitHub sincronizado; pruebas físicas de escuela/dos equipos y Mac en seguimiento |
-| **Después** | E6, en el orden de la sección 7 | Eventos | Según cada uno |
-| **Al final, después de E6** | F2 → O: abrir la captura reciente lista para compartir (sección 9), sin versión asignada | — | — |
+| Versión | En Drive | Qué | Reglas nuevas | Juan |
+|---|---|---|---|---|
+| **0.35.0** | sí | 1a (reintentos, pedir antes, «revisando»), 1b (mods del CDN de Modrinth) y 2 (avisos de soporte) | `supportNotify` | Publicar las reglas; volver a publicar el paquete oficial (elegir antes cuál es el bueno) |
+| **0.36.0** | no, dentro de la 0.36.1 | CurseForge: búsqueda, instalar con dependencias e importar modpacks; incluye la 0.35.1 | — | Incluida en la 0.36.1 publicada; CurseForge probado en la escuela |
+| **0.36.1** | sí | CurseForge como fuente predeterminada; conserva la elección previa de Modrinth | — | Publicada en Drive y ligero subido (2026-10-22); queda medir e instalar desde una carpeta nueva |
+| **0.36.2** | no, dentro de la 0.37.0 | Asistente con el portal oficial de CurseForge, recepción verificada y continuación de pendientes; probado por Juan | — | GitHub publicado; incluida en la 0.37.0 de Drive |
+| **0.37.0** | sí | 3, paso 1, perfiles, escritura y galería; publicada en Drive y GitHub | `chatInbox`, `presenceInbox`, `typing`, `users/$uid/streamVersion` | Publicación y reglas funcionando confirmadas por Juan el 2026-10-23 |
+| **0.38.0** | sí | 3, paso 2 (WebSocket compartido, renovación y respaldo SSE), publicada en Drive y GitHub | — | Publicación confirmada por Juan el 2026-10-23; registrar mediciones de escuela, suspensión y sesión larga |
+| **0.39.0** | sí | Una sola entrega publicada: 4 (botones de error), 5 (E4, mundos en Drive) y 6 (E5, tarjetas de Minecraft). Absorbe las antiguas 0.40.0, 0.41.0 y 0.42.0 | Lista de ajustes del juego | Publicación confirmada el 2026-10-23; verificaciones específicas en seguimiento |
+| **0.39.1** | solo candidato | Recetas exactas y portal de CurseForge, integrada en la 0.39.2 | — | ATM10SKY y ambos mods probados en Windows |
+| **0.39.2** | sí | Conexión automática, respaldo CurseForge → Modrinth → Drive, retiro de modo escuela y Drive al final | — | Publicada en Drive el 2026-10-24, confirmada por Juan; GitHub sincronizado; pruebas físicas de escuela/dos equipos y Mac en seguimiento |
+| **Después** | — | E6, en el orden de la sección 7 | Eventos | Según cada uno |
+| **Al final, después de E6** | — | F2 → O: abrir la captura reciente lista para compartir (sección 9), sin versión asignada | — | — |
 
 **Cómo se trabaja cada versión:**
 1. código con sus pruebas unitarias;

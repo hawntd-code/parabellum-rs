@@ -9,7 +9,7 @@ Es una función de Google Cloud (Cloud Run functions) en el proyecto de Firebase
 empieza a usar otra, agrégala en `ROUTES` de `main.py` y vuelve a publicarlo.
 
 Parabellum primero va directo a Modrinth. Si la red lo bloquea, usa el puente sin preguntar (y en modo
-escuela, el puente desde el principio). La dirección del puente está en `PUENTE` de `modrinth.rs`.
+escuela, el puente desde el principio). La dirección del puente está en `BRIDGE` de `modrinth.rs`.
 
 ## Publicarlo (desde el navegador, sin instalar nada)
 

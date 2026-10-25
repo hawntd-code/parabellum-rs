@@ -8,9 +8,9 @@
 - `cargo build --release`: ejecutable 0.36.0, sin advertencias. Se comprobó que no contiene la clave
   privada de CurseForge que hay en la configuración local.
 - Todos los archivos JavaScript pasan `node --check`.
-- [Windows en GitHub](https://github.com/juanrojasgarcialin/parabellum-rs/actions/runs/39882080060):
+- [Windows en GitHub](https://github.com/hawntd-code/parabellum-rs/actions/runs/39882080060):
   compilación con advertencias prohibidas y pruebas correctas.
-- [Mac en GitHub](https://github.com/juanrojasgarcialin/parabellum-rs/actions/runs/39882082922):
+- [Mac en GitHub](https://github.com/hawntd-code/parabellum-rs/actions/runs/39882082922):
   compilación y pruebas correctas. Esto no sustituye la prueba de la interfaz en una Mac real.
 
 ## Recorrido con archivos reales
