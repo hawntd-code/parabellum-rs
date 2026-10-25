@@ -158,7 +158,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     - el equipo ve el acuse: «la aplicó en su PC».
   - Las reglas de Firebase validan cada tarjeta (de la lista, con un valor de su tipo y solo del equipo)
     y no dejan editar ni borrar mensajes. Probadas en el emulador (`docs/probar-reglas.py`).
-- [ ] *Prueba:* Juan: pedir ayuda desde otra cuenta en su comunidad y mandarle una tarjeta (la 0.34.0 y sus reglas ya están publicadas)
+- [x] *Prueba:* Juan: pedir ayuda desde otra cuenta en su comunidad y mandarle una tarjeta (la 0.34.0 y sus reglas ya están publicadas) (confirmado por Juan el 2026-10-25)
 - [ ] **Plan de noviembre** ([docs/plan-noviembre.md](docs/plan-noviembre.md), pedido de Juan el 2026-10-20), en este orden:
   - [x] **0.35.0** (publicada el 2026-10-21, con la regla `supportNotify`):
     - **el paquete sin la espera de ~30 s.** Junto al zip completo sale uno ligero sin lo que está en
@@ -175,7 +175,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     (lo instalaría sin el loader). Probado con el exe de la 0.35.0 publicado.
   - [x] Juan publicó la **0.36.1 en Drive** y volvió a subir el **modpack oficial ligero**
     (confirmado por Juan el 2026-10-22).
-  - [ ] *Medición:* cuánto tarda en empezar el nuevo ligero desde Drive (antes, de 13 a 15 s).
+  - [x] *Medición:* cuánto tarda en empezar el nuevo ligero desde Drive (antes, de 13 a 15 s): el paquete oficial se instala en 1.6 s desde el catálogo real, también sin el loader en la PC (medido el 2026-10-25 en una red de casa).
   - [ ] *Prueba:* Juan: pulsar «Jugar» en otra PC (o en una carpeta nueva) con el nuevo paquete ligero
     publicado.
   - [x] **0.36.0, CurseForge antes de Firebase** (decisión de Juan, 2026-10-22): selector de fuente en
@@ -217,7 +217,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     como una sola versión. Detalle en [plan-noviembre.md](docs/plan-noviembre.md), secciones 4, 5 y 6.
     Publicada en Windows y funcionando, confirmado por Juan; registro de Drive y GitHub actualizado.
     Computer Use comprobó respaldo en Drive, restauración y recuperación del mundo anterior con datos
-    sintéticos. Pasaron 152 pruebas de Windows y 156 de Mac. Faltan el recorrido entre equipos físicos,
+    sintéticos. Pasaron 152 pruebas de Windows y 156 de Mac. Confirmado el 2026-10-25: el recorrido entre equipos físicos (un mundo de una PC a otra con Drive); falta:
     Minecraft real y probar las tarjetas (sus reglas se publicaron el 2026-10-25); ver [resultados](docs/0.39.0-implementacion.md).
   - [x] **0.39.1, integrada en la 0.39.2 publicada (2026-10-24):** conservar origen y archivo exactos al compartir,
     distinguir copia personalizada, propagar pendientes e integridad, conexión alternativa y caché,
@@ -236,8 +236,8 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     para mandar. Sin versión asignada; se retira de la 0.39.0 por decisión de Juan.
 - [ ] **Pruebas reales pendientes**:
   - en la escuela: comprobar que la conexión automática funcione en Explorar y en Drive;
-  - con amigos en sus casas: P2P y los «teletransportes»;
-  - el panel en 26.3;
+  - con amigos en sus casas: P2P y los «teletransportes». Confirmado el 2026-10-25: P2P entre casas; falta: los «teletransportes»;
+  - [x] el panel en 26.3 (confirmado por Juan el 2026-10-25);
   - las demás *Prueba:* de abajo.
 - [ ] **Mac al día con la 0.39.2 (compilar de 85a8256 o más nuevo)** (Diego; la Mac 0.33.0 ya está publicada)
 - [ ] **P2P desde la escuela** (en pausa por decisión de Juan, 2026-10-20). Medido en la UABC:
@@ -275,14 +275,14 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
 - [x] **P2P rechazado**: un amigo llegaba por P2P directo (32 ms) pero el anfitrión rechazaba cada intento porque no reconocía su dirección P2P (cambia cada vez que abre Parabellum y se reconoce por su presencia en Firebase). Ahora, si no lo reconoce, vuelve a leer la presencia de todos (como mucho cada 10 s) y el siguiente intento entra; `p2p.log` anota el motivo de cada rechazo y, al releer, quién no tiene dirección P2P o no se deja leer
 - [x] **Actualizar**: fallaba con «No hay permiso para cambiar la carpeta» si no se podía borrar el `Parabellum.exe.old` de la actualización anterior (un Parabellum viejo abierto, un antivirus). Ahora el exe actual se aparta con otro nombre (`.old-<hora>`), se limpian todos al abrir y el error dice el motivo de Windows
 - [x] **Escribir en el panel en 26.3**: desde la 26.3 (SDL3) las letras solo llegan si la pantalla pide entrada de texto; el panel la pide mientras está abierto
-- [ ] *Prueba:* Juan: escribir en el panel en 26.3; el amigo que fue rechazado vuelve a pulsar «Unirse»
+- [x] *Prueba:* Juan: escribir en el panel en 26.3; el amigo que fue rechazado vuelve a pulsar «Unirse» (confirmado por Juan el 2026-10-25)
 
 ### 0.26.1: de dónde viene el lag (pedido de Juan: «a ratos se teletransporta el personaje»)
 - [x] **Telemetría P2P cada segundo** (los dos lados): ping, camino (directo o relevo) y paquetes perdidos en `datos/logs/p2p-latencia.csv`; en `p2p.log` se anotan los picos de ping (más de 2.5 veces lo normal), el paso al relevo y las pérdidas. Los primeros 10 s no cuentan (al conectar se prueban caminos). La tarjeta P2P muestra «picos de X ms» o «pierde X %» del último minuto
 - [x] **Tiempo por tick del servidor** (1.20.3+ y 26.x): «tick query» cada 4 s, promedio y percentiles en `servidores/<servidor>/.lanzador/rendimiento.csv`; debajo del TPS sale «X ms por tick» y «trabón de X ms» si con alguien jugando un tick tardó más de 50 ms (el TPS promedio de 6 s no los ve). Las preguntas no ensucian la consola
 - [x] **Firebase**: los errores ya no muestran la dirección con la clave de la sesión (se veía en pantalla) y el 402 (plan lleno) se explica. El proyecto pasó a Blaze (Juan): el límite de 100 conexiones a la vez del plan gratis se había llenado con 5 o 6 Parabellum abiertos
 - [x] Probado: la prueba P2P por internet escribe la telemetría de los dos lados; «Prueba vanilla» encendido desde Parabellum mide 1.8 ms por tick y guarda rendimiento.csv
-- [ ] *Prueba:* Juan con un amigo 15–20 min; cuando se teletransporte, anotar la hora para cruzarla con p2p-latencia.csv (de los dos) y rendimiento.csv
+- [ ] *Prueba:* Juan con un amigo 15–20 min; cuando se teletransporte, anotar la hora para cruzarla con p2p-latencia.csv (de los dos) y rendimiento.csv. Confirmado el 2026-10-25: el P2P entre casas; falta: la medición de los teletransportes (anotar la hora y cruzarla con p2p-latencia.csv y rendimiento.csv).
 - [ ] Después (opcional): una sola conexión a Firebase por persona (hoy 10–25), con el protocolo de WebSocket de la base
 
 ### 0.26.0: lo que encontró Juan probando con sus amigos (pedido de Juan)
@@ -292,7 +292,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
 - [x] **Capturas en el panel**: cuándo se sacó cada una, «Mandar» al pasar el ratón, «Enviar a» también a amigos sin conversación (se crea), los grupos con su inicial y la lista se desplaza
 - [x] **P2P visto desde el anfitrión**: el registro anota «se conectó: directo (N ms)» o «relevo», y la tarjeta P2P del servidor (y la línea del mundo abierto) muestra quién está jugando por P2P, si va directo o por relevo y su ping, en vivo. Para comparar con playit.gg
 - [x] Probado: la prueba P2P por internet ve al invitado (destino, directo, ping) y lo quita al salir; Grupos y Capturas capturados en Fabric 1.21.1 (clic en una captura → «Enviar a»); el panel de 26.3 abre (sus clics no se pueden simular: los revisa Juan)
-- [ ] *Prueba:* Juan: en 26.3 cambiar de pestaña, «Mensaje» y Capturas; ver los jugadores del servidor; con un amigo, la tarjeta P2P (directo o relevo y ping)
+- [ ] *Prueba:* Juan: en 26.3 cambiar de pestaña, «Mensaje» y Capturas; ver los jugadores del servidor; con un amigo, la tarjeta P2P (directo o relevo y ping). Confirmado el 2026-10-25: el panel en 26.3 (cambiar de pestaña, «Mensaje» y Capturas) y el P2P entre casas; falta: ver los jugadores del servidor y la tarjeta P2P (directo o relevo y ping).
 
 ### 0.31.3: Modrinth en la escuela, sin modo escuela (pedido de Juan)
 - [x] **Medida la red de la escuela** (UABC): un FortiGate bloquea por nombre la API de Modrinth, Mojang, la info de Fabric, Forge, Quilt, CurseForge, playit y el P2P. Deja pasar Google, Drive, Firebase, Cloud Run, el CDN de Modrinth, `maven.fabricmc.net`, NeoForge y GitHub. Drive da ~12 MB/s con 6 conexiones
@@ -352,7 +352,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
 - [x] Pruebas automáticas en Windows (`.github/workflows/windows.yml`): en cada PR a `main` (los de Mac) y a mano; compila sin advertencias y corre las pruebas
 - [x] **Logo nuevo** en la ventana, el exe, la barra de tareas, la bandeja y los avisos. El exe seguía con el viejo porque Cargo no volvía a meter el icono (`build.rs` ahora lo vigila); los accesos directos que ya había lo toman la primera vez que se abre la versión nueva (`accesos::refresh_icons`)
 - [ ] Fuera del espejo: Forge para jugar en 1.8 a 1.12.1 (instalador antiguo que Parabellum no maneja; sus servidores sí están) y Forge 1.13.2, 1.14.2 y 1.14.3 (su instalador falla)
-- [ ] *Prueba:* Juan en la escuela: comprobar que la conexión automática funcione en Explorar y en Drive; crear una instancia y un servidor, instalar un modpack; con un amigo, «está escribiendo…» y mandar con la red lenta
+- [ ] *Prueba:* Juan en la escuela: comprobar que la conexión automática funcione en Explorar y en Drive; crear una instancia y un servidor, instalar un modpack; con un amigo, «está escribiendo…» y mandar con la red lenta. Confirmado el 2026-10-25: chatear con un amigo; falta: lo de la escuela y «está escribiendo…» con la red lenta.
 
 ### 0.29.0: gestor de descargas, imágenes al chat, descargas más rápidas y Minecraft desde Drive (pedido de Juan)
 - [x] **Gestor de descargas** (`descargas.rs`): cada instalación es una tarea (crear instancia, modpacks de Modrinth o de un archivo, mods y sus actualizaciones, el catálogo de Drive, instancias compartidas, importar de otro launcher, verificar y lo que falta al jugar). La flecha de arriba dice cuánto va y cuántas hay, y abre el panel: progreso, velocidad, cuánto falta, Cancelar, Reintentar (aprovecha lo ya bajado), Abrir la instancia y Limpiar terminadas
@@ -405,7 +405,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
 - [x] Reglas de Firebase (`firebase-reglas.json`): `reply` en los mensajes, `reactions/`, `owner` y `photo` en los grupos, y solo el dueño cambia el grupo. Probadas con el emulador oficial de Firebase (`docs/probar-reglas.py`): 50 casos (crear como la 0.26 y la 0.27, editar, sacar, pasar el grupo, responder, reaccionar, borrar). De paso se cerró un hueco: cualquier miembro podía esconderle una conversación a otro
 - [x] **Juan: publicar las reglas ANTES de publicar la 0.27** (publicadas el 2026-10-13)
 - [x] Después: responder y reaccionar también desde el panel del juego (0.28.0)
-- [ ] *Prueba:* con compañeros en sus casas: P2P, mensajes, invitar y «Unirse» desde el juego, y el teclado del panel en 26.3
+- [ ] *Prueba:* con compañeros en sus casas: P2P, mensajes, invitar y «Unirse» desde el juego, y el teclado del panel en 26.3. Confirmado el 2026-10-25: P2P entre casas, mensajes, «Unirse» desde el juego y el teclado del panel en 26.3; falta: invitar desde el juego.
 
 ### Después
 - [x] Doctor: buscar el mod culpable por mitades cuando el error no lo dice (0.29.0)
@@ -421,7 +421,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
 - [x] Bandeja del sistema: con la sesión iniciada, la X deja Parabellum junto al reloj
 - [x] Cuentas de Parabellum: cambiar de jugador con un clic y UUID fijo
 - [x] Avisos de Windows (solicitud nueva, un amigo abrió su mundo) sin instalador: Parabellum se registra solo para el usuario; se pueden apagar en Comportamiento
-- [ ] *Prueba:* iniciar sesión, agregarse con un compañero y entrar a su mundo con Unirse
+- [x] *Prueba:* iniciar sesión, agregarse con un compañero y entrar a su mundo con Unirse (confirmado por Juan el 2026-10-25)
 - [x] Subir a Drive directamente desde Parabellum (0.16): ver «Publicar en Drive» más abajo
 
 ### Fase 10: chat
@@ -430,7 +430,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
 - [x] Avisos de Windows de mensajes nuevos (salvo que esa conversación esté a la vista)
 - [x] Reglas de Firebase: solo los miembros leen y escriben cada conversación; solo se puede meter a amigos; tamaños limitados
 - [x] Reglas publicadas en Firebase (Juan, 2026-10-10)
-- [ ] *Prueba:* chatear con un compañero
+- [x] *Prueba:* chatear con un compañero (confirmado por Juan el 2026-10-25)
 - [ ] (Más adelante) overlay dentro del juego
 
 ### 0.24.1: el mod gasta lo mínimo y se aparta si da problemas
@@ -445,7 +445,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
 - [x] **18 .jar**: Fabric 1.16.5, 1.18.2, 1.19–1.19.2, 1.20–1.20.1, 1.21–1.21.1, 1.21.2–1.21.4, 1.21.5, 1.21.6–1.21.8, 1.21.9–1.21.10, 1.21.11, 26.1.x, 26.2, 26.3 (y Quilt); Forge 1.16.5, 1.18.2, 1.19–1.19.2, 1.20–1.20.1; NeoForge 1.20.1 y 1.21–1.21.1. Elegidas por popularidad en Modrinth. Cada una abierta en el juego con el panel; clics y escritura probados en 1.16.5, 1.21.1, 1.21.10 y 26.2; «Unirse» entró a un servidor 1.21.1
 - [x] Arreglo: Minecraft 1.18.2 no arrancaba (bibliotecas duplicadas por sistema: la de Mac tapaba a la de Windows y se perdían los nativos de LWJGL)
 - [x] `--abrir-juego <instancia> [segundos]`; JDK 8/17/21/25 en ~/.jdks solo para compilar el mod (no van en Parabellum)
-- [ ] *Prueba:* con un compañero (mensajes, invitar y unirse desde el juego). En 26.3 (usa SDL3) revisar a mano el teclado del panel
+- [ ] *Prueba:* con un compañero (mensajes, invitar y unirse desde el juego). En 26.3 (usa SDL3) revisar a mano el teclado del panel. Confirmado el 2026-10-25: mensajes, «Unirse» desde el juego y el teclado del panel en 26.3; falta: invitar desde el juego.
 - [ ] Después: NeoForge 1.21.11/26.x si alguien lo usa, Fabric 1.20.2–1.20.6
 
 ### 0.23.0: conexiones por servidor y editar/borrar mensajes (pedido de Juan)
@@ -462,7 +462,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
 - [x] Cada Parabellum publica su dirección P2P en la presencia (identidad nueva en cada arranque; sin cambiar las reglas de Firebase). El anfitrión solo deja pasar a sus amigos y solo a lo que está encendido (un servidor o el mundo abierto); la lista blanca sigue decidiendo quién juega
 - [x] «Unirse» (servidores y mundos abiertos, también desde el chat y la lista de amigos) suma la ruta P2P a la carrera: red local, P2P, IPv6 y playit.gg. En el detalle: «P2P directo» o «P2P por relevo» con su tiempo. Un servidor sin playit.gg ya se puede unir por P2P
 - [x] `--probar-p2p <puerto> [segundos]`; registro en `datos/logs/p2p.log`. Probado en este PC: entrar a «Prueba vanilla» por el túnel P2P (directo)
-- [ ] *Prueba:* Juan y un amigo en otra casa (los dos con la 0.22): ver en el detalle si sale «P2P directo» y el ping
+- [ ] *Prueba:* Juan y un amigo en otra casa (los dos con la 0.22): ver en el detalle si sale «P2P directo» y el ping. Confirmado el 2026-10-25: el P2P entre casas; falta: ver en el detalle «P2P directo» y el ping.
 - [ ] Después: playit.gg opcional (hostear sin vincular nada), relevo propio cerca si hace falta, mod ligero para la interfaz dentro del juego (invitar/unirse sin salir de Minecraft)
 
 ### 0.21.0: menos lag al jugar en los servidores (pedido de Juan)
@@ -598,7 +598,7 @@ Instalando Better MC [FORGE] - BMC4 desde Modpacks en el PC de Juan (Iris Xe) sa
 - [x] 0.13.1 (tras la prueba de Juan con Fabulously Optimized 26.2): los mods que abren su propio túnel (e4mc, World Host) ya no van al servidor y, si un servidor los tiene, se quitan solos al encender (e4mc daba otra dirección en la consola y su 6.2.1 tumba los servidores de 26.2 cuando alguien entra: `NoSuchMethodError CommandSourceStack.hasPermission(int)`). En «Abrir mi mundo», aviso con botón para desactivar e4mc en las instancias que lo tengan. Botones y campos alineados (tarjeta de dirección, ajustes, consola, invitados) y el interruptor del EULA al crear ya no sale doble
 - [x] 0.13.2 (pedido de Juan): «Hostear partida» compacta, sin título ni descripción: playit.gg en una tarjeta baja, «Abrir mi mundo a amigos» en una línea con su interruptor, botón «+ Crear servidor» y la lista igual. El panel de la derecha (jugador, amigos, novedades) se oculta y se muestra con un botón junto a «Ningún juego abierto» o con Ctrl+B; se recuerda en los ajustes
 - [x] *Prueba de Juan:* ¡funciona! playit.gg vinculado, servidor encendido con dirección fija (cairo-take.tun.ply.gg, con registro SRV: no hace falta puerto)
-- [ ] *Prueba:* entrar desde otra red con la dirección de playit.gg; invitar a un compañero y que entre con «Unirse» (las reglas de `servers/` e `invites/` ya están publicadas)
+- [ ] *Prueba:* entrar desde otra red con la dirección de playit.gg; invitar a un compañero y que entre con «Unirse» (las reglas de `servers/` e `invites/` ya están publicadas). Confirmado el 2026-10-25: que un compañero entre con «Unirse»; falta: entrar desde otra red con la dirección de playit.gg (y la invitación).
 
 ### Fase 12: doctor (0.12.0)
 - [x] **Revisión antes de jugar**: lo que declara cada mod (fabric.mod.json y también mods.toml de Forge/NeoForge, con los mods que traen dentro) contra la instancia: dependencias que faltan, versión del loader o de Minecraft que no encaja, choques y mods repetidos. Si algo impide abrir, se ofrece «Arreglar y jugar» o «Jugar de todos modos»

@@ -198,3 +198,7 @@ No tienes que hacer nada: al abrirlo busca la versión nueva, la baja y se reini
 
 <p align="center"><sub>¿Quieres compilarlo o colaborar? Está en <a href="docs/desarrollo.md">docs/desarrollo.md</a>.</sub></p>
 <p align="center"><sub>Fuente <a href="https://github.com/rsms/inter">Inter</a> bajo la SIL Open Font License. Parabellum no es un producto oficial de Minecraft: no está aprobado por Mojang ni por Microsoft, ni asociado con ellos.</sub></p>
+
+## Licencia
+
+Parabellum es gratis para usarlo desde sus descargas oficiales: las releases de este repositorio y el catálogo de Google Drive del proyecto. Puedes pasarle el zip oficial a un amigo tal como viene. El código se puede ver, y se aceptan sugerencias de cambios por pull request. Lee la [licencia](LICENSE) y la guía para [contribuir](CONTRIBUTING.md).

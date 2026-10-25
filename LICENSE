@@ -1,0 +1,71 @@
+Licencia de Parabellum
+
+Copyright © 2026 Juan Jose Rojas Garcia y colaboradores de Parabellum. Todos los derechos reservados.
+
+1. QUÉ SE PERMITE
+
+Se permite:
+- ver y leer el código de este repositorio;
+- hacer un fork en GitHub solo para preparar cambios y proponerlos por pull request a este repositorio;
+- usar Parabellum tal como se distribuye en sus descargas oficiales: las releases de este repositorio y el catálogo de Google Drive del proyecto;
+- compartir el zip oficial de Parabellum sin modificar y sin cobrar (por ejemplo, pasárselo a alguien en una USB), tal como viene, con la licencia y los avisos de terceros que trae dentro.
+
+2. QUÉ NO SE PERMITE SIN PERMISO ESCRITO DE JUAN
+
+Sin permiso escrito de Juan Jose Rojas Garcia no se permite:
+- redistribuir el código o los ejecutables de Parabellum, modificados o no, salvo compartir el zip oficial como permite el punto 1;
+- publicar versiones propias o derivadas de Parabellum;
+- montar servicios o infraestructura propia a partir del código (puentes, catálogos, servidores de Parabellum);
+- el uso comercial.
+
+3. CONTRIBUCIONES
+
+Quien envía un pull request:
+- otorga a Juan Jose Rojas Garcia una licencia perpetua, mundial, no exclusiva, gratuita e irrevocable para usar, modificar y distribuir su contribución como parte de Parabellum;
+- declara que tiene derecho a otorgarla.
+
+4. COMPONENTES DE TERCEROS
+
+Los componentes de terceros conservan sus propias licencias. Se listan en AVISOS-DE-TERCEROS.md.
+
+5. SIN GARANTÍA
+
+Parabellum se ofrece «tal cual», sin garantías de ningún tipo. El autor no responde por los daños que se deriven de su uso.
+
+==============================================================
+
+Translation (the Spanish text prevails)
+
+Parabellum License
+
+Copyright © 2026 Juan Jose Rojas Garcia and contributors to Parabellum. All rights reserved.
+
+1. WHAT IS ALLOWED
+
+The following is allowed:
+- viewing and reading the source code in this repository;
+- forking this repository on GitHub only to prepare changes and propose them by pull request to this repository;
+- using Parabellum as distributed in its official downloads: the releases of this repository and the project's Google Drive catalog;
+- sharing the official Parabellum zip unmodified and free of charge (for example, giving it to someone on a USB drive), as it comes, with the license and third-party notices it contains.
+
+2. WHAT IS NOT ALLOWED WITHOUT WRITTEN PERMISSION FROM JUAN
+
+Without written permission from Juan Jose Rojas Garcia, the following is not allowed:
+- redistributing the code or the executables of Parabellum, modified or not, except sharing the official zip as allowed in point 1;
+- publishing your own or derivative versions of Parabellum;
+- setting up your own services or infrastructure based on the code (bridges, catalogs, Parabellum servers);
+- commercial use.
+
+3. CONTRIBUTIONS
+
+Whoever submits a pull request:
+- grants Juan Jose Rojas Garcia a perpetual, worldwide, non-exclusive, royalty-free and irrevocable license to use, modify and distribute their contribution as part of Parabellum;
+- declares that they have the right to grant it.
+
+4. THIRD-PARTY COMPONENTS
+
+Third-party components keep their own licenses. They are listed in AVISOS-DE-TERCEROS.md.
+
+5. NO WARRANTY
+
+Parabellum is provided "as is", without warranties of any kind. The author is not liable for any damages arising from its use.

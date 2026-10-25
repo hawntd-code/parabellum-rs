@@ -187,6 +187,9 @@ pub fn readme(version: &str) -> String {
          \x20  Solo pasa la primera vez.\n\
          4. Desde ahí Parabellum se actualiza sola cuando se publica una versión nueva en esta carpeta.\n\
          \n\
+         Parabellum se usa desde sus descargas oficiales. Su licencia está en LICENCIA.txt y las de los\n\
+         terceros en AVISOS-DE-TERCEROS.txt.\n\
+         \n\
          ---\n\
          \n\
          PARABELLUM {version} FOR MAC — GETTING STARTED\n\
@@ -197,7 +200,10 @@ pub fn readme(version: &str) -> String {
          2. Drag it to your Applications folder (from another folder it cannot update itself).\n\
          3. Open it. The first time macOS says it cannot check the app: it has no paid Apple signature.\n\
          \x20  Go to System Settings › Privacy & Security and click «Open Anyway». It only happens the first time.\n\
-         4. From then on Parabellum updates itself when a new version is published in this folder.\n"
+         4. From then on Parabellum updates itself when a new version is published in this folder.\n\
+         \n\
+         Parabellum is used from its official downloads. Its license is in LICENCIA.txt and the\n\
+         third-party ones in AVISOS-DE-TERCEROS.txt.\n"
     )
 }
 

@@ -581,6 +581,21 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-25 · 0.40.0 (candidata a la 1.0): licencia y avisos de terceros
+
+- **Licencia:** `LICENSE` en la raíz (en español rige; con traducción al inglés). El código se puede ver y proponer
+  cambios por pull request; Parabellum se usa desde sus descargas oficiales; redistribuir, publicar versiones
+  propias, montar infraestructura propia y el uso comercial necesitan permiso escrito de Juan. `CONTRIBUTING.md`
+  explica cómo proponer cambios.
+- **Avisos de terceros:** `AVISOS-DE-TERCEROS.md` (las 440 dependencias de Rust de Windows y Mac, la fuente Inter y
+  los textos de sus licencias), generado por `docs/avisos-de-terceros.py`. Hay que regenerarlo cuando cambien las
+  dependencias o la versión. Ninguna es GPL, LGPL ni AGPL.
+- **El zip publicado** (`catalog::publish_launcher`) lleva `LICENCIA.txt` y `AVISOS-DE-TERCEROS.txt` en su raíz,
+  integrados en el exe al compilar. Los dos actualizadores los ignoran: Windows solo toma `Parabellum.exe` y Mac
+  solo `Parabellum.app`. El LEEME de los dos sistemas los menciona.
+- Mac: nada de código. Al compilar, el zip de Mac también los lleva; revisar que la app se actualice bien desde
+  la 0.39.x.
+
 ### 2026-10-25 · 0.39.3: revisión de la 0.36.0 a la 0.39.2
 
 Claude revisó lo que se hizo de la 0.36.0 a la 0.39.2. Los arreglos los programaron tres agentes de DeepSeek en

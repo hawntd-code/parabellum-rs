@@ -106,6 +106,9 @@ pub fn readme(version: &str) -> String {
          3. Desde ahí Parabellum se actualiza solo cuando se publica una versión nueva en esta carpeta.\r\n\
          \x20  Para tenerlo a mano: Ajustes › Comportamiento › Acceso directo en el Escritorio o en el menú Inicio.\r\n\
          \r\n\
+         Parabellum se usa desde sus descargas oficiales. Su licencia está en LICENCIA.txt y las de los\r\n\
+         terceros en AVISOS-DE-TERCEROS.txt.\r\n\
+         \r\n\
          ---\r\n\
          \r\n\
          PARABELLUM {version} — GETTING STARTED\r\n\
@@ -115,6 +118,9 @@ pub fn readme(version: &str) -> String {
          2. Open Parabellum.exe. If Windows shows «Windows protected your PC», click «More info» and then\r\n\
          \x20  «Run anyway». It appears because the program has no paid signature; it only happens the first time.\r\n\
          3. From then on Parabellum updates itself when a new version is published in this folder.\r\n\
-         \x20  To keep it handy: Settings › Behavior › Desktop or Start menu shortcut.\r\n"
+         \x20  To keep it handy: Settings › Behavior › Desktop or Start menu shortcut.\r\n\
+         \r\n\
+         Parabellum is used from its official downloads. Its license is in LICENCIA.txt and the\r\n\
+         third-party ones in AVISOS-DE-TERCEROS.txt.\r\n"
     )
 }

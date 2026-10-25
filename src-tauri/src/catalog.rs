@@ -1215,6 +1215,21 @@ pub async fn apply_launcher_update(entry: &Entry, paths: &Paths, progress: impl 
     installed
 }
 
+/// La licencia de Parabellum y las de lo que va dentro del exe (MIT, Apache y BSD piden incluir sus
+/// avisos al distribuir). Se integran al compilar porque el publicador corre desde el Parabellum
+/// instalado, no desde el repo (ver publish_launcher).
+const LICENSE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../LICENSE"));
+const THIRD_PARTY_NOTICES: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../AVISOS-DE-TERCEROS.md"));
+
+const LICENSE_FILE: &str = "LICENCIA.txt";
+const NOTICES_FILE: &str = "AVISOS-DE-TERCEROS.txt";
+
+/// Agrega al zip la licencia y los avisos de terceros, en su raíz (junto al exe o a Parabellum.app).
+fn add_licenses(zip: &mut packs::ZipOut) -> Result<(), String> {
+    zip.add_bytes(LICENSE_FILE, LICENSE.as_bytes())?;
+    zip.add_bytes(NOTICES_FILE, THIRD_PARTY_NOTICES.as_bytes())
+}
+
 /// Prepara la carpeta de las versiones de este sistema («_» + su id: _parabellum en Windows,
 /// _parabellum-mac en Mac) con este mismo Parabellum para subirla a Drive (solo la versión final).
 pub fn publish_launcher(out_dir: &Path, notes: &str, test: bool) -> Result<PathBuf, String> {
@@ -1239,6 +1254,7 @@ pub fn publish_launcher(out_dir: &Path, notes: &str, test: bool) -> Result<PathB
     for (source, name) in &launcher {
         zip.add_file(source, name)?;
     }
+    add_licenses(&mut zip)?;
     zip.finish()?;
     let manifest = Manifest {
         format: 1,
@@ -1287,6 +1303,23 @@ mod tests {
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].manifest.version, "202602010000");
         assert_eq!(merged[0].source, Source::Carpeta);
+    }
+
+    #[test]
+    fn el_zip_lleva_su_licencia_y_los_avisos() {
+        let path = std::env::temp_dir().join(format!("parabellum-licencias-{}.zip", std::process::id()));
+        let mut zip = packs::ZipOut::create(&path).unwrap();
+        add_licenses(&mut zip).unwrap();
+        zip.finish().unwrap();
+        let mut archive = zip::ZipArchive::new(std::fs::File::open(&path).unwrap()).unwrap();
+        let mut read = |name: &str| {
+            let mut text = String::new();
+            std::io::Read::read_to_string(&mut archive.by_name(name).unwrap(), &mut text).unwrap();
+            text
+        };
+        assert_eq!(read(LICENSE_FILE), LICENSE);
+        assert_eq!(read(NOTICES_FILE), THIRD_PARTY_NOTICES);
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

@@ -67,7 +67,7 @@ ligero se nombra en `liteZip`, que la 0.35.0 no conoce. Detalle en
 
 ## 1. El zip del paquete oficial tarda ~30 s en empezar
 
-**Estado:** hecho en la 0.35.0 (2026-10-21). El ligero sin el loader, de la 0.35.1, va en la 0.36.1 (2026-10-22). Falta medir la descarga desde Drive.
+**Estado:** hecho en la 0.35.0 (2026-10-21). El ligero sin el loader, de la 0.35.1, va en la 0.36.1 (2026-10-22). Medido el 2026-10-25 desde el catálogo real de Drive, en una red de casa: el paquete oficial se instala en 1.6 s, también sin el loader en la PC (19 archivos del CDN); antes, Drive tardaba de 13 a 15 s solo en empezar.
 
 ### Qué pasa (medido el 2026-10-20)
 

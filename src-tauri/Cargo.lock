@@ -3390,7 +3390,7 @@ dependencies = [
 
 [[package]]
 name = "parabellum"
-version = "0.39.3"
+version = "0.40.0"
 dependencies = [
  "base64 0.22.1",
  "block2",
