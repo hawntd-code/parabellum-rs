@@ -35,8 +35,9 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 - **0.39.0:** publicada y funcionando, confirmado por Juan el 2026-10-23.
   La revisión `ffa9fc2` pasó 152 pruebas de Windows y 156 de Mac. Computer Use comprobó español/inglés,
   ambos temas y respaldo/restauración/recuperación de copia previa en Drive con un mundo sintético.
-  Faltan dos equipos físicos, Minecraft real y publicar las reglas nuevas para probar tarjetas en el
-  paquete oficial. Son verificaciones específicas pendientes, independientes de la publicación confirmada.
+  Faltan dos equipos físicos y Minecraft real para probar tarjetas en el paquete oficial (las reglas
+  nuevas las publicó Juan el 2026-10-25). Son verificaciones específicas pendientes, independientes de la
+  publicación confirmada.
   Mac requiere OAuth/Llavero, bloqueo de Java y restauración nativa.
   Juan agregó dos incidencias de CurseForge: portal incompleto en la escuela y pérdida de contenido al
   compartir. Las correcciones [0.39.1](0.39.1-curseforge.md), preparadas y probadas el 2026-10-24,
@@ -46,7 +47,6 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   WebSocket con reconexión, renovación de sesión y respaldo SSE. No requiere reglas nuevas: las de
   la 0.37.0 ya estaban publicadas y funcionando. Conserva el chat con escritura animada, perfiles,
   galería y el asistente de CurseForge.
-  El ligero ya está subido y CurseForge está probado en la escuela; falta medir el tiempo del ligero.
   Mac pasó las pruebas automáticas; quedan sus pruebas visuales del portal de CurseForge y del chat.
   Windows pasó 133 pruebas y Mac 141; Firebase real y emulador comprobados. Queda registrar las
   mediciones de escuela, suspensión y sesión larga; la confirmación de publicación no incluye esos
@@ -167,6 +167,13 @@ Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_para
   - Instancias compartidas con proveedor y versión exactos; portal con selección automática de conexión.
   - No requiere reglas nuevas. Siguen pendientes las pruebas físicas de escuela/dos equipos y Mac nativo.
 
+- **0.39.1** · 2026-10-24 · Solo candidato: no se subió a Drive y no tiene release en GitHub; sus cambios
+  salieron en la 0.39.2. Commits `b0fc3be` (los cambios) y `42ee320` (la última corrección del portal).
+  - Compartir una instancia de CurseForge conserva el proyecto y el archivo exactos del modpack original,
+    con sus configuraciones; también se puede exportar la copia personalizada.
+  - Si quedan archivos por descargar, el asistente dice el número real y no se anuncia como listo.
+  - El portal de CurseForge tiene una conexión alternativa, para cuando la directa no carga.
+
 - **0.39.0** · 2026-10-23 · Publicada por Juan y funcionando, confirmado por él. Código `ffa9fc2`;
   ZIP exacto de `_parabellum`, 10 573 870 bytes, SHA-256
   `24f64bed9ce30dd29db60e7df177a098bc8ded88cbcf28343fee4f14ff3a75b8`.
@@ -177,7 +184,7 @@ Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_para
 
 - **0.38.0** · 2026-10-23 · Publicada por Juan en Drive (confirmado por él). Código de Windows en
   `9250224`; el ZIP exacto de `_parabellum` está también en
-  [GitHub](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.38.0),
+  [GitHub](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.38.0),
   de 10 350 396 bytes, SHA-256 `ab62d6bc1eaf4c565f5ea1fdcd32b5fc259f5dce6337cdaf9ba655e13a10b6f6`:
   - **Una conexión de tiempo real compartida** para amigos, mensajes y soporte.
   - **Reconexión y renovación de sesión**, con respaldo SSE automático si la red lo necesita.
@@ -187,7 +194,7 @@ Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_para
 
 - **0.37.0** · 2026-10-23 · Publicada por Juan en Drive y reglas nuevas de Firebase publicadas y
   funcionando (confirmado por él). Código de Windows en `da5b22c`; mismo ZIP en
-  [GitHub](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.37.0),
+  [GitHub](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.37.0),
   de 10 243 719 bytes, SHA-256 `d86a00e20fdb0ff4c516fe2d790a0e9bf1ed1c5caf955e902cb1272b0eaf7d49`:
   - **Escritura animada** con avatar y puntos, también en grupos.
   - **Perfiles desde el chat:** nombre, estado, actividad y grupos en común.
@@ -195,6 +202,13 @@ Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_para
   - **Mensajes más fluidos:** confirmación, reintentos sin duplicados y posición de lectura conservada.
   - **Menos escuchas de Firebase**, con compatibilidad para clientes anteriores. WebSocket sigue en
     la 0.38.0. Incluye el asistente del portal de CurseForge de la 0.36.2.
+
+- **0.36.2** · 2026-10-23 · No se publicó sola: quedó dentro de la **0.37.0**. Código `2f08b38`; entrega
+  `2daa8c5`.
+  - Los archivos de CurseForge que el autor no permite bajar desde Parabellum se descargan en su página
+    oficial, que se abre dentro del launcher. Al terminar, Parabellum comprueba el tamaño y la huella del
+    archivo antes de instalarlo.
+  - Si cierras Parabellum a medias, los pendientes se retoman desde Biblioteca o desde la instancia.
 
 - **0.36.1** · 2026-10-22 · Publicada por Juan en Drive (confirmado por él). Código de la entrega
   de Windows en `63509b3`; también disponible en GitHub:
@@ -205,6 +219,12 @@ Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_para
   - Juan confirmó que **CurseForge funciona correctamente en la red de la escuela** tras sus pruebas.
   - El **modpack oficial ligero ya está subido**, confirmado por Juan. Queda medir cuánto tarda
     en empezar a bajar y completar la instalación desde una carpeta nueva.
+
+- **0.36.0** · 2026-10-22 · No se publicó sola: quedó dentro de la **0.36.1**. Commit `9d1d5d4`.
+  - **CurseForge junto a Modrinth** en Explorar: mods, resource packs, shaders y modpacks, con las versiones
+    compatibles y sus dependencias.
+  - Importar un modpack `.zip` de CurseForge, con su loader y sus archivos.
+  - Si el autor no permite descargas desde fuera, Parabellum abre su página en vez de forzar un enlace.
 
 - **0.35.0** · 2026-10-21 · Plan de noviembre, puntos 1 y 2. Publicada por Juan, compilada de `main` en
   `84a59e8` (zip de 10042136 bytes, SHA-256 `f4cc27b5…6780`), con la regla `supportNotify` publicada
@@ -561,6 +581,27 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-10-25 · 0.39.3: revisión de la 0.36.0 a la 0.39.2
+
+Claude revisó lo que se hizo de la 0.36.0 a la 0.39.2. Los arreglos los programaron tres agentes de DeepSeek en
+paralelo, cada uno en sus propios archivos, y Claude los revisó antes de subirlos.
+
+- **Copias «antes de restaurar» con límite** (`mundos.rs`): al restaurar un mundo, el que había se guarda en
+  `.lanzador/respaldos-mundos/`, y antes nunca se borraba. Ahora quedan las 3 más nuevas de cada mundo, hasta
+  4 GB (la más nueva siempre); las demás van a la papelera. «Volver a esta copia» manda a la papelera su carpeta
+  ya vacía.
+- **El respaldo SSE espera** (`firebase_ws.rs`): si el WebSocket ya había conectado, se pasa a SSE solo después
+  de 10 s sin poder reconectar (antes, con cada corte breve, se abría una conexión por escucha). Si el WebSocket
+  nunca conectó (una red que lo bloquea), se pasa a SSE de inmediato, como antes.
+- **Plataforma:** `plataforma::WORLD_LOCK_BLOCKS_RENAME` (verdadera en Windows, falsa en macOS) reemplaza el
+  `#[cfg(windows)]` que había en `mundos_archivo.rs`.
+- **Regla de Firebase:** `presenceInbox` solo acepta los campos que escribe Parabellum, cada uno con su tipo
+  (antes aceptaba cualquiera). Juan la publicó el 2026-10-25, con las de la 0.39.0, que tampoco estaban.
+- Formato y comentarios en `mundos.rs`, `mundos_archivo.rs`, `drive_mundos.rs` y `firebase_ws.rs`, sin cambiar lo
+  que hacen; un texto sin traducir.
+- Mac: compilar y probar. `WORLD_LOCK_BLOCKS_RENAME` ya está en `plataforma/macos/mod.rs` con `false`, así que en
+  Mac la restauración se comporta igual que antes (mantiene el bloqueo del mundo durante el intercambio).
+
 ### 2026-10-24 · Publicación estable de Windows 0.39.2
 
 - Juan confirmó la publicación en Drive. GitHub recibe el ZIP exacto de `_parabellum` como
@@ -586,6 +627,7 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 - Mac: recompilar y probar pestañas/portal en WebKit. No cambia el contrato de plataforma; sigue
   vigente el requisito de macOS 14 para la conexión alternativa del portal. Validación y límites
   en [0.39.2-red-automatica.md](0.39.2-red-automatica.md). Publicación estable confirmada después por Juan.
+- Mac: el commit `3b665f2` agregó `node pruebas/red-ui.cjs` a `.github/workflows/mac.yml`, igual que a `windows.yml`.
 - Validación: 164 pruebas Windows y 168 Mac sin fallos; nueve recorridos del exe con bloqueos por
   proceso y reposición exacta desde Mojang/Drive. Computer Use comprobó el portal directo y la
   descarga de More Overlays con huella correcta, español oscuro e inglés claro.
@@ -656,7 +698,7 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   de Nether y End. Mac debe probar bloqueo con Java, restauración, Llavero y OAuth de Drive en un Mac
   real antes de publicar. No se cambió el paquete ni la versión publicada de Mac.
 - `firebase-reglas.json` admite diez ajustes de Minecraft, su destino y los acuses pendiente/conflicto.
-  Pasó el emulador; todavía hay que publicar esas reglas antes de distribuir la 0.39.0 estable.
+  Pasó el emulador. Juan las publicó el 2026-10-25, junto con la regla de `presenceInbox` de la 0.39.3.
 - La última estable sigue siendo 0.38.0. La captura F2 → O queda al final del roadmap.
 - Revisión final del candidato: las carpetas preparadas quedan fuera de `saves`, para que un cierre
   inesperado no muestre una restauración incompleta como jugable. La búsqueda de carpetas en Drive

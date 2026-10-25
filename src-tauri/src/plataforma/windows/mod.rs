@@ -26,6 +26,8 @@ pub const PLAYIT_AGENT: Option<AgentDownload> = Some(AgentDownload {
     size: 5_094_152,
     file_name: "playit-0.17.1.exe",
 });
+/// Windows no deja renombrar la carpeta de un mundo mientras el bloqueo siga abierto.
+pub const WORLD_LOCK_BLOCKS_RENAME: bool = true;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const DETACHED_PROCESS: u32 = 0x0000_0008;

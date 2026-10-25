@@ -317,6 +317,10 @@ check("A lee su buzón de presencia", True, "GET", "presenceInbox/A", "A")
 check("B no lee el buzón de A", False, "GET", "presenceInbox/A", "B")
 check("C no suplanta la presencia de B", False, "PUT", "presenceInbox/A/B", "C", presence37)
 check("Z no publica sin amistad", False, "PUT", "presenceInbox/A/Z", "Z", {**presence37, "name": "TestZ"})
+# Todos los campos que escribe Presence::to_json (amigos.rs) tienen que pasar tal cual.
+presence_full = {**presence37, "state": "playing", "pack": "Better MC BMC4", "packFolder": "Better MC BMC4", "mc": "1.21.1", "world": "single", "server": "mc.ejemplo.com", "address": "silly-cat.sa.e4mc.link", "lan": "192.168.1.20:51234", "hosting": "LosPanas", "player": "Juan_07", "p2p": "0a1b2c|https://use1-1.relay.n0.iroh.link./", "typing": "d_abc_def"}
+check("B publica su presencia completa para A", True, "PUT", "presenceInbox/A/B", "B", presence_full)
+check("La presencia no acepta campos de más", False, "PUT", "presenceInbox/A/B", "B", {**presence_full, "mods": "x"})
 req("DELETE", "friends/A/B", "owner")
 req("DELETE", "friends/B/A", "owner")
 check("B deja de publicar al perder la amistad", False, "PUT", "presenceInbox/A/B", "B", presence37)

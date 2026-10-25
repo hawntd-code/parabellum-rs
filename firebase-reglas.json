@@ -664,8 +664,53 @@
         "$from": {
           ".write": "auth != null && ((!newData.exists() && (auth.uid === $uid || auth.uid === $from)) || (auth.uid === $from && root.child('friends').child($from).child($uid).val() === true))",
           ".validate": "newData.hasChildren(['name','state','updated','protocol']) && newData.child('protocol').val() === 1 && (newData.child('state').val() === 'online' || newData.child('state').val() === 'playing' || newData.child('state').val() === 'offline') && newData.child('updated').isNumber()",
-          "$field": {
-            ".validate": "newData.isNumber() || (newData.isString() && newData.val().length <= 200)"
+          "name": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "state": {
+            ".validate": "newData.val() === 'online' || newData.val() === 'playing' || newData.val() === 'offline'"
+          },
+          "updated": {
+            ".validate": "newData.isNumber()"
+          },
+          "protocol": {
+            ".validate": "newData.val() === 1"
+          },
+          "pack": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "packFolder": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "mc": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "world": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "server": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "address": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "lan": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "hosting": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "player": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "p2p": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "typing": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "$other": {
+            ".validate": false
           }
         }
       }

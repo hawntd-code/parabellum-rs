@@ -20,6 +20,7 @@ pub struct Source {
     pub world: String,
 }
 impl Source {
+    /// La clave que identifica la fuente de una revisión (`tipo:id:mundo`).
     pub fn key(&self) -> String {
         format!("{}:{}:{}", self.kind, self.id, self.world)
     }
@@ -42,6 +43,7 @@ pub struct Recipe {
     pub content_hash: String,
 }
 impl Recipe {
+    /// La receta de una instancia: con qué versión, cargador y contenido se jugó.
     pub fn of(instance: &Instance) -> Self {
         let reference = identidad::reference(instance);
         Self {
@@ -54,6 +56,7 @@ impl Recipe {
             content_hash: identidad::content(instance).content_hash,
         }
     }
+    /// Si la instancia sigue teniendo lo mismo que la receta (versión, cargador y contenido).
     pub fn compatible(&self, instance: &Instance) -> bool {
         instance.minecraft_version == self.minecraft
             && instance.loader == self.loader
@@ -85,18 +88,22 @@ pub struct Revision {
     pub content_revision: Option<String>,
 }
 impl Revision {
+    /// La revisión cuyo ZIP usa esta (la propia, si no referencia otra).
     pub fn data_revision(&self) -> &str {
         self.content_revision.as_deref().unwrap_or(&self.id)
     }
 }
+/// Un identificador nuevo: 16 bytes al azar en hexadecimal.
 pub fn id() -> String {
     let mut bytes = [0u8; 16];
     getrandom::getrandom(&mut bytes).expect("identificador aleatorio");
     hex::encode(bytes)
 }
+/// Si el texto tiene la forma de un identificador de Parabellum.
 pub fn valid_id(id: &str) -> bool {
     id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit())
 }
+/// Si el nombre sirve como carpeta o archivo en cualquier sistema (sin rutas ni nombres reservados).
 pub fn component(name: &str) -> bool {
     !name.is_empty()
         && name != "."
@@ -130,6 +137,7 @@ pub fn component(name: &str) -> bool {
                 | "LPT9"
         )
 }
+/// Escribe el JSON completo de golpe: primero un temporal y después el renombrado.
 pub fn atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -141,9 +149,11 @@ pub fn atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     drop(file);
     std::fs::rename(staged, path).map_err(|e| e.to_string())
 }
+/// La identidad guardada en un mundo, si la tiene y se puede leer.
 pub fn identity(folder: &Path) -> Option<Identity> {
     serde_json::from_slice(&std::fs::read(folder.join(IDENTITY)).ok()?).ok()
 }
+/// Devuelve la identidad del mundo; la crea, o la renueva si se duplica o cambia de cuenta.
 pub fn ensure_identity(folder: &Path, owner: &str, duplicate: bool) -> Result<Identity, String> {
     let found = identity(folder).filter(|i| valid_id(&i.world_id) && i.owner == owner && !duplicate);
     let found = found.unwrap_or_else(|| Identity {
@@ -185,6 +195,7 @@ fn files(root: &Path) -> Result<Vec<PathBuf>, String> {
     out.sort();
     Ok(out)
 }
+/// SHA-256 y MD5 de un archivo, leído por bloques (para poder cancelar).
 pub fn hashes(path: &Path) -> Result<(String, String), String> {
     let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut sha = Sha256::new();
@@ -201,6 +212,7 @@ pub fn hashes(path: &Path) -> Result<(String, String), String> {
     }
     Ok((hex::encode(sha.finalize()), hex::encode(md5.finalize())))
 }
+/// Copia un mundo en un ZIP con sus huellas y metadatos, sin modificarlo.
 pub fn snapshot(folder: &Path, archive: &Path, mut revision: Revision, progress: impl Fn(f64)) -> Result<Revision, String> {
     if !folder.join("level.dat").is_file() {
         return Err(t!("No se encontró level.dat en el mundo.", "The world's level.dat was not found."));
@@ -294,6 +306,7 @@ pub fn snapshot(folder: &Path, archive: &Path, mut revision: Revision, progress:
     revision.size = archive.metadata().map_err(|e| e.to_string())?.len();
     Ok(revision)
 }
+/// Descomprime una copia comprobada en una carpeta nueva: la preparación de la restauración.
 pub fn unpack(archive: &Path, destination: &Path, revision: &Revision) -> Result<(), String> {
     if destination.exists() {
         return Err(t!(
@@ -415,12 +428,20 @@ pub fn unpack(archive: &Path, destination: &Path, revision: &Revision) -> Result
 pub fn install(staged: &Path, target: &Path, backups: &Path, server: bool) -> Result<Option<PathBuf>, String> {
     let parent = target
         .parent()
-        .ok_or_else(|| "Destino sin carpeta".to_string())?
+        .ok_or_else(|| t!("Destino sin carpeta.", "Destination without a folder."))?
         .canonicalize()
         .map_err(|e| e.to_string())?;
-    let staged_parent=staged.parent().and_then(|p|p.canonicalize().ok());
-    let outside_saves=parent.parent().is_some_and(|p|staged_parent.as_deref()==Some(p)) && staged.file_name().is_some_and(|n|{let n=n.to_string_lossy();n.starts_with(".parabellum-restaurar-") || n.starts_with(".parabellum-recuperar-")});
-    if (!outside_saves && staged_parent.as_ref()!=Some(&parent)) || !staged.is_dir() || staged.is_symlink() || target.is_symlink() {
+    let staged_parent = staged.parent().and_then(|p| p.canonicalize().ok());
+    let outside_saves = parent.parent().is_some_and(|p| staged_parent.as_deref() == Some(p))
+        && staged.file_name().is_some_and(|n| {
+            let n = n.to_string_lossy();
+            n.starts_with(".parabellum-restaurar-") || n.starts_with(".parabellum-recuperar-")
+        });
+    if (!outside_saves && staged_parent.as_ref() != Some(&parent))
+        || !staged.is_dir()
+        || staged.is_symlink()
+        || target.is_symlink()
+    {
         return Err(t!("Destino de restauración no válido.", "Invalid restore destination."));
     }
     let mut current = vec![(target.to_path_buf(), String::new())];
@@ -458,8 +479,9 @@ pub fn install(staged: &Path, target: &Path, backups: &Path, server: bool) -> Re
     }
     // Windows no permite renombrar la carpeta con nuestro propio handle abierto. La reserva del
     // coordinador sigue impidiendo iniciar Minecraft hasta terminar el intercambio.
-    #[cfg(windows)]
-    drop(_locks);
+    if crate::plataforma::WORLD_LOCK_BLOCKS_RENAME {
+        drop(_locks);
+    }
     let mut moved: Vec<(PathBuf, PathBuf)> = Vec::new();
     let result = (|| -> std::io::Result<()> {
         if let Some(backup) = &backup {
@@ -503,6 +525,7 @@ pub fn install(staged: &Path, target: &Path, backups: &Path, server: bool) -> Re
     }
     Ok(backup)
 }
+/// Las revisiones que ninguna otra tiene como padre (las puntas de cada rama).
 pub fn heads(revisions: &[Revision]) -> Vec<String> {
     let parents: HashSet<&str> = revisions.iter().flat_map(|r| r.parents.iter().map(String::as_str)).collect();
     revisions.iter().filter(|r| !parents.contains(r.id.as_str())).map(|r| r.id.clone()).collect()
@@ -633,11 +656,15 @@ mod tests {
         assert_eq!(std::fs::read(original.join("level.dat")).unwrap(), b"nuevo");
     }
     #[test]
-    fn la_preparacion_no_aparece_como_mundo_en_saves(){
-        let f=Fixture::new();let original=f.world("saves/world");let stage=f.world(".parabellum-restaurar-prueba");put(&stage,"level.dat",b"nuevo");
+    fn la_preparacion_no_aparece_como_mundo_en_saves() {
+        let f = Fixture::new();
+        let original = f.world("saves/world");
+        let stage = f.world(".parabellum-restaurar-prueba");
+        put(&stage, "level.dat", b"nuevo");
         assert!(!original.parent().unwrap().join(stage.file_name().unwrap()).exists());
-        install(&stage,&original,&f.0.join("backups"),false).unwrap();
-        assert_eq!(std::fs::read(original.join("level.dat")).unwrap(),b"nuevo");assert!(!stage.exists());
+        install(&stage, &original, &f.0.join("backups"), false).unwrap();
+        assert_eq!(std::fs::read(original.join("level.dat")).unwrap(), b"nuevo");
+        assert!(!stage.exists());
     }
     #[cfg(windows)]
     #[test]

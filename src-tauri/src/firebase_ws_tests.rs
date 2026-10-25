@@ -198,6 +198,7 @@ impl Server {
             idle: Duration::from_secs(2),
             ping: Duration::from_millis(250),
             response: Duration::from_secs(2),
+            fallback_after: Duration::from_secs(2),
         };
         Arc::new(db)
     }
@@ -381,9 +382,13 @@ async fn closed() {
     })
     .await;
 }
+/// `metrics` es global: los recorridos de red se ejecutan de uno en uno para que sus cuentas
+/// no se mezclen entre pruebas.
+static NETWORK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[tokio::test]
 async fn websocket_compartido_reconecta_renueva_y_vuelve_de_sse() {
+    let _network = NETWORK.lock().await;
     let server = Server::new().await;
     // Mismo path: una consulta del servidor, dos consumidores. Una rama hija comparte el socket.
     let db = server.database(true);
@@ -515,16 +520,20 @@ async fn websocket_compartido_reconecta_renueva_y_vuelve_de_sse() {
         last(&seen) == json!({"value":6})
     })
     .await;
-    // Una conexión TCP muda también se detecta, aunque siga abierta.
+    // Una conexión TCP muda también se detecta, aunque siga abierta; al reconectar dentro de
+    // la gracia se conserva el WebSocket y no se abre SSE.
     let fallbacks = metrics::FALLBACKS.load(Ordering::SeqCst);
+    let connects = server.state.connects.load(Ordering::SeqCst);
     server.state.quiet.store(true, Ordering::SeqCst);
-    wait("detectar el socket mudo", || {
-        metrics::FALLBACKS.load(Ordering::SeqCst) > fallbacks
+    wait("detectar el socket mudo y reemplazarlo", || {
+        server.state.connects.load(Ordering::SeqCst) > connects
     })
     .await;
     server.state.quiet.store(false, Ordering::SeqCst);
-    wait("volver del socket mudo", || {
-        metrics::WEBSOCKETS.load(Ordering::SeqCst) == 1 && metrics::SSE.load(Ordering::SeqCst) == 0
+    wait("seguir sin SSE tras el socket mudo", || {
+        metrics::WEBSOCKETS.load(Ordering::SeqCst) == 1
+            && metrics::SSE.load(Ordering::SeqCst) == 0
+            && metrics::FALLBACKS.load(Ordering::SeqCst) == fallbacks
     })
     .await;
     drop(listener);
@@ -560,4 +569,107 @@ async fn websocket_compartido_reconecta_renueva_y_vuelve_de_sse() {
     drop(db);
     closed().await;
     println!("Socket compartido, consultas duplicadas, permisos, renovación, reconexión, SSE, vigilancia y redirección: correctos.");
+}
+
+#[tokio::test]
+async fn corte_breve_reconecta_sin_abrir_sse() {
+    let _network = NETWORK.lock().await;
+    let server = Server::new().await;
+    let db = server.database(false);
+    let (listener, seen) = listen(&db, "root/child");
+    wait("conexión inicial", || last(&seen) == json!({"value":1})).await;
+    let (connects, queries) = (
+        server.state.connects.load(Ordering::SeqCst),
+        server.state.queries.load(Ordering::SeqCst),
+    );
+    let fallbacks = metrics::FALLBACKS.load(Ordering::SeqCst);
+    let sse = server.state.sse.load(Ordering::SeqCst);
+    let _ = server.state.events.send(Event::Cut);
+    wait("reconectar y volver a consultar", || {
+        server.state.connects.load(Ordering::SeqCst) > connects
+            && server.state.queries.load(Ordering::SeqCst) > queries
+    })
+    .await;
+    // Margen para que un aviso `sse: true` equivocado abriera su conexión.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        metrics::FALLBACKS.load(Ordering::SeqCst),
+        fallbacks,
+        "Un corte que reconecta dentro de la gracia no debe abrir SSE"
+    );
+    assert_eq!(
+        server.state.sse.load(Ordering::SeqCst),
+        sse,
+        "No debe abrirse ninguna conexión SSE"
+    );
+    drop(listener);
+    drop(db);
+    closed().await;
+}
+
+#[tokio::test]
+async fn corte_largo_abre_sse_tras_la_gracia() {
+    let _network = NETWORK.lock().await;
+    let server = Server::new().await;
+    let db = server.database(false);
+    let (listener, seen) = listen(&db, "root/child");
+    wait("conexión inicial", || last(&seen) == json!({"value":1})).await;
+    let fallbacks = metrics::FALLBACKS.load(Ordering::SeqCst);
+    // La red deja de aceptar WebSocket: el corte supera la gracia.
+    server.state.blocked.store(true, Ordering::SeqCst);
+    let _ = server.state.events.send(Event::Cut);
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert_eq!(
+        metrics::FALLBACKS.load(Ordering::SeqCst),
+        fallbacks,
+        "Todavía no venció la gracia"
+    );
+    wait("abrir SSE al vencer la gracia", || {
+        metrics::FALLBACKS.load(Ordering::SeqCst) > fallbacks
+    })
+    .await;
+    wait("una conexión SSE", || {
+        metrics::SSE.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    assert_eq!(
+        last(&seen),
+        json!({"value":1}),
+        "Conserva los datos mientras espera la reconexión"
+    );
+    server.state.blocked.store(false, Ordering::SeqCst);
+    wait("volver al WebSocket y cerrar SSE", || {
+        metrics::WEBSOCKETS.load(Ordering::SeqCst) == 1 && metrics::SSE.load(Ordering::SeqCst) == 0
+    })
+    .await;
+    drop(listener);
+    drop(db);
+    closed().await;
+}
+
+#[tokio::test]
+async fn websocket_que_nunca_conecta_abre_sse_de_inmediato() {
+    let _network = NETWORK.lock().await;
+    let server = Server::new().await;
+    server.state.blocked.store(true, Ordering::SeqCst);
+    let db = server.database(false);
+    let (listener, seen) = listen(&db, "root/child");
+    let started = Instant::now();
+    wait("SSE al primer fallo", || {
+        metrics::SSE.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    assert!(
+        started.elapsed() < Duration::from_millis(1500),
+        "Sin conexión previa no se espera la gracia"
+    );
+    assert_eq!(
+        server.state.connects.load(Ordering::SeqCst),
+        0,
+        "El WebSocket nunca llegó a abrir"
+    );
+    wait("datos por SSE", || last(&seen) == json!({"value":1})).await;
+    drop(listener);
+    drop(db);
+    closed().await;
 }

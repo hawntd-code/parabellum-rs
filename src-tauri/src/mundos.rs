@@ -9,10 +9,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex, OnceLock},
 };
 use tauri::{AppHandle, Emitter, Manager};
+/// Copias «antes de restaurar» que se conservan de cada mundo.
+const PREVIOUS_KEEP: usize = 3;
+/// Tope de espacio de las copias «antes de restaurar» de cada mundo (la más nueva se queda siempre).
+const PREVIOUS_MAX: u64 = 4 * 1024 * 1024 * 1024;
 static CLIENT: tokio::sync::Mutex<Option<Arc<Client>>> = tokio::sync::Mutex::const_new(None);
 static WORK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 static INDEX: Mutex<()> = Mutex::new(());
@@ -48,6 +52,7 @@ fn update(paths: &Paths, key: &str, change: impl FnOnce(&mut Local)) -> Result<L
     archive::atomic(&index_path(paths), &index)?;
     Ok(result)
 }
+/// Si hay una operación de mundos en curso para esa instancia o servidor.
 pub fn busy(kind: &str, id: &str) -> bool {
     BUSY.get_or_init(Default::default).lock().unwrap().contains(&format!("{kind}:{id}"))
 }
@@ -94,6 +99,7 @@ impl Drop for Guard {
         .remove(&self.key);
     }
 }
+/// Reserva la instancia o servidor mientras se prepara una operación de mundos.
 pub fn starting(app: &AppHandle, kind: &str, id: &str) -> Result<Guard, String> {
     Guard::capture(
         app,
@@ -237,6 +243,7 @@ fn pending(paths: &Paths) -> Vec<Pending> {
         .filter(|p| archive::valid_id(&p.revision.id))
         .collect()
 }
+/// Estado de Drive y de las copias pendientes de subir.
 #[tauri::command]
 pub fn mundos_estado(app: AppHandle) -> Status {
     let paths = &app.state::<AppState>().paths;
@@ -257,6 +264,7 @@ pub fn mundos_estado(app: AppHandle) -> Status {
             .collect(),
     }
 }
+/// Conecta la cuenta de Google y retoma las subidas pendientes.
 #[tauri::command]
 pub async fn mundos_conectar(app: AppHandle) -> Result<String, String> {
     let state = app.state::<AppState>();
@@ -275,6 +283,7 @@ pub async fn mundos_conectar(app: AppHandle) -> Result<String, String> {
     resume_startup(&app);
     Ok(email)
 }
+/// Desconecta Drive sin dejar subidas de mundos en curso.
 #[tauri::command]
 pub async fn mundos_desconectar(app: AppHandle) -> Result<(), String> {
     if !ACTIVE.get_or_init(Default::default).lock().unwrap().is_empty() {
@@ -288,6 +297,7 @@ pub async fn mundos_desconectar(app: AppHandle) -> Result<(), String> {
     changed(&app);
     Ok(())
 }
+/// Mundos locales de una instancia o servidor, con su estado en Drive.
 #[tauri::command]
 pub fn mundos_locales(app: AppHandle, tipo: String, id: String) -> Result<Vec<LocalView>, String> {
     let paths = &app.state::<AppState>().paths;
@@ -334,6 +344,7 @@ pub fn mundos_locales(app: AppHandle, tipo: String, id: String) -> Result<Vec<Lo
         })
         .collect())
 }
+/// Activa o desactiva el respaldo de un mundo.
 #[tauri::command]
 pub async fn mundos_configurar(app: AppHandle, origen: Source, activo: bool) -> Result<(), String> {
     let paths = app.state::<AppState>().paths.clone();
@@ -408,6 +419,7 @@ async fn upload_pending(app: &AppHandle, pending: Pending, task: Option<String>)
     changed(app);
     result
 }
+/// Sube una copia nueva de un mundo, reanudando la pendiente si la hay.
 #[tauri::command]
 pub async fn mundos_respaldar(app: AppHandle, origen: Source, tarea: Option<String>) -> Result<Entry, String> {
     let cloud = client(&app).await?;
@@ -489,6 +501,7 @@ pub async fn mundos_respaldar(app: AppHandle, origen: Source, tarea: Option<Stri
     changed(&app);
     result
 }
+/// Retoma una subida pendiente concreta.
 #[tauri::command]
 pub async fn mundos_reanudar(app: AppHandle, revision: String) -> Result<Entry, String> {
     if !archive::valid_id(&revision) {
@@ -514,6 +527,7 @@ pub struct CloudWorld {
     pub revisions: Vec<Entry>,
     pub used: u64,
 }
+/// Mundos guardados en Drive, agrupados por identidad y con su historial.
 #[tauri::command]
 pub async fn mundos_nube(app: AppHandle) -> Result<Vec<CloudWorld>, String> {
     let cloud = client(&app).await?;
@@ -548,6 +562,7 @@ pub struct Destination {
     pub name: String,
     pub world: Option<String>,
 }
+/// Instancias y servidores compatibles donde se puede restaurar una revisión.
 #[tauri::command]
 pub async fn mundos_destinos(app: AppHandle, mundo: String, revision: String) -> Result<Vec<Destination>, String> {
     let cloud = client(&app).await?;
@@ -579,6 +594,7 @@ pub async fn mundos_destinos(app: AppHandle, mundo: String, revision: String) ->
     })
     .await
 }
+/// Guarda una revisión de Drive como ZIP en la carpeta que elija el jugador.
 #[tauri::command]
 pub async fn mundos_exportar(app: AppHandle, mundo: String, revision: String) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
@@ -672,11 +688,76 @@ struct Previous {
     at: i64,
     local: Option<Local>,
 }
+/// Una copia «antes de restaurar» con lo que ocupa, para decidir la retención sin mirar el disco.
+struct PreviousCopy {
+    source: Source,
+    id: String,
+    at: i64,
+    bytes: u64,
+}
+/// Por cada mundo se quedan las 3 copias más nuevas y, salvo la más nueva, no se pasa de 4 GB.
+fn expired(copies: Vec<PreviousCopy>) -> Vec<PreviousCopy> {
+    let mut groups: HashMap<String, Vec<PreviousCopy>> = HashMap::new();
+    for copy in copies {
+        groups.entry(copy.source.key()).or_default().push(copy);
+    }
+    let mut out = Vec::new();
+    for mut group in groups.into_values() {
+        group.sort_by_key(|c| std::cmp::Reverse(c.at));
+        out.extend(group.split_off(PREVIOUS_KEEP.min(group.len())));
+        let mut total: u64 = group.iter().map(|c| c.bytes).sum();
+        while total > PREVIOUS_MAX && group.len() > 1 {
+            let copy = group.pop().unwrap();
+            total = total.saturating_sub(copy.bytes);
+            out.push(copy);
+        }
+    }
+    out
+}
+/// Las copias «antes de restaurar» de un mundo que siguen completas (con su `mundo/level.dat`, como
+/// las cuenta `mundos_anteriores`): la carpeta que deja «volver a esta copia» no ocupa lugar.
+fn previous_copies(root: &Path, source: &Source) -> Vec<PreviousCopy> {
+    std::fs::read_dir(root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path().join("mundo/level.dat").is_file())
+        .filter_map(|e| {
+            let id = e.file_name().to_string_lossy().to_string();
+            if !archive::valid_id(&id) {
+                return None;
+            }
+            let previous: Previous = serde_json::from_slice(&std::fs::read(e.path().join("info.json")).ok()?).ok()?;
+            if previous.source != *source {
+                return None;
+            }
+            let bytes = crate::packs::walk(&e.path().join("mundo"))
+                .iter()
+                .filter_map(|f| f.metadata().ok())
+                .map(|m| m.len())
+                .sum();
+            Some(PreviousCopy {
+                source: previous.source,
+                id,
+                at: previous.at,
+                bytes,
+            })
+        })
+        .collect()
+}
+/// Manda a la papelera las copias que sobran de un mundo; si falla, se quedan como están.
+fn prune_previous(root: &Path, source: &Source) {
+    for copy in expired(previous_copies(root, source)) {
+        // Es mantenimiento: si la papelera falla, la restauración ya terminó bien.
+        let _ = trash::delete(root.join(&copy.id));
+    }
+}
 #[derive(Serialize)]
 pub struct PreviousView {
     id: String,
     at: i64,
 }
+/// Copias «antes de restaurar» disponibles de un mundo, de la más nueva a la más vieja.
 #[tauri::command]
 pub fn mundos_anteriores(app: AppHandle, origen: Source) -> Result<Vec<PreviousView>, String> {
     location(&app, &origen, false)?;
@@ -698,6 +779,7 @@ pub fn mundos_anteriores(app: AppHandle, origen: Source) -> Result<Vec<PreviousV
     result.sort_by_key(|r| std::cmp::Reverse(r.at));
     Ok(result)
 }
+/// Devuelve el mundo a una copia «antes de restaurar», guardando la actual.
 #[tauri::command]
 pub async fn mundos_volver_anterior(app: AppHandle, origen: Source, respaldo: String) -> Result<(), String> {
     if !archive::valid_id(&respaldo) {
@@ -726,8 +808,11 @@ pub async fn mundos_volver_anterior(app: AppHandle, origen: Source, respaldo: St
         std::fs::rename(&source, &stage).map_err(|e| e.to_string())?;
         match archive::install(&stage, &target, &root, server) {
             Ok(backup) => {
+                // Su mundo ya volvió a su lugar: a la carpeta solo le queda info.json.
+                let _ = trash::delete(&previous_dir);
                 if let Some(backup) = backup {
                     archive::atomic(&backup.parent().unwrap().join("info.json"), &record)?;
+                    prune_previous(&root, &record.source);
                 }
                 Ok(())
             }
@@ -752,6 +837,7 @@ pub async fn mundos_volver_anterior(app: AppHandle, origen: Source, respaldo: St
     changed(&app);
     Ok(())
 }
+/// Restaura una revisión de Drive y conserva el mundo actual como copia anterior.
 #[tauri::command]
 pub async fn mundos_restaurar(
     app: AppHandle,
@@ -784,7 +870,8 @@ pub async fn mundos_restaurar(
         ));
     }
     if destino.kind == "servidor" {
-        let s = crate::servidor::find(&app.state::<AppState>().paths, &destino.id).ok_or_else(||t!("No se encontró el servidor.","The server was not found."))?;
+        let s = crate::servidor::find(&app.state::<AppState>().paths, &destino.id)
+            .ok_or_else(|| t!("No se encontró el servidor.", "The server was not found."))?;
         let configured = crate::servidor::property(&s.folder, "level-name").unwrap_or_else(|| "world".into());
         if destino.world != configured {
             return Err(t!("Elige el mundo configurado del servidor.", "Choose the server's configured world."));
@@ -849,6 +936,9 @@ pub async fn mundos_restaurar(
                         )
                     })
                 });
+                if backup.is_some() && warning.is_none() {
+                    prune_previous(&backups, &previous.source);
+                }
                 Ok((backup, warning))
             })
             .await?;
@@ -913,6 +1003,7 @@ pub async fn mundos_restaurar(
     changed(&app);
     result
 }
+/// Respalda en segundo plano los mundos habilitados de una instancia o servidor.
 pub fn auto_backup(app: &AppHandle, kind: &str, id: &str) {
     let app = app.clone();
     let Some(saved) = drive_mundos::load(&app.state::<AppState>().paths) else {
@@ -933,6 +1024,7 @@ pub fn auto_backup(app: &AppHandle, kind: &str, id: &str) {
         changed(&app);
     });
 }
+/// Retoma al arrancar las subidas de mundos que quedaron pendientes.
 pub fn resume_startup(app: &AppHandle) {
     let app = app.clone();
     let paths = app.state::<AppState>().paths.clone();
@@ -945,4 +1037,83 @@ pub fn resume_startup(app: &AppHandle) {
         }
         changed(&app);
     });
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    const GIB: u64 = 1024 * 1024 * 1024;
+
+    fn copy(instance: &str, n: u8, at: i64, bytes: u64) -> PreviousCopy {
+        PreviousCopy {
+            source: Source {
+                kind: "instancia".into(),
+                id: instance.into(),
+                world: "mundo".into(),
+            },
+            id: format!("{n:032x}"),
+            at,
+            bytes,
+        }
+    }
+
+    fn ids(copies: Vec<PreviousCopy>) -> Vec<String> {
+        let mut ids: Vec<String> = copies.into_iter().map(|c| c.id).collect();
+        ids.sort();
+        ids
+    }
+
+    #[test]
+    fn se_quitan_las_mas_viejas_de_cada_mundo() {
+        let mut copies = (0u8..5).map(|i| copy("uno", i, i as i64, 10)).collect::<Vec<_>>();
+        copies.push(copy("otro", 9, 99, 10));
+        let removed = expired(copies);
+        assert!(removed.iter().all(|c| c.source.id == "uno"));
+        assert_eq!(ids(removed), vec![format!("{:032x}", 0), format!("{:032x}", 1)]);
+    }
+
+    #[test]
+    fn el_tope_de_tamano_quita_las_mas_viejas() {
+        let copies = vec![
+            copy("uno", 1, 1, 2 * GIB),
+            copy("uno", 2, 2, 2 * GIB),
+            copy("uno", 3, 3, 2 * GIB),
+        ];
+        assert_eq!(ids(expired(copies)), vec![format!("{:032x}", 1)]);
+    }
+
+    #[test]
+    fn la_carpeta_que_deja_volver_a_una_copia_no_ocupa_lugar() {
+        let root = std::env::temp_dir().join(format!("pbl-anteriores-{}", archive::id()));
+        let source = copy("uno", 0, 0, 0).source;
+        let other = copy("otro", 0, 0, 0).source;
+        let write = |id: u8, source: &Source, complete: bool| {
+            let folder = root.join(format!("{id:032x}"));
+            std::fs::create_dir_all(folder.join("mundo")).unwrap();
+            let previous = Previous { source: source.clone(), at: id as i64, local: None };
+            std::fs::write(folder.join("info.json"), serde_json::to_vec(&previous).unwrap()).unwrap();
+            if complete {
+                std::fs::write(folder.join("mundo/level.dat"), b"nivel").unwrap();
+            } else {
+                // Como queda después de «volver a esta copia»: el mundo se fue, info.json se quedó.
+                std::fs::remove_dir(folder.join("mundo")).unwrap();
+            }
+        };
+        write(1, &source, true);
+        write(2, &source, true);
+        write(3, &source, true);
+        write(4, &source, true);
+        write(5, &source, false);
+        write(6, &other, true);
+        std::fs::create_dir_all(root.join("no-es-un-id")).unwrap();
+        // Con 4 completas y una incompleta, la incompleta no ocupa lugar: solo sobra la más vieja.
+        let removed = expired(previous_copies(&root, &source));
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(ids(removed), vec![format!("{:032x}", 1)]);
+    }
+
+    #[test]
+    fn la_mas_nueva_se_queda_aunque_sola_pase_el_tope() {
+        let copies = vec![copy("uno", 1, 1, 3 * GIB), copy("uno", 2, 2, 5 * GIB)];
+        assert_eq!(ids(expired(copies)), vec![format!("{:032x}", 1)]);
+    }
 }

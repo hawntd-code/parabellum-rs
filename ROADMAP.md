@@ -206,7 +206,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     Windows compilada, Firebase real comprobado y mismo ZIP verificado para la publicación.
     [Implementación y medición](docs/0.38.0-firebase.md).
   - [x] **0.38.0, salida:** Juan confirmó la actualización publicada en Drive el 2026-10-23;
-    [GitHub](https://github.com/juanrojasgarcialin/parabellum-rs/releases/tag/v0.38.0) contiene el mismo
+    [GitHub](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.38.0) contiene el mismo
     ZIP de `_parabellum`, de 10 350 396 bytes. README y registro de Windows/Mac actualizados.
   - [ ] **0.38.0, seguimiento:** registrar la medición en la escuela, suspensión/reanudación y sesión
     larga. La confirmación de publicación no aporta todavía esos resultados específicos.
@@ -218,7 +218,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
     Publicada en Windows y funcionando, confirmado por Juan; registro de Drive y GitHub actualizado.
     Computer Use comprobó respaldo en Drive, restauración y recuperación del mundo anterior con datos
     sintéticos. Pasaron 152 pruebas de Windows y 156 de Mac. Faltan el recorrido entre equipos físicos,
-    Minecraft real y las tarjetas con las reglas nuevas publicadas; ver [resultados](docs/0.39.0-implementacion.md).
+    Minecraft real y probar las tarjetas (sus reglas se publicaron el 2026-10-25); ver [resultados](docs/0.39.0-implementacion.md).
   - [x] **0.39.1, integrada en la 0.39.2 publicada (2026-10-24):** conservar origen y archivo exactos al compartir,
     distinguir copia personalizada, propagar pendientes e integridad, conexión alternativa y caché,
     probar ATM10SKY y preparar entrega. Ambos mods se descargaron por el portal alternativo en Windows;
@@ -235,11 +235,11 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
   - [ ] **Al final del roadmap, después de E6:** pulsar O justo después de F2 abre esa captura lista
     para mandar. Sin versión asignada; se retira de la 0.39.0 por decisión de Juan.
 - [ ] **Pruebas reales pendientes**:
-  - en la escuela: Modrinth sin modo escuela;
+  - en la escuela: comprobar que la conexión automática funcione en Explorar y en Drive;
   - con amigos en sus casas: P2P y los «teletransportes»;
   - el panel en 26.3;
   - las demás *Prueba:* de abajo.
-- [ ] **Mac al día con la 0.34** (Diego; la Mac 0.33.0 ya está publicada)
+- [ ] **Mac al día con la 0.39.2 (compilar de 85a8256 o más nuevo)** (Diego; la Mac 0.33.0 ya está publicada)
 - [ ] **P2P desde la escuela** (en pausa por decisión de Juan, 2026-10-20). Medido en la UABC:
   - el filtro bloquea los 4 relevos de n0;
   - la red deja salir UDP con un NAT que conserva el puerto, y TCP a cualquier puerto. Los servidores
@@ -303,7 +303,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
   - máximo 3 instancias; costo estimado: centavos al mes.
 - [x] Explorar abre en Modrinth también en modo escuela
 - [x] Un modpack de Modrinth cuyo loader exacto no está en el espejo usa el del espejo para esa versión de Minecraft. Antes fallaba en la escuela
-- [ ] *Prueba:* Juan en la escuela: buscar e instalar mods y un modpack de Modrinth sin modo escuela
+- [ ] *Prueba:* Juan en la escuela: comprobar que la conexión automática funcione en Explorar y en Drive; buscar e instalar mods y un modpack de Modrinth
 
 ### 0.31.0: Comunidades (plan de diciembre, etapa E2; pedido de Juan)
 - [x] **Reglas de Firebase** de comunidades, con 45 pruebas en el emulador (`docs/probar-reglas.py`):
@@ -352,7 +352,7 @@ centrado y animado. Se revisa absolutamente cada vista, formulario y ventana.
 - [x] Pruebas automáticas en Windows (`.github/workflows/windows.yml`): en cada PR a `main` (los de Mac) y a mano; compila sin advertencias y corre las pruebas
 - [x] **Logo nuevo** en la ventana, el exe, la barra de tareas, la bandeja y los avisos. El exe seguía con el viejo porque Cargo no volvía a meter el icono (`build.rs` ahora lo vigila); los accesos directos que ya había lo toman la primera vez que se abre la versión nueva (`accesos::refresh_icons`)
 - [ ] Fuera del espejo: Forge para jugar en 1.8 a 1.12.1 (instalador antiguo que Parabellum no maneja; sus servidores sí están) y Forge 1.13.2, 1.14.2 y 1.14.3 (su instalador falla)
-- [ ] *Prueba:* Juan en la escuela: activar el modo escuela, crear una instancia y un servidor, instalar un modpack; con un amigo, «está escribiendo…» y mandar con la red lenta
+- [ ] *Prueba:* Juan en la escuela: comprobar que la conexión automática funcione en Explorar y en Drive; crear una instancia y un servidor, instalar un modpack; con un amigo, «está escribiendo…» y mandar con la red lenta
 
 ### 0.29.0: gestor de descargas, imágenes al chat, descargas más rápidas y Minecraft desde Drive (pedido de Juan)
 - [x] **Gestor de descargas** (`descargas.rs`): cada instalación es una tarea (crear instancia, modpacks de Modrinth o de un archivo, mods y sus actualizaciones, el catálogo de Drive, instancias compartidas, importar de otro launcher, verificar y lo que falta al jugar). La flecha de arriba dice cuánto va y cuántas hay, y abre el panel: progreso, velocidad, cuánto falta, Cancelar, Reintentar (aprovecha lo ya bajado), Abrir la instancia y Limpiar terminadas

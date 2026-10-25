@@ -27,6 +27,7 @@ pub struct Saved {
     pub owner: String,
     pub email: String,
 }
+/// Guarda el permiso de mundos cifrado para este usuario.
 pub fn save(paths: &Paths, saved: &Saved) -> Result<(), String> {
     let bytes = serde_json::to_vec(saved).map_err(|e| e.to_string())?;
     let encrypted = google::dpapi(&bytes, true).ok_or_else(|| {
@@ -37,6 +38,7 @@ pub fn save(paths: &Paths, saved: &Saved) -> Result<(), String> {
     })?;
     std::fs::write(paths.data.join(TOKEN_FILE), encrypted).map_err(|e| e.to_string())
 }
+/// Lee el permiso de mundos guardado (None si no hay o no se puede descifrar).
 pub fn load(paths: &Paths) -> Option<Saved> {
     serde_json::from_slice(&google::dpapi(
         &std::fs::read(paths.data.join(TOKEN_FILE)).ok()?,
@@ -44,6 +46,7 @@ pub fn load(paths: &Paths) -> Option<Saved> {
     )?)
     .ok()
 }
+/// Borra el permiso de mundos guardado (no falla si ya no está).
 pub fn clear(paths: &Paths) -> Result<(), String> {
     match std::fs::remove_file(paths.data.join(TOKEN_FILE)) {
         Ok(()) => Ok(()),
@@ -113,10 +116,22 @@ fn unprotected_url(value: &str) -> Option<String> {
 }
 fn error(status: reqwest::StatusCode) -> String {
     match status.as_u16() {
-        401=>t!("Vuelve a conectar el Drive de mundos. ⟦accion:conectar-mundos⟧","Reconnect your worlds Drive. ⟦accion:conectar-mundos⟧"),
-        403=>t!("Drive no permite esta operación. Revisa el espacio o vuelve a conectar los mundos. ⟦accion:recursos⟧","Drive does not allow this operation. Check storage or reconnect worlds. ⟦accion:recursos⟧"),
-        404=>t!("La copia ya no está disponible en Drive. ⟦accion:reintentar⟧","The backup is no longer available in Drive. ⟦accion:reintentar⟧"),
-        _=>t!("No se pudo completar la operación con Drive. Puedes reintentar sin perder la copia pendiente. ⟦accion:reintentar⟧","Could not complete the Drive operation. You can retry without losing the pending backup. ⟦accion:reintentar⟧"),
+        401 => t!(
+            "Vuelve a conectar el Drive de mundos. ⟦accion:conectar-mundos⟧",
+            "Reconnect your worlds Drive. ⟦accion:conectar-mundos⟧"
+        ),
+        403 => t!(
+            "Drive no permite esta operación. Revisa el espacio o vuelve a conectar los mundos. ⟦accion:recursos⟧",
+            "Drive does not allow this operation. Check storage or reconnect worlds. ⟦accion:recursos⟧"
+        ),
+        404 => t!(
+            "La copia ya no está disponible en Drive. ⟦accion:reintentar⟧",
+            "The backup is no longer available in Drive. ⟦accion:reintentar⟧"
+        ),
+        _ => t!(
+            "No se pudo completar la operación con Drive. Puedes reintentar sin perder la copia pendiente. ⟦accion:reintentar⟧",
+            "Could not complete the Drive operation. You can retry without losing the pending backup. ⟦accion:reintentar⟧"
+        ),
     }
 }
 fn network(_: reqwest::Error) -> String {
@@ -159,6 +174,7 @@ impl Client {
             upload,
         }
     }
+    /// Conecta una cuenta de Drive nueva y devuelve el cliente con su permiso para guardar.
     pub async fn connect(
         config: &Config,
         hint: Option<&str>,
@@ -181,6 +197,7 @@ impl Client {
         };
         Ok((Arc::new(client), saved))
     }
+    /// Reanuda un permiso ya guardado, comprobando que siga siendo la misma cuenta.
     pub async fn resume(config: &Config, saved: &Saved) -> Result<Arc<Self>, String> {
         let account = GoogleAccount::resume(config, saved.refresh.clone()).await?;
         if !account.email.eq_ignore_ascii_case(&saved.email) {
@@ -244,9 +261,22 @@ impl Client {
         let mut result = Vec::new();
         let mut page = String::new();
         loop {
-            let body=self.checked(self.http.get(&self.files).bearer_auth(self.token().await?).query(&[
-                ("q",query),("fields","nextPageToken,files(id,name,size,md5Checksum,description,appProperties,mimeType)"),
-                ("pageSize","1000"),("pageToken",&page)]).send().await.map_err(network)?).await?;
+            let body = self
+                .checked(
+                    self.http
+                        .get(&self.files)
+                        .bearer_auth(self.token().await?)
+                        .query(&[
+                            ("q", query),
+                            ("fields", "nextPageToken,files(id,name,size,md5Checksum,description,appProperties,mimeType)"),
+                            ("pageSize", "1000"),
+                            ("pageToken", &page),
+                        ])
+                        .send()
+                        .await
+                        .map_err(network)?,
+                )
+                .await?;
             result.extend(body["files"].as_array().cloned().unwrap_or_default());
             page = body["nextPageToken"].as_str().unwrap_or("").into();
             if page.is_empty() {
@@ -297,7 +327,10 @@ impl Client {
         parent: Option<&str>,
         world: Option<&str>,
     ) -> Result<String, String> {
-        let mut query=format!("trashed = false and 'me' in owners and mimeType = '{MIME}' and appProperties has {{ key='pbl' and value={} }}",quoted(tag));
+        let mut query = format!(
+            "trashed = false and 'me' in owners and mimeType = '{MIME}' and appProperties has {{ key='pbl' and value={} }}",
+            quoted(tag)
+        );
         if let Some(parent) = parent {
             query += &format!(" and {} in parents", quoted(parent));
         }
@@ -320,7 +353,7 @@ impl Client {
         if let Some(world) = world {
             props["world"] = json!(world);
         }
-        let mut body = json!({"name":name,"mimeType":MIME,"appProperties":props});
+        let mut body = json!({"name": name, "mimeType": MIME, "appProperties": props});
         if let Some(parent) = parent {
             body["parents"] = json!([parent]);
         }
@@ -369,12 +402,14 @@ impl Client {
             revision,
         })
     }
+    /// Las revisiones confirmadas de esta cuenta que hay en Drive.
     pub async fn revisions(&self) -> Result<Vec<Entry>, String> {
         let files = self
             .list("trashed = false and appProperties has { key='pbl' and value='revision-v1' }")
             .await?;
         Ok(files.iter().filter_map(|f| self.parse(f, true)).collect())
     }
+    /// Sube una copia pendiente por partes, reanudando desde donde se quedó.
     pub async fn upload(
         &self,
         path: &Path,
@@ -416,8 +451,19 @@ impl Client {
                 existing["id"].as_str().unwrap().into()
             } else {
                 let parent = self.world_folder(&pending.revision).await?;
-                self.create(&json!({"name":format!("{}.zip",pending.revision.id),"mimeType":"application/zip","parents":[parent],
-                    "description":serde_json::to_string(&pending.revision).unwrap(),"appProperties":{"pbl":"revision-v1","world":pending.revision.world_id,"revision":pending.revision.id,"state":"pending"}})).await?
+                self.create(&json!({
+                    "name": format!("{}.zip", pending.revision.id),
+                    "mimeType": "application/zip",
+                    "parents": [parent],
+                    "description": serde_json::to_string(&pending.revision).unwrap(),
+                    "appProperties": {
+                        "pbl": "revision-v1",
+                        "world": pending.revision.world_id,
+                        "revision": pending.revision.id,
+                        "state": "pending"
+                    }
+                }))
+                .await?
             };
             pending.file = Some(file.clone());
             archive::atomic(state_file, pending)?;
@@ -582,6 +628,7 @@ impl Client {
             ))
         }
     }
+    /// Baja una copia confirmada a un archivo, comprobando su tamaño.
     pub async fn download(
         &self,
         entry: &Entry,
@@ -642,6 +689,7 @@ impl Client {
         }
         Ok(())
     }
+    /// Crea la revisión que junta dos ramas: referencia el ZIP elegido y no lo copia.
     pub async fn resolve(
         &self,
         chosen: &Entry,
@@ -662,14 +710,27 @@ impl Client {
         revision.at = chrono::Utc::now().timestamp_millis();
         revision.device = device;
         let parent = self.world_folder(&revision).await?;
-        let file=self.create(&json!({"name":format!("{}.json",revision.id),"mimeType":"application/json","parents":[parent],
-            "description":serde_json::to_string(&revision).unwrap(),"appProperties":{"pbl":"revision-v1","world":revision.world_id,"revision":revision.id,"state":"confirmed"}})).await?;
+        let file = self
+            .create(&json!({
+                "name": format!("{}.json", revision.id),
+                "mimeType": "application/json",
+                "parents": [parent],
+                "description": serde_json::to_string(&revision).unwrap(),
+                "appProperties": {
+                    "pbl": "revision-v1",
+                    "world": revision.world_id,
+                    "revision": revision.id,
+                    "state": "confirmed"
+                }
+            }))
+            .await?;
         Ok(Entry {
             file,
             revision,
             bytes: 0,
         })
     }
+    /// Limpia copias viejas: conserva las protegidas y el espacio para la copia nueva.
     pub async fn prune(&self, reserve: u64) -> Result<(), String> {
         let mut entries = self.revisions().await?;
         entries.sort_by_key(|e| e.revision.at);
@@ -722,7 +783,10 @@ impl Client {
             }
         }
         if total.saturating_add(reserve) > archive::MAX_CLOUD {
-            return Err(t!("Los mundos protegidos y la copia nueva superan 5 GB. Conserva las ramas de conflicto antes de liberar espacio. ⟦accion:recursos⟧","Protected worlds and the new backup exceed 5 GB. Preserve conflicting branches before freeing space. ⟦accion:recursos⟧"));
+            return Err(t!(
+                "Los mundos protegidos y la copia nueva superan 5 GB. Conserva las ramas de conflicto antes de liberar espacio. ⟦accion:recursos⟧",
+                "Protected worlds and the new backup exceed 5 GB. Preserve conflicting branches before freeing space. ⟦accion:recursos⟧"
+            ));
         }
         Ok(())
     }
@@ -765,6 +829,7 @@ fn received(headers: &reqwest::header::HeaderMap, total: u64) -> Result<u64, Str
             )
         })
 }
+/// El archivo donde se guarda una subida pendiente de un mundo.
 pub fn pending_path(paths: &Paths, id: &str) -> PathBuf {
     paths
         .data
@@ -806,7 +871,17 @@ mod tests {
             owner: "cuenta".into(),
             ..Default::default()
         };
-        let mut f = json!({"id":"f","size":"7","description":serde_json::to_string(&r).unwrap(),"appProperties":{"pbl":"revision-v1","state":"confirmed","revision":r.id,"world":r.world_id}});
+        let mut f = json!({
+            "id": "f",
+            "size": "7",
+            "description": serde_json::to_string(&r).unwrap(),
+            "appProperties": {
+                "pbl": "revision-v1",
+                "state": "confirmed",
+                "revision": r.id,
+                "world": r.world_id
+            }
+        });
         assert!(c.parse(&f, true).is_some());
         f["appProperties"]["world"] = json!(archive::id());
         assert!(c.parse(&f, true).is_none());
@@ -915,7 +990,14 @@ mod upload_tests {
                     let mut data = vec![0; count];
                     stream.read_exact(&mut data).unwrap();
                     let body = serde_json::to_vec(&expected.body).unwrap();
-                    write!(stream,"HTTP/1.1 {} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n",expected.status,body.len(),expected.headers).unwrap();
+                    write!(
+                        stream,
+                        "HTTP/1.1 {} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n",
+                        expected.status,
+                        body.len(),
+                        expected.headers
+                    )
+                    .unwrap();
                     stream.write_all(&body).unwrap();
                 }
             });
@@ -943,7 +1025,18 @@ mod upload_tests {
             md5,
             ..Default::default()
         };
-        let f = json!({"id":"archivo","size":r.size.to_string(),"md5Checksum":r.md5,"description":serde_json::to_string(&r).unwrap(),"appProperties":{"pbl":"revision-v1","revision":r.id,"world":r.world_id,"state":"pending"}});
+        let f = json!({
+            "id": "archivo",
+            "size": r.size.to_string(),
+            "md5Checksum": r.md5,
+            "description": serde_json::to_string(&r).unwrap(),
+            "appProperties": {
+                "pbl": "revision-v1",
+                "revision": r.id,
+                "world": r.world_id,
+                "state": "pending"
+            }
+        });
         (root, path, r, f)
     }
     #[tokio::test]
@@ -1053,7 +1146,7 @@ mod upload_tests {
                     "GET",
                     "/files?",
                     200,
-                    json!({"files":[],"nextPageToken":"segunda"}),
+                    json!({"files": [], "nextPageToken": "segunda"}),
                 ),
                 step("GET", "/files?", 200, json!({"files":[]})),
             ]

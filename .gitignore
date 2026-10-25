@@ -1,6 +1,7 @@
 # Compilación
 src-tauri/target/
 src-tauri/target-check/
+src-tauri/target-deepseek/
 src-tauri/gen/
 __pycache__/
 

@@ -18,6 +18,8 @@
 //!   FORGE_SERVER_ARGS       archivo de argumentos de los servidores de Forge y NeoForge (1.17 en
 //!                           adelante): "win_args.txt" o "unix_args.txt" (cambia el separador).
 //!   PLAYIT_AGENT            el agente de playit.gg para este sistema (None si no hay).
+//!   WORLD_LOCK_BLOCKS_RENAME  si el sistema no deja renombrar la carpeta de un mundo con su bloqueo
+//!                           abierto (Windows: hay que soltarlo antes del intercambio de `install`).
 //!
 //! Funciones
 //!   web_proxy_supported()          proxy por ventana (Windows; macOS 14 o posterior).

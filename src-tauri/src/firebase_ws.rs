@@ -22,6 +22,9 @@ pub(super) struct Timing {
     pub idle: Duration,
     pub ping: Duration,
     pub response: Duration,
+    /// Cuánto se aguanta sin reconectar antes de abrir el respaldo SSE, si el WebSocket ya
+    /// había funcionado. Evita abrir y cerrar una conexión por escucha con cada corte breve.
+    pub fallback_after: Duration,
 }
 impl Default for Timing {
     fn default() -> Self {
@@ -31,6 +34,7 @@ impl Default for Timing {
             idle: Duration::from_secs(60),
             ping: Duration::from_secs(20),
             response: Duration::from_secs(15),
+            fallback_after: Duration::from_secs(10),
         }
     }
 }
@@ -426,6 +430,10 @@ struct Manager {
     tag: u64,
     generation: u64,
     fallback: bool,
+    /// Si el WebSocket ya se abrió alguna vez en esta sesión del Manager.
+    connected_once: bool,
+    /// Desde cuándo lleva caído; `None` mientras la conexión funciona.
+    lost: Option<Instant>,
 }
 impl Manager {
     fn new(db: Weak<Database>, endpoint: Option<Endpoint>, timing: Timing) -> Self {
@@ -442,6 +450,21 @@ impl Manager {
             tag: 0,
             generation: 0,
             fallback: false,
+            connected_once: false,
+            lost: None,
+        }
+    }
+    /// Abre el respaldo SSE cuando la caída ya superó la gracia. Antes de la primera conexión
+    /// se abre al primer fallo: una red que bloquea el WebSocket no debe hacer esperar.
+    fn maybe_fallback(&mut self, now: Instant) {
+        if self.fallback {
+            return;
+        }
+        let expired = self
+            .lost
+            .is_some_and(|lost| now.duration_since(lost) >= self.timing.fallback_after);
+        if !self.connected_once || expired {
+            self.mode(true);
         }
     }
     fn mode(&mut self, sse: bool) {
@@ -539,8 +562,17 @@ impl Manager {
                 let result = match self.endpoint.clone() {
                     Some(endpoint) => {
                         tokio::select! {
-                            result=tokio::time::timeout(self.timing.connect,open(&self.db,endpoint))=>result.ok().and_then(Result::ok),
-                            _=async {loop {self.empty.notified().await; if self.active.load(Ordering::SeqCst)==0 {break;} }}=>None,
+                            result = tokio::time::timeout(self.timing.connect, open(&self.db, endpoint)) => {
+                                result.ok().and_then(Result::ok)
+                            }
+                            _ = async {
+                                loop {
+                                    self.empty.notified().await;
+                                    if self.active.load(Ordering::SeqCst) == 0 {
+                                        break;
+                                    }
+                                }
+                            } => None,
                         }
                     }
                     None => None,
@@ -550,128 +582,260 @@ impl Manager {
                 } else if let Some((connection, endpoint)) = result {
                     self.endpoint = Some(endpoint);
                     live = Some(connection);
+                    if !self.connected_once {
+                        self.connected_once = true;
+                        // La primera conexión deja atrás el fallo que abrió SSE.
+                        self.lost = None;
+                    }
                     self.pending.clear();
                     self.mode(false);
                     let keys: Vec<_> = self.groups.keys().cloned().collect();
                     for key in keys {
-                        if self.query(&key, live.as_mut().unwrap()).await.is_err() {
+                        let connection = live.as_mut().unwrap();
+                        if self.query(&key, connection).await.is_err() {
                             live = None;
                             break;
                         }
                     }
                 } else {
-                    if !self.fallback {
-                        self.mode(true);
-                    }
+                    // Sin conexión previa no se hace esperar: el respaldo abre al primer fallo.
+                    self.lost.get_or_insert_with(Instant::now);
+                    self.maybe_fallback(Instant::now());
                     reconnect = Instant::now() + self.timing.retry;
                 }
             }
             let mut broken = false;
             tokio::select! {
-                command=commands.recv()=>match command {
-                    None=>break,
-                    Some(Command::Add(id,spec,tx))=>{
-                        let key=spec.key();
-                        let _=tx.send(Notice::Mode {generation:self.generation,sse:self.fallback});
-                        if let Some(group)=self.groups.get_mut(&key) {
-                            if group.loaded && !self.fallback { let _=tx.send(Notice::Data {generation:self.generation,value:group.data.clone()}); }
-                            group.subscribers.insert(id,tx);
+                command = commands.recv() => match command {
+                    None => break,
+                    Some(Command::Add(id, spec, tx)) => {
+                        let key = spec.key();
+                        let _ = tx.send(Notice::Mode {
+                            generation: self.generation,
+                            sse: self.fallback,
+                        });
+                        if let Some(group) = self.groups.get_mut(&key) {
+                            if group.loaded && !self.fallback {
+                                let _ = tx.send(Notice::Data {
+                                    generation: self.generation,
+                                    value: group.data.clone(),
+                                });
+                            }
+                            group.subscribers.insert(id, tx);
                         } else {
-                            self.tag+=1;
-                            self.groups.insert(key.clone(),Group {spec,tag:self.tag,subscribers:BTreeMap::from([(id,tx)]),data:Value::Null,loaded:false,retry:None});
-                            if let Some(connection)=live.as_mut() { broken=self.query(&key,connection).await.is_err(); }
-                        }
-                        self.members.insert(id,key);
-                    },
-                    Some(Command::Remove(id))=>if let Some(key)=self.members.remove(&id) {
-                        if let Some(group)=self.groups.get_mut(&key) { group.subscribers.remove(&id); }
-                        if self.groups.get(&key).is_some_and(|g|g.subscribers.is_empty()) {
-                            let group=self.groups.remove(&key).unwrap();
-                            self.pending.retain(|_,(pending,_)|pending!=&key);
-                            if let Some(connection)=live.as_mut() {
-                                self.request+=1;
-                                broken=send(&mut connection.socket,json!({"t":"d","d":{"r":self.request,"a":"n","b":group.spec.body(group.tag,false)}})).await.is_err();
+                            self.tag += 1;
+                            self.groups.insert(
+                                key.clone(),
+                                Group {
+                                    spec,
+                                    tag: self.tag,
+                                    subscribers: BTreeMap::from([(id, tx)]),
+                                    data: Value::Null,
+                                    loaded: false,
+                                    retry: None,
+                                },
+                            );
+                            if let Some(connection) = live.as_mut() {
+                                broken = self.query(&key, connection).await.is_err();
                             }
                         }
-                    },
+                        self.members.insert(id, key);
+                    }
+                    Some(Command::Remove(id)) => {
+                        if let Some(key) = self.members.remove(&id) {
+                            if let Some(group) = self.groups.get_mut(&key) {
+                                group.subscribers.remove(&id);
+                            }
+                            if self
+                                .groups
+                                .get(&key)
+                                .is_some_and(|group| group.subscribers.is_empty())
+                            {
+                                let group = self.groups.remove(&key).unwrap();
+                                self.pending.retain(|_, (pending, _)| pending != &key);
+                                if let Some(connection) = live.as_mut() {
+                                    self.request += 1;
+                                    broken = send(
+                                        &mut connection.socket,
+                                        json!({"t":"d","d":{"r":self.request,"a":"n","b":group.spec.body(group.tag, false)}}),
+                                    )
+                                    .await
+                                    .is_err();
+                                }
+                            }
+                        }
+                    }
                 },
-                message=async { match live.as_mut() { Some(c)=>c.socket.next().await, None=>std::future::pending().await } }=>{
-                    let connection=live.as_mut().unwrap(); connection.received=Instant::now();
+                message = async {
+                    match live.as_mut() {
+                        Some(connection) => connection.socket.next().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    let connection = live.as_mut().unwrap();
+                    connection.received = Instant::now();
                     match message {
-                        Some(Ok(Message::Text(text)))=>{ metrics::add(&metrics::STREAM_BYTES,text.len() as u64); match connection.frames.push(text.as_str()) {
-                            Ok(Some(value))=>match value["t"].as_str() {
-                                Some("d")=>{
-                                    let packet=&value["d"];
-                                    if let Some(request)=packet["r"].as_u64() {
-                                        if request==0 {
-                                            connection.auth_pending=None;
-                                            if packet["b"]["s"]!="ok" { broken=true; if let Some(db)=self.db.upgrade() { db.session.invalidate().await; } }
-                                        } else if let Some((key,_))=self.pending.remove(&request) {
-                                            if packet["b"]["s"]!="ok" { self.denied(&key); }
-                                            else if let Some(group)=self.groups.get_mut(&key) {
-                                                if !group.loaded { group.loaded=true; self.publish(self.groups.get(&key).unwrap()); }
+                        Some(Ok(Message::Text(text))) => {
+                            metrics::add(&metrics::STREAM_BYTES, text.len() as u64);
+                            match connection.frames.push(text.as_str()) {
+                                Ok(Some(value)) => match value["t"].as_str() {
+                                    Some("d") => {
+                                        let packet = &value["d"];
+                                        if let Some(request) = packet["r"].as_u64() {
+                                            if request == 0 {
+                                                connection.auth_pending = None;
+                                                if packet["b"]["s"] != "ok" {
+                                                    broken = true;
+                                                    if let Some(db) = self.db.upgrade() {
+                                                        db.session.invalidate().await;
+                                                    }
+                                                }
+                                            } else if let Some((key, _)) = self.pending.remove(&request) {
+                                                // Una respuesta confirma que el socket volvió a servir.
+                                                self.lost = None;
+                                                if packet["b"]["s"] != "ok" {
+                                                    self.denied(&key);
+                                                } else if let Some(group) = self.groups.get_mut(&key) {
+                                                    if !group.loaded {
+                                                        group.loaded = true;
+                                                        self.publish(self.groups.get(&key).unwrap());
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            match packet["a"].as_str() {
+                                                Some("d") => {
+                                                    metrics::add(&metrics::EVENTS, 1);
+                                                    self.data(&packet["b"], false);
+                                                }
+                                                Some("m") => {
+                                                    metrics::add(&metrics::EVENTS, 1);
+                                                    self.data(&packet["b"], true);
+                                                }
+                                                Some("ac") => {
+                                                    broken = true;
+                                                    if let Some(db) = self.db.upgrade() {
+                                                        db.session.invalidate().await;
+                                                    }
+                                                }
+                                                Some("c") => {
+                                                    let keys: Vec<_> = self
+                                                        .groups
+                                                        .iter()
+                                                        .filter(|(_, group)| {
+                                                            group.spec.path
+                                                                == packet["b"]["p"].as_str().unwrap_or("")
+                                                                && group.spec.cancelled(&packet["b"]["q"])
+                                                        })
+                                                        .map(|(key, _)| key.clone())
+                                                        .collect();
+                                                    for key in keys {
+                                                        self.denied(&key);
+                                                    }
+                                                }
+                                                _ => {}
                                             }
                                         }
-                                    } else { match packet["a"].as_str() {
-                                        Some("d")=>{metrics::add(&metrics::EVENTS,1);self.data(&packet["b"],false);},
-                                        Some("m")=>{metrics::add(&metrics::EVENTS,1);self.data(&packet["b"],true);},
-                                        Some("ac")=>{ broken=true; if let Some(db)=self.db.upgrade() { db.session.invalidate().await; } },
-                                        Some("c")=>{
-                                            let keys:Vec<_>=self.groups.iter().filter(|(_,g)|g.spec.path==packet["b"]["p"].as_str().unwrap_or("") && g.spec.cancelled(&packet["b"]["q"])).map(|(k,_)|k.clone()).collect();
-                                            for key in keys { self.denied(&key); }
-                                        },
-                                        _=>{},
-                                    } }
+                                    }
+                                    Some("c") => match value["d"]["t"].as_str() {
+                                        Some("r") => {
+                                            self.endpoint = value["d"]["d"]
+                                                .as_str()
+                                                .and_then(|host| self.endpoint.as_ref()?.redirect(host));
+                                            broken = true;
+                                        }
+                                        Some("s" | "e") => broken = true,
+                                        _ => {}
+                                    },
+                                    _ => broken = true,
                                 },
-                                Some("c")=>match value["d"]["t"].as_str() {
-                                    Some("r")=>{ self.endpoint=value["d"]["d"].as_str().and_then(|host|self.endpoint.as_ref()?.redirect(host)); broken=true; },
-                                    Some("s"|"e")=>broken=true,
-                                    _=>{},
-                                },
-                                _=>broken=true,
-                            },
-                            Ok(None)=>{}, Err(())=>broken=true,
-                        }},
-                        Some(Ok(Message::Ping(bytes)))=>{ broken=connection.socket.send(Message::Pong(bytes)).await.is_err(); },
-                        Some(Ok(Message::Pong(_)))=>{},
-                        _=>broken=true,
+                                Ok(None) => {}
+                                Err(()) => broken = true,
+                            }
+                        }
+                        Some(Ok(Message::Ping(bytes))) => {
+                            broken = connection.socket.send(Message::Pong(bytes)).await.is_err();
+                        }
+                        Some(Ok(Message::Pong(_))) => {}
+                        _ => broken = true,
                     }
                 },
-                result=async { match refresh.as_mut() {Some(task)=>task.await,None=>std::future::pending().await} }=>{
-                    refresh=None;
-                    if let Some(connection)=live.as_mut() {
+                result = async {
+                    match refresh.as_mut() {
+                        Some(task) => task.await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    refresh = None;
+                    if let Some(connection) = live.as_mut() {
                         match result {
-                            Ok(Ok((token,expires)))=>{
-                                connection.auth_at=expires; connection.auth_pending=Some(Instant::now());
-                                broken=send(&mut connection.socket,json!({"t":"d","d":{"r":0,"a":"auth","b":{"cred":token}}})).await.is_err();
-                            },
-                            _=>broken=true,
+                            Ok(Ok((token, expires))) => {
+                                connection.auth_at = expires;
+                                connection.auth_pending = Some(Instant::now());
+                                broken = send(
+                                    &mut connection.socket,
+                                    json!({"t":"d","d":{"r":0,"a":"auth","b":{"cred":token}}}),
+                                )
+                                .await
+                                .is_err();
+                            }
+                            _ => broken = true,
                         }
                     }
-                },
-                _=tick.tick()=>{
-                    if let Some(connection)=live.as_mut() {
-                        let now=Instant::now();
-                        broken=now.duration_since(connection.received)>self.timing.idle
-                            || connection.auth_pending.is_some_and(|at|now.duration_since(at)>self.timing.response)
-                            || self.pending.values().any(|(_,at)|now.duration_since(*at)>self.timing.response);
-                        if !broken && now.duration_since(connection.ping)>=self.timing.ping {
-                            connection.ping=now;
-                            broken=send(&mut connection.socket,json!({"t":"c","d":{"t":"p","d":{}}})).await.is_err();
+                }
+                _ = tick.tick() => {
+                    if let Some(connection) = live.as_mut() {
+                        let now = Instant::now();
+                        broken = now.duration_since(connection.received) > self.timing.idle
+                            || connection
+                                .auth_pending
+                                .is_some_and(|at| now.duration_since(at) > self.timing.response)
+                            || self
+                                .pending
+                                .values()
+                                .any(|(_, at)| now.duration_since(*at) > self.timing.response);
+                        if !broken && now.duration_since(connection.ping) >= self.timing.ping {
+                            connection.ping = now;
+                            broken = send(
+                                &mut connection.socket,
+                                json!({"t":"c","d":{"t":"p","d":{}}}),
+                            )
+                            .await
+                            .is_err();
                         }
-                        if !broken && now>=connection.auth_at && connection.auth_pending.is_none() && refresh.is_none() {
-                            let db=self.db.clone();
-                            refresh=Some(tokio::spawn(async move {
-                                let db=db.upgrade().ok_or_else(||"sesión cerrada".to_string())?;
-                                Ok((db.session.token().await?,db.session.valid_until().await))
+                        if !broken
+                            && now >= connection.auth_at
+                            && connection.auth_pending.is_none()
+                            && refresh.is_none()
+                        {
+                            let db = self.db.clone();
+                            refresh = Some(tokio::spawn(async move {
+                                let db = db.upgrade().ok_or_else(|| "sesión cerrada".to_string())?;
+                                Ok((db.session.token().await?, db.session.valid_until().await))
                             }));
                         }
-                        let keys:Vec<_>=self.groups.iter().filter(|(_,g)|g.retry.is_some_and(|at|now>=at)).map(|(k,_)|k.clone()).collect();
-                        for key in keys { if self.query(&key,connection).await.is_err() { broken=true; break; } }
+                        let keys: Vec<_> = self
+                            .groups
+                            .iter()
+                            .filter(|(_, group)| group.retry.is_some_and(|at| now >= at))
+                            .map(|(key, _)| key.clone())
+                            .collect();
+                        for key in keys {
+                            if self.query(&key, connection).await.is_err() {
+                                broken = true;
+                                break;
+                            }
+                        }
+                    } else if !self.groups.is_empty()
+                        && self.active.load(Ordering::SeqCst) > 0
+                    {
+                        // Entre reintentos, la gracia vence sin esperar al siguiente intento.
+                        self.maybe_fallback(Instant::now());
                     }
-                },
+                }
             }
             if broken {
+                // Un socket que duró un rato vuelve a reintentar rápido.
                 if live.as_ref().is_some_and(|connection| {
                     connection.started.elapsed() >= Duration::from_secs(30)
                 }) {
@@ -679,9 +843,9 @@ impl Manager {
                 }
                 live = None;
                 self.pending.clear();
-                if !self.fallback {
-                    self.mode(true);
-                }
+                // La gracia cuenta desde el primer corte, aunque haya reintentos fallidos.
+                self.lost.get_or_insert_with(Instant::now);
+                self.maybe_fallback(Instant::now());
                 if let Some(task) = refresh.take() {
                     task.abort();
                 }

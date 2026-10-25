@@ -44,6 +44,8 @@ pub const PLAYIT_AGENT: Option<AgentDownload> = Some(AgentDownload {
     size: 5_390_736,
     file_name: "playit-0.17.1",
 });
+/// En macOS se puede renombrar la carpeta aunque el bloqueo POSIX siga abierto.
+pub const WORLD_LOCK_BLOCKS_RENAME: bool = false;
 
 /// Dónde viven instancias, base y datos. Dentro de Parabellum.app no se puede escribir (y macOS la
 /// mueve a una carpeta temporal si viene de Descargas), así que van en ~/Library/Application Support.
