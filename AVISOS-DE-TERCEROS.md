@@ -4,7 +4,7 @@ Parabellum incluye componentes de terceros: la fuente Inter y las librerías de 
 
 Cada componente de terceros conserva su propia licencia, y el [LICENSE](LICENSE) del proyecto no cambia sus condiciones.
 
-Versión de Parabellum: 0.40.0 (`src-tauri/Cargo.toml`).
+Versión de Parabellum: 0.41.0 (`src-tauri/Cargo.toml`).
 
 Este documento lo genera `docs/avisos-de-terceros.py` (`python docs/avisos-de-terceros.py`, desde la raíz del repo). No se edita a mano: para actualizarlo tras cambiar dependencias, vuelve a correrlo.
 

@@ -790,7 +790,8 @@ impl Client {
         }
         Ok(())
     }
-    async fn trash(&self, entry: &Entry) -> Result<(), String> {
+    /// Manda a la papelera de Drive una revisión confirmada (de ahí se puede sacar durante 30 días).
+    pub async fn trash(&self, entry: &Entry) -> Result<(), String> {
         let body = self.metadata(&entry.file).await?;
         if self.parse(&body, true).is_none() {
             return Err(t!(

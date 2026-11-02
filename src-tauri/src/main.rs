@@ -67,6 +67,7 @@ mod proceso;
 mod remote_zip;
 mod servidor;
 mod sesion_local;
+mod skins;
 mod settings;
 mod soporte;
 mod sonido;
@@ -4124,6 +4125,7 @@ fn main() {
             cuenta::create_tray(app.handle())?;
             cuenta::startup(app.handle());
             hosting::init(app.handle());
+            skins::init(app.handle());
             mundos::resume_startup(app.handle());
             Ok(())
         })
@@ -4155,6 +4157,13 @@ fn main() {
             mundos::mundos_nube,
             mundos::mundos_destinos,
             mundos::mundos_exportar,
+            mundos::mundos_borrar,
+            mundos::mundos_borrar_revision,
+            skins::skin_mia,
+            skins::skin_buscar,
+            skins::skin_usar,
+            skins::skin_quitar,
+            skins::skins_de,
             mundos::mundos_restaurar,
             mundos::mundos_anteriores,
             mundos::mundos_volver_anterior,

@@ -16,6 +16,7 @@
 .wb-revision b { font-size: 13px; }
 .wb-revision .cm-chip { margin: 0 0 6px 8px; }
 .wb-row-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.wb-history + .wb-toolbar { margin-top: 6px; padding-top: 14px; border-top: 1px solid var(--border); flex-wrap: wrap; }
 .wb-world { width: 100%; background: transparent; color: var(--text); text-align: left; border: 0; border-bottom: 1px solid var(--border); padding: 17px 2px; cursor: pointer; }
 .wb-world:hover { background: var(--raised); }
 .wb-world > svg { color: var(--muted); width: 24px; height: 24px; flex: none; }

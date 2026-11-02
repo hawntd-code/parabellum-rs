@@ -53,9 +53,12 @@ fn save(instance: &Instance, files: &[Manual]) -> Result<(), String> {
     std::fs::rename(tmp, record(instance)).map_err(|e| e.to_string())
 }
 
-fn valid(file: &Manual) -> bool {
+/// Lo que se puede pedir a mano: con su huella, su tamaño, una carpeta conocida (también la de los data
+/// packs) y la página oficial del archivo.
+pub(crate) fn valid(file: &Manual) -> bool {
     let extension = if file.folder == "mods" { ".jar" } else { ".zip" };
-    file.project_id > 0 && file.file_id > 0 && ["mods", "resourcepacks", "shaderpacks"].contains(&file.folder.as_str())
+    let known = ["mods", "resourcepacks", "shaderpacks"].contains(&file.folder.as_str()) || curseforge::DATAPACK_FOLDERS.contains(&file.folder.as_str());
+    file.project_id > 0 && file.file_id > 0 && known
         && !file.file_name.is_empty() && !file.file_name.starts_with('.') && !file.file_name.contains(['/', '\\', ':'])
         && file.file_name.to_lowercase().ends_with(extension)
         && file.sha1.len() == 40 && file.sha1.bytes().all(|c| c.is_ascii_hexdigit()) && file.size > 0
@@ -401,6 +404,16 @@ mod tests {
         f = file(); f.folder = "../mods".into(); assert!(!valid(&f));
         f = file(); f.sha1.clear(); assert!(!valid(&f));
         f = file(); f.url = "https://www.curseforge.com.ejemplo.com/minecraft/mc-mods/prueba/files/2".into(); assert!(!valid(&f));
+    }
+    #[test]
+    fn los_data_packs_se_piden_en_su_carpeta() {
+        // Prominence II: data packs que su autor no deja bajar fuera de CurseForge (van con Paxi).
+        let pack = |folder: &str| Manual { folder: folder.into(), file_name: "tierify-prominence-tweaks-2.0.2.zip".into(), ..file() };
+        assert!(valid(&pack("config/paxi/datapacks")));
+        assert!(valid(&pack("datapacks")));
+        assert!(!valid(&pack("mods")), "en mods solo van .jar");
+        assert!(!valid(&pack("config/otra")), "solo las carpetas conocidas");
+        assert!(!valid(&Manual { file_name: "datos.jar".into(), ..pack("datapacks") }), "un data pack es .zip");
     }
     #[test]
     fn solo_reconoce_archivos_terminados_incluso_con_numero_del_navegador() {

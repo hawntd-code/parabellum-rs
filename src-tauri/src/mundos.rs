@@ -554,6 +554,113 @@ pub async fn mundos_nube(app: AppHandle) -> Result<Vec<CloudWorld>, String> {
     worlds.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(worlds)
 }
+async fn world_entries(cloud: &Client, world: &str) -> Result<Vec<Entry>, String> {
+    if !archive::valid_id(world) {
+        return Err(t!("Mundo no válido.", "Invalid world."));
+    }
+    let mut entries: Vec<Entry> = cloud.revisions().await?.into_iter().filter(|e| e.revision.world_id == world).collect();
+    if entries.is_empty() {
+        return Err(t!("Ese mundo ya no está en Drive.", "That world is no longer in Drive."));
+    }
+    // De la más vieja a la más nueva: si se corta a medias, lo que queda sigue siendo un historial válido.
+    entries.sort_by_key(|e| e.revision.at);
+    Ok(entries)
+}
+/// Que en esta PC no se esté preparando ni subiendo una copia de ese mundo.
+fn not_uploading(paths: &Paths, world: &str, owner: &str) -> Result<(), String> {
+    let sources: Vec<Source> = read_index(paths)
+        .into_values()
+        .filter(|v| v.world_id == world && v.owner == owner)
+        .map(|v| v.source)
+        .chain(pending(paths).into_iter().filter(|p| p.revision.world_id == world && p.revision.owner == owner).map(|p| p.revision.source))
+        .collect();
+    let active = ACTIVE.get_or_init(Default::default).lock().unwrap();
+    if sources.iter().any(|s| active.contains(&format!("source:{}", s.key()))) {
+        return Err(t!(
+            "Espera a que termine de subirse la copia de este mundo (o páusala en Descargas).",
+            "Wait for this world's backup to finish uploading (or pause it in Downloads)."
+        ));
+    }
+    Ok(())
+}
+/// Manda esas revisiones a la papelera de Drive y deja esta PC de acuerdo: el mundo que respaldaba en una que
+/// se fue vuelve a la anterior que queda (o a ninguna), y si se fue el mundo entero deja de respaldarse solo y
+/// se descartan sus copias pendientes; si no, se volvería a subir al cerrar el juego.
+async fn trash_revisions(app: &AppHandle, cloud: &Client, entries: &[Entry], gone: &HashSet<String>) -> Result<(), String> {
+    let paths = app.state::<AppState>().paths.clone();
+    let world = entries[0].revision.world_id.clone();
+    let mut trashed = HashSet::new();
+    let mut result = Ok(());
+    for entry in entries.iter().filter(|e| gone.contains(&e.revision.id)) {
+        if let Err(error) = cloud.trash(entry).await {
+            result = Err(error);
+            break;
+        }
+        trashed.insert(entry.revision.id.clone());
+    }
+    let whole = trashed.len() == entries.len();
+    let parents: HashMap<&str, &Vec<String>> = entries.iter().map(|e| (e.revision.id.as_str(), &e.revision.parents)).collect();
+    {
+        let _guard = INDEX.lock().unwrap();
+        let mut index = read_index(&paths);
+        for local in index.values_mut().filter(|v| v.world_id == world && v.owner == cloud.owner) {
+            if let Some(base) = local.base.clone().filter(|b| trashed.contains(b)) {
+                local.base = parents.get(base.as_str()).and_then(|list| list.iter().find(|p| !trashed.contains(*p)).cloned());
+                local.fingerprint.clear();
+            }
+            if whole {
+                local.enabled = false;
+                local.last_at = None;
+                local.error = None;
+            }
+        }
+        archive::atomic(&index_path(&paths), &index)?;
+    }
+    if whole {
+        for p in pending(&paths).into_iter().filter(|p| p.revision.world_id == world && p.revision.owner == cloud.owner) {
+            let state_file = drive_mundos::pending_path(&paths, &p.revision.id);
+            let _ = std::fs::remove_file(state_file.with_extension("zip"));
+            let _ = std::fs::remove_file(state_file);
+        }
+    }
+    changed(app);
+    result
+}
+/// Manda a la papelera de Drive un mundo entero, con todas sus revisiones.
+#[tauri::command]
+pub async fn mundos_borrar(app: AppHandle, mundo: String) -> Result<(), String> {
+    let cloud = client(&app).await?;
+    let entries = world_entries(&cloud, &mundo).await?;
+    not_uploading(&app.state::<AppState>().paths, &mundo, &cloud.owner)?;
+    let gone = entries.iter().map(|e| e.revision.id.clone()).collect();
+    trash_revisions(&app, &cloud, &entries, &gone).await
+}
+/// Manda a la papelera de Drive una revisión sin romper el historial (`archive::deletion`): devuelve cuántas
+/// se fueron.
+#[tauri::command]
+pub async fn mundos_borrar_revision(app: AppHandle, mundo: String, revision: String) -> Result<usize, String> {
+    if !archive::valid_id(&revision) {
+        return Err(t!("Revisión no válida.", "Invalid revision."));
+    }
+    let cloud = client(&app).await?;
+    let entries = world_entries(&cloud, &mundo).await?;
+    let paths = app.state::<AppState>().paths.clone();
+    not_uploading(&paths, &mundo, &cloud.owner)?;
+    let gone = archive::deletion(&entries.iter().map(|e| (e.file.clone(), e.revision.clone())).collect::<Vec<_>>(), &revision)?;
+    // Una copia pendiente que sale de una de estas se subiría como otra rama.
+    if gone.len() < entries.len()
+        && pending(&paths)
+            .iter()
+            .any(|p| p.revision.world_id == mundo && p.revision.parents.iter().any(|parent| gone.contains(parent)))
+    {
+        return Err(t!(
+            "Este mundo tiene una copia pendiente de subir que sale de esa revisión: súbela primero.",
+            "This world has a pending backup based on that revision: upload it first."
+        ));
+    }
+    trash_revisions(&app, &cloud, &entries, &gone).await?;
+    Ok(gone.len())
+}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Destination {
@@ -561,35 +668,36 @@ pub struct Destination {
     pub id: String,
     pub name: String,
     pub world: Option<String>,
+    /// Lo que cambia respecto de la copia (vacío si es exacta): se avisa y se confirma antes de restaurar.
+    pub differences: Vec<String>,
 }
-/// Instancias y servidores compatibles donde se puede restaurar una revisión.
+/// Instancias y servidores con el mismo Minecraft y loader donde se puede restaurar una revisión; primero las
+/// exactas.
 #[tauri::command]
 pub async fn mundos_destinos(app: AppHandle, mundo: String, revision: String) -> Result<Vec<Destination>, String> {
     let cloud = client(&app).await?;
     let entry = selected(&cloud, &mundo, &revision).await?;
     let paths = app.state::<AppState>().paths.clone();
     blocking(move || {
-        let mut list = crate::instances::list(&paths)
-            .into_iter()
-            .filter(|i| entry.revision.source.kind == "instancia" && entry.revision.recipe.compatible(i))
-            .map(|i| Destination {
-                kind: "instancia".into(),
-                id: i.id,
-                name: i.name,
-                world: None,
-            })
-            .collect::<Vec<_>>();
-        list.extend(
-            crate::servidor::list(&paths)
-                .into_iter()
-                .filter(|s| entry.revision.source.kind == "servidor" && entry.revision.recipe.compatible(&s.as_instance()))
-                .map(|s| Destination {
-                    kind: "servidor".into(),
-                    id: s.id,
-                    name: s.name,
-                    world: Some(crate::servidor::property(&s.folder, "level-name").unwrap_or_else(|| "world".into())),
-                }),
-        );
+        let backup = &entry.revision.recipe;
+        let mut list = Vec::new();
+        if entry.revision.source.kind == "instancia" {
+            for instance in crate::instances::list(&paths) {
+                let here = Recipe::of(&instance);
+                if backup.same_game(&here) {
+                    list.push(Destination { kind: "instancia".into(), id: instance.id, name: instance.name, world: None, differences: backup.differences(&here) });
+                }
+            }
+        } else {
+            for server in crate::servidor::list(&paths) {
+                let here = Recipe::of(&server.as_instance());
+                if backup.same_game(&here) {
+                    let world = crate::servidor::property(&server.folder, "level-name").unwrap_or_else(|| "world".into());
+                    list.push(Destination { kind: "servidor".into(), id: server.id, name: server.name, world: Some(world), differences: backup.differences(&here) });
+                }
+            }
+        }
+        list.sort_by_key(|d| !d.differences.is_empty());
         Ok(list)
     })
     .await
@@ -847,20 +955,26 @@ pub async fn mundos_restaurar(
     nuevo: bool,
     confirmar_jugador: bool,
     resolver: bool,
+    diferencias: Option<bool>,
 ) -> Result<Restored, String> {
     let _work = WORK.lock().await;
     let cloud = client(&app).await?;
     let entry = selected(&cloud, &mundo, &revision).await?;
     let (target, recipe) = location(&app, &destino, false)?;
-    if destino.kind != entry.revision.source.kind
-        || recipe.minecraft != entry.revision.recipe.minecraft
-        || recipe.loader != entry.revision.recipe.loader
-        || recipe.loader_version != entry.revision.recipe.loader_version
-        || recipe.content_hash != entry.revision.recipe.content_hash
-    {
+    if destino.kind != entry.revision.source.kind || !entry.revision.recipe.same_game(&recipe) {
         return Err(t!(
-            "Prepara una instancia con el mismo Minecraft, loader y mods de la copia antes de restaurar. ⟦accion:biblioteca⟧",
-            "Prepare an instance with the same Minecraft, loader and mods as the backup before restoring. ⟦accion:biblioteca⟧"
+            "Esta copia es de Minecraft {} con {}: restáurala en una instancia con ese mismo Minecraft y loader. ⟦accion:biblioteca⟧",
+            "This backup is from Minecraft {} with {}: restore it into an instance with that same Minecraft and loader. ⟦accion:biblioteca⟧",
+            entry.revision.recipe.minecraft,
+            entry.revision.recipe.loader
+        ));
+    }
+    let differences = entry.revision.recipe.differences(&recipe);
+    if !differences.is_empty() && !diferencias.unwrap_or(false) {
+        return Err(t!(
+            "Esta instancia no es igual a la de la copia ({}). Confírmalo para restaurar de todas formas.",
+            "This instance is not the same as the backup's ({}). Confirm it to restore anyway.",
+            differences.join("; ")
         ));
     }
     if nuevo && (resolver || destino.kind == "servidor") {

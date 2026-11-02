@@ -4,7 +4,8 @@
 //! Minecraft (authlib, desde 1.16) deja cambiar los servidores de Mojang con propiedades de Java
 //! (minecraft.api.session.host…). Parabellum los apunta a este servidor en 127.0.0.1, que:
 //!   - responde "sí" a join y hasJoined, justo la comprobación que falla con "Invalid session";
-//!   - reenvía todo lo demás (skins, claves, perfiles) a los servidores reales de Mojang.
+//!   - con la skin de Parabellum de cada jugador que tenga una (skins.rs), en hasJoined y en su perfil;
+//!   - reenvía todo lo demás (skins de premium, claves, perfiles) a los servidores reales de Mojang.
 //! Equivale a un servidor en modo offline: cada jugador entra con el UUID que sale de su nombre.
 //! Lo mismo que hacía la versión C# (probado con usuarios reales).
 
@@ -138,11 +139,25 @@ async fn route(request: &Request, client: &reqwest::Client) -> (u16, Option<Stri
     if kind == "session" && path.ends_with("/session/minecraft/hasJoined") {
         return match query(&request.target, "username").filter(|name| settings::validate_username(name).is_none()) {
             Some(name) => {
-                let profile = serde_json::json!({ "id": settings::offline_uuid(&name), "name": name, "properties": [] });
+                // Con su skin: el anfitrión se la pasa a todos los que están en el mundo.
+                let properties = crate::skins::properties(&name).await;
+                let profile = serde_json::json!({ "id": settings::offline_uuid(&name), "name": name, "properties": properties });
                 (200, Some("application/json".into()), profile.to_string().into_bytes())
             }
             None => (204, None, Vec::new()),
         };
+    }
+
+    // El perfil de un jugador de Parabellum con skin (el tuyo al abrir el juego, o el de un amigo).
+    if kind == "session" && request.method == "GET" {
+        if let Some(name) = path.split("/session/minecraft/profile/").nth(1).and_then(crate::skins::name_of) {
+            let properties = crate::skins::properties(&name).await;
+            if !properties.is_empty() {
+                let id = settings::parse_uuid(path.rsplit('/').next().unwrap_or_default()).unwrap_or_default();
+                let profile = serde_json::json!({ "id": id, "name": name, "properties": properties });
+                return (200, Some("application/json".into()), profile.to_string().into_bytes());
+            }
+        }
     }
 
     // Todo lo demás va a Mojang tal cual (skins, claves públicas, atributos del jugador…).

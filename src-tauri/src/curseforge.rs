@@ -29,6 +29,10 @@ const CLASS_MODS: u64 = 6;
 const CLASS_RESOURCE_PACKS: u64 = 12;
 const CLASS_SHADERS: u64 = 6552;
 const CLASS_MODPACKS: u64 = 4471;
+const CLASS_DATA_PACKS: u64 = 6945;
+/// Dónde van los data packs de un modpack: la carpeta de Paxi si el modpack lo trae (Paxi los carga en
+/// todos los mundos, como Prominence II) o, si no, «datapacks», para agregarlos a un mundo.
+pub const DATAPACK_FOLDERS: [&str; 2] = ["config/paxi/datapacks", "datapacks"];
 /// De dónde se bajan los archivos (los mismos que acepta integridad.rs).
 const CDN_HOSTS: [&str; 3] = ["edge.forgecdn.net", "media.forgecdn.net", "mediafilez.forgecdn.net"];
 const INDEX_FILE: &str = "curseforge.json";
@@ -112,11 +116,13 @@ fn project_type(class: u64) -> &'static str {
     }
 }
 
-/// La carpeta de la instancia donde va un archivo de esa clase (los mods, si no se sabe).
-fn folder_of(class: u64) -> &'static str {
+/// La carpeta de la instancia donde va un archivo de esa clase (los mods, si no se sabe). Los data packs
+/// van a `datapacks` (una de DATAPACK_FOLDERS).
+fn folder_of(class: u64, datapacks: &'static str) -> &'static str {
     match class {
         CLASS_RESOURCE_PACKS => "resourcepacks",
         CLASS_SHADERS => "shaderpacks",
+        CLASS_DATA_PACKS => datapacks,
         _ => "mods",
     }
 }
@@ -723,6 +729,8 @@ pub struct Pack {
     pub files: Vec<(u64, u64)>,
     /// La carpeta del zip que se copia tal cual en la instancia («overrides»).
     pub overrides: String,
+    /// El modpack trae la configuración de Paxi: sus data packs van a su carpeta.
+    pub paxi: bool,
 }
 
 /// Lo que hay que bajar a mano porque su autor no deja bajarlo fuera de CurseForge.
@@ -779,7 +787,11 @@ pub fn read_modpack(zip_path: &Path) -> Result<Option<Pack>, String> {
     if manifest["manifestType"] != "minecraftModpack" {
         return Ok(None);
     }
-    parse_manifest(&manifest).map(Some)
+    drop(entry);
+    let mut pack = parse_manifest(&manifest)?;
+    let paxi = format!("{}/config/paxi/", pack.overrides);
+    pack.paxi = zip.file_names().any(|name| name.replace('\\', "/").starts_with(&paxi));
+    Ok(Some(pack))
 }
 
 fn parse_manifest(manifest: &Value) -> Result<Pack, String> {
@@ -806,6 +818,7 @@ fn parse_manifest(manifest: &Value) -> Result<Pack, String> {
         loader,
         files,
         overrides,
+        paxi: false,
     })
 }
 
@@ -849,6 +862,8 @@ async fn resolve(pack: &Pack) -> Result<(Vec<Resolved>, Vec<Manual>), String> {
     }
     let project_ids: Vec<u64> = pack.files.iter().map(|(p, _)| *p).collect();
     let projects = mods(&project_ids).await;
+    let paxi = pack.paxi || projects.values().any(|m| text(m, "slug") == "paxi");
+    let datapacks = if paxi { DATAPACK_FOLDERS[0] } else { DATAPACK_FOLDERS[1] };
     let mut downloads = Vec::new();
     let mut manual = Vec::new();
     let mut missing = Vec::new();
@@ -858,7 +873,7 @@ async fn resolve(pack: &Pack) -> Result<(Vec<Resolved>, Vec<Manual>), String> {
             continue;
         };
         let info = projects.get(project).cloned().unwrap_or(Value::Null);
-        let folder = folder_of(info["classId"].as_u64().unwrap_or(CLASS_MODS));
+        let folder = folder_of(info["classId"].as_u64().unwrap_or(CLASS_MODS), datapacks);
         let name = text(f, "fileName");
         if name.is_empty() || name.contains(['/', '\\', ':']) || name.starts_with('.') {
             return Err(t!("El modpack trae un archivo con un nombre no permitido: {name}", "The modpack contains a file with a name that is not allowed: {name}"));
@@ -893,7 +908,9 @@ async fn resolve(pack: &Pack) -> Result<(Vec<Resolved>, Vec<Manual>), String> {
 pub async fn install_modpack_files(pack: &Pack, zip_path: &Path, game_dir: &Path, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<Vec<Manual>, String> {
     progress(t!("Preguntando a CurseForge por los {} archivos del modpack…", "Asking CurseForge about the {} files of the modpack…", pack.files.len()), 0.0);
     let (resolved, manual) = resolve(pack).await?;
-    crate::curseforge_manual::validate(&manual)?;
+    // Lo que no se puede comprobar no se baja a mano, pero tampoco tumba el modpack entero: queda en la
+    // lista de lo que trae y el aviso de «faltan archivos» lo nombra al terminar.
+    let (manual, unverifiable): (Vec<Manual>, Vec<Manual>) = manual.into_iter().partition(crate::curseforge_manual::valid);
     let downloads: Vec<FileDownload> = resolved
         .iter()
         .map(|r| FileDownload { url: r.url.clone(), path: game_dir.join(&r.path), sha1: Some(r.sha1.clone()), size: Some(r.size) })
@@ -914,6 +931,7 @@ pub async fn install_modpack_files(pack: &Pack, zip_path: &Path, game_dir: &Path
     let mut tracked: Vec<crate::integridad::Tracked> =
         resolved.iter().map(|r| crate::integridad::Tracked { path: r.path.clone(), sha1: Some(r.sha1.clone()), crc32: None, size: Some(r.size), url: Some(r.url.clone()) }).collect();
     tracked.extend(manual.iter().map(|m| crate::integridad::Tracked { path: format!("{}/{}", m.folder, m.file_name), sha1: Some(m.sha1.clone()), crc32: None, size: Some(m.size), url: None }));
+    tracked.extend(unverifiable.iter().map(|m| crate::integridad::Tracked { path: format!("{}/{}", m.folder, m.file_name), sha1: None, crc32: None, size: None, url: None }));
     tracked.extend(copied);
     crate::integridad::save(game_dir, tracked.into_iter().filter(|t| crate::integridad::is_tracked(&t.path)).collect());
     // Explorar también reconoce como instalados los mods que llegaron dentro del modpack.
@@ -1024,6 +1042,43 @@ mod tests {
         assert_eq!(parse_loader("quilt-0.27.1", "1.21.1"), Some(("Quilt".into(), "0.27.1".into())));
         assert_eq!(parse_loader("liteloader-1.12", "1.12.2"), None);
         assert_eq!(parse_loader("forge", "1.20.1"), None);
+    }
+
+    #[test]
+    fn los_data_packs_van_a_su_carpeta() {
+        assert_eq!(folder_of(CLASS_DATA_PACKS, DATAPACK_FOLDERS[0]), "config/paxi/datapacks");
+        assert_eq!(folder_of(CLASS_DATA_PACKS, DATAPACK_FOLDERS[1]), "datapacks");
+        assert_eq!(folder_of(CLASS_MODS, DATAPACK_FOLDERS[0]), "mods");
+        assert_eq!(folder_of(CLASS_RESOURCE_PACKS, DATAPACK_FOLDERS[0]), "resourcepacks");
+        assert_eq!(folder_of(999, DATAPACK_FOLDERS[0]), "mods", "lo que no se conoce, a mods como antes");
+    }
+
+    #[test]
+    fn reconoce_paxi_en_los_overrides() {
+        let dir = std::env::temp_dir().join(format!("parabellum-paxi-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let manifest = json!({
+            "minecraft": { "version": "1.20.1", "modLoaders": [{ "id": "fabric-0.16.10", "primary": true }] },
+            "manifestType": "minecraftModpack", "name": "Prueba", "files": [], "overrides": "overrides"
+        });
+        let write = |name: &str, extra: Option<&str>| {
+            let path = dir.join(name);
+            let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+            let options = zip::write::SimpleFileOptions::default();
+            zip.start_file(MANIFEST, options).unwrap();
+            std::io::Write::write_all(&mut zip, manifest.to_string().as_bytes()).unwrap();
+            if let Some(extra) = extra {
+                zip.start_file(extra, options).unwrap();
+                std::io::Write::write_all(&mut zip, b"{}").unwrap();
+            }
+            zip.finish().unwrap();
+            path
+        };
+        let with = write("con-paxi.zip", Some("overrides/config/paxi/datapack_load_order.json"));
+        let without = write("sin-paxi.zip", Some("overrides/config/jade/plugins.json"));
+        assert!(read_modpack(&with).unwrap().unwrap().paxi);
+        assert!(!read_modpack(&without).unwrap().unwrap().paxi);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

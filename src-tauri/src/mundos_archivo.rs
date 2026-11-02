@@ -57,11 +57,30 @@ impl Recipe {
         }
     }
     /// Si la instancia sigue teniendo lo mismo que la receta (versión, cargador y contenido).
-    pub fn compatible(&self, instance: &Instance) -> bool {
-        instance.minecraft_version == self.minecraft
-            && instance.loader == self.loader
-            && instance.loader_version == self.loader_version
-            && identidad::content(instance).content_hash == self.content_hash
+    /// ¿Se puede restaurar una copia de esta receta en una instalación así? Hace falta el mismo Minecraft y el
+    /// mismo loader: con otro, el mundo no abre o se daña. Lo demás se avisa (`differences`).
+    pub fn same_game(&self, other: &Recipe) -> bool {
+        self.minecraft == other.minecraft && self.loader == other.loader
+    }
+
+    /// Lo que cambia entre la copia (`self`) y una instalación (`other`), para avisarlo antes de restaurar. Dos
+    /// PCs con «la misma» instancia suelen diferir en algo: un mod actualizado o desactivado, otro loader.
+    pub fn differences(&self, other: &Recipe) -> Vec<String> {
+        let version = |v: &Option<String>| v.clone().unwrap_or_else(|| "—".into());
+        let mut out = Vec::new();
+        if self.loader_version != other.loader_version {
+            out.push(t!(
+                "{} {} en la copia y {} en esta instancia",
+                "{} {} in the backup and {} in this instance",
+                self.loader,
+                version(&self.loader_version),
+                version(&other.loader_version)
+            ));
+        }
+        if self.content_hash != other.content_hash {
+            out.push(t!("los mods no son exactamente los de la copia", "the mods are not exactly the ones in the backup"));
+        }
+        out
     }
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -530,6 +549,39 @@ pub fn heads(revisions: &[Revision]) -> Vec<String> {
     let parents: HashSet<&str> = revisions.iter().flat_map(|r| r.parents.iter().map(String::as_str)).collect();
     revisions.iter().filter(|r| !parents.contains(r.id.as_str())).map(|r| r.id.clone()).collect()
 }
+/// Las revisiones de un mundo que se van al borrar `id` sin romper su historial. La última de una rama se
+/// va sola (la de antes vuelve a ser la última); una de en medio se va con todas las anteriores, porque si
+/// no la de antes quedaría como otra rama abierta (un conflicto que no existe). Falla si una que se queda
+/// usa el ZIP de una que se va: las que resuelven un conflicto no copian el ZIP, lo referencian.
+pub fn deletion(entries: &[(String, Revision)], id: &str) -> Result<HashSet<String>, String> {
+    let by_id: HashMap<&str, &Revision> = entries.iter().map(|(_, r)| (r.id.as_str(), r)).collect();
+    let Some(chosen) = by_id.get(id) else {
+        return Err(t!("La revisión ya no está disponible.", "The revision is no longer available."));
+    };
+    let revisions: Vec<Revision> = entries.iter().map(|(_, r)| r.clone()).collect();
+    let mut gone = HashSet::from([id.to_string()]);
+    if !heads(&revisions).iter().any(|h| h == id) {
+        let mut stack = chosen.parents.clone();
+        while let Some(parent) = stack.pop() {
+            if let Some(r) = by_id.get(parent.as_str()) {
+                if gone.insert(parent) {
+                    stack.extend(r.parents.iter().cloned());
+                }
+            }
+        }
+    }
+    let files: HashSet<&str> = entries.iter().filter(|(_, r)| gone.contains(&r.id)).map(|(f, _)| f.as_str()).collect();
+    if entries
+        .iter()
+        .any(|(_, r)| !gone.contains(&r.id) && r.archive_file.as_deref().is_some_and(|f| files.contains(f)))
+    {
+        return Err(t!(
+            "La revisión que resolvió un conflicto usa la copia de esta. Borra esa primero, o el mundo entero.",
+            "The revision that resolved a conflict uses this one's backup. Delete that one first, or the whole world."
+        ));
+    }
+    Ok(gone)
+}
 /// Conserva cinco revisiones por mundo, todas las ramas abiertas y los ZIP referenciados.
 pub fn retained(revisions: &[(String, Revision)]) -> HashSet<String> {
     let mut groups: HashMap<&str, Vec<&(String, Revision)>> = HashMap::new();
@@ -679,6 +731,27 @@ mod tests {
         assert!(stage.exists());
     }
     #[test]
+    fn misma_partida_con_diferencias_se_avisa_y_otra_version_no() {
+        let backup = Recipe {
+            minecraft: "1.20.1".into(),
+            loader: "Fabric".into(),
+            loader_version: Some("0.16.10".into()),
+            content_hash: "sha256:a".into(),
+            ..Default::default()
+        };
+        assert!(backup.same_game(&backup.clone()));
+        assert!(backup.differences(&backup.clone()).is_empty());
+        let other_mods = Recipe { content_hash: "sha256:b".into(), ..backup.clone() };
+        assert!(backup.same_game(&other_mods));
+        assert_eq!(backup.differences(&other_mods).len(), 1);
+        let other_loader = Recipe { loader_version: Some("0.16.14".into()), ..other_mods.clone() };
+        let differences = backup.differences(&other_loader);
+        assert_eq!(differences.len(), 2);
+        assert!(differences[0].contains("0.16.10") && differences[0].contains("0.16.14"));
+        assert!(!backup.same_game(&Recipe { minecraft: "1.21.1".into(), ..backup.clone() }), "otra versión de Minecraft no");
+        assert!(!backup.same_game(&Recipe { loader: "Forge".into(), ..backup.clone() }), "otro loader no");
+    }
+    #[test]
     fn duplicar_un_mundo_o_cambiar_de_cuenta_crea_identidad_nueva() {
         let f = Fixture::new();
         let world = f.world("world");
@@ -730,6 +803,30 @@ mod tests {
         list.push(("resolucion".into(), resolution));
         assert_eq!(heads(&list.iter().map(|(_, r)| r.clone()).collect::<Vec<_>>()).len(), 1);
         assert!(retained(&list).contains("f2"));
+    }
+    #[test]
+    fn borrar_una_revision_no_deja_ramas_falsas() {
+        let rev = |name: &str, parents: &[&str], at: i64| {
+            let r = Revision { id: name.repeat(32), parents: parents.iter().map(|p| p.repeat(32)).collect(), at, ..Default::default() };
+            (format!("archivo-{name}"), r)
+        };
+        let ids = |names: &[&str]| names.iter().map(|n| n.repeat(32)).collect::<HashSet<_>>();
+        // a ← b ← c ← d: la última se va sola y la de en medio, con las anteriores.
+        let line = vec![rev("a", &[], 1), rev("b", &["a"], 2), rev("c", &["b"], 3), rev("d", &["c"], 4)];
+        assert_eq!(deletion(&line, &"d".repeat(32)).unwrap(), ids(&["d"]));
+        assert_eq!(deletion(&line, &"c".repeat(32)).unwrap(), ids(&["a", "b", "c"]));
+        assert_eq!(deletion(&line, &"a".repeat(32)).unwrap(), ids(&["a"]));
+        for gone in ["a", "b", "c", "d"] {
+            let away = deletion(&line, &gone.repeat(32)).unwrap();
+            let left: Vec<Revision> = line.iter().filter(|(_, r)| !away.contains(&r.id)).map(|(_, r)| r.clone()).collect();
+            assert!(heads(&left).len() <= 1, "borrar {gone} no abre otra rama");
+        }
+        // a ← b y a ← c (conflicto) resuelto en m, que usa el ZIP de c.
+        let mut branched = vec![rev("a", &[], 1), rev("b", &["a"], 2), rev("c", &["a"], 3), rev("m", &["b", "c"], 4)];
+        branched[3].1.archive_file = Some("archivo-c".into());
+        assert!(deletion(&branched, &"c".repeat(32)).is_err(), "m se quedaría sin su copia");
+        assert_eq!(deletion(&branched, &"m".repeat(32)).unwrap(), ids(&["m"]), "se vuelve al conflicto");
+        assert!(deletion(&branched, &"z".repeat(32)).is_err());
     }
     #[test]
     fn zip_rechaza_rutas_enlaces_duplicados_y_bloqueos() {

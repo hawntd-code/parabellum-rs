@@ -231,9 +231,17 @@ function art(instance, size = "") {
   return `<div class="art ${size}" style="background: radial-gradient(circle at 30% 20%, rgba(255,255,255,.25), transparent 55%), linear-gradient(135deg, ${p.bg[0]}, ${p.bg[1]})" data-art="${id}">${svg}</div>`;
 }
 
-/** Cabeza de jugador pixelada (8×8) generada a partir del nombre. */
-function drawHead(canvas, name) {
+/** Cabeza de jugador pixelada (8×8): la de su skin de Parabellum si tiene (skins.js), o una que sale de su nombre. */
+function drawHead(canvas, name, { real = true } = {}) {
   const ctx = canvas.getContext("2d");
+  const face = real ? window.skins?.face(name) : null;
+  if (face) {
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, 8, 8);
+    ctx.drawImage(face, 8, 8, 8, 8, 0, 0, 8, 8);
+    ctx.drawImage(face, 40, 8, 8, 8, 0, 0, 8, 8);
+    return;
+  }
   const h = hashOf(name || "Jugador");
   const skins = ["#f2c7a5", "#e0ac83", "#c68a5e", "#a8714a", "#8d5a3b", "#5c3a26"];
   const hairs = ["#2b1d14", "#4a2f1e", "#7a4b2a", "#c79a4a", "#1d1a2b", "#6b3fa0", "#b5332e"];
@@ -740,6 +748,9 @@ function renderInstance() {
     state.contentFor = i.id;
     state.content = null;
     selectTab("content");
+  } else if (state.tab === "content" && !state.content) {
+    // La lista quedó vieja mientras se veía otra página (se instaló algo desde Explorar, terminó una descarga…).
+    loadContent();
   }
 }
 
@@ -853,7 +864,8 @@ const kindIcons = { mods: "puzzle", resourcepacks: "image", shaderpacks: "sun-sp
 
 async function loadContent() {
   const id = state.current?.id;
-  if (!id) return;
+  if (!id || state.contentLoading === id) return;
+  state.contentLoading = id;
   setHtml($("#content-list"), skeleton.rows(), { scope: "cargando" });
   try {
     const content = await invoke("contenido", { id });
@@ -864,7 +876,29 @@ async function loadContent() {
     if (state.updates.for !== id || Date.now() - state.updates.at > 600e3) checkUpdates(id);
   } catch (error) {
     setHtml($("#content-list"), `<div class="content-empty">${escapeHtml(error)}</div>`, { scope: "error" });
+  } finally {
+    if (state.contentLoading === id) state.contentLoading = null;
+    // Si algo cambió mientras se cargaba, lo que llegó ya es viejo: otra vez.
+    if (state.contentReload === id) {
+      state.contentReload = null;
+      if (state.current?.id === id && state.tab === "content") {
+        state.content = null;
+        loadContent();
+      }
+    }
   }
+}
+
+/**
+ * La lista de contenido de esa instancia ya no sirve (se instaló, actualizó o restauró algo). Si se está
+ * viendo, se vuelve a cargar al momento; si no, se carga al volver a la pestaña Contenido.
+ */
+function invalidateContent(instanceId) {
+  if (state.contentFor !== instanceId) return;
+  state.content = null;
+  state.updates = { for: null, list: [] };
+  if (state.contentLoading === instanceId) state.contentReload = instanceId;
+  else if (state.page === "instance" && state.current?.id === instanceId && state.tab === "content") loadContent();
 }
 
 function renderContent() {
@@ -894,7 +928,6 @@ function renderContent() {
   }
   const world = state.kind === "worlds";
   const html = items
-    .slice(0, 600)
     .map((item, index) => {
       const sub = world ? `${t("Jugado", "Played")} ${ago(item.modified).toLowerCase()}${item.version ? ` · ${item.version}` : ""}` : item.authors ? t(`por ${item.authors}`, `by ${item.authors}`) : item.file;
       return `<div class="content-item ${item.enabled ? "" : "disabled"}" data-key="${escapeHtml(item.file)}" style="animation-delay:${Math.min(index, 20) * 15}ms">
@@ -1080,10 +1113,8 @@ async function verifyInstance(id) {
     } else {
       toast(t(`${instance.name} no viene de un modpack, así que no hay con qué compararla. Lo que pide su configuración está completo.`, `${instance.name} does not come from a modpack, so there is nothing to compare it with. What its configuration asks for is complete.`));
     }
-    if (state.contentFor === id) {
-      state.content = null;
-      if (state.page === "instance" && state.current?.id === id) renderInstance();
-    }
+    invalidateContent(id);
+    if (state.page === "instance" && state.current?.id === id) renderInstance();
   } catch (error) {
     toast(String(error), "error");
   } finally {
@@ -1745,7 +1776,8 @@ function openAccountMenu(anchor) {
   contextMenu(anchor, [
     { head: s.username, label: s.username, sub: s.uuid ? t("En uso · UUID fijo", "In use · fixed UUID") : t("En uso", "In use"), checked: true, action: () => {} },
     ...s.accounts.map((a, i) => ({ head: a.username, label: a.username, sub: a.uuid ? "UUID fijo" : "", action: () => switchAccount(i) })),
-    { icon: "brush", label: t("Cambiar nombre", "Change name"), separator: true, action: () => openAccountDialog("rename") },
+    { icon: "user", label: t("Skin", "Skin"), separator: true, action: () => window.skins.open() },
+    { icon: "brush", label: t("Cambiar nombre", "Change name"), action: () => openAccountDialog("rename") },
     { icon: "user-plus", label: t("Añadir cuenta", "Add account"), action: () => openAccountDialog("add") },
     { icon: "settings", label: t("Administrar cuentas", "Manage accounts"), action: () => openSettings("profile") },
   ], { matchWidth: true });
@@ -3372,10 +3404,7 @@ async function installFavorites(instanceId, favorites, onStep = () => {}) {
     onStep(t(`Descargando ${plural(files.size, "archivo", "archivos")}…`, `Downloading ${plural(files.size, "file", "files")}…`));
     await invoke("instalar_contenido", { id: instanceId, archivos: [...files.values()] });
   }
-  if (state.contentFor === instanceId) {
-    state.content = null;
-    state.updates = { for: null, list: [] };
-  }
+  invalidateContent(instanceId);
   return { installed, skipped };
 }
 
@@ -5039,6 +5068,7 @@ function wireEvents() {
     }
     if (event.key === "Escape") {
       if (topModal()?.id === "worlds-dialog") { window.worldBackups?.close(); return; }
+      if (topModal()?.id === "skin-dialog") { window.skins?.close(); return; }
       if (topModal()?.id === "cm-dialog") community.cancelDialog?.();
       else if (topModal()?.id === "support-dialog") closeSupportTicket();
       closeModal("#create-dialog");
@@ -5756,10 +5786,7 @@ async function installProject(projectId, versionId = null) {
         e.installed.add(file.projectId);
         e.installedVersions.add(file.versionId);
       }
-      if (state.contentFor === instance.id) {
-        state.content = null;
-        state.updates = { for: null, list: [] };
-      }
+      invalidateContent(instance.id);
       if (plan.optional.length) offerOptional(plan);
     }
   } catch (error) {
@@ -6418,11 +6445,7 @@ async function retryDownload(job) {
   try {
     await invoke(command, { ...args, tarea: job.id });
     await reloadInstances();
-    if (job.kind === "contenido" && state.contentFor === job.instance) {
-      state.content = null;
-      state.updates = { for: null, list: [] };
-      if (state.page === "instance" && state.current?.id === job.instance) renderInstance();
-    }
+    if (job.kind === "contenido") invalidateContent(job.instance);
     if (job.kind === "catalogo") loadDriveCatalog(false);
     toast(t(`Listo: ${job.title}.`, `Done: ${job.title}.`));
   } catch (error) {
@@ -6557,7 +6580,7 @@ async function installDatapack(projectId, versionId = null) {
       setBusy(projectId, true);
       try {
         toast(await invoke("instalar_datapack", { id: instance.id, mundo: world, proyecto: projectId, version: versionId }));
-        if (state.contentFor === instance.id) state.content = null;
+        invalidateContent(instance.id);
       } catch (error) {
         toast(String(error), "error");
       } finally {
@@ -7409,6 +7432,7 @@ function updateExportDestination() {
 // ======================================================================
 function demoInvoke(command, args = {}) {
   if (command.startsWith("mundos_")) return window.worldsDemo(command, args);
+  if (command.startsWith("skin")) return window.skinsDemo(command, args);
   const now = Date.now();
   const instances = [
     { id: "Vanilla 1.21.1", name: "Vanilla 1.21.1", versionId: "1.21.1", minecraftVersion: "1.21.1", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: now - 3600e3, created: now - 86400e3 * 4 },

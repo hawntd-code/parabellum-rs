@@ -229,6 +229,28 @@
         }
       }
     },
+    "skins": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['value', 'signature', 'at'])",
+        "value": {
+          ".validate": "newData.isString() && newData.val().length <= 4096 && newData.val().matches(/^[A-Za-z0-9+\\/=]+$/)"
+        },
+        "signature": {
+          ".validate": "newData.isString() && newData.val().length <= 1400 && newData.val().matches(/^[A-Za-z0-9+\\/=]+$/)"
+        },
+        "from": {
+          ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_]{1,16}$/)"
+        },
+        "at": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
     "favorites": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",

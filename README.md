@@ -63,9 +63,9 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td align="center" valign="top">
 <br>
-<a href="https://github.com/hawntd-code/parabellum-rs/releases/download/v0.39.2/Parabellum-0.39.2.zip"><img alt="Descargar Parabellum 0.39.2 para Windows" src="https://img.shields.io/badge/Descargar-v0.39.2-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
+<a href="https://github.com/hawntd-code/parabellum-rs/releases/download/v0.40.0/Parabellum-0.40.0.zip"><img alt="Descargar Parabellum 0.40.0 para Windows" src="https://img.shields.io/badge/Descargar-v0.40.0-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
 <br><br>
-<sub>Windows 10 u 11 de 64 bits · zip de 10.8 MB · 24 oct 2026</sub>
+<sub>Windows 10 u 11 de 64 bits · zip de 10.8 MB · 25 oct 2026</sub>
 <br><br>
 </td>
 <td align="center" valign="top">
@@ -79,14 +79,13 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td valign="top">
 
-**Lo nuevo en la 0.39.2**
+**Lo nuevo en la 0.40.0**
 
-- **Conexión automática:** servidores oficiales y de respaldo según lo que bloquee la red, sin activar modo escuela.
-- **Drive al final de Explorar:** después de Modpacks; búsqueda de respaldo CurseForge → Modrinth → Drive.
-- **CurseForge al compartir:** conserva la versión exacta y las configuraciones originales del modpack.
-- **Archivos pendientes:** la página de CurseForge se abre con la conexión que funcione, y Parabellum comprueba e instala lo que descargues.
+- **Licencia:** úsalo desde sus descargas oficiales y comparte este zip tal cual, gratis. Trae `LICENCIA.txt` y los avisos de terceros.
+- **Mundos en Drive:** las copias «antes de restaurar» ya no se acumulan (quedan las 3 más nuevas de cada mundo).
+- **Amigos y chat más estables:** un corte breve de internet ya no abre conexiones de más.
 
-<sub>[Notas completas](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.39.2)</sub>
+<sub>[Notas completas](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.40.0)</sub>
 
 </td>
 <td valign="top">
@@ -171,7 +170,7 @@ Sale porque Parabellum no tiene una firma de pago, no porque haya algo malo. Pas
 <details>
 <summary><b>En mi escuela no carga Minecraft o Modrinth.</b></summary>
 
-En **Windows 0.39.2**, Parabellum revisa el acceso y, si detecta restricciones, cambia solo a servidores de respaldo o a la copia en Drive. Puedes abrir el catálogo de **Drive** al final de **Explorar**, después de **Modpacks**.
+Desde **Windows 0.39.2**, Parabellum revisa el acceso y, si detecta restricciones, cambia solo a servidores de respaldo o a la copia en Drive. Puedes abrir el catálogo de **Drive** al final de **Explorar**, después de **Modpacks**.
 
 En la **Mac 0.33.0**, activa **Modo escuela** arriba para descargar Minecraft, los loaders y Java desde Drive.
 </details>

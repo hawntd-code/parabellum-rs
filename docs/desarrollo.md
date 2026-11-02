@@ -124,6 +124,23 @@ primera vez que entras a un mundo, uno te dice cómo abrirlo. Funciona en Fabric
 la 1.16.5 a la 26.3 (las versiones más usadas); Parabellum pone el mod solo al jugar. Se apaga en
 Ajustes › Comportamiento. El código y cómo compilarlo: [mod/README.md](../mod/README.md).
 
+## Skins (desde la 0.41.0)
+
+Cada jugador elige la skin de una cuenta premium (menú de la cuenta → «Skin»). Parabellum la pide a Mojang
+(`api.minecraftservices.com` y `sessionserver.mojang.com`) y guarda la propiedad `textures` firmada en
+`skins/{uid}` de Firebase (la leen solo los jugadores con sesión). Minecraft solo acepta imágenes de
+`textures.minecraft.net` con firma de Mojang, así que no se pueden servir PNG propios sin subirlos antes a
+Mojang (MineSkin; pendiente).
+
+El juego la recibe del servidor de sesión local (`sesion_local.rs` → `skins.rs`):
+- `hasJoined`: el anfitrión de un mundo LAN o P2P pregunta por quien entra; la respuesta lleva su skin (por su
+  nombre: `names/{nombre}` → `skins/{uid}`) y el juego se la pasa a todos los que están dentro;
+- `/session/minecraft/profile/{uuid}`: la tuya al abrir el juego y la de un amigo en versiones viejas (el
+  UUID se busca entre las cuentas del PC y los amigos).
+
+Lo leído se recuerda 2 minutos y la imagen se guarda en `datos/skins/`. Sin sesión de Google, o si Firebase no
+contesta en 4 s, el juego sigue con la skin de siempre.
+
 ## Hostear partida
 
 Juega con amigos desde tu PC sin abrir puertos ni pagar: un **servidor** hecho a partir de una

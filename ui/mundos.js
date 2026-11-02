@@ -51,8 +51,20 @@ window.worldBackups = (() => {
     return `${world.conflict ? `<div class="wb-notice" role="status">${icon("alert")}<span><b>${t("Hay avances de distintos equipos", "There is progress from different computers")}</b>${t("Compara las fechas y el equipo. Elige con qué revisión continuar; las otras copias siguen en el historial.", "Compare dates and computers. Choose which revision to continue with; the other backups stay in history.")}</span></div>` : ""}<div class="wb-history">${world.revisions.map((entry) => {
       const r = entry.revision;
       const current = world.heads.includes(r.id);
-      return `<div class="wb-revision"><div class="grow"><b>${html(date(r.at))}</b>${current ? `<span class="cm-chip ${world.conflict ? "warn" : "ok"}">${world.conflict ? t("Rama por resolver", "Unresolved branch") : t("Más reciente", "Latest")}</span>` : ""}<span class="faint">${html(r.device)} · ${html(size(r.size))}</span><span class="faint">Minecraft ${html(r.recipe.minecraft)} · ${html(r.recipe.loader)} ${html(r.recipe.loaderVersion ?? "")}${r.recipe.packageVersion ? ` · ${html(r.recipe.packageVersion)}` : ""}</span></div><div class="wb-row-actions">${button("restore", world.conflict && current ? t("Continuar con esta", "Continue with this") : t("Restaurar…", "Restore…"), "reply", current, `data-world="${html(world.worldId)}" data-revision="${html(r.id)}" data-resolve="${world.conflict && current}"`)}${world.conflict && current && r.source.kind === "instancia" ? button("restore", t("Crear otro mundo…", "Create another world…"), "plus", false, `data-world="${html(world.worldId)}" data-revision="${html(r.id)}" data-resolve="false"`) : ""}${button("export", t("Guardar ZIP", "Save ZIP"), "download", false, `data-world="${html(world.worldId)}" data-revision="${html(r.id)}"`)}</div></div>`;
-    }).join("")}</div>`;
+      return `<div class="wb-revision"><div class="grow"><b>${html(date(r.at))}</b>${current ? `<span class="cm-chip ${world.conflict ? "warn" : "ok"}">${world.conflict ? t("Rama por resolver", "Unresolved branch") : t("Más reciente", "Latest")}</span>` : ""}<span class="faint">${html(r.device)} · ${html(size(r.size))}</span><span class="faint">Minecraft ${html(r.recipe.minecraft)} · ${html(r.recipe.loader)} ${html(r.recipe.loaderVersion ?? "")}${r.recipe.packageVersion ? ` · ${html(r.recipe.packageVersion)}` : ""}</span></div><div class="wb-row-actions">${button("restore", world.conflict && current ? t("Continuar con esta", "Continue with this") : t("Restaurar…", "Restore…"), "reply", current, `data-world="${html(world.worldId)}" data-revision="${html(r.id)}" data-resolve="${world.conflict && current}"`)}${world.conflict && current && r.source.kind === "instancia" ? button("restore", t("Crear otro mundo…", "Create another world…"), "plus", false, `data-world="${html(world.worldId)}" data-revision="${html(r.id)}" data-resolve="false"`) : ""}${button("export", t("Guardar ZIP", "Save ZIP"), "download", false, `data-world="${html(world.worldId)}" data-revision="${html(r.id)}"`)}<button class="circle-btn small" data-wb="delete-revision" data-world="${html(world.worldId)}" data-revision="${html(r.id)}" title="${t("Borrar de Drive", "Delete from Drive")}" aria-label="${t("Borrar esta revisión de Drive", "Delete this revision from Drive")}">${icon("trash")}</button></div></div>`;
+    }).join("")}</div><div class="wb-toolbar"><button class="btn small danger" data-wb="delete-world" data-world="${html(world.worldId)}">${icon("trash")}${t("Borrar el mundo de Drive…", "Delete the world from Drive…")}</button><span class="faint">${html(size(world.used))} · ${t("los mundos de tus instancias no se tocan", "the worlds in your instances are not touched")}</span></div>`;
+  }
+  /** Las revisiones que se van con `id` (igual que `deletion` en Rust): la última de una rama, sola; una de en medio, con las anteriores. */
+  function goneWith(world, id) {
+    if (world.heads.includes(id)) return [id];
+    const byId = new Map(world.revisions.map((e) => [e.revision.id, e.revision]));
+    const gone = new Set([id]);
+    const stack = [...(byId.get(id)?.parents ?? [])];
+    while (stack.length) {
+      const parent = stack.pop();
+      if (byId.has(parent) && !gone.has(parent)) { gone.add(parent); stack.push(...byId.get(parent).parents); }
+    }
+    return [...gone];
   }
   async function refresh() {
     if (!visible() || view.mode === "restore") return;
@@ -104,12 +116,13 @@ window.worldBackups = (() => {
     const r = entry.revision;
     head(t("Restaurar mundo", "Restore world"), `${r.name} · ${date(r.at)}`);
     if (!destinations.length) {
-      $("#wb-body").innerHTML = `<div class="wb-notice">${icon("alert")}<span><b>${t("Hace falta una instalación compatible", "A compatible installation is needed")}</b>${t("Prepara una instancia o servidor con estas versiones y los mismos mods. Después vuelve al historial.", "Prepare an instance or server with these versions and the same mods. Then return to history.")}</span></div><dl class="wb-recipe"><dt>Minecraft</dt><dd>${html(r.recipe.minecraft)}</dd><dt>Loader</dt><dd>${html(r.recipe.loader)} ${html(r.recipe.loaderVersion ?? "")}</dd><dt>${t("Paquete", "Package")}</dt><dd>${html(r.recipe.package ?? r.recipe.instanceName)} ${html(r.recipe.packageVersion ?? "")}</dd><dt>${t("Contenido", "Content")}</dt><dd class="mono">${html(r.recipe.contentHash)}</dd></dl>${button("library-page", t("Ir a mi biblioteca", "Go to my library"), "folder")}`;
+      $("#wb-body").innerHTML = `<div class="wb-notice">${icon("alert")}<span><b>${t("Hace falta una instalación compatible", "A compatible installation is needed")}</b>${t("Prepara una instancia o servidor con este mismo Minecraft y loader (mejor si también tiene los mismos mods). Después vuelve al historial.", "Prepare an instance or server with this same Minecraft and loader (ideally with the same mods too). Then return to history.")}</span></div><dl class="wb-recipe"><dt>Minecraft</dt><dd>${html(r.recipe.minecraft)}</dd><dt>Loader</dt><dd>${html(r.recipe.loader)} ${html(r.recipe.loaderVersion ?? "")}</dd><dt>${t("Paquete", "Package")}</dt><dd>${html(r.recipe.package ?? r.recipe.instanceName)} ${html(r.recipe.packageVersion ?? "")}</dd><dt>${t("Contenido", "Content")}</dt><dd class="mono">${html(r.recipe.contentHash)}</dd></dl>${button("library-page", t("Ir a mi biblioteca", "Go to my library"), "folder")}`;
       $("#wb-footer").innerHTML = button("library", t("Volver a mis mundos", "Back to my worlds"), "left");
       return;
     }
     const server = r.source.kind === "servidor";
-    $("#wb-body").innerHTML = `<label class="cm-field"><span class="label">${t("Restaurar en", "Restore into")}</span><select id="wb-destination">${destinations.map((d, i) => `<option value="${i}">${html(d.name)}</option>`).join("")}</select></label>
+    $("#wb-body").innerHTML = `<label class="cm-field"><span class="label">${t("Restaurar en", "Restore into")}</span><select id="wb-destination">${destinations.map((d, i) => `<option value="${i}">${html(d.name)}${d.differences.length ? ` · ${t("con diferencias", "with differences")}` : ""}</option>`).join("")}</select></label>
+      <div id="wb-differences" class="wb-notice hidden"></div>
       ${!server && !resolve ? `<label class="cm-field"><span class="label">${t("Cómo restaurar", "How to restore")}</span><select id="wb-copy"><option value="copy">${t("Crear otro mundo (recomendado)", "Create another world (recommended)")}</option><option value="replace">${t("Reemplazar un mundo", "Replace a world")}</option></select></label>` : ""}
       <label class="cm-field"><span class="label">${t("Carpeta del mundo", "World folder")}</span><input id="wb-world-name" maxlength="100" value="${html(server ? destinations[0].world : resolve ? r.source.world : `${r.name} - ${t("copia", "copy")}`)}" ${server ? "readonly" : ""} list="wb-existing"><datalist id="wb-existing"></datalist></label>
       <p class="wb-notice">${icon("reply")}<span>${t("Cierra Minecraft o el servidor. Si reemplazas un mundo, conservamos el anterior en este equipo y podrás volver a él desde Respaldos.", "Close Minecraft or the server. If you replace a world, we keep the previous one on this computer and you can return to it from Backups.")}</span></p>
@@ -119,6 +132,12 @@ window.worldBackups = (() => {
     const names = async () => {
       const d = destinations[Number($("#wb-destination").value)];
       if (server) $("#wb-world-name").value = d.world;
+      // Dos PCs con «la misma» instancia suelen diferir en algo: se dice qué y se pide confirmarlo.
+      const box = $("#wb-differences");
+      box.classList.toggle("hidden", !d.differences.length);
+      box.innerHTML = d.differences.length
+        ? `${icon("alert")}<span><b>${t("Esta instancia no es igual a la de la copia", "This instance is not the same as the backup's")}</b>${d.differences.map((x) => html(x)).join(" · ")}.<label class="check"><input type="checkbox" id="wb-differences-ok"><span>${t("Entiendo: si aquí falta un mod que el mundo usa, sus bloques y objetos se pierden. El mundo que haya ahora queda guardado en este equipo.", "I understand: if a mod the world uses is missing here, its blocks and items are lost. The current world stays saved on this computer.")}</span></label></span>`
+        : "";
       const local = await invoke("mundos_locales", { tipo: d.kind, id: d.id }).catch(() => []);
       if (view.mode !== "restore") return;
       $("#wb-existing").innerHTML = local.map((l) => `<option value="${html(l.source.world)}"></option>`).join("");
@@ -132,12 +151,13 @@ window.worldBackups = (() => {
       errorBox.classList.add("hidden");
       if (!$("#wb-player").checked) { errorBox.textContent = t("Revisa y confirma el aviso de los datos de jugador.", "Review and confirm the player data notice."); errorBox.classList.remove("hidden"); return; }
       const d = destinations[Number($("#wb-destination").value)];
+      if (d.differences.length && !$("#wb-differences-ok")?.checked) { errorBox.textContent = t("Confirma que entiendes las diferencias con la copia.", "Confirm that you understand the differences with the backup."); errorBox.classList.remove("hidden"); return; }
       const destination = { kind: d.kind, id: d.id, world: $("#wb-world-name").value.trim() };
       const copy = !server && !resolve && $("#wb-copy").value === "copy";
       working = true;
       event.currentTarget.disabled = true;
       try {
-        const result = await invoke("mundos_restaurar", { mundo: worldId, revision: revisionId, destino: destination, nuevo: copy, confirmarJugador: true, resolver: resolve });
+        const result = await invoke("mundos_restaurar", { mundo: worldId, revision: revisionId, destino: destination, nuevo: copy, confirmarJugador: true, resolver: resolve, diferencias: d.differences.length > 0 });
         toast(result.warning ?? (result.backup ? t("Mundo restaurado. La copia anterior está disponible en Respaldos.", "World restored. The previous backup is available in Backups.") : t("Mundo restaurado y listo para abrir.", "World restored and ready to open.")), result.warning ? "error" : "info");
         view = { mode: "local", source: destination }; refresh();
         if (state.current?.id === destination.id) loadContent();
@@ -161,6 +181,42 @@ window.worldBackups = (() => {
     try {
       if (action === "restore") return await restore(target.dataset.world, target.dataset.revision, target.dataset.resolve === "true");
       if (action === "export") { await invoke("mundos_exportar", { mundo: target.dataset.world, revision: target.dataset.revision }); return; }
+      if (action === "delete-world") {
+        const world = cloud.find((w) => w.worldId === target.dataset.world);
+        if (!world) return;
+        const n = world.revisions.length;
+        const yes = await confirmAction({
+          title: t(`¿Borrar «${world.name}» de Drive?`, `Delete "${world.name}" from Drive?`),
+          text: t(`Sus ${n} ${n === 1 ? "revisión se va" : "revisiones se van"} a la papelera de tu Google Drive (${size(world.used)}); de ahí puedes sacarlas durante 30 días. El mundo de tus instancias no se toca, y en este equipo deja de respaldarse al cerrar.`, `Its ${n} ${n === 1 ? "revision goes" : "revisions go"} to your Google Drive trash (${size(world.used)}); you can take them out of there for 30 days. The world in your instances is not touched, and this computer stops backing it up when closing.`),
+          ok: t("Borrar de Drive", "Delete from Drive"),
+        });
+        if (!yes) return;
+        await invoke("mundos_borrar", { mundo: world.worldId });
+        toast(t("El mundo se mandó a la papelera de Drive.", "The world was moved to the Drive trash."));
+        if (view.mode === "history") return show({ mode: "library" });
+      }
+      if (action === "delete-revision") {
+        const world = cloud.find((w) => w.worldId === target.dataset.world);
+        const entry = world?.revisions.find((e) => e.revision.id === target.dataset.revision);
+        if (!entry) return;
+        const gone = goneWith(world, entry.revision.id);
+        const all = gone.length === world.revisions.length;
+        const latest = world.heads.includes(entry.revision.id) && !world.conflict;
+        const text = all
+          ? t("Es la única que queda: se borra el mundo entero de Drive y en este equipo deja de respaldarse al cerrar.", "It is the only one left: the whole world is deleted from Drive and this computer stops backing it up when closing.")
+          : gone.length > 1
+            ? t(`Para no dejar el historial cortado, se van con ella las ${gone.length - 1} anteriores. Quedan las más recientes.`, `To keep the history whole, the ${gone.length - 1} older ones go with it. The most recent ones stay.`)
+            : latest ? t("La anterior vuelve a ser la más reciente.", "The previous one becomes the latest again.") : t("Las demás revisiones se quedan.", "The other revisions stay.");
+        const yes = await confirmAction({
+          title: gone.length > 1 && !all ? t(`¿Borrar ${gone.length} revisiones de Drive?`, `Delete ${gone.length} revisions from Drive?`) : t("¿Borrar esta revisión de Drive?", "Delete this revision from Drive?"),
+          text: `${t(`La copia del ${date(entry.revision.at)} va a la papelera de tu Google Drive (30 días para sacarla).`, `The ${date(entry.revision.at)} backup goes to your Google Drive trash (30 days to take it out).`)} ${text}`,
+          ok: t("Borrar de Drive", "Delete from Drive"),
+        });
+        if (!yes) return;
+        await invoke(all ? "mundos_borrar" : "mundos_borrar_revision", { mundo: world.worldId, revision: entry.revision.id });
+        toast(all ? t("El mundo se mandó a la papelera de Drive.", "The world was moved to the Drive trash.") : t("Se mandó a la papelera de Drive.", "Moved to the Drive trash."));
+        if (all && view.mode === "history") return show({ mode: "library" });
+      }
       if (action === "disconnect") await invoke("mundos_desconectar");
       if (action === "backup") { await invoke("mundos_respaldar", { origen: view.source }); toast(t("Copia confirmada en Drive.", "Backup confirmed in Drive.")); }
       if (action === "resume") await invoke("mundos_reanudar", { revision: target.dataset.revision });
@@ -211,8 +267,8 @@ window.worldsDemo = async (command, args) => {
   if (command === "mundos_locales") return [{ source: { ...source, kind: args.tipo, id: args.id }, worldId: world, enabled: d.enabled, lastAt: Date.now() - 3600e3, error: null }];
   if (command === "mundos_configurar") { d.enabled = args.activo; return; }
   if (command === "mundos_anteriores") return d.previous ? [{ id: root, at: Date.now() - 60e3 }] : [];
-  if (command === "mundos_destinos") return [{ kind: "instancia", id: source.id, name: "Vanilla 1.21.1", world: null }];
+  if (command === "mundos_destinos") return [{ kind: "instancia", id: source.id, name: "Vanilla 1.21.1", world: null, differences: [] }];
   if (command === "mundos_restaurar") { d.previous = true; d.resolved = args.resolver; return { backup: "respaldo anterior", source: args.destino, revision: args.revision }; }
-  if (["mundos_respaldar", "mundos_reanudar", "mundos_volver_anterior", "mundos_exportar"].includes(command)) return {};
+  if (["mundos_respaldar", "mundos_reanudar", "mundos_volver_anterior", "mundos_exportar", "mundos_borrar", "mundos_borrar_revision"].includes(command)) return {};
   throw new Error("Demostración de mundos: comando desconocido");
 };

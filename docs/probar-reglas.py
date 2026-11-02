@@ -326,5 +326,19 @@ req("DELETE", "friends/B/A", "owner")
 check("B deja de publicar al perder la amistad", False, "PUT", "presenceInbox/A/B", "B", presence37)
 check("A puede limpiar la presencia de un ex amigo", True, "DELETE", "presenceInbox/A/B", "A")
 
+# ---------- 0.41: skins (skins.rs) ----------
+skin = {"value": "eyJ0ZXh0dXJlcyI6e319", "signature": "c2lnbmF0dXJh+/==", "from": "Notch", "at": TS}
+check("A guarda su skin", True, "PUT", "skins/A", "A", skin)
+check("B (otro jugador) lee la skin de A", True, "GET", "skins/A", "B")
+check("Z, sin ser su amigo, también la lee", True, "GET", "skins/A", "Z")
+check("No se lista la skin de todos", False, "GET", "skins", "B")
+check("B no cambia la skin de A", False, "PUT", "skins/A", "B", skin)
+check("La skin no acepta campos de más", False, "PUT", "skins/A", "A", {**skin, "url": "http://x"})
+check("La firma tiene que ser base64", False, "PUT", "skins/A", "A", {**skin, "signature": "no válida"})
+check("Sin firma no", False, "PUT", "skins/A", "A", {k: v for k, v in skin.items() if k != "signature"})
+check("El nombre de origen es de Minecraft", False, "PUT", "skins/A", "A", {**skin, "from": "con espacio"})
+check("Sin «from» también", True, "PUT", "skins/A", "A", {k: v for k, v in skin.items() if k != "from"})
+check("A quita su skin", True, "DELETE", "skins/A", "A")
+
 print("\nTODO BIEN" if not fails else f"\n{fails} MAL")
 sys.exit(1 if fails else 0)

@@ -23,7 +23,11 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 ## Estado
 
-- **0.39.2:** última estable de Windows, publicada en Drive y confirmada por Juan el 2026-10-24.
+- **0.40.0:** última estable de Windows (candidata a la 1.0), publicada en Drive; Juan lo confirmó el
+  2026-11-01. Lleva la licencia y la revisión 0.39.3. En `main` está la **0.41.0** sin publicar: arreglos
+  del reporte del 2026-11-01, gestionar los mundos de Drive y skins (necesita la regla `skins`).
+
+- **0.39.2:** estable de Windows, publicada en Drive y confirmada por Juan el 2026-10-24.
   El ZIP exacto de `_parabellum` está en [GitHub](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.39.2).
   Incluye las correcciones de compartir CurseForge de la 0.39.1 y la conexión automática: API de
   CurseForge en Cloud, respaldo CurseForge → Modrinth → Drive y Drive después de Modpacks, sin
@@ -53,8 +57,8 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
   resultados específicos.
 
 - Última revisión de los PR de Mac en Windows: 2026-10-20, PR #1 a #17 (todos mezclados).
-- **Publicado en Drive:** Windows **0.39.2**, confirmada por Juan el 2026-10-24;
-  código del ejecutable en `85a8256`.
+- **Publicado en Drive:** Windows **0.40.0**, confirmada por Juan el 2026-11-01;
+  código del ejecutable en `3b8400f`.
   **Mac 0.33.0** desde el 2026-10-20 (Diego, compilada de `main` en `52de0a3`; ver «Versiones
   publicadas en Drive»).
   - A Mac le faltan las novedades de la 0.34.0 (E3), la 0.35.0 (paquete ligero y avisos de soporte),
@@ -157,6 +161,14 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
+
+- **0.40.0** · 2026-10-25 · Publicada por Juan en `_parabellum` y `_parabellum-pruebas` (lo confirmó el
+  2026-11-01). Código del exe `3b8400f`; ZIP exacto de `_parabellum`, 10 822 837 bytes, SHA-256
+  `ab8efc38e2c3f022228fcf1163ed8683e65441f1613ac954a6e41267e0b89c50`.
+  [GitHub](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.40.0).
+  - Licencia; el zip lleva `LICENCIA.txt` y `AVISOS-DE-TERCEROS.txt`.
+  - Incluye la 0.39.3: límite a las copias «antes de restaurar», el respaldo SSE espera 10 s y
+    `presenceInbox` cerrado a sus campos (regla publicada el 2026-10-25).
 
 - **0.39.2** · 2026-10-24 · Publicada por Juan, confirmado por él. Código del exe `85a8256`;
   ZIP exacto de `_parabellum`, 10 754 630 bytes, SHA-256
@@ -580,6 +592,43 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
   plan; no modifica código ni requiere recompilar lo publicado.
 
 ## Cambios de Windows
+
+### 2026-11-02 · 0.41.0: arreglos del reporte de Juan, mundos en Drive y skins
+
+Juan reportó el 2026-11-01 varios fallos; esta versión los corrige y agrega dos cosas que pidió. **Necesita
+reglas nuevas de Firebase (`skins`)**: Juan las publica antes que la versión. Están probadas en el emulador
+(`docs/probar-reglas.py`, «TODO BIEN»).
+
+- **Modpacks de CurseForge con data packs** (`curseforge.rs`, `curseforge_manual.rs`): Prominence II no se
+  instalaba («CurseForge no dio los datos necesarios…»). Sus data packs (clase 6945, `.zip`) iban a `mods/`, y
+  cinco que su autor no deja bajar fuera de CurseForge tumbaban toda la instalación. Ahora van a
+  `config/paxi/datapacks` si el modpack trae Paxi (o a `datapacks/` si no), se pueden bajar a mano como los
+  demás, y uno que no se pueda comprobar ya no detiene el modpack: el aviso de «faltan archivos» lo nombra.
+  Probado con Prominence II real: 456 mods, 59 data packs en la carpeta de Paxi, ningún `.zip` en `mods/` y
+  15 archivos para bajar a mano.
+- **Restaurar un mundo en otra PC** (`mundos_archivo.rs`, `mundos.rs`, `ui/mundos.js`): pedía la instancia
+  exacta (mismo loader y mismos mods, al byte), y entre dos PCs casi nunca lo es. Ahora basta el mismo
+  Minecraft y el mismo loader; si cambian la versión del loader o los mods, se dice qué cambia y se pide
+  confirmarlo (`mundos_restaurar` recibe `diferencias`). `mundos_destinos` devuelve `differences` y pone
+  primero las exactas.
+- **Gestionar los mundos de Drive** (`mundos.rs`, `drive_mundos.rs`, `ui/mundos.js`): comandos
+  `mundos_borrar` (el mundo entero) y `mundos_borrar_revision`. Todo va a la papelera de Drive (30 días).
+  Una revisión de en medio se va con las anteriores, para no dejar una rama falsa en el historial
+  (`archive::deletion`, con su prueba); no se borra una cuyo ZIP usa la que resolvió un conflicto. Si se va
+  el mundo entero, en ese PC deja de respaldarse al cerrar y se descartan sus copias pendientes.
+- **La pestaña Contenido** (`ui/app.js`): después de instalar algo desde Explorar, o al terminar una
+  descarga, quedaba vacía hasta cambiar de pestaña. Ahora se recarga sola (`invalidateContent`), una sola
+  carga a la vez por instancia, y ya no se corta en 600 elementos.
+- **Skins entre jugadores de Parabellum** (`skins.rs` nuevo, `sesion_local.rs`, `ui/skins.js` nuevo, menú de
+  la cuenta → «Skin»): cada jugador elige la skin de una cuenta premium (por su nombre); se guarda firmada por
+  Mojang en `skins/{uid}`. El servidor de sesión local se la da al juego: en `hasJoined` (el anfitrión de un
+  mundo LAN o P2P la pasa a todos) y en el perfil por UUID (la tuya al abrir el juego; la de un amigo en las
+  versiones que la piden así). Funciona en vanilla y con mods, desde 1.16, sin mod extra; la imagen vive en
+  `textures.minecraft.net`, que es lo único que el juego acepta. Las caras de los amigos con skin también
+  se ven en Parabellum (`skins_de`). Subir un PNG propio queda para después: hace falta quien lo suba a
+  Mojang (MineSkin, con una clave en el puente de Cloud Run).
+- Mac: compilar y probar. Nada depende del sistema; las skins usan el mismo servidor de sesión local que
+  Windows.
 
 ### 2026-10-25 · 0.40.0 (candidata a la 1.0): licencia y avisos de terceros
 
