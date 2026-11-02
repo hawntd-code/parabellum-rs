@@ -604,8 +604,14 @@ reglas nuevas de Firebase (`skins`)**: Juan las publica antes que la versión. E
   cinco que su autor no deja bajar fuera de CurseForge tumbaban toda la instalación. Ahora van a
   `config/paxi/datapacks` si el modpack trae Paxi (o a `datapacks/` si no), se pueden bajar a mano como los
   demás, y uno que no se pueda comprobar ya no detiene el modpack: el aviso de «faltan archivos» lo nombra.
-  Probado con Prominence II real: 456 mods, 59 data packs en la carpeta de Paxi, ningún `.zip` en `mods/` y
-  15 archivos para bajar a mano.
+  Probado con Prominence II real: 456 mods, 59 data packs en la carpeta de Paxi y ningún `.zip` en `mods/`.
+- **Lo que no se puede bajar fuera de CurseForge, desde Modrinth** (`curseforge::on_modrinth`,
+  `curseforge_manual::from_modrinth`): si Modrinth tiene el mismo archivo (misma huella SHA-1 y tamaño, del CDN
+  de Modrinth), se baja de ahí y no hay que pedirlo a mano. Prominence II ya se instala completo, sin nada
+  a mano (57 s, 468 mods). Se usa al instalar
+  un modpack, al instalar un mod con archivos así y al abrir los pendientes que quedaron de antes. El portal
+  queda solo para lo que Modrinth no tenga. No se automatiza el botón de descarga de CurseForge: los autores
+  eligieron que esos archivos se bajen desde su página.
 - **Restaurar un mundo en otra PC** (`mundos_archivo.rs`, `mundos.rs`, `ui/mundos.js`): pedía la instancia
   exacta (mismo loader y mismos mods, al byte), y entre dos PCs casi nunca lo es. Ahora basta el mismo
   Minecraft y el mismo loader; si cambian la versión del loader o los mods, se dice qué cambia y se pide

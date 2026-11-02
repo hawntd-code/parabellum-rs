@@ -221,6 +221,12 @@ El puente está publicado, escala de 0 a 3 instancias y se comprobó con categor
 Los jars y zips se bajan directamente del CDN de CurseForge. Cuando el autor no permite descargas
 externas, la interfaz ofrece su página; no se inventa ni se fuerza un enlace de descarga.
 
+Desde la **0.41.0**, antes de pedir un archivo así a mano se busca en Modrinth por su SHA-1
+(`curseforge::on_modrinth`): si está con la misma huella y el mismo tamaño en `cdn.modrinth.com`, es el mismo
+archivo y se baja de ahí. Pasa al instalar un modpack o un mod y al abrir los pendientes que quedaron de antes
+(`curseforge_manual::from_modrinth`, una vez por archivo y sesión). Con Prominence II resolvió los 15. El
+botón de descarga del portal no se automatiza: lo que Modrinth no tenga lo baja quien juega.
+
 Desde la **0.36.2**, `curseforge_manual.rs` abre esa página en una ventana de Tauri sin permisos
 de comandos del launcher. El usuario descarga desde el portal; `on_download` recibe el archivo en
 `.lanzador/curseforge-entrada`, comprueba el tamaño y SHA-1 esperado y lo coloca en su categoría.

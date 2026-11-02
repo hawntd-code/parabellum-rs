@@ -119,8 +119,33 @@ fn cache(paths: &crate::paths::Paths, source: &Path, file: &Manual) -> Result<()
     std::fs::rename(temp, target).map_err(|e| e.to_string())
 }
 
-/// Reutiliza la versión exacta de una descarga anterior o de otra instancia local. No consulta
-/// Modrinth ni construye enlaces CDN. Las instancias de origen se leen sin modificarlas.
+/// Lo pendiente que Modrinth tiene idéntico (`curseforge::on_modrinth`) se baja de ahí y entra como si
+/// llegara del portal, con la misma comprobación. Cada archivo se pregunta una vez por sesión.
+pub async fn from_modrinth(instance: &Instance) -> Result<(), String> {
+    static ASKED: Mutex<Vec<(String, u64)>> = Mutex::new(Vec::new());
+    let pending: Vec<Manual> = {
+        let mut asked = ASKED.lock().unwrap();
+        let new: Vec<Manual> = load(instance)?.into_iter().filter(|f| valid(f) && !asked.contains(&(instance.id.clone(), f.file_id))).collect();
+        asked.extend(new.iter().map(|f| (instance.id.clone(), f.file_id)));
+        new
+    };
+    let incoming = instance.state_dir().join("curseforge-modrinth");
+    let (found, _) = curseforge::on_modrinth(pending, |m| incoming.join(format!("{}-{}", m.file_id, m.file_name))).await;
+    if found.is_empty() {
+        return Ok(());
+    }
+    let result = crate::download::download_all(found.iter().map(|(_, file)| file.clone()).collect(), |_, _, _, _| {}).await;
+    for (file, download) in &found {
+        if download.path.is_file() {
+            receive(instance, file.file_id, &download.path)?;
+        }
+    }
+    let _ = std::fs::remove_dir_all(&incoming);
+    result
+}
+
+/// Reutiliza la versión exacta de una descarga anterior o de otra instancia local. No construye
+/// enlaces CDN. Las instancias de origen se leen sin modificarlas.
 pub fn reuse(paths: &crate::paths::Paths, instance: &Instance) -> Result<Vec<Manual>, String> {
     let pending = load(instance)?;
     if pending.is_empty() { return Ok(pending); }
@@ -271,6 +296,12 @@ pub async fn curseforge_pendientes(state: State<'_, AppState>) -> Result<Vec<Que
     let paths = state.paths.clone();
     let instances = instances::list(&state.paths);
     let running: Vec<String> = state.games.lock().unwrap().keys().cloned().collect();
+    // Lo que quedó pendiente antes de que se buscara en Modrinth (versiones anteriores, o sin internet).
+    for instance in instances.iter().filter(|i| !running.contains(&i.id)) {
+        if pending_count(instance).unwrap_or(0) > 0 {
+            let _ = from_modrinth(instance).await;
+        }
+    }
     tauri::async_runtime::spawn_blocking(move || {
         let mut queues = Vec::new();
         for instance in instances {
@@ -299,6 +330,8 @@ pub async fn curseforge_preparar(state: State<'_, AppState>, id: String, proyect
         progress(t!("Instalando los archivos disponibles…", "Installing available files…"), bytes as f64 / total.max(1) as f64);
     })).await?;
     register(&instance, &plan.manual)?;
+    // Si Modrinth no contesta, quedan para el portal como siempre.
+    let _ = from_modrinth(&instance).await;
     reuse(&state.paths, &instance).map(|_| ())
 }
 

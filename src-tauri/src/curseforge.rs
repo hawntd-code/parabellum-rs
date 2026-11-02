@@ -652,6 +652,29 @@ fn equivalent(file: &FileDownload, remote: &modrinth::RemoteFile) -> bool {
                 && url.port().is_none() && url.username().is_empty() && url.password().is_none())
 }
 
+/// Lo que su autor no deja bajar fuera de CurseForge casi siempre está también en Modrinth, que sí deja bajarlo
+/// desde un launcher (de Prominence II, los 15 archivos). Con la misma huella y el mismo tamaño es el mismo
+/// archivo: se baja de ahí, a `path`, y no hay que pedirlo a mano. Devuelve (los de Modrinth, los que quedan).
+pub async fn on_modrinth(manual: Vec<Manual>, path: impl Fn(&Manual) -> PathBuf) -> (Vec<(Manual, FileDownload)>, Vec<Manual>) {
+    if manual.is_empty() {
+        return (Vec::new(), manual);
+    }
+    let hashes: Vec<String> = manual.iter().map(|m| m.sha1.to_ascii_lowercase()).collect();
+    let Ok(found) = modrinth::files_by_hash(&hashes).await else { return (Vec::new(), manual) };
+    let (mut mirrored, mut rest) = (Vec::new(), Vec::new());
+    for m in manual {
+        let file = FileDownload { url: String::new(), path: path(&m), sha1: Some(m.sha1.to_ascii_lowercase()), size: Some(m.size) };
+        match found.get(&m.sha1.to_ascii_lowercase()).filter(|remote| equivalent(&file, remote)) {
+            Some(remote) => {
+                let url = remote.url.clone();
+                mirrored.push((m, FileDownload { url, ..file }));
+            }
+            None => rest.push(m),
+        }
+    }
+    (mirrored, rest)
+}
+
 async fn download_files(files: Vec<FileDownload>, progress: impl Fn(usize, usize, u64, u64) + Send + Sync + 'static) -> Result<(), String> {
     let report = std::sync::Arc::new(progress);
     let first = report.clone();
@@ -911,9 +934,11 @@ pub async fn install_modpack_files(pack: &Pack, zip_path: &Path, game_dir: &Path
     // Lo que no se puede comprobar no se baja a mano, pero tampoco tumba el modpack entero: queda en la
     // lista de lo que trae y el aviso de «faltan archivos» lo nombra al terminar.
     let (manual, unverifiable): (Vec<Manual>, Vec<Manual>) = manual.into_iter().partition(crate::curseforge_manual::valid);
+    let (mirrored, manual) = on_modrinth(manual, |m| game_dir.join(&m.folder).join(&m.file_name)).await;
     let downloads: Vec<FileDownload> = resolved
         .iter()
         .map(|r| FileDownload { url: r.url.clone(), path: game_dir.join(&r.path), sha1: Some(r.sha1.clone()), size: Some(r.size) })
+        .chain(mirrored.iter().map(|(_, file)| file.clone()))
         .collect();
     let report = progress.clone();
     download_files(downloads, move |count, total, bytes, total_bytes| {
@@ -930,12 +955,19 @@ pub async fn install_modpack_files(pack: &Pack, zip_path: &Path, game_dir: &Path
     // enlace: si falta, el aviso pide bajarlo.
     let mut tracked: Vec<crate::integridad::Tracked> =
         resolved.iter().map(|r| crate::integridad::Tracked { path: r.path.clone(), sha1: Some(r.sha1.clone()), crc32: None, size: Some(r.size), url: Some(r.url.clone()) }).collect();
+    tracked.extend(mirrored.iter().map(|(m, file)| crate::integridad::Tracked { path: format!("{}/{}", m.folder, m.file_name), sha1: Some(m.sha1.clone()), crc32: None, size: Some(m.size), url: Some(file.url.clone()) }));
     tracked.extend(manual.iter().map(|m| crate::integridad::Tracked { path: format!("{}/{}", m.folder, m.file_name), sha1: Some(m.sha1.clone()), crc32: None, size: Some(m.size), url: None }));
     tracked.extend(unverifiable.iter().map(|m| crate::integridad::Tracked { path: format!("{}/{}", m.folder, m.file_name), sha1: None, crc32: None, size: None, url: None }));
     tracked.extend(copied);
     crate::integridad::save(game_dir, tracked.into_iter().filter(|t| crate::integridad::is_tracked(&t.path)).collect());
     // Explorar también reconoce como instalados los mods que llegaron dentro del modpack.
-    let index = Index { files: resolved.iter().map(|r| (r.path.clone(), IndexEntry { project_id: r.project_id, file_id: r.file_id, sha1: r.sha1.clone() })).collect() };
+    let index = Index {
+        files: resolved
+            .iter()
+            .map(|r| (r.path.clone(), IndexEntry { project_id: r.project_id, file_id: r.file_id, sha1: r.sha1.clone() }))
+            .chain(mirrored.iter().map(|(m, _)| (format!("{}/{}", m.folder, m.file_name), IndexEntry { project_id: m.project_id, file_id: m.file_id, sha1: m.sha1.clone() })))
+            .collect(),
+    };
     save_index_in(game_dir, &index);
     Ok(manual)
 }
