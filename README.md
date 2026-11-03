@@ -63,9 +63,11 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td align="center" valign="top">
 <br>
-<a href="https://github.com/hawntd-code/parabellum-rs/releases/download/v0.40.0/Parabellum-0.40.0.zip"><img alt="Descargar Parabellum 0.40.0 para Windows" src="https://img.shields.io/badge/Descargar-v0.40.0-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
+<a href="https://github.com/hawntd-code/parabellum-rs/releases/download/v0.42.0/Parabellum_0.42.0_x64-setup.exe"><img alt="Descargar el instalador de Parabellum 0.42.0 para Windows" src="https://img.shields.io/badge/Descargar-v0.42.0-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
 <br><br>
-<sub>Windows 10 u 11 de 64 bits · zip de 10.8 MB · 25 oct 2026</sub>
+<sub>Windows 10 u 11 de 64 bits · instalador de 7.1 MB · 2 nov 2026</sub>
+<br>
+<sub>¿Para la escuela o una USB? <a href="https://github.com/hawntd-code/parabellum-rs/releases/download/v0.42.0/Parabellum-0.42.0.zip">Versión portable (zip de 11.1 MB)</a></sub>
 <br><br>
 </td>
 <td align="center" valign="top">
@@ -79,13 +81,14 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td valign="top">
 
-**Lo nuevo en la 0.40.0**
+**Lo nuevo en la 0.42.0**
 
-- **Licencia:** úsalo desde sus descargas oficiales y comparte este zip tal cual, gratis. Trae `LICENCIA.txt` y los avisos de terceros.
-- **Mundos en Drive:** las copias «antes de restaurar» ya no se acumulan (quedan las 3 más nuevas de cada mundo).
-- **Amigos y chat más estables:** un corte breve de internet ya no abre conexiones de más.
+- **Instalador:** se instala sin permisos de administrador y desinstalar no borra tus mundos.
+- **Actualiza tus modpacks** en la misma instancia, sin perder mundos, mods propios ni ajustes.
+- **Skins** entre jugadores de Parabellum: la de una cuenta premium o tu propio PNG.
+- **Modpacks de CurseForge completos**, mundos de Drive que se pueden borrar y actualizaciones firmadas.
 
-<sub>[Notas completas](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.40.0)</sub>
+<sub>[Notas completas](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.42.0)</sub>
 
 </td>
 <td valign="top">
@@ -106,8 +109,10 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 
 **Instalar**
 
-1. Descomprime el zip en una carpeta tuya, por ejemplo `Escritorio\Parabellum` o una USB. No se instala nada: tus instancias, mundos y ajustes se quedan en esa carpeta.
-2. Abre **`Parabellum.exe`**. Si Windows muestra «Windows protegió tu PC», pulsa **Más información** › **Ejecutar de todas formas** (solo la primera vez).
+1. Abre **`Parabellum_…_x64-setup.exe`**. Si Windows muestra «Windows protegió tu PC», pulsa **Más información** › **Ejecutar de todas formas** (solo la primera vez).
+2. Se instala solo para tu usuario, sin pedir permisos de administrador, y queda en el menú Inicio. Tus instancias, mundos y ajustes se guardan en `%APPDATA%\Parabellum`: desinstalar no los borra.
+
+**Portable** (escuela o USB): descomprime el zip en una carpeta tuya y abre **`Parabellum.exe`**. No se instala nada: todo se queda en esa carpeta.
 
 </td>
 <td valign="top">
