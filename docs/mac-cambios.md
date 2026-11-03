@@ -163,8 +163,9 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
 
-- **0.42.0** · 2026-11-02 · En GitHub con instalador; el zip está en `_parabellum` listo para que Juan lo suba
-  a Drive. Código del exe `7bd584f`; ZIP de `_parabellum`, 11 069 918 bytes, SHA-256
+- **0.42.0** · 2026-11-02 · En GitHub con instalador y en Drive (`_parabellum` y `_parabellum-pruebas`,
+  subida por Juan el 2026-11-03; el `.json` de Drive lleva la firma). Las skins con PNG propio ya funcionan:
+  el puente tiene la clave de MineSkin desde el 2026-11-03. Código del exe `7bd584f`; ZIP de `_parabellum`, 11 069 918 bytes, SHA-256
   `e5da3f971332c1ecccf57e4a941ec629406069252f537d9da9af392a9aaeb232` (firmado); instalador
   `Parabellum_0.42.0_x64-setup.exe`, SHA-256 `cc7bdb8b04c03e20cb9b479a156dc1717dd448b4676af90f04b85abe5226f47e`.
   [GitHub](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.42.0).
