@@ -10,6 +10,13 @@
       </div>
     </section>
 
+    <section class="showcase" data-showcase>
+      <div class="showcase-frame">
+        <span class="showcase-ring" aria-hidden="true"></span>
+        <img src="/capturas/{{lang}}/inicio.webp" alt="{{showcase_alt}}" width="2560" height="1600" decoding="async">
+      </div>
+    </section>
+
     <section class="section" id="multijugador">
       <div class="wrap">
         <h2 class="section-title reveal">{{multi_title}}</h2>
@@ -67,15 +74,41 @@
       </div>
     </section>
 
-    <section class="section" id="demo">
-      <div class="wrap">
-        <h2 class="section-title reveal">{{demo_title}}</h2>
-        <div class="demo-frame reveal" data-demo>
-          <button class="demo-start" type="button" data-demo-start>
-            <img src="/capturas/{{lang}}/inicio.webp" alt="" loading="lazy" decoding="async" width="2560" height="1600">
-            <span class="btn primary">{{demo_open}}</span>
-          </button>
+    <section class="section rust" id="rust" data-rust>
+      <div class="wrap rust-grid">
+        <div class="rust-copy reveal">
+          <h2 class="section-title">{{rust_title}}</h2>
+          <p class="rust-text">{{rust_text}}</p>
         </div>
+        <div class="rust-art reveal" aria-hidden="true">
+          <svg viewBox="0 0 120 120">
+            <circle class="rust-orbit" cx="60" cy="60" r="57" pathLength="1"/>
+            <svg x="27" y="27" width="66" height="66" viewBox="0 0 24 24"><path class="rust-gear" d="{{rust_path}}"/></svg>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <section class="section memoria" id="memoria" data-memory>
+      <div class="wrap">
+        <h2 class="section-title reveal">{{mem_title}}</h2>
+        <div class="mem-grid">
+          <div class="mem-live reveal">
+            <p class="mem-label">{{mem_live}}</p>
+            <p class="mem-number"><span data-count="{{mem_us}}">{{mem_us}}</span><small>MB</small></p>
+            <figure class="mem-curve">
+              <figcaption>{{mem_curve}}</figcaption>
+{{mem_chart}}
+            </figure>
+          </div>
+          <div class="mem-compare reveal">
+            <h3>{{mem_compare}}</h3>
+            <ol class="mem-bars">
+{{mem_rows}}
+            </ol>
+          </div>
+        </div>
+        <p class="mem-note reveal">{{mem_note}}</p>
       </div>
     </section>
 

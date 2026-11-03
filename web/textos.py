@@ -70,8 +70,20 @@ ES = {
         ("doctor", "Doctor", "Si el juego se cierra, te dice qué mod falló y lo arregla con un clic.",
          "El doctor explicando por qué se cerró el juego y cómo arreglarlo"),
     ],
-    "demo_title": "Pruébalo aquí mismo.",
-    "demo_open": "Abrir la demostración",
+    "nav_demo": "Probar la demo",
+    "demo_title": "Demostración de Parabellum",
+    "demo_note": "Es el launcher de verdad, con datos de prueba.",
+    "demo_close": "Cerrar",
+    "showcase_alt": "La biblioteca de Parabellum: instancias, amigos y descargas en una sola ventana",
+    "rust_title": "Hecho en Rust.",
+    "rust_text": "El motor de Parabellum (descargas, instalación, servidores y la conexión entre PCs) está escrito en Rust: arranca rápido y gasta poca memoria.",
+    "mem_title": "Ligero de verdad.",
+    "mem_live": "Parabellum abierto, en reposo",
+    "mem_curve": "Su memoria en los primeros 2 minutos",
+    "mem_compare": "La misma prueba con otros launchers",
+    "mem_process": "proceso",
+    "mem_processes": "procesos",
+    "mem_note": "Medido el 3 de noviembre de 2026 en la misma PC con Windows 11: la memoria privada de todos los procesos de cada launcher (la columna Memoria del Administrador de tareas), a los 2 minutos de abrirlo y en reposo en su pantalla principal. Parabellum, con sesión iniciada; los demás, recién instalados.",
     "end_title": "Listo en un minuto.",
     "dl_title": "Descargar",
     "dl_text": "Gratis, para Windows y Mac.",
@@ -98,7 +110,7 @@ ES = {
     "footer_tagline": "Tus amigos, tu mundo. Sin servidores que rentar.",
     "footer_product": "Parabellum",
     "footer_code": "Código en GitHub",
-    "footer_legal": "Parabellum no es un producto oficial de Minecraft. No está aprobado por Mojang ni Microsoft, ni asociado con ellos.",
+    "footer_legal": "Parabellum no es un producto oficial de Minecraft. No está aprobado por Mojang ni Microsoft, ni asociado con ellos. Rust y su logo son marcas de la Rust Foundation.",
     "size_mb": "MB",
 }
 
@@ -170,8 +182,20 @@ EN = {
         ("doctor", "Doctor", "If the game crashes, it tells you which mod failed and fixes it in one click.",
          "The doctor explaining why the game crashed and how to fix it"),
     ],
-    "demo_title": "Try it right here.",
-    "demo_open": "Open the demo",
+    "nav_demo": "Try the demo",
+    "demo_title": "Parabellum demo",
+    "demo_note": "It is the real launcher, with sample data.",
+    "demo_close": "Close",
+    "showcase_alt": "The Parabellum library: instances, friends and downloads in one window",
+    "rust_title": "Built with Rust.",
+    "rust_text": "Parabellum's engine (downloads, installs, servers and the connection between PCs) is written in Rust: it starts fast and uses little memory.",
+    "mem_title": "Genuinely light.",
+    "mem_live": "Parabellum open, at rest",
+    "mem_curve": "Its memory over the first 2 minutes",
+    "mem_compare": "The same test with other launchers",
+    "mem_process": "process",
+    "mem_processes": "processes",
+    "mem_note": "Measured on November 3, 2026 on the same Windows 11 PC: the private memory of all of each launcher's processes (the Memory column in Task Manager), 2 minutes after opening it and at rest on its main screen. Parabellum signed in; the others freshly installed.",
     "end_title": "Ready in a minute.",
     "dl_title": "Download",
     "dl_text": "Free, for Windows and Mac.",
@@ -198,6 +222,17 @@ EN = {
     "footer_tagline": "Your friends, your world. No servers to rent.",
     "footer_product": "Parabellum",
     "footer_code": "Code on GitHub",
-    "footer_legal": "Parabellum is not an official Minecraft product. It is not approved by or associated with Mojang or Microsoft.",
+    "footer_legal": "Parabellum is not an official Minecraft product. It is not approved by or associated with Mojang or Microsoft. Rust and its logo are trademarks of the Rust Foundation.",
     "size_mb": "MB",
 }
+
+# La comparación de memoria: medida, no estimada (ver mem_note). Megabytes de memoria privada a los 2 minutos
+# y número de procesos; y la curva de Parabellum cada 15 s (segundo, MB). Si se vuelve a medir, cambia
+# las cifras y la fecha de mem_note.
+MEMORIA = [
+    ("CurseForge", "1.325, sin Overwolf", 736, 9),
+    ("Modrinth App", "0.22.1", 591, 18),
+    ("Parabellum", "0.42.0", 162, 7),
+    ("Prism Launcher", "11.1.1", 16, 1),
+]
+MEMORIA_CURVA = [(15, 258), (30, 253), (45, 176), (60, 169), (75, 164), (90, 163), (105, 164), (120, 162)]

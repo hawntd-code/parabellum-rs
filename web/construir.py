@@ -24,7 +24,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-from textos import EN, ES
+from textos import EN, ES, MEMORIA, MEMORIA_CURVA
 
 AQUI = Path(__file__).resolve().parent
 REPO = AQUI.parent
@@ -93,7 +93,7 @@ def bloques(t):
     )
     barras = "".join("<i></i>" for _ in t["tour"])
     faq = "\n".join(
-        f'          <details class="qa"><summary>{e(pregunta)}</summary><p>{e(respuesta)}</p></details>'
+        f'          <details class="qa"><summary>{e(pregunta)}</summary><div class="qa-body"><p>{e(respuesta)}</p></div></details>'
         for pregunta, respuesta in t["faq"]
     )
     # Los dos botones de descarga: arriba en el inicio y al final de él.
@@ -104,8 +104,52 @@ def bloques(t):
         '          </div>'
     )
     return {"features": funciones, "tour_steps": pasos, "tour_shots": capturas, "tour_bars": barras,
-            "tour_count": str(len(t["tour"])), "faq": faq, "cta": cta,
+            "tour_count": str(len(t["tour"])), "faq": faq, "cta": cta, **memoria(t),
+            "rust_path": (AQUI / "marca" / "rust.svg").read_text(encoding="utf-8").split(' d="')[1].split('"')[0],
             "icon_windows": ICONOS["windows"], "icon_mac": ICONOS["mac"]}
+
+
+def memoria(t):
+    """La sección de memoria: la curva de Parabellum (SVG) y las barras de la comparación, de MEMORIA."""
+    en = t is EN
+    nuestro = next(mb for nombre, _, mb, _ in MEMORIA if nombre == "Parabellum")
+    # La curva: x de 15 s a 2 min, y de 0 a 300 MB, en un lienzo de 400×150 con la base en y = 120.
+    x = lambda s: 8 + (s - MEMORIA_CURVA[0][0]) / (MEMORIA_CURVA[-1][0] - MEMORIA_CURVA[0][0]) * 384
+    y = lambda mb: 120 - mb / 300 * 108
+    puntos = [(round(x(s), 1), round(y(mb), 1), s, mb) for s, mb in MEMORIA_CURVA]
+    linea = "M" + " L".join(f"{px} {py}" for px, py, _, _ in puntos)
+    area = f"{linea} L{puntos[-1][0]} 120 L{puntos[0][0]} 120 Z"
+    (x0, y0, _, mb0), (x1, y1, _, mb1) = puntos[0], puntos[-1]
+    aria = (f"From {mb0} MB at 15 seconds to {mb1} MB at 2 minutes" if en else f"De {mb0} MB a los 15 segundos a {mb1} MB a los 2 minutos")
+    datos = ",".join(f"{s}:{mb}" for _, _, s, mb in puntos)
+    marcas = "".join(f'<circle class="mem-dot" cx="{px}" cy="{py}" r="4"/>' for px, py, _, _ in (puntos[0], puntos[-1]))
+    grafica = (
+        f'              <svg class="mem-svg" viewBox="0 0 400 150" role="img" aria-label="{aria}" data-curve="{datos}">\n'
+        '                <defs><linearGradient id="mem-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".22"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs>\n'
+        '                <line class="mem-base" x1="8" y1="120" x2="392" y2="120"/>\n'
+        f'                <path class="mem-area" d="{area}"/>\n'
+        f'                <path class="mem-line" d="{linea}" pathLength="1"/>\n'
+        f'                {marcas}\n'
+        f'                <text class="mem-tag" x="{x0 + 8}" y="{y0 - 10}">{mb0} MB</text>\n'
+        f'                <text class="mem-tag" x="{x1}" y="{y1 - 12}" text-anchor="end">{mb1} MB</text>\n'
+        f'                <text class="mem-axis" x="8" y="142">15 s</text><text class="mem-axis" x="392" y="142" text-anchor="end">2 min</text>\n'
+        '                <g class="mem-hover" aria-hidden="true"><line y1="8" y2="120"/><circle r="4.5"/><text y="4"></text></g>\n'
+        '              </svg>'
+    )
+    mayor = max(mb for _, _, mb, _ in MEMORIA)
+    filas = []
+    for i, (nombre, version, mb, procesos) in enumerate(MEMORIA):
+        if en:
+            version = version.replace("sin Overwolf", "without Overwolf")
+        unidad = t["mem_process"] if procesos == 1 else t["mem_processes"]
+        filas.append(
+            f'              <li class="mem-row{" is-us" if nombre == "Parabellum" else ""}" style="--v: {mb / mayor:.4f}; --i: {i}">'
+            f'<span class="mem-name">{html.escape(nombre)} <small>{html.escape(version)}</small></span>'
+            f'<span class="mem-value"><b data-count="{mb}">{mb}</b> MB</span>'
+            f'<span class="mem-track"><i></i></span>'
+            f'<span class="mem-procs">{procesos} {unidad}</span></li>'
+        )
+    return {"mem_us": str(nuestro), "mem_chart": grafica, "mem_rows": "\n".join(filas)}
 
 
 def render(t, pagina, datos):

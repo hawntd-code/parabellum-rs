@@ -129,14 +129,158 @@ function tour() {
   update();
 }
 
-/** La demostración pesa: se carga al pulsar «Abrir la demostración». */
+const still = matchMedia("(prefers-reduced-motion: reduce)");
+const clamp01 = (x) => Math.min(1, Math.max(0, x));
+
+/** Llama a `update` en el siguiente cuadro cada vez que hay scroll o cambia el tamaño. */
+function onScrollFrame(update) {
+  let pending = false;
+  const schedule = () => {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => { pending = false; update(); });
+  };
+  addEventListener("scroll", schedule, { passive: true });
+  addEventListener("resize", schedule, { passive: true });
+  update();
+}
+
+/** La demostración: una ventana encima de la página que se abre desde la barra. El launcher (pesado) se
+ * carga la primera vez que se abre y se queda cargado. */
 function demo() {
-  const frame = document.querySelector("[data-demo]");
-  frame?.querySelector("[data-demo-start]")?.addEventListener("click", () => {
-    const iframe = document.createElement("iframe");
-    iframe.src = "/demo/";
-    iframe.title = english ? "Parabellum demo" : "Demostración de Parabellum";
-    frame.replaceChildren(iframe);
+  const dialog = document.querySelector("[data-demo-dialog]");
+  if (!dialog) return;
+  const body = dialog.querySelector("[data-demo-body]");
+  const open = () => {
+    if (!body.firstChild) {
+      const iframe = document.createElement("iframe");
+      iframe.src = english ? "/demo/?en=1" : "/demo/";
+      iframe.title = english ? "Parabellum demo" : "Demostración de Parabellum";
+      body.append(iframe);
+    }
+    dialog.showModal();
+    requestAnimationFrame(() => requestAnimationFrame(() => dialog.classList.add("is-open")));
+  };
+  const close = () => {
+    dialog.classList.remove("is-open");
+    setTimeout(() => dialog.close(), still.matches ? 0 : 320);
+  };
+  document.querySelectorAll("[data-demo-open]").forEach((button) => button.addEventListener("click", open));
+  dialog.querySelector("[data-demo-close]").addEventListener("click", close);
+  dialog.addEventListener("cancel", (event) => { event.preventDefault(); close(); });
+  // Un clic fuera de la ventana (en el fondo) también la cierra.
+  dialog.addEventListener("click", (event) => { if (event.target === dialog) close(); });
+}
+
+/** La vitrina bajo la portada: se endereza mientras sube hasta el centro de la pantalla; el borde lila se
+ * enciende en el último tramo. */
+function showcase() {
+  const root = document.querySelector("[data-showcase]");
+  if (!root || still.matches) return;
+  const frame = root.querySelector(".showcase-frame");
+  onScrollFrame(() => {
+    // Con transform puesto, la caja medida cambia: se mide la sección, que no se mueve.
+    const rect = root.getBoundingClientRect();
+    // 0 con su borde de arriba a 3/4 de la pantalla (donde queda al abrir la página); 1 cuando ese borde
+    // llega cerca de la barra y la ventana ya se ve entera.
+    const p = clamp01((innerHeight * 0.75 - rect.top) / (innerHeight * 0.64));
+    const eased = 1 - (1 - p) ** 2;
+    root.style.setProperty("--p", eased.toFixed(4));
+    root.style.setProperty("--ring", clamp01((p - 0.55) / 0.35).toFixed(3));
+  });
+}
+
+/** El engrane de Rust gira con el scroll mientras la sección está en pantalla; su órbita se dibuja al
+ * entrar. */
+function rust() {
+  const root = document.querySelector("[data-rust]");
+  if (!root || still.matches) return;
+  onScrollFrame(() => {
+    const rect = root.getBoundingClientRect();
+    const p = (innerHeight - rect.top) / (innerHeight + rect.height);
+    if (p < -0.1 || p > 1.1) return;
+    root.style.setProperty("--spin", (p * 150).toFixed(2));
+    root.style.setProperty("--orbit", clamp01(p * 1.8).toFixed(4));
+  });
+}
+
+/** La memoria: al entrar, el número cuenta desde cero, la curva se dibuja y las barras crecen. Sobre la
+ * curva, el cursor muestra el valor de cada medición. */
+function memory() {
+  const root = document.querySelector("[data-memory]");
+  if (!root) return;
+  const counters = [...root.querySelectorAll("[data-count]")];
+  const play = () => {
+    root.style.setProperty("--grow", 1);
+    const start = performance.now();
+    const step = (now) => {
+      const t = clamp01((now - start) / 1400);
+      const eased = 1 - (1 - t) ** 3;
+      root.style.setProperty("--draw", eased.toFixed(4));
+      counters.forEach((el) => (el.textContent = Math.round(Number(el.dataset.count) * eased)));
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
+  if (!still.matches && "IntersectionObserver" in window) {
+    root.style.setProperty("--draw", 0);
+    root.style.setProperty("--grow", 0);
+    counters.forEach((el) => (el.textContent = "0"));
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      observer.disconnect();
+      play();
+    }, { threshold: 0.3 });
+    observer.observe(root.querySelector(".mem-grid"));
+  }
+
+  const svg = root.querySelector(".mem-svg");
+  if (!svg) return;
+  const points = svg.dataset.curve.split(",").map((pair) => pair.split(":").map(Number));
+  const [first, last] = [points[0][0], points[points.length - 1][0]];
+  const x = (s) => 8 + ((s - first) / (last - first)) * 384;
+  const y = (mb) => 120 - (mb / 300) * 108;
+  const hover = svg.querySelector(".mem-hover");
+  const [line, dot, label] = [hover.querySelector("line"), hover.querySelector("circle"), hover.querySelector("text")];
+  svg.addEventListener("pointermove", (event) => {
+    const box = svg.getBoundingClientRect();
+    const px = ((event.clientX - box.left) / box.width) * 400;
+    const [s, mb] = points.reduce((best, p) => (Math.abs(x(p[0]) - px) < Math.abs(x(best[0]) - px) ? p : best));
+    const cx = x(s);
+    line.setAttribute("x1", cx); line.setAttribute("x2", cx);
+    dot.setAttribute("cx", cx); dot.setAttribute("cy", y(mb));
+    label.setAttribute("x", Math.min(370, Math.max(30, cx)));
+    label.textContent = `${mb} MB · ${s < 60 ? `${s} s` : `${s / 60} min`}`;
+    svg.classList.add("is-hover");
+  });
+  svg.addEventListener("pointerleave", () => svg.classList.remove("is-hover"));
+}
+
+/** Las preguntas se abren y se cierran animando su altura (un <details> normal salta de golpe). */
+function faq() {
+  document.querySelectorAll(".qa").forEach((item) => {
+    const summary = item.querySelector("summary");
+    const body = item.querySelector(".qa-body");
+    let running = null;
+    summary.addEventListener("click", (event) => {
+      if (still.matches || !body.animate) return;
+      event.preventDefault();
+      running?.cancel();
+      const from = body.offsetHeight;
+      if (item.open && !item.classList.contains("is-closing")) {
+        item.classList.add("is-closing");
+        running = body.animate([{ height: `${from}px`, opacity: 1 }, { height: "0px", opacity: 0 }], { duration: 380, easing: "cubic-bezier(.22, 1, .36, 1)" });
+        running.onfinish = () => { item.open = false; item.classList.remove("is-closing"); running = null; };
+      } else {
+        // Si se estaba cerrando, se vuelve a abrir desde donde iba.
+        const start = item.classList.contains("is-closing") ? from : 0;
+        item.classList.remove("is-closing");
+        item.open = true;
+        const to = body.scrollHeight;
+        running = body.animate([{ height: `${start}px`, opacity: start ? 1 : 0 }, { height: `${to}px`, opacity: 1 }], { duration: 520, easing: "cubic-bezier(.22, 1, .36, 1)" });
+        running.onfinish = () => { running = null; };
+      }
+    });
   });
 }
 
@@ -159,6 +303,10 @@ function footerReveal() {
 
 updateDownloads();
 revealOnScroll();
+showcase();
 tour();
+rust();
+memory();
+faq();
 demo();
 footerReveal();

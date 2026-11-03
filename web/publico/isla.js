@@ -103,12 +103,21 @@
     const ox = width / 2 - ((bounds.left + bounds.right) / 2) * s;
     const oy = heightPx / 2 - ((bounds.top + bounds.bottom) / 2) * s + bob;
 
-    // El resplandor debajo.
-    const glow = ctx.createRadialGradient(ox, oy + s * 7.5, 0, ox, oy + s * 7.5, s * 8);
-    glow.addColorStop(0, "rgba(152, 106, 242, .28)");
+    // El resplandor debajo: una elipse que se apaga antes de tocar cualquier borde del lienzo (si no, se
+    // ve el corte en línea recta).
+    const gy = oy + s * 7.5;
+    const flat = 0.42;
+    const radius = Math.max(1, Math.min(s * 8, ox, width - ox, gy / flat, (heightPx - gy) / flat) * 0.96);
+    ctx.save();
+    ctx.translate(ox, gy);
+    ctx.scale(1, flat);
+    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+    glow.addColorStop(0, "rgba(152, 106, 242, .30)");
+    glow.addColorStop(0.55, "rgba(152, 106, 242, .10)");
     glow.addColorStop(1, "rgba(152, 106, 242, 0)");
     ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, width, heightPx);
+    ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
+    ctx.restore();
 
     for (const b of blocks) {
       const x = ox + (b.x - b.y) * cos;

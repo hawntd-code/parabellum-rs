@@ -33,6 +33,7 @@
         <a href="/en/faq/" aria-current="page">FAQ</a>
       </nav>
       <div class="nav-end">
+        <button class="nav-demo" type="button" data-demo-open><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.52.85l10.4-6.5a1 1 0 0 0 0-1.7L9.52 4.65A1 1 0 0 0 8 5.5Z"/></svg><span>Try the demo</span></button>
         <a class="nav-lang" href="/preguntas/" hreflang="es" lang="es">Español</a>
         <a class="nav-gh" href="https://github.com/hawntd-code/parabellum-rs" aria-label="GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
       </div>
@@ -46,18 +47,28 @@
           <h1>FAQ</h1>
         </header>
         <div class="faq">
-          <details class="qa"><summary>How much does it cost?</summary><p>Nothing. Parabellum is free from its official downloads.</p></details>
-          <details class="qa"><summary>Do I need a Microsoft account?</summary><p>No: you play with your player name. For friends, chat and worlds in Drive you sign in with Google.</p></details>
-          <details class="qa"><summary>Do my friends need Parabellum?</summary><p>To join with «Join» and see you in their list, yes. They can also reach your server without Parabellum: give them a fixed playit.gg address from the panel.</p></details>
-          <details class="qa"><summary>Does it work at school?</summary><p>Yes: the portable version does not install, and on the same network you play over LAN. If the network blocks Modrinth or CurseForge, Parabellum uses backup servers.</p></details>
-          <details class="qa"><summary>How does it update?</summary><p>On its own: it only installs versions signed by Parabellum, and if one does not start it goes back to the previous one.</p></details>
-          <details class="qa"><summary>What if a mod gets damaged?</summary><p>Parabellum compares every file&#x27;s fingerprint and restores what is missing or damaged. Before updating it saves a copy of what changes.</p></details>
-          <details class="qa"><summary>Is it safe?</summary><p>The code is public on GitHub, updates are signed and your worlds in Drive stay in your account, not ours.</p></details>
-          <details class="qa"><summary>Is it an official Minecraft product?</summary><p>No. Parabellum is an independent project with no ties to Mojang or Microsoft.</p></details>
+          <details class="qa"><summary>How much does it cost?</summary><div class="qa-body"><p>Nothing. Parabellum is free from its official downloads.</p></div></details>
+          <details class="qa"><summary>Do I need a Microsoft account?</summary><div class="qa-body"><p>No: you play with your player name. For friends, chat and worlds in Drive you sign in with Google.</p></div></details>
+          <details class="qa"><summary>Do my friends need Parabellum?</summary><div class="qa-body"><p>To join with «Join» and see you in their list, yes. They can also reach your server without Parabellum: give them a fixed playit.gg address from the panel.</p></div></details>
+          <details class="qa"><summary>Does it work at school?</summary><div class="qa-body"><p>Yes: the portable version does not install, and on the same network you play over LAN. If the network blocks Modrinth or CurseForge, Parabellum uses backup servers.</p></div></details>
+          <details class="qa"><summary>How does it update?</summary><div class="qa-body"><p>On its own: it only installs versions signed by Parabellum, and if one does not start it goes back to the previous one.</p></div></details>
+          <details class="qa"><summary>What if a mod gets damaged?</summary><div class="qa-body"><p>Parabellum compares every file&#x27;s fingerprint and restores what is missing or damaged. Before updating it saves a copy of what changes.</p></div></details>
+          <details class="qa"><summary>Is it safe?</summary><div class="qa-body"><p>The code is public on GitHub, updates are signed and your worlds in Drive stay in your account, not ours.</p></div></details>
+          <details class="qa"><summary>Is it an official Minecraft product?</summary><div class="qa-body"><p>No. Parabellum is an independent project with no ties to Mojang or Microsoft.</p></div></details>
         </div>
       </div>
     </section>
   </main>
+
+  <dialog class="demo-dialog" data-demo-dialog aria-label="Parabellum demo">
+    <div class="demo-window">
+      <div class="demo-bar">
+        <p><b>Parabellum demo</b><span>It is the real launcher, with sample data.</span></p>
+        <button class="demo-close" type="button" data-demo-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12 19 17.6 17.6 19 12 13.4 6.4 19 5 17.6 10.6 12 5 6.4Z"/></svg></button>
+      </div>
+      <div class="demo-body" data-demo-body></div>
+    </div>
+  </dialog>
 
   <footer class="footer" id="pie">
     <div class="wrap footer-inner">
@@ -77,7 +88,7 @@
           <a href="/preguntas/" hreflang="es" lang="es">Español</a>
         </nav>
       </div>
-      <p class="legal">Parabellum is not an official Minecraft product. It is not approved by or associated with Mojang or Microsoft.</p>
+      <p class="legal">Parabellum is not an official Minecraft product. It is not approved by or associated with Mojang or Microsoft. Rust and its logo are trademarks of the Rust Foundation.</p>
     </div>
     <p class="footer-sign" aria-hidden="true">parabellum</p>
   </footer>

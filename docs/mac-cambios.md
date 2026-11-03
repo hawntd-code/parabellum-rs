@@ -603,6 +603,15 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-11-03 · La web: vitrina, Rust, memoria medida, demo en la barra y preguntas animadas
+
+Pedido de Juan. Bajo la portada, una captura que llega inclinada y se endereza con el scroll, con un borde
+lila que la recorre. La demostración pasó de sección a un botón en la barra (se abre en una ventana). Nuevas
+secciones: «Hecho en Rust» y la memoria de Parabellum comparada con CurseForge, Modrinth App y Prism
+Launcher, **medidos en la PC de Juan** (memoria privada a los 2 minutos; las cifras y el método están en
+`web/textos.py`, `MEMORIA`). Las preguntas se abren con animación y una luz recorre su borde. Se arregló el
+resplandor del hero que se cortaba en línea recta. Mac: nada.
+
 ### 2026-11-03 · La web: recorrido de capturas con el scroll
 
 Pedido de Juan: las capturas de la portada ya no van una debajo de otra (un `img { display: block }` le
