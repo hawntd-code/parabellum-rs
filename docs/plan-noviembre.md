@@ -11,7 +11,7 @@ nueve recorridos de red controlados y Computer Use. La red física de la escuela
 WebKit nativo continúan en seguimiento. Lo siguiente del plan es E6; F2 → O sigue al final.
 
 **Estado 2026-11-02 (noche):** la **0.42.0** (sin publicar) agrega actualizar modpacks en la misma
-instancia, el banco semanal de modpacks, reportes de fallos opcionales, compartir el registro, Discord, skins
+instancia, el banco semanal de modpacks, reportes de fallos opcionales, compartir el registro, skins
 con PNG propio, el instalador, versiones firmadas y las auditorías de seguridad e interfaz. Necesita las
 reglas nuevas `crashReports` y `crashReportsLast`. Detalle en [mac-cambios.md](mac-cambios.md).
 

@@ -156,8 +156,6 @@ const HTML_EN = {
   "Parabellum dentro del juego": "Parabellum in game",
   "Enviar reportes de fallos": "Send crash reports",
   "Compartir": "Share",
-  "Mostrar en Discord a qué juegas": "Show on Discord what you play",
-  "Con Discord abierto, tus amigos de Discord ven qué instancia juegas y desde cuándo.": "With Discord open, your Discord friends see which instance you play and since when.",
   "Cuando el juego se cierra por un error, se manda qué falló (versiones, mods y el final del registro, sin datos personales) para poder arreglarlo. Solo lo ve quien administra Parabellum.":
     "When the game closes because of an error, what failed is sent (versions, mods and the end of the log, without personal data) so it can be fixed. Only Parabellum's administrators see it.",
   "Leer el EULA": "Read the EULA",

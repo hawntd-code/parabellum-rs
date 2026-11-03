@@ -30,7 +30,6 @@ mod curseforge;
 mod curseforge_manual;
 mod curseforge_portal;
 mod descargas;
-mod discord;
 mod download;
 mod fallos;
 mod favoritos;
@@ -193,9 +192,6 @@ fn herramientas_creador(state: State<AppState>, activar: bool) -> Result<bool, S
 
 #[tauri::command]
 fn guardar_ajustes(app: AppHandle, ajustes: Settings) -> Result<Settings, String> {
-    if !ajustes.discord {
-        discord::show(None);
-    }
     // Con todos sus efectos (ver ajustes.rs: lo mismo usan las tarjetas del soporte).
     ajustes::save_all(&app, ajustes)
 }
@@ -768,10 +764,6 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
     let pid = child.id();
     let started = chrono::Utc::now().timestamp_millis();
     state.games.lock().unwrap().insert(id.clone(), pid);
-    if state.settings.lock().unwrap().discord {
-        let loader = if instance.loader == "Vanilla" { String::new() } else { format!(" · {}", instance.loader) };
-        discord::show(Some(discord::Activity { details: instance.name.clone(), state: format!("Minecraft {}{loader}", instance.minecraft_version), start: started / 1000 }));
-    }
     // Un hilo espera a que el juego termine para avisar a la interfaz (y explicar el error si lo hubo).
     std::thread::spawn(move || {
         let code = child.wait().ok().and_then(|s| s.code());
@@ -780,9 +772,6 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
         let state = app.state::<AppState>();
         let stopped = state.stopped.lock().unwrap().remove(&id);
         state.games.lock().unwrap().remove(&id);
-        if state.games.lock().unwrap().is_empty() {
-            discord::show(None);
-        }
         // Con código distinto de 0, o si dejó un informe de fallo (la pantalla de error de Forge sale con 0).
         let failed = !stopped && (code.is_some_and(|c| c != 0) || diagnostico::crash_report_since(&instance, started));
         // Si fue por el mod de Parabellum, la próxima vez se juega sin él.
@@ -4354,7 +4343,6 @@ fn main() {
             hosting::init(app.handle());
             skins::init(app.handle());
             std::thread::spawn(|| plataforma::register_version(env!("CARGO_PKG_VERSION")));
-            discord::init(&app.state::<AppState>().config.discord_client_id);
             mundos::resume_startup(app.handle());
             Ok(())
         })

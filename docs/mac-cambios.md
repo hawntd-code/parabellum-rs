@@ -594,7 +594,7 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
-### 2026-11-02 · 0.42.0: actualizar modpacks, banco de pruebas, reportes, Discord, skins PNG e instalador
+### 2026-11-02 · 0.42.0: actualizar modpacks, banco de pruebas, reportes, skins PNG, instalador y firma
 
 Lo que pidió Juan el 2026-11-02 para estar a la altura de otros launchers. **Necesita reglas nuevas de
 Firebase (`crashReports` y `crashReportsLast`)**: Juan las publica antes que la versión. Están probadas en
@@ -612,11 +612,9 @@ el emulador (`docs/probar-reglas.py`, «TODO BIEN»).
 - **Reportes de fallos** (`fallos.rs`, ajuste `crashReports`, pregunta en el doctor): ver
   [desarrollo.md](desarrollo.md) › «Reportes de fallos».
 - **Compartir el registro** (pestaña Registro › «Compartir»): lo sube a mclo.gs sin datos personales.
-- **Discord** (`discord.rs`, ajuste `discord`, `plataforma::discord_ipc`): con Discord abierto, muestra qué
-  instancia se juega. Necesita el id de la aplicación de Parabellum en Discord (`discordClientId` en
-  `config-integrada.json`); sin él no hace nada.
 - **Skins con PNG propio** (`skins.rs` › `skin_subir`, `puente-curseforge/main.py` › `/skins/…`): el puente
-  las sube a Mojang por MineSkin. Solo aparece si el puente tiene `MINESKIN_API_KEY`.
+  las sube a Mojang por MineSkin (probado con la clave real). Solo aparece si el puente tiene
+  `MINESKIN_API_KEY`.
 - **Instalador** (`tauri.conf.json` › `bundle`, `src-tauri/windows/instalador.nsh`, `plataforma::data_root` y
   `register_version`): ver [desarrollo.md](desarrollo.md) › «Carpeta portable e instalador». El zip portable
   sigue igual.
@@ -634,8 +632,7 @@ el emulador (`docs/probar-reglas.py`, «TODO BIEN»).
 - **Coherencia de la interfaz**: todos los controles normales miden 40 px, los botones pequeños 32 y los
   redondos pequeños 30; las esquinas usan las variables `--r-*`; y hay un solo color de advertencia
   (`--warn`, con su tono para el tema claro: `--warning` se quitó).
-- Mac: compilar y probar. Nuevos en el contrato de `plataforma`: `discord_ipc` (socket de Discord en la
-  carpeta temporal; probarlo con Discord abierto), `register_version` (en Mac no hace nada) y
+- Mac: compilar y probar. Nuevos en el contrato de `plataforma`: `register_version` (en Mac no hace nada) y
   `SIGNED_UPDATES` (en Mac `false` por ahora: para pasarlo a `true`, Diego crea su clave, agrega la pública
   a `firma.rs › TRUSTED` y firma al publicar). El `bundle` de `tauri.conf.json` no afecta a
   `mac/empaquetar.sh`.

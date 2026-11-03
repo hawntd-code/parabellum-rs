@@ -518,17 +518,6 @@ pub fn graphics_cards() -> Vec<String> {
 }
 
 /// Registro SRV de Minecraft con `dig` (viene con macOS).
-/// La conexión local con Discord: un socket en la carpeta temporal del usuario.
-pub fn discord_ipc(n: u8) -> Option<Box<dyn super::DiscordPipe>> {
-    let folders = ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"].iter().filter_map(|v| std::env::var(v).ok()).chain(std::iter::once("/tmp".to_string()));
-    for folder in folders {
-        if let Ok(socket) = std::os::unix::net::UnixStream::connect(std::path::Path::new(&folder).join(format!("discord-ipc-{n}"))) {
-            return Some(Box::new(socket));
-        }
-    }
-    None
-}
-
 pub fn srv_lookup(host: &str) -> Option<(String, u16)> {
     let output = Command::new("dig").args(["+short", "SRV", &format!("_minecraft._tcp.{host}")]).output().ok()?;
     // Cada línea: «prioridad peso puerto destino.»

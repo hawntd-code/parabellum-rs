@@ -4592,7 +4592,6 @@ function renderSettings() {
   $("#message-sound").checked = s.messageSound ?? true;
   $("#game-panel").checked = s.gamePanel ?? true;
   $("#crash-reports").checked = s.crashReports === true;
-  $("#discord-activity").checked = s.discord ?? true;
   $("#ram").max = Math.max(4, Math.min(32, state.systemRam - 2));
   $("#ram").value = s.ramGb;
   $("#ram-max").textContent = `${$("#ram").max} GB`;
@@ -4659,7 +4658,6 @@ async function saveSettings(extra = {}) {
         gamePanel: $("#game-panel").checked,
         // Apagado y sin haber dicho nada todavía sigue «sin preguntar»: el doctor lo pregunta una vez.
         crashReports: $("#crash-reports").checked ? true : state.settings.crashReports == null ? null : false,
-        discord: $("#discord-activity").checked,
         ...extra,
       },
     });
@@ -5052,7 +5050,6 @@ function wireEvents() {
   $("#notifications").onchange = () => saveSettings();
   $("#game-panel").onchange = () => saveSettings();
   $("#crash-reports").onchange = () => saveSettings();
-  $("#discord-activity").onchange = () => saveSettings();
   $("#message-sound").onchange = () => {
     saveSettings();
     // Al activarlo se oye cómo suena.

@@ -398,12 +398,6 @@ pub fn graphics_cards() -> Vec<String> {
 }
 
 /// Registro SRV de Minecraft: (destino, puerto).
-/// La conexión local con Discord: una tubería con nombre (como un archivo).
-pub fn discord_ipc(n: u8) -> Option<Box<dyn super::DiscordPipe>> {
-    let pipe = std::fs::OpenOptions::new().read(true).write(true).open(format!(r"\\?\pipe\discord-ipc-{n}")).ok()?;
-    Some(Box::new(pipe))
-}
-
 pub fn srv_lookup(host: &str) -> Option<(String, u16)> {
     use windows_sys::Win32::NetworkManagement::Dns::{DnsFree, DnsFreeRecordList, DnsQuery_W, DNS_QUERY_STANDARD, DNS_RECORDW, DNS_TYPE_SRV};
     let name: Vec<u16> = format!("_minecraft._tcp.{host}").encode_utf16().chain(std::iter::once(0)).collect();

@@ -23,8 +23,6 @@ pub struct Config {
     pub firebase_database_url: String,
     /// Nombre de jugador de quien recibe los «Reportar problema» (sale elegido si es tu amigo).
     pub support_name: String,
-    /// La aplicación de Parabellum en Discord, para mostrar a qué se juega (discord.rs). No es secreta.
-    pub discord_client_id: String,
 }
 
 impl Config {
@@ -40,7 +38,6 @@ impl Config {
                 (&mut config.firebase_api_key, local.firebase_api_key),
                 (&mut config.firebase_database_url, local.firebase_database_url),
                 (&mut config.support_name, local.support_name),
-                (&mut config.discord_client_id, local.discord_client_id),
             ];
             for (target, value) in fields {
                 if !value.trim().is_empty() {
