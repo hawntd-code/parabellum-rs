@@ -41,7 +41,7 @@ en `ui/`.
   en español e inglés, sin compilador. Sus textos están en `web/textos.py` y **todo lo que dicen tiene que
   existir en el launcher**. Sus botones de descarga toman la release más nueva de GitHub (el instalador de
   Windows): una versión nueva aparece sola, sin volver a publicar la web. Al publicarla, Vercel baja de este
-  repo las capturas de `docs/capturas/` y la demostración (`ui/`) de un commit fijo: no las borres ni las
+  repo sus capturas (`web/capturas/`) y la demostración (`ui/`) de un commit fijo: no las borres ni las
   renombres sin cambiar `web/construir.py`. Cómo publicarla: ver el inicio de `web/construir.py`.
 - **El README es para quien juega** (qué hace, capturas, descargar e instalar, versiones, preguntas).
   Lo técnico (compilar, carpetas, comandos `--…`, configuración) va en `docs/desarrollo.md`. Las

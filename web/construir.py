@@ -10,6 +10,9 @@ despliegue/preparar.mjs y despliegue/vercel.json. Al compilar, preparar.mjs baja
 público) las páginas, las imágenes, las fuentes y la demostración (ui/, que en el navegador usa datos de
 prueba), todo de ese commit.
 
+Las capturas de la web están en web/capturas/<es|en>/: la interfaz en modo demostración a 2560×1600
+(1280×800 con densidad 2), en WebP y en cada idioma. No son las de docs/capturas (esas son del README).
+
 Las descargas salen de la release más nueva de GitHub: aquí se escriben las de hoy para que la página
 sirva sin JavaScript, y sitio.js las pone al día al abrirla. Los textos están en textos.py: todo lo que
 dicen tiene que existir en el launcher."""
@@ -75,14 +78,20 @@ def bloques(t):
         f'<h3>{e(t[clave + "_title"])}</h3><p>{e(t[clave + "_text"])}</p></article>'
         for icono, clave in FUNCIONES
     )
-    pestanas = "\n".join(
-        f'            <button role="tab" type="button" data-shot="{i}" aria-selected="{"true" if i == 0 else "false"}">{e(nombre)}</button>'
-        for i, (_, nombre, _) in enumerate(t["shots"])
+    # El recorrido: el índice de pasos (con su línea de avance) y las capturas, una encima de otra.
+    pasos = "\n".join(
+        f'              <li class="tour-step{" is-active" if i == 0 else ""}" data-step="{i}">'
+        f'<span class="tour-fill" aria-hidden="true"></span>'
+        f'<button class="tour-tab" type="button"{" aria-current=\"step\"" if i == 0 else ""}>{e(nombre)}</button>'
+        f'<div class="tour-text"><p>{e(texto)}</p></div></li>'
+        for i, (_, nombre, texto, _) in enumerate(t["tour"])
     )
-    imagenes = "\n".join(
-        f'            <img data-shot-img="{i}" src="/capturas/{archivo}" alt="{e(alt)}" width="1280" height="800" loading="{"eager" if i == 0 else "lazy"}"{"" if i == 0 else " hidden"}>'
-        for i, (archivo, _, alt) in enumerate(t["shots"])
+    capturas = "\n".join(
+        f'                <figure class="tour-shot" data-shot="{i}"><img src="/capturas/{t["lang"]}/{archivo}.webp" alt="{e(alt)}" '
+        f'width="2560" height="1600" decoding="async"{"" if i == 0 else " loading=\"lazy\""}></figure>'
+        for i, (archivo, _, _, alt) in enumerate(t["tour"])
     )
+    barras = "".join("<i></i>" for _ in t["tour"])
     faq = "\n".join(
         f'          <details class="qa"><summary>{e(pregunta)}</summary><p>{e(respuesta)}</p></details>'
         for pregunta, respuesta in t["faq"]
@@ -94,7 +103,8 @@ def bloques(t):
         f'            <a class="btn" data-dl="mac" href="{{{{mac_url}}}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{ICONOS["mac"]}"/></svg><span>{e(t["download_mac"])}</span></a>\n'
         '          </div>'
     )
-    return {"features": funciones, "shot_tabs": pestanas, "shot_images": imagenes, "faq": faq, "cta": cta,
+    return {"features": funciones, "tour_steps": pasos, "tour_shots": capturas, "tour_bars": barras,
+            "tour_count": str(len(t["tour"])), "faq": faq, "cta": cta,
             "icon_windows": ICONOS["windows"], "icon_mac": ICONOS["mac"]}
 
 
@@ -149,9 +159,7 @@ def construir():
     (VISTA / "fuentes").mkdir()
     for nombre in ["inter-latin.woff2", "inter-latin-ext.woff2", "OFL.txt"]:
         shutil.copy(REPO / "ui" / "fonts" / nombre, VISTA / "fuentes" / nombre)
-    (VISTA / "capturas").mkdir()
-    for nombre in CAPTURAS:
-        shutil.copy(REPO / "docs" / "capturas" / f"{nombre}.png", VISTA / "capturas" / f"{nombre}.png")
+    shutil.copytree(AQUI / "capturas", VISTA / "capturas")
     shutil.copytree(REPO / "ui", VISTA / "demo", ignore=shutil.ignore_patterns("*.md"))
     print("Listo: web/publico y web/vista · Windows", datos["win_version"], "· Mac", datos["mac_version"])
 
@@ -164,7 +172,7 @@ def despliegue():
         sys.exit("web/publico tiene cambios sin subir a main: súbelos antes de desplegar.")
     remotos = [f"web/publico/{p}:{p}" for p in [archivo for archivo, _, _ in paginas()] + ESTATICOS]
     remotos += [f"web/marca/{m.name}:{m.name}" for m in sorted((AQUI / "marca").iterdir())]
-    remotos += [f"docs/capturas/{c}.png:capturas/{c}.png" for c in CAPTURAS]
+    remotos += [f"web/capturas/{l}/{c}.webp:capturas/{l}/{c}.webp" for l in ("es", "en") for c in CAPTURAS]
     remotos += [f"ui/fonts/{f}:fuentes/{f}" for f in ["inter-latin.woff2", "inter-latin-ext.woff2", "OFL.txt"]]
     for archivo in sorted(p for p in (REPO / "ui").rglob("*") if p.is_file() and p.suffix != ".md"):
         relativo = archivo.relative_to(REPO / "ui").as_posix()

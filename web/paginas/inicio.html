@@ -29,8 +29,31 @@
             </article>
           </div>
           <figure class="shot reveal">
-            <img src="/capturas/servidor.png" alt="{{multi_shot_alt}}" loading="lazy" width="1280" height="800">
+            <img src="/capturas/{{lang}}/servidor.webp" alt="{{multi_shot_alt}}" loading="lazy" decoding="async" width="2560" height="1600">
           </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="tour" id="recorrido" data-tour style="--steps: {{tour_count}}">
+      <div class="wrap">
+        <h2 class="section-title reveal">{{tour_title}}</h2>
+      </div>
+      <div class="tour-track">
+        <div class="tour-stage">
+          <div class="tour-grid">
+            <div class="tour-index">
+              <div class="tour-bars" aria-hidden="true">{{tour_bars}}</div>
+              <ol class="tour-steps">
+{{tour_steps}}
+              </ol>
+            </div>
+            <div class="tour-screen">
+              <div class="tour-window">
+{{tour_shots}}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -44,26 +67,12 @@
       </div>
     </section>
 
-    <section class="section">
-      <div class="wrap">
-        <h2 class="section-title reveal">{{gallery_title}}</h2>
-        <div class="gallery reveal" data-gallery>
-          <div class="gallery-tabs" role="tablist">
-{{shot_tabs}}
-          </div>
-          <div class="gallery-frame">
-{{shot_images}}
-          </div>
-        </div>
-      </div>
-    </section>
-
     <section class="section" id="demo">
       <div class="wrap">
         <h2 class="section-title reveal">{{demo_title}}</h2>
         <div class="demo-frame reveal" data-demo>
           <button class="demo-start" type="button" data-demo-start>
-            <img src="/capturas/inicio.png" alt="" loading="lazy">
+            <img src="/capturas/{{lang}}/inicio.webp" alt="" loading="lazy" decoding="async" width="2560" height="1600">
             <span class="btn primary">{{demo_open}}</span>
           </button>
         </div>

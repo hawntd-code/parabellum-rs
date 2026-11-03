@@ -17,6 +17,7 @@
   <link rel="icon" href="/favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="preload" href="/fuentes/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <script>document.documentElement.classList.add("js")</script>
   <link rel="stylesheet" href="/estilos.css?v=0.42.0">
   <script src="/sitio.js?v=0.42.0" defer></script>
   <script src="/isla.js?v=0.42.0" defer></script>
@@ -73,8 +74,41 @@
             </article>
           </div>
           <figure class="shot reveal">
-            <img src="/capturas/servidor.png" alt="A server panel in Parabellum with its console, players and memory use" loading="lazy" width="1280" height="800">
+            <img src="/capturas/en/servidor.webp" alt="A server panel in Parabellum with its console, players and memory use" loading="lazy" decoding="async" width="2560" height="1600">
           </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="tour" id="recorrido" data-tour style="--steps: 6">
+      <div class="wrap">
+        <h2 class="section-title reveal">Made to make sense<br>right away.</h2>
+      </div>
+      <div class="tour-track">
+        <div class="tour-stage">
+          <div class="tour-grid">
+            <div class="tour-index">
+              <div class="tour-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <ol class="tour-steps">
+              <li class="tour-step is-active" data-step="0"><span class="tour-fill" aria-hidden="true"></span><button class="tour-tab" type="button" aria-current="step">Library</button><div class="tour-text"><p>Your instances in view and your friends beside them: see what they play and join with «Join».</p></div></li>
+              <li class="tour-step" data-step="1"><span class="tour-fill" aria-hidden="true"></span><button class="tour-tab" type="button">Explore</button><div class="tour-text"><p>Modrinth and CurseForge in one search. You only see what fits your instance.</p></div></li>
+              <li class="tour-step" data-step="2"><span class="tour-fill" aria-hidden="true"></span><button class="tour-tab" type="button">Instance</button><div class="tour-text"><p>Mods, packs and worlds for each instance. When the modpack has a new version, it updates right there.</p></div></li>
+              <li class="tour-step" data-step="3"><span class="tour-fill" aria-hidden="true"></span><button class="tour-tab" type="button">Messages</button><div class="tour-text"><p>Chat with your friends and jump into their world from the same conversation.</p></div></li>
+              <li class="tour-step" data-step="4"><span class="tour-fill" aria-hidden="true"></span><button class="tour-tab" type="button">Communities</button><div class="tour-text"><p>Your group&#x27;s servers, its official pack, its rules and who helps you.</p></div></li>
+              <li class="tour-step" data-step="5"><span class="tour-fill" aria-hidden="true"></span><button class="tour-tab" type="button">Doctor</button><div class="tour-text"><p>If the game crashes, it tells you which mod failed and fixes it in one click.</p></div></li>
+              </ol>
+            </div>
+            <div class="tour-screen">
+              <div class="tour-window">
+                <figure class="tour-shot" data-shot="0"><img src="/capturas/en/inicio.webp" alt="The Parabellum library with instances and the friends panel" width="2560" height="1600" decoding="async"></figure>
+                <figure class="tour-shot" data-shot="1"><img src="/capturas/en/explorar.webp" alt="The Modrinth and CurseForge mod search" width="2560" height="1600" decoding="async" loading="lazy"></figure>
+                <figure class="tour-shot" data-shot="2"><img src="/capturas/en/instancia.webp" alt="An instance with its mods and a notice about a new modpack version" width="2560" height="1600" decoding="async" loading="lazy"></figure>
+                <figure class="tour-shot" data-shot="3"><img src="/capturas/en/mensajes.webp" alt="A conversation with a friend and the button to join their game" width="2560" height="1600" decoding="async" loading="lazy"></figure>
+                <figure class="tour-shot" data-shot="4"><img src="/capturas/en/comunidades.webp" alt="A community with its servers, official pack and help requests" width="2560" height="1600" decoding="async" loading="lazy"></figure>
+                <figure class="tour-shot" data-shot="5"><img src="/capturas/en/doctor.webp" alt="The doctor explaining why the game crashed and how to fix it" width="2560" height="1600" decoding="async" loading="lazy"></figure>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -97,36 +131,12 @@
       </div>
     </section>
 
-    <section class="section">
-      <div class="wrap">
-        <h2 class="section-title reveal">Made to make sense<br>right away.</h2>
-        <div class="gallery reveal" data-gallery>
-          <div class="gallery-tabs" role="tablist">
-            <button role="tab" type="button" data-shot="0" aria-selected="true">Library</button>
-            <button role="tab" type="button" data-shot="1" aria-selected="false">Explore</button>
-            <button role="tab" type="button" data-shot="2" aria-selected="false">Instance</button>
-            <button role="tab" type="button" data-shot="3" aria-selected="false">Messages</button>
-            <button role="tab" type="button" data-shot="4" aria-selected="false">Communities</button>
-            <button role="tab" type="button" data-shot="5" aria-selected="false">Doctor</button>
-          </div>
-          <div class="gallery-frame">
-            <img data-shot-img="0" src="/capturas/inicio.png" alt="The Parabellum library with instances and the friends panel" width="1280" height="800" loading="eager">
-            <img data-shot-img="1" src="/capturas/explorar.png" alt="The Modrinth and CurseForge mod search" width="1280" height="800" loading="lazy" hidden>
-            <img data-shot-img="2" src="/capturas/instancia.png" alt="An instance with its content and the Play button" width="1280" height="800" loading="lazy" hidden>
-            <img data-shot-img="3" src="/capturas/mensajes.png" alt="A conversation with a friend and the invite to their game" width="1280" height="800" loading="lazy" hidden>
-            <img data-shot-img="4" src="/capturas/comunidades.png" alt="A community with its servers and help requests" width="1280" height="800" loading="lazy" hidden>
-            <img data-shot-img="5" src="/capturas/doctor.png" alt="The doctor explaining why the game did not open and how to fix it" width="1280" height="800" loading="lazy" hidden>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <section class="section" id="demo">
       <div class="wrap">
         <h2 class="section-title reveal">Try it right here.</h2>
         <div class="demo-frame reveal" data-demo>
           <button class="demo-start" type="button" data-demo-start>
-            <img src="/capturas/inicio.png" alt="" loading="lazy">
+            <img src="/capturas/en/inicio.webp" alt="" loading="lazy" decoding="async" width="2560" height="1600">
             <span class="btn primary">Open the demo</span>
           </button>
         </div>

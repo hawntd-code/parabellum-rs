@@ -67,6 +67,9 @@
 html { scroll-behavior: smooth; scroll-padding-top: 84px; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 400 17px/1.6 Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 img { max-width: 100%; height: auto; display: block; }
+[hidden] { display: none !important; }
+::selection { background: var(--accent); color: #fff; }
+html { scrollbar-color: var(--border-strong) var(--bg); accent-color: var(--accent); }
 a { color: var(--link); }
 h1, h2, h3 { margin: 0; letter-spacing: -.02em; }
 p { margin: 0; }
@@ -136,14 +139,41 @@ p { margin: 0; }
 .features .feature:nth-child(5n + 4) { transition-delay: .15s; }
 .features .feature:nth-child(5n + 5) { transition-delay: .2s; }
 
-/* galería */
-.gallery-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
-.gallery-tabs button { padding: 9px 16px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font: 650 15px/1 Inter, system-ui, sans-serif; cursor: pointer; transition: color var(--fast), background var(--fast), border-color var(--fast); }
-.gallery-tabs button:hover { color: var(--text); }
-.gallery-tabs button[aria-selected="true"] { border-color: transparent; background: var(--button-bg); color: var(--button-text); }
-.gallery-frame { border: 1px solid var(--shot-border); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shot-shadow); background: var(--surface); }
-.gallery-frame img { width: 100%; animation: shot-in var(--enter) var(--ease); }
-@keyframes shot-in { from { opacity: 0; transform: scale(.985); } }
+/* recorrido: la sección se queda fija mientras se hace scroll. La ventana llega inclinada y se endereza al
+   fijarse (--rise, 0 a 1); luego cada pantalla sube desde abajo sobre la anterior (--t en cada captura, y
+   --dim en la que queda debajo) y el índice marca el avance de cada paso (--fill). Todo lo pone sitio.js
+   con el scroll. Sin JavaScript se ve la primera captura y los textos de todos los pasos. */
+.tour { padding-top: 120px; }
+.tour .section-title { margin-bottom: 0; }
+.tour-track { position: relative; }
+.js .tour-track { height: calc(100svh + (var(--steps) - .3) * 72svh); }
+.tour-stage { display: grid; align-items: center; padding: 48px 0 0; }
+.js .tour-stage { position: sticky; top: 0; height: 100svh; padding: 64px 0 0; }
+.tour-grid { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); align-items: center; gap: clamp(32px, 5vw, 80px); width: min(1340px, 100% - 48px); margin-inline: auto; }
+.tour-index { opacity: clamp(0, calc(var(--rise, 1) * 2.4 - 1.4), 1); transform: translateY(calc((1 - var(--rise, 1)) * 48px)); }
+.tour-bars { display: none; }
+.tour-steps { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.tour-step { position: relative; padding: 13px 0 13px 26px; }
+.tour-step::before, .tour-fill { content: ""; position: absolute; left: 0; top: 15px; bottom: 15px; width: 2px; border-radius: 2px; background: var(--line); }
+.tour-fill { z-index: 1; background: var(--light); transform-origin: 50% 0; transform: scaleY(var(--fill, 0)); }
+.tour-tab { display: block; padding: 0; border: 0; background: none; color: var(--faint); font: 750 20px/1.25 Inter, system-ui, sans-serif; letter-spacing: -.025em; text-align: left; cursor: pointer; transition: color var(--state) var(--ease); }
+.tour-tab:hover { color: var(--muted); }
+.tour-step.is-active .tour-tab { color: var(--text); }
+.tour-text { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .5s var(--ease), margin .5s var(--ease); }
+.tour-text p { min-height: 0; overflow: hidden; max-width: 32ch; color: var(--muted); font-size: 16px; line-height: 1.55; text-wrap: pretty; opacity: 0; transition: opacity .25s var(--ease); }
+.tour-step.is-active .tour-text { grid-template-rows: 1fr; margin-top: 8px; }
+.tour-step.is-active .tour-text p { opacity: 1; transition: opacity .45s .1s var(--ease); }
+html:not(.js) .tour-text { grid-template-rows: 1fr; margin-top: 6px; }
+html:not(.js) .tour-text p { opacity: 1; }
+.tour-screen { display: grid; justify-items: end; perspective: 2200px; }
+.tour-window { position: relative; overflow: hidden; width: min(100%, calc((100svh - 160px) * 1.6)); aspect-ratio: 16 / 10; border-radius: 16px; background: #0b0a0f; box-shadow: 0 0 0 1px var(--shot-border), 0 50px 100px -30px #000b, 0 30px 60px -30px color-mix(in srgb, var(--accent) 50%, transparent); transform-origin: 50% 100%; transform: rotateX(calc((1 - var(--rise, 1)) * 20deg)) translateY(calc((1 - var(--rise, 1)) * 72px)) scale(calc(.88 + var(--rise, 1) * .12)); }
+.js .tour-window { will-change: transform; }
+.tour-shot { position: absolute; inset: 0; margin: 0; overflow: hidden; border-radius: 16px; clip-path: inset(calc((1 - var(--t, 1)) * 100%) 0 0 0 round 16px); transform: scale(calc(1 - var(--dim, 0) * .06)); }
+.tour-shot + .tour-shot { --t: 0; }
+.tour-shot img { width: 100%; height: 100%; object-fit: cover; transform: translateY(calc((1 - var(--t, 1)) * 12%)); }
+.tour-shot::before { content: ""; position: absolute; z-index: 1; inset: 0 0 auto; height: 1px; background: var(--light); opacity: min(calc(var(--t, 1) * 8), calc((1 - var(--t, 1)) * 8), .9); top: calc((1 - var(--t, 1)) * 100%); pointer-events: none; }
+.tour-shot::after { content: ""; position: absolute; inset: 0; background: #06050a; opacity: calc(var(--dim, 0) * .72); pointer-events: none; }
+.js .tour-shot, .js .tour-shot img { will-change: transform, clip-path; }
 
 /* demostración */
 .demo-frame { position: relative; aspect-ratio: 16 / 10; border: 1px solid var(--shot-border); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shot-shadow); background: var(--surface); }
@@ -215,7 +245,26 @@ body.reveal-footer .footer { position: sticky; bottom: 0; z-index: 0; }
   .hero-art { max-width: 520px; margin-inline: auto; width: 100%; }
   .multi .shot { position: static; }
   .features { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px 24px; }
-  .section { padding-top: 96px; }
+  .section, .tour { padding-top: 96px; }
+  /* recorrido en vertical: la ventana arriba y, abajo, solo el paso actual con sus barras de avance */
+  .js .tour-track { height: calc(100svh + (var(--steps) - .3) * 62svh); }
+  .tour-grid { grid-template-columns: minmax(0, 1fr); gap: 26px; width: min(640px, 100% - 48px); }
+  .tour-screen { order: -1; justify-items: stretch; }
+  .tour-window { width: 100%; height: min(58svh, 520px); aspect-ratio: auto; border-radius: 12px; }
+  .tour-shot img { object-position: calc(var(--pan, 0) * 100%) 50%; }
+  .tour-shot { border-radius: 12px; clip-path: inset(calc((1 - var(--t, 1)) * 100%) 0 0 0 round 12px); }
+  .tour-bars { display: flex; gap: 6px; margin-bottom: 20px; }
+  .tour-bars i { position: relative; flex: 1; height: 3px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  .tour-bars i::after { content: ""; position: absolute; inset: 0; background: var(--light); transform-origin: 0 50%; transform: scaleX(var(--fill, 0)); }
+  .tour-step::before, .tour-fill { display: none; }
+  .tour-step { padding: 0; }
+  .js .tour-steps { grid-template-areas: "paso"; }
+  .js .tour-step { grid-area: paso; opacity: 0; visibility: hidden; transform: translateY(10px); transition: opacity .3s var(--ease), transform .3s var(--ease), visibility 0s .3s; }
+  .js .tour-step.is-active { opacity: 1; visibility: visible; transform: none; transition: opacity .45s var(--ease), transform .45s var(--ease); }
+  .tour-tab { color: var(--text); font-size: 22px; }
+  .tour-text, .tour-step.is-active .tour-text { grid-template-rows: 1fr; margin-top: 6px; }
+  .tour-text p { max-width: none; opacity: 1; }
+  html:not(.js) .tour-step + .tour-step { margin-top: 18px; }
 }
 @media (max-width: 560px) {
   .wrap, .wrap.narrow { width: calc(100% - 32px); }
@@ -232,4 +281,7 @@ body.reveal-footer .footer { position: sticky; bottom: 0; z-index: 0; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .reveal { opacity: 1; transform: none; }
   .footer-sign { transform: none; }
+  .tour-index, .tour-window, .tour-shot, .tour-shot img { opacity: 1; transform: none; }
+  .tour-shot { clip-path: none; opacity: var(--t, 1); }
+  .tour-shot::before { display: none; }
 }

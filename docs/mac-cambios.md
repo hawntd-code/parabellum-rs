@@ -603,6 +603,15 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-11-03 · La web: recorrido de capturas con el scroll
+
+Pedido de Juan: las capturas de la portada ya no van una debajo de otra (un `img { display: block }` le
+ganaba al atributo `hidden` de la galería). Ahora son un recorrido fijo en pantalla: la ventana llega
+inclinada y se endereza, y con el scroll cada pantalla sube sobre la anterior mientras un índice marca el
+paso; en el celular la captura va a tamaño legible y se recorre de lado. Las capturas de la web se rehicieron
+a doble resolución, en WebP y en los dos idiomas, en `web/capturas/` (las de `docs/capturas/` siguen siendo
+las del README). Mac: nada.
+
 ### 2026-11-03 · La web con menos texto y páginas de Descargar y Preguntas
 
 Pedido de Juan: la barra ya no lleva a secciones de la misma página sino a páginas propias (`/descargar/` y
