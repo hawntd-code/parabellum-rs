@@ -10,7 +10,7 @@ despliegue/preparar.mjs y despliegue/vercel.json. Al compilar, preparar.mjs baja
 público) las páginas, las imágenes, las fuentes y la demostración (ui/, que en el navegador usa datos de
 prueba), todo de ese commit.
 
-Las capturas de la web están en web/capturas/<es|en>/: la interfaz en modo demostración a 2560×1600
+Las capturas de la web están en web/capturas/<es|en>/ (las rehace web/capturar.py): la interfaz a 2560×1600
 (1280×800 con densidad 2), en WebP y en cada idioma. No son las de docs/capturas (esas son del README).
 
 Las descargas salen de la release más nueva de GitHub: aquí se escriben las de hoy para que la página
