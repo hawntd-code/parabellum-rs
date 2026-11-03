@@ -1,0 +1,26 @@
+    <section class="page">
+      <div class="wrap">
+        <header class="page-head">
+          <h1>{{dl_title}}</h1>
+          <p>{{dl_text}}</p>
+        </header>
+        <div class="downloads">
+          <article class="dl-card">
+            <h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{icon_windows}}"/></svg>{{dl_windows}}</h2>
+            <p class="dl-req">{{dl_windows_req}}</p>
+            <a class="btn primary wide" data-dl="windows" href="{{win_url}}">{{download_windows}}</a>
+            <p class="dl-meta"><span data-dl-info="windows">{{installer}} v{{win_version}} · {{win_size}} {{size_mb}}</span></p>
+            <p class="dl-steps">{{dl_windows_steps}}</p>
+            <p class="dl-alt">{{dl_portable_note}} <a data-dl="portable" href="{{portable_url}}">{{portable}}</a></p>
+          </article>
+          <article class="dl-card">
+            <h2><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{icon_mac}}"/></svg>{{dl_mac}}</h2>
+            <p class="dl-req">{{dl_mac_req}}</p>
+            <a class="btn wide" data-dl="mac" href="{{mac_url}}">{{download_mac}}</a>
+            <p class="dl-meta"><span data-dl-info="mac">{{dl_version}} {{mac_version}} · {{mac_size}} {{size_mb}}</span></p>
+            <p class="dl-steps">{{dl_mac_steps}}</p>
+          </article>
+        </div>
+        <p class="dl-all"><a href="https://github.com/hawntd-code/parabellum-rs/releases">{{dl_all}} ↗</a></p>
+      </div>
+    </section>

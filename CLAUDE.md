@@ -37,7 +37,7 @@ en `ui/`.
   tarjeta y su botón se cambian a mano. Cómo: [docs/desarrollo.md](docs/desarrollo.md) › «Publicar una
   versión».
 - **La web de Parabellum:** [parabellum-roan.vercel.app](https://parabellum-roan.vercel.app). Vive en
-  [`web/`](web/construir.py) (desde el 2026-11-03; antes en `../landing-servidor`, con Astro): una sola página
+  [`web/`](web/construir.py) (desde el 2026-11-03; antes en `../landing-servidor`, con Astro): inicio, descargar y preguntas,
   en español e inglés, sin compilador. Sus textos están en `web/textos.py` y **todo lo que dicen tiene que
   existir en el launcher**. Sus botones de descarga toman la release más nueva de GitHub (el instalador de
   Windows): una versión nueva aparece sola, sin volver a publicar la web. Al publicarla, Vercel baja de este

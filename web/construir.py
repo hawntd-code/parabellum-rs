@@ -1,12 +1,13 @@
-"""La web de Parabellum (https://parabellum-roan.vercel.app): una sola página en español (/) y en inglés
-(/en/), escrita a mano y sin compilador.
+"""La web de Parabellum (https://parabellum-roan.vercel.app): inicio, descargar y preguntas, en español (/)
+y en inglés (/en/), escrita a mano y sin compilador. El marco (barra y pie) es plantilla.html y cada página
+es una pieza de paginas/.
 
     python web/construir.py            arma web/publico/ (va al repo) y web/vista/ (para verla en tu PC)
     python web/construir.py despliegue  arma web/despliegue/ para Vercel, fijado al último commit de main
 
 Para publicar: construir, subir el commit a main y después «despliegue»; en Vercel van solo
 despliegue/preparar.mjs y despliegue/vercel.json. Al compilar, preparar.mjs baja de GitHub (el repo es
-público) la página, las imágenes, las fuentes y la demostración (ui/, que en el navegador usa datos de
+público) las páginas, las imágenes, las fuentes y la demostración (ui/, que en el navegador usa datos de
 prueba), todo de ese commit.
 
 Las descargas salen de la release más nueva de GitHub: aquí se escriben las de hoy para que la página
@@ -27,7 +28,7 @@ REPO = AQUI.parent
 PUBLICO = AQUI / "publico"
 VISTA = AQUI / "vista"
 CAPTURAS = ["inicio", "explorar", "instancia", "mensajes", "comunidades", "doctor", "servidor"]
-PAGINA = ["index.html", "en/index.html", "estilos.css", "sitio.js", "isla.js"]
+ESTATICOS = ["estilos.css", "sitio.js", "isla.js"]
 
 ICONOS = {
     "search": "M10.5 3a7.5 7.5 0 0 1 5.96 12.05l4.25 4.24-1.42 1.42-4.24-4.25A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z",
@@ -40,11 +41,12 @@ ICONOS = {
     "worlds": "M6.5 19A4.5 4.5 0 0 1 6 10.03 6 6 0 0 1 17.65 9 5 5 0 0 1 17 19Z",
     "doctor": "M10 3h4v7h7v4h-7v7h-4v-7H3v-4h7Z",
     "import": "M11 3h2v9.6l3.3-3.3 1.4 1.4L12 16.4l-5.7-5.7 1.4-1.4 3.3 3.3Zm-7 15h16v2H4Z",
+    "windows": "M3 3h8.4v8.4H3zm9.6 0H21v8.4h-8.4zM3 12.6h8.4V21H3zm9.6 0H21V21h-8.4z",
+    "mac": "M16.37 12.6c.02 2.5 2.2 3.33 2.22 3.34-.02.06-.35 1.18-1.14 2.33-.69 1-1.4 2-2.52 2.02-1.1.02-1.46-.65-2.72-.65-1.27 0-1.66.63-2.7.67-1.08.04-1.9-1.08-2.6-2.08-1.42-2.05-2.5-5.8-1.05-8.32.72-1.25 2-2.05 3.4-2.07 1.06-.02 2.06.71 2.71.71.65 0 1.87-.88 3.15-.75.54.02 2.04.22 3 1.63-.08.05-1.79 1.04-1.77 3.12M14.3 4.36c.58-.7.97-1.67.86-2.64-.83.03-1.84.55-2.44 1.25-.53.62-1 1.61-.88 2.56.93.07 1.88-.47 2.46-1.17",
 }
 FUNCIONES = [("search", "f_search"), ("update", "f_update"), ("versions", "f_versions"), ("chat", "f_chat"),
              ("communities", "f_communities"), ("ingame", "f_ingame"), ("skins", "f_skins"), ("worlds", "f_worlds"),
              ("doctor", "f_doctor"), ("import", "f_import")]
-DETALLES = ["d_update", "d_verify", "d_downloads", "d_backup", "d_all"]
 
 
 def releases():
@@ -81,25 +83,49 @@ def bloques(t):
         f'            <img data-shot-img="{i}" src="/capturas/{archivo}" alt="{e(alt)}" width="1280" height="800" loading="{"eager" if i == 0 else "lazy"}"{"" if i == 0 else " hidden"}>'
         for i, (archivo, _, alt) in enumerate(t["shots"])
     )
-    detalles = "\n".join(
-        f'          <div class="detail reveal"><h3>{e(t[clave + "_title"])}</h3><p>{e(t[clave + "_text"])}</p></div>'
-        for clave in DETALLES
-    )
     faq = "\n".join(
-        f'          <details class="qa reveal"><summary>{e(pregunta)}</summary><p>{e(respuesta)}</p></details>'
+        f'          <details class="qa"><summary>{e(pregunta)}</summary><p>{e(respuesta)}</p></details>'
         for pregunta, respuesta in t["faq"]
     )
-    return {"features": funciones, "shot_tabs": pestanas, "shot_images": imagenes, "details": detalles, "faq": faq}
+    # Los dos botones de descarga: arriba en el inicio y al final de él.
+    cta = (
+        '          <div class="cta">\n'
+        f'            <a class="btn primary" data-dl="windows" href="{{{{win_url}}}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{ICONOS["windows"]}"/></svg><span>{e(t["download_windows"])}</span></a>\n'
+        f'            <a class="btn" data-dl="mac" href="{{{{mac_url}}}}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{ICONOS["mac"]}"/></svg><span>{e(t["download_mac"])}</span></a>\n'
+        '          </div>'
+    )
+    return {"features": funciones, "shot_tabs": pestanas, "shot_images": imagenes, "faq": faq, "cta": cta,
+            "icon_windows": ICONOS["windows"], "icon_mac": ICONOS["mac"]}
 
 
-def render(t, datos):
+def render(t, pagina, datos):
+    """Una página (inicio, descargar o preguntas) en el idioma de t."""
+    otro = EN if t is ES else ES
+    rutas = t["pages"]
+    valores = {
+        **{k: v for k, v in t.items() if isinstance(v, str)}, **datos, **bloques(t),
+        "title": t["titles"][pagina], "description": t["descriptions"][pagina],
+        "path": rutas[pagina], "other_path": otro["pages"][pagina],
+        "es_path": ES["pages"][pagina], "en_path": EN["pages"][pagina],
+        "home_path": rutas["inicio"], "download_path": rutas["descargar"], "faq_path": rutas["preguntas"],
+        "current_descargar": ' aria-current="page"' if pagina == "descargar" else "",
+        "current_preguntas": ' aria-current="page"' if pagina == "preguntas" else "",
+    }
     page = (AQUI / "plantilla.html").read_text(encoding="utf-8")
-    valores = {**{k: v for k, v in t.items() if isinstance(v, str)}, **datos, **bloques(t)}
-    # Los textos con <br> o <b> son de textos.py (no de afuera): van tal cual.
-    for clave, valor in valores.items():
-        page = page.replace("{{" + clave + "}}", valor)
+    page = page.replace("{{main}}", (AQUI / "paginas" / f"{pagina}.html").read_text(encoding="utf-8").rstrip("\n"))
+    # Dos vueltas: los bloques (los botones) traen sus propios {{…}}. Los textos con <br> o <b> son de
+    # textos.py (no de afuera): van tal cual.
+    for _ in range(2):
+        for clave, valor in valores.items():
+            page = page.replace("{{" + clave + "}}", valor)
     assert "{{" not in page, page[page.index("{{"):page.index("{{") + 40]
     return page
+
+
+def paginas():
+    """(archivo dentro de publico/, idioma, página) de las seis páginas."""
+    return [("index.html" if ruta == "/" else ruta.strip("/") + "/index.html", t, pagina)
+            for t in (ES, EN) for pagina, ruta in t["pages"].items()]
 
 
 def vaciar(carpeta):
@@ -111,12 +137,12 @@ def vaciar(carpeta):
 def construir():
     datos = releases()
     vaciar(PUBLICO)
-    (PUBLICO / "en").mkdir(parents=True, exist_ok=True)
-    (PUBLICO / "index.html").write_text(render(ES, datos), encoding="utf-8")
-    (PUBLICO / "en" / "index.html").write_text(render(EN, datos), encoding="utf-8")
-    for nombre in ["estilos.css", "sitio.js", "isla.js"]:
+    for archivo, t, pagina in paginas():
+        (PUBLICO / archivo).parent.mkdir(parents=True, exist_ok=True)
+        (PUBLICO / archivo).write_text(render(t, pagina, datos), encoding="utf-8")
+    for nombre in ESTATICOS:
         shutil.copy(AQUI / nombre, PUBLICO / nombre)
-    # La vista local: la página completa, como queda en Vercel.
+    # La vista local: el sitio completo, como queda en Vercel.
     vaciar(VISTA)
     shutil.copytree(PUBLICO, VISTA, dirs_exist_ok=True)
     shutil.copytree(AQUI / "marca", VISTA, dirs_exist_ok=True)
@@ -136,7 +162,7 @@ def despliegue():
     pendiente = subprocess.run(["git", "-C", str(REPO), "status", "--porcelain", "web/publico"], capture_output=True, text=True).stdout.strip()
     if pendiente:
         sys.exit("web/publico tiene cambios sin subir a main: súbelos antes de desplegar.")
-    remotos = [f"web/publico/{p}:{p}" for p in PAGINA]
+    remotos = [f"web/publico/{p}:{p}" for p in [archivo for archivo, _, _ in paginas()] + ESTATICOS]
     remotos += [f"web/marca/{m.name}:{m.name}" for m in sorted((AQUI / "marca").iterdir())]
     remotos += [f"docs/capturas/{c}.png:capturas/{c}.png" for c in CAPTURAS]
     remotos += [f"ui/fonts/{f}:fuentes/{f}" for f in ["inter-latin.woff2", "inter-latin-ext.woff2", "OFL.txt"]]
@@ -146,7 +172,7 @@ def despliegue():
     destino = AQUI / "despliegue"
     vaciar(destino)
     destino.mkdir(exist_ok=True)
-    script = f"""// Arma salida/ para Vercel con la web de parabellum-rs @ {commit[:7]}: la página (web/publico), la marca,
+    script = f"""// Arma salida/ para Vercel con la web de parabellum-rs @ {commit[:7]}: las páginas (web/publico), la marca,
 // las capturas, las fuentes y la demostración del launcher (ui/). Lo genera web/construir.py.
 import {{ mkdir, writeFile }} from "node:fs/promises";
 import {{ dirname }} from "node:path";

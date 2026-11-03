@@ -1,0 +1,78 @@
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <h1>{{hero_title}}</h1>
+{{cta}}
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <canvas id="isla" width="640" height="560"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="multijugador">
+      <div class="wrap">
+        <h2 class="section-title reveal">{{multi_title}}</h2>
+        <div class="multi">
+          <div class="multi-cards">
+            <article class="card reveal">
+              <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-8 1a3 3 0 1 0-3-3 3 3 0 0 0 3 3Zm8 1c-2.7 0-8 1.3-8 4v3h16v-3c0-2.7-5.3-4-8-4Zm-8 0c-.3 0-.7 0-1.1.1A4.8 4.8 0 0 1 9 17v3H0v-2.5C0 15.2 4.7 13 8 13Z"/></svg></span>
+              <div><h3>{{multi_join_title}}</h3><p>{{multi_join_text}}</p></div>
+            </article>
+            <article class="card reveal">
+              <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm0 10h16a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Zm3-7.5A1.5 1.5 0 1 0 8.5 7 1.5 1.5 0 0 0 7 5.5Zm0 10A1.5 1.5 0 1 0 8.5 17 1.5 1.5 0 0 0 7 15.5Z"/></svg></span>
+              <div><h3>{{multi_server_title}}</h3><p>{{multi_server_text}}</p></div>
+            </article>
+            <article class="card reveal">
+              <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v12H3zm2 2v8h14V6Zm2 2h2v2H7Zm4 0h6v2h-6Zm-4 4h10v1H7ZM8 18h8v2H8Z"/></svg></span>
+              <div><h3>{{multi_panel_title}}</h3><p>{{multi_panel_text}}</p></div>
+            </article>
+          </div>
+          <figure class="shot reveal">
+            <img src="/capturas/servidor.png" alt="{{multi_shot_alt}}" loading="lazy" width="1280" height="800">
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="funciones">
+      <div class="wrap">
+        <h2 class="section-title reveal">{{features_title}}</h2>
+        <div class="features">
+{{features}}
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <h2 class="section-title reveal">{{gallery_title}}</h2>
+        <div class="gallery reveal" data-gallery>
+          <div class="gallery-tabs" role="tablist">
+{{shot_tabs}}
+          </div>
+          <div class="gallery-frame">
+{{shot_images}}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="demo">
+      <div class="wrap">
+        <h2 class="section-title reveal">{{demo_title}}</h2>
+        <div class="demo-frame reveal" data-demo>
+          <button class="demo-start" type="button" data-demo-start>
+            <img src="/capturas/inicio.png" alt="" loading="lazy">
+            <span class="btn primary">{{demo_open}}</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section end">
+      <div class="wrap reveal">
+        <h2 class="section-title">{{end_title}}</h2>
+{{cta}}
+      </div>
+    </section>

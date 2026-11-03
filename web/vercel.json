@@ -24,10 +24,10 @@
   ],
   "redirects": [
     { "source": "/funciones/", "destination": "/#funciones", "permanent": true },
-    { "source": "/descargas/", "destination": "/#descargar", "permanent": true },
-    { "source": "/ayuda/", "destination": "/#preguntas", "permanent": true },
+    { "source": "/descargas/", "destination": "/descargar/", "permanent": true },
+    { "source": "/ayuda/", "destination": "/preguntas/", "permanent": true },
     { "source": "/en/features/", "destination": "/en/#funciones", "permanent": true },
-    { "source": "/en/downloads/", "destination": "/en/#descargar", "permanent": true },
-    { "source": "/en/help/", "destination": "/en/#preguntas", "permanent": true }
+    { "source": "/en/downloads/", "destination": "/en/download/", "permanent": true },
+    { "source": "/en/help/", "destination": "/en/faq/", "permanent": true }
   ]
 }

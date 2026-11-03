@@ -602,6 +602,14 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-11-03 · La web con menos texto y páginas de Descargar y Preguntas
+
+Pedido de Juan: la barra ya no lleva a secciones de la misma página sino a páginas propias (`/descargar/` y
+`/preguntas/`, y en inglés `/en/download/` y `/en/faq/`), la portada queda solo con el título, los botones
+de descarga y la isla, y cada sección con su título y nada más. Los requisitos y pasos de instalación están
+en Descargar, y los detalles (firma, revisión de archivos) pasaron a Preguntas. Cada página es una pieza de
+`web/paginas/` dentro del marco `web/plantilla.html`. Mac: nada.
+
 ### 2026-11-03 · La web vuelve a ser minimalista y vive en `web/`
 
 Pedido de Juan: la versión minimalista de la web, con el pie de letras grandes que se descubre al final de
