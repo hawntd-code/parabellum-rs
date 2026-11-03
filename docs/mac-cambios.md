@@ -25,7 +25,8 @@ sesión, después de actualizar `main`.** La guía de Mac sigue siendo [mac.md](
 
 - **0.40.0:** última estable de Windows (candidata a la 1.0), publicada en Drive; Juan lo confirmó el
   2026-11-01. Lleva la licencia y la revisión 0.39.3. En `main` está la **0.41.0** sin publicar: arreglos
-  del reporte del 2026-11-01, gestionar los mundos de Drive y skins (necesita la regla `skins`).
+  del reporte del 2026-11-01, gestionar los mundos de Drive, skins y lo bloqueado de CurseForge desde Modrinth. Su regla `skins` ya
+  está publicada (Juan, 2026-11-02).
 
 - **0.39.2:** estable de Windows, publicada en Drive y confirmada por Juan el 2026-10-24.
   El ZIP exacto de `_parabellum` está en [GitHub](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.39.2).
@@ -596,8 +597,8 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 ### 2026-11-02 · 0.41.0: arreglos del reporte de Juan, mundos en Drive y skins
 
 Juan reportó el 2026-11-01 varios fallos; esta versión los corrige y agrega dos cosas que pidió. **Necesita
-reglas nuevas de Firebase (`skins`)**: Juan las publica antes que la versión. Están probadas en el emulador
-(`docs/probar-reglas.py`, «TODO BIEN»).
+reglas nuevas de Firebase (`skins`)**: Juan las publicó el 2026-11-02, antes que la versión. Están probadas en el
+emulador (`docs/probar-reglas.py`, «TODO BIEN»).
 
 - **Modpacks de CurseForge con data packs** (`curseforge.rs`, `curseforge_manual.rs`): Prominence II no se
   instalaba («CurseForge no dio los datos necesarios…»). Sus data packs (clase 6945, `.zip`) iban a `mods/`, y

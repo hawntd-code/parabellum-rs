@@ -12,7 +12,7 @@ WebKit nativo continúan en seguimiento. Lo siguiente del plan es E6; F2 → O s
 
 **Estado 2026-11-02:** la **0.41.0** (sin publicar todavía) corrige lo que Juan reportó el 2026-11-01
 (Prominence II, restaurar mundos en otra PC, la pestaña Contenido), agrega gestionar los mundos de Drive y
-las skins entre jugadores de Parabellum. Necesita la regla nueva `skins`. Detalle en
+las skins entre jugadores de Parabellum. Su regla nueva, `skins`, ya está publicada (2026-11-02). Detalle en
 [mac-cambios.md](mac-cambios.md) › «Cambios de Windows». Desde el 2026-11-01 Claude programa solo (sin
 DeepSeek ni Codex).
 
