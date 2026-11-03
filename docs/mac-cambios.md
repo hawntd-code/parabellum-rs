@@ -602,6 +602,15 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-11-03 · La web vuelve a ser minimalista y vive en `web/`
+
+Pedido de Juan: la versión minimalista de la web, con el pie de letras grandes que se descubre al final de
+la de «Excavación», el multijugador como protagonista (sin hosting y con el panel del servidor) y solo
+funciones que existen en el launcher. Una página en español e inglés, sin compilador, en `web/`
+(`construir.py`, textos en `textos.py`); la portada lleva una isla de cubos dibujada en código, con la
+paleta de Parabellum y sin texturas de Minecraft. Las capturas de `docs/capturas/` se rehicieron desde la
+interfaz de la 0.42.0. Mac: nada (la tarjeta de Mac sale de su release `mac-v…`).
+
 ### 2026-11-02 · 0.42.0: actualizar modpacks, banco de pruebas, reportes, skins PNG, instalador y firma
 
 Lo que pidió Juan el 2026-11-02 para estar a la altura de otros launchers. **Necesita reglas nuevas de

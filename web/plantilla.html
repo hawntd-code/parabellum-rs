@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{title}}</title>
+  <meta name="description" content="{{description}}">
+  <link rel="canonical" href="https://parabellum-roan.vercel.app{{path}}">
+  <link rel="alternate" hreflang="es" href="https://parabellum-roan.vercel.app/">
+  <link rel="alternate" hreflang="en" href="https://parabellum-roan.vercel.app/en/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{{title}}">
+  <meta property="og:description" content="{{description}}">
+  <meta property="og:image" content="https://parabellum-roan.vercel.app/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#100f14">
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preload" href="/fuentes/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/estilos.css?v={{version}}">
+  <script src="/sitio.js?v={{version}}" defer></script>
+  <script src="/isla.js?v={{version}}" defer></script>
+</head>
+<body>
+  <a class="skip" href="#contenido">{{skip}}</a>
+
+  <header class="nav" id="arriba">
+    <div class="wrap nav-inner">
+      <a class="brand" href="{{path}}"><img src="/logo.png" alt="" width="28" height="28"><span>parabellum</span></a>
+      <nav class="nav-links" aria-label="{{nav_features}}">
+        <a href="#multijugador">{{nav_multi}}</a>
+        <a href="#funciones">{{nav_features}}</a>
+        <a href="#descargar">{{nav_download}}</a>
+        <a href="#preguntas">{{nav_faq}}</a>
+      </nav>
+      <div class="nav-end">
+        <a class="nav-lang" href="{{other_path}}" hreflang="{{other_lang}}" lang="{{other_lang}}">{{other_label}}</a>
+        <a class="nav-gh" href="https://github.com/hawntd-code/parabellum-rs" aria-label="GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
+      </div>
+    </div>
+  </header>
+
+  <main id="contenido">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="kicker">{{hero_kicker}}</p>
+          <p class="wordmark" aria-hidden="true">Parabellum</p>
+          <h1>{{hero_title}}</h1>
+          <p class="lead">{{hero_text}}</p>
+          <div class="cta">
+            <a class="btn primary" data-dl="windows" href="{{win_url}}">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8.4v8.4H3zm9.6 0H21v8.4h-8.4zM3 12.6h8.4V21H3zm9.6 0H21V21h-8.4z"/></svg>
+              <span>{{download_windows}}</span>
+            </a>
+            <a class="btn" data-dl="mac" href="{{mac_url}}">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.37 12.6c.02 2.5 2.2 3.33 2.22 3.34-.02.06-.35 1.18-1.14 2.33-.69 1-1.4 2-2.52 2.02-1.1.02-1.46-.65-2.72-.65-1.27 0-1.66.63-2.7.67-1.08.04-1.9-1.08-2.6-2.08-1.42-2.05-2.5-5.8-1.05-8.32.72-1.25 2-2.05 3.4-2.07 1.06-.02 2.06.71 2.71.71.65 0 1.87-.88 3.15-.75.54.02 2.04.22 3 1.63-.08.05-1.79 1.04-1.77 3.12M14.3 4.36c.58-.7.97-1.67.86-2.64-.83.03-1.84.55-2.44 1.25-.53.62-1 1.61-.88 2.56.93.07 1.88-.47 2.46-1.17"/></svg>
+              <span>{{download_mac}}</span>
+            </a>
+          </div>
+          <p class="hero-note">
+            <span data-dl-info="windows">{{installer}} v{{win_version}} · {{win_size}} {{size_mb}}</span> ·
+            <a data-dl="portable" href="{{portable_url}}">{{portable}}</a> ·
+            <a href="#demo">{{try_demo}}</a>
+          </p>
+          <p class="hero-fine">{{hero_note}}</p>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <canvas id="isla" width="640" height="560"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="multijugador">
+      <div class="wrap">
+        <header class="section-head reveal">
+          <p class="kicker">{{multi_kicker}}</p>
+          <h2>{{multi_title}}</h2>
+          <p class="lead">{{multi_text}}</p>
+        </header>
+        <div class="multi">
+          <div class="multi-cards">
+            <article class="card reveal">
+              <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-8 1a3 3 0 1 0-3-3 3 3 0 0 0 3 3Zm8 1c-2.7 0-8 1.3-8 4v3h16v-3c0-2.7-5.3-4-8-4Zm-8 0c-.3 0-.7 0-1.1.1A4.8 4.8 0 0 1 9 17v3H0v-2.5C0 15.2 4.7 13 8 13Z"/></svg></span>
+              <h3>{{multi_join_title}}</h3>
+              <p>{{multi_join_text}}</p>
+            </article>
+            <article class="card reveal">
+              <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm0 10h16a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1Zm3-7.5A1.5 1.5 0 1 0 8.5 7 1.5 1.5 0 0 0 7 5.5Zm0 10A1.5 1.5 0 1 0 8.5 17 1.5 1.5 0 0 0 7 15.5Z"/></svg></span>
+              <h3>{{multi_server_title}}</h3>
+              <p>{{multi_server_text}}</p>
+            </article>
+            <article class="card reveal">
+              <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v12H3zm2 2v8h14V6Zm2 2h2v2H7Zm4 0h6v2h-6Zm-4 4h10v1H7ZM8 18h8v2H8Z"/></svg></span>
+              <h3>{{multi_panel_title}}</h3>
+              <p>{{multi_panel_text}}</p>
+            </article>
+            <p class="multi-public reveal"><b>{{multi_public_title}}</b> {{multi_public_text}}</p>
+          </div>
+          <figure class="shot multi-shot reveal">
+            <img src="/capturas/servidor.png" alt="{{multi_shot_alt}}" loading="lazy" width="1280" height="800">
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="funciones">
+      <div class="wrap">
+        <header class="section-head reveal">
+          <p class="kicker">{{features_kicker}}</p>
+          <h2>{{features_title}}</h2>
+        </header>
+        <div class="features">
+{{features}}
+        </div>
+      </div>
+    </section>
+
+    <section class="section gallery-section">
+      <div class="wrap">
+        <header class="section-head reveal">
+          <p class="kicker">{{gallery_kicker}}</p>
+          <h2>{{gallery_title}}</h2>
+        </header>
+        <div class="gallery reveal" data-gallery>
+          <div class="gallery-tabs" role="tablist">
+{{shot_tabs}}
+          </div>
+          <div class="gallery-frame">
+{{shot_images}}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section demo" id="demo">
+      <div class="wrap">
+        <header class="section-head reveal">
+          <h2>{{demo_title}}</h2>
+          <p class="lead">{{demo_text}}</p>
+        </header>
+        <div class="demo-frame reveal" data-demo>
+          <button class="demo-start" type="button" data-demo-start>
+            <img src="/capturas/inicio.png" alt="" loading="lazy">
+            <span class="btn primary">{{demo_open}}</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="detalles">
+      <div class="wrap">
+        <header class="section-head reveal">
+          <p class="kicker">{{details_kicker}}</p>
+          <h2>{{details_title}}</h2>
+        </header>
+        <div class="details">
+{{details}}
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="descargar">
+      <div class="wrap">
+        <header class="section-head reveal">
+          <p class="kicker">{{dl_kicker}}</p>
+          <h2>{{dl_title}}</h2>
+        </header>
+        <div class="downloads">
+          <article class="dl-card reveal">
+            <h3><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h8.4v8.4H3zm9.6 0H21v8.4h-8.4zM3 12.6h8.4V21H3zm9.6 0H21V21h-8.4z"/></svg>{{dl_windows}}</h3>
+            <p class="dl-req">{{dl_windows_req}}</p>
+            <a class="btn primary wide" data-dl="windows" href="{{win_url}}">{{download_windows}}</a>
+            <p class="dl-meta"><span data-dl-info="windows">{{installer}} v{{win_version}} · {{win_size}} {{size_mb}}</span></p>
+            <p class="dl-steps">{{dl_windows_steps}}</p>
+            <p class="dl-alt">{{dl_portable_note}} <a data-dl="portable" href="{{portable_url}}">{{portable}}</a></p>
+          </article>
+          <article class="dl-card reveal">
+            <h3><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.37 12.6c.02 2.5 2.2 3.33 2.22 3.34-.02.06-.35 1.18-1.14 2.33-.69 1-1.4 2-2.52 2.02-1.1.02-1.46-.65-2.72-.65-1.27 0-1.66.63-2.7.67-1.08.04-1.9-1.08-2.6-2.08-1.42-2.05-2.5-5.8-1.05-8.32.72-1.25 2-2.05 3.4-2.07 1.06-.02 2.06.71 2.71.71.65 0 1.87-.88 3.15-.75.54.02 2.04.22 3 1.63-.08.05-1.79 1.04-1.77 3.12M14.3 4.36c.58-.7.97-1.67.86-2.64-.83.03-1.84.55-2.44 1.25-.53.62-1 1.61-.88 2.56.93.07 1.88-.47 2.46-1.17"/></svg>{{dl_mac}}</h3>
+            <p class="dl-req">{{dl_mac_req}}</p>
+            <a class="btn wide" data-dl="mac" href="{{mac_url}}">{{download_mac}}</a>
+            <p class="dl-meta"><span data-dl-info="mac">{{dl_version}} {{mac_version}} · {{mac_size}} {{size_mb}}</span></p>
+            <p class="dl-steps">{{dl_mac_steps}}</p>
+          </article>
+        </div>
+        <p class="dl-all reveal"><a href="https://github.com/hawntd-code/parabellum-rs/releases">{{dl_all}} ↗</a></p>
+      </div>
+    </section>
+
+    <section class="section" id="preguntas">
+      <div class="wrap narrow">
+        <header class="section-head reveal">
+          <p class="kicker">{{faq_kicker}}</p>
+          <h2>{{faq_title}}</h2>
+        </header>
+        <div class="faq">
+{{faq}}
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer" id="pie">
+    <div class="wrap footer-inner">
+      <div class="footer-top">
+        <div>
+          <a class="brand" href="{{path}}"><img src="/logo.png" alt="" width="28" height="28"><span>parabellum</span></a>
+          <p class="footer-tagline">{{footer_tagline}}</p>
+        </div>
+        <nav class="footer-links" aria-label="{{footer_product}}">
+          <a href="#multijugador">{{nav_multi}}</a>
+          <a href="#funciones">{{nav_features}}</a>
+          <a href="#descargar">{{nav_download}}</a>
+          <a href="#preguntas">{{nav_faq}}</a>
+        </nav>
+        <nav class="footer-links" aria-label="GitHub">
+          <a href="https://github.com/hawntd-code/parabellum-rs">{{footer_code}} ↗</a>
+          <a href="https://github.com/hawntd-code/parabellum-rs/releases">{{footer_releases}} ↗</a>
+          <a href="{{other_path}}" hreflang="{{other_lang}}" lang="{{other_lang}}">{{other_label}}</a>
+          <a href="#arriba">{{footer_top}} ↑</a>
+        </nav>
+      </div>
+      <p class="legal">{{footer_legal}}</p>
+    </div>
+    <p class="footer-sign" aria-hidden="true">parabellum</p>
+  </footer>
+</body>
+</html>

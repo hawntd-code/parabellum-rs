@@ -13,3 +13,7 @@ datos/
 # Configuración con claves (carpeta de Drive, Google, Firebase): nunca al repositorio
 config-integrada.json
 lanzador-config.json
+
+# La web: lo que se arma en tu PC (web/construir.py)
+web/vista/
+web/despliegue/

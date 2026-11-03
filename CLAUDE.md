@@ -36,11 +36,13 @@ en `ui/`.
   enlazan. El botón de arriba toma solo la release más nueva. Las de Mac van como `mac-v<versión>` y su
   tarjeta y su botón se cambian a mano. Cómo: [docs/desarrollo.md](docs/desarrollo.md) › «Publicar una
   versión».
-- **La web de Parabellum:** [parabellum-roan.vercel.app](https://parabellum-roan.vercel.app). Vive fuera del
-  repo, en `../landing-servidor` (Astro), y Juan la publica en Vercel. Sus botones de descarga toman la
-  release más nueva de GitHub (al compilar y en el navegador, con una hora de caché): una versión nueva
-  aparece sola, sin volver a publicar la web. Las capturas de `docs/capturas/originales/` (sin esquinas
-  redondeadas) las baja la web al compilar: no las borres ni las renombres.
+- **La web de Parabellum:** [parabellum-roan.vercel.app](https://parabellum-roan.vercel.app). Vive en
+  [`web/`](web/construir.py) (desde el 2026-11-03; antes en `../landing-servidor`, con Astro): una sola página
+  en español e inglés, sin compilador. Sus textos están en `web/textos.py` y **todo lo que dicen tiene que
+  existir en el launcher**. Sus botones de descarga toman la release más nueva de GitHub (el instalador de
+  Windows): una versión nueva aparece sola, sin volver a publicar la web. Al publicarla, Vercel baja de este
+  repo las capturas de `docs/capturas/` y la demostración (`ui/`) de un commit fijo: no las borres ni las
+  renombres sin cambiar `web/construir.py`. Cómo publicarla: ver el inicio de `web/construir.py`.
 - **El README es para quien juega** (qué hace, capturas, descargar e instalar, versiones, preguntas).
   Lo técnico (compilar, carpetas, comandos `--…`, configuración) va en `docs/desarrollo.md`. Las
   capturas están en `docs/capturas/`: salen de la interfaz en modo demostración, con las esquinas
