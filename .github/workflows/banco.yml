@@ -1,0 +1,52 @@
+# Banco de modpacks (docs/banco-modpacks.py): cada lunes instala y revisa los 8 modpacks más
+# descargados de Modrinth y de CurseForge con Parabellum compilado de main, para enterarse antes que los
+# jugadores si algo dejó de instalarse. Aquí no se abre el juego (no hay tarjeta gráfica); eso se prueba
+# en un PC con --abrir. Si alguno falla, el trabajo sale en rojo y GitHub avisa por correo.
+# El informe queda en el resumen del trabajo y como archivo para descargar.
+name: Banco de modpacks
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+    inputs:
+      n:
+        description: "Cuántos modpacks de cada sitio"
+        default: "8"
+
+jobs:
+  banco:
+    runs-on: windows-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust
+        run: |
+          rustup update stable
+          rustup default stable
+
+      - name: Caché de cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: banco-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: banco-cargo-
+
+      - name: Compilar Parabellum
+        working-directory: src-tauri
+        run: cargo build --release
+
+      - name: Probar los modpacks
+        run: python docs/banco-modpacks.py --n ${{ github.event.inputs.n || '8' }} --raiz "${{ runner.temp }}\banco" --informe "${{ runner.temp }}\informe-banco.md"
+
+      - name: Guardar el informe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: informe-banco
+          path: ${{ runner.temp }}\informe-banco.md
+          if-no-files-found: ignore

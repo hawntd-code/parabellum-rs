@@ -10,6 +10,11 @@ Incluye [las correcciones de CurseForge de la 0.39.1](0.39.1-curseforge.md) y la
 nueve recorridos de red controlados y Computer Use. La red física de la escuela, dos equipos y
 WebKit nativo continúan en seguimiento. Lo siguiente del plan es E6; F2 → O sigue al final.
 
+**Estado 2026-11-02 (noche):** la **0.42.0** (sin publicar) agrega actualizar modpacks en la misma
+instancia, el banco semanal de modpacks, reportes de fallos opcionales, compartir el registro, Discord, skins
+con PNG propio, el instalador, versiones firmadas y las auditorías de seguridad e interfaz. Necesita las
+reglas nuevas `crashReports` y `crashReportsLast`. Detalle en [mac-cambios.md](mac-cambios.md).
+
 **Estado 2026-11-02:** la **0.41.0** (sin publicar todavía) corrige lo que Juan reportó el 2026-11-01
 (Prominence II, restaurar mundos en otra PC, la pestaña Contenido), agrega gestionar los mundos de Drive y
 las skins entre jugadores de Parabellum. Su regla nueva, `skins`, ya está publicada (2026-11-02). Detalle en

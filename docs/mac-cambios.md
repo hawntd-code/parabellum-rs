@@ -594,6 +594,52 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-11-02 · 0.42.0: actualizar modpacks, banco de pruebas, reportes, Discord, skins PNG e instalador
+
+Lo que pidió Juan el 2026-11-02 para estar a la altura de otros launchers. **Necesita reglas nuevas de
+Firebase (`crashReports` y `crashReportsLast`)**: Juan las publica antes que la versión. Están probadas en
+el emulador (`docs/probar-reglas.py`, «TODO BIEN»).
+
+- **Actualizar un modpack en la misma instancia** (`actualizar.rs` nuevo; `modpack_actualizacion` y
+  `actualizar_modpack` en `main.rs`; aviso con botón en la página de la instancia): los de Modrinth y
+  CurseForge. La versión nueva se instala aparte y se le pasan los mundos y opciones, los mods que agregó el
+  jugador (salvo que ya vengan en la nueva: se comparan los ids de mod), los ajustes que cambió (si la
+  versión nueva no cambió ese archivo) y los mods del modpack que desactivó. Lo reemplazado queda en un
+  respaldo recuperable. Si cambia la versión de Minecraft, se avisa. Comando de prueba
+  `--actualizar-modpack <instancia> [versión]`. Probado con Fabulously Optimized 6.3.3 → 6.3.4.
+- **Banco de modpacks** (`docs/banco-modpacks.py`, `.github/workflows/banco.yml`, comando `--populares`):
+  cada lunes GitHub instala y revisa los 8 modpacks más descargados de cada sitio.
+- **Reportes de fallos** (`fallos.rs`, ajuste `crashReports`, pregunta en el doctor): ver
+  [desarrollo.md](desarrollo.md) › «Reportes de fallos».
+- **Compartir el registro** (pestaña Registro › «Compartir»): lo sube a mclo.gs sin datos personales.
+- **Discord** (`discord.rs`, ajuste `discord`, `plataforma::discord_ipc`): con Discord abierto, muestra qué
+  instancia se juega. Necesita el id de la aplicación de Parabellum en Discord (`discordClientId` en
+  `config-integrada.json`); sin él no hace nada.
+- **Skins con PNG propio** (`skins.rs` › `skin_subir`, `puente-curseforge/main.py` › `/skins/…`): el puente
+  las sube a Mojang por MineSkin. Solo aparece si el puente tiene `MINESKIN_API_KEY`.
+- **Instalador** (`tauri.conf.json` › `bundle`, `src-tauri/windows/instalador.nsh`, `plataforma::data_root` y
+  `register_version`): ver [desarrollo.md](desarrollo.md) › «Carpeta portable e instalador». El zip portable
+  sigue igual.
+- **Las copias «antes de restaurar» de los mundos** (`.lanzador/respaldos-mundos`) ahora se conservan al
+  actualizar un paquete de Drive (`PRESERVED_ON_UPDATE`).
+- **Versiones firmadas** (`firma.rs`, `plataforma::SIGNED_UPDATES`): el zip de cada versión se firma al
+  publicarla (ed25519, con la clave de Juan fuera del repo) y Windows solo instala actualizaciones firmadas.
+  Si alguien entrara al Drive, no podría repartir un exe suyo. Ver [desarrollo.md](desarrollo.md) › «Publicar
+  una versión».
+- **Auditoría de seguridad** (2026-11-02): no hay claves en el historial de git ni en los exe publicados; las
+  extracciones de zip no salen de su carpeta; los enlaces solo se abren si son http(s); los servidores
+  locales escuchan en 127.0.0.1; el portal de CurseForge solo navega a curseforge.com y su CDN; el chat y las
+  descripciones se limpian antes de mostrarse; las reglas de Firebase no dejan listar nada completo.
+  Pendiente de Juan: en Google Cloud, que la clave de Drive (`driveApiKey`) solo sirva para la Drive API.
+- **Coherencia de la interfaz**: todos los controles normales miden 40 px, los botones pequeños 32 y los
+  redondos pequeños 30; las esquinas usan las variables `--r-*`; y hay un solo color de advertencia
+  (`--warn`, con su tono para el tema claro: `--warning` se quitó).
+- Mac: compilar y probar. Nuevos en el contrato de `plataforma`: `discord_ipc` (socket de Discord en la
+  carpeta temporal; probarlo con Discord abierto), `register_version` (en Mac no hace nada) y
+  `SIGNED_UPDATES` (en Mac `false` por ahora: para pasarlo a `true`, Diego crea su clave, agrega la pública
+  a `firma.rs › TRUSTED` y firma al publicar). El `bundle` de `tauri.conf.json` no afecta a
+  `mac/empaquetar.sh`.
+
 ### 2026-11-02 · 0.41.0: arreglos del reporte de Juan, mundos en Drive y skins
 
 Juan reportó el 2026-11-01 varios fallos; esta versión los corrige y agrega dos cosas que pidió. **Necesita

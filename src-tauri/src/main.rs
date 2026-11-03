@@ -7,6 +7,7 @@ mod identidad;
 // Notificaciones y accesos directos: cada sistema tiene los suyos (ver plataforma/).
 use plataforma::{accesos, avisos};
 mod actividad;
+mod actualizar;
 mod ajustes;
 mod ajustes_juego;
 mod amigos;
@@ -29,8 +30,11 @@ mod curseforge;
 mod curseforge_manual;
 mod curseforge_portal;
 mod descargas;
+mod discord;
 mod download;
+mod fallos;
 mod favoritos;
+mod firma;
 mod drive;
 mod drive_mundos;
 mod espejo;
@@ -189,6 +193,9 @@ fn herramientas_creador(state: State<AppState>, activar: bool) -> Result<bool, S
 
 #[tauri::command]
 fn guardar_ajustes(app: AppHandle, ajustes: Settings) -> Result<Settings, String> {
+    if !ajustes.discord {
+        discord::show(None);
+    }
     // Con todos sus efectos (ver ajustes.rs: lo mismo usan las tarjetas del soporte).
     ajustes::save_all(&app, ajustes)
 }
@@ -761,6 +768,10 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
     let pid = child.id();
     let started = chrono::Utc::now().timestamp_millis();
     state.games.lock().unwrap().insert(id.clone(), pid);
+    if state.settings.lock().unwrap().discord {
+        let loader = if instance.loader == "Vanilla" { String::new() } else { format!(" · {}", instance.loader) };
+        discord::show(Some(discord::Activity { details: instance.name.clone(), state: format!("Minecraft {}{loader}", instance.minecraft_version), start: started / 1000 }));
+    }
     // Un hilo espera a que el juego termine para avisar a la interfaz (y explicar el error si lo hubo).
     std::thread::spawn(move || {
         let code = child.wait().ok().and_then(|s| s.code());
@@ -769,6 +780,9 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
         let state = app.state::<AppState>();
         let stopped = state.stopped.lock().unwrap().remove(&id);
         state.games.lock().unwrap().remove(&id);
+        if state.games.lock().unwrap().is_empty() {
+            discord::show(None);
+        }
         // Con código distinto de 0, o si dejó un informe de fallo (la pantalla de error de Forge sale con 0).
         let failed = !stopped && (code.is_some_and(|c| c != 0) || diagnostico::crash_report_since(&instance, started));
         // Si fue por el mod de Parabellum, la próxima vez se juega sin él.
@@ -780,6 +794,15 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
             diagnostico::after_crash(&instance, &diagnostico::CrashContext { since_ms: started, exit_code: code, ram_gb, system_ram_gb: system_ram_gb() })
         });
         let code = if stopped { None } else if failed { Some(code.filter(|c| *c != 0).unwrap_or(1)) } else { code };
+        // Si el jugador lo permitió, el fallo se reporta solo (fallos.rs).
+        if let Some(diagnosis) = &diagnosis {
+            if state.settings.lock().unwrap().crash_reports == Some(true) {
+                let (report, sender) = (fallos::build(&instance, diagnosis, code, started), app.clone());
+                tauri::async_runtime::spawn(async move {
+                    let _ = fallos::send(&sender, report).await;
+                });
+            }
+        }
         let after_close=app.clone();let closed_id=id.clone();
         tauri::async_runtime::spawn(async move{
             soporte::settle_pending_now(&after_close,Some(closed_id.clone())).await;
@@ -989,6 +1012,31 @@ struct LogText {
 fn registro(state: State<AppState>, id: String) -> Result<LogText, String> {
     let (file, text) = launch::read_log(&instance_or_error(&state, &id)?, 400_000);
     Ok(LogText { file, text })
+}
+
+/// Sube el registro a mclo.gs (el sitio que usan los autores de mods para pedir registros) y devuelve el
+/// enlace. Sin la carpeta del usuario, correos ni claves (`reporte::redact`): quien tenga el enlace lo ve.
+#[tauri::command]
+async fn compartir_registro(state: State<'_, AppState>, id: String) -> Result<String, String> {
+    let instance = instance_or_error(&state, &id)?;
+    let (_, text) = tauri::async_runtime::spawn_blocking(move || launch::read_log(&instance, 4_000_000)).await.map_err(|e| e.to_string())?;
+    if text.trim().is_empty() {
+        return Err(t!("Todavía no hay registro: abre el juego una vez.", "There is no log yet: open the game once."));
+    }
+    // mclo.gs acepta hasta 25 000 líneas: van las últimas, que es donde está el error.
+    let lines: Vec<&str> = text.lines().collect();
+    let content = reporte::redact(&lines[lines.len().saturating_sub(25_000)..].join("\n"));
+    let failed = || t!("No se pudo subir el registro a mclo.gs. Revisa tu internet o usa «Copiar».", "Could not upload the log to mclo.gs. Check your internet or use «Copy».");
+    let response: serde_json::Value = download::client()
+        .post("https://api.mclo.gs/1/log")
+        .form(&[("content", content)])
+        .send()
+        .await
+        .map_err(|_| failed())?
+        .json()
+        .await
+        .map_err(|_| failed())?;
+    response["url"].as_str().filter(|url| url.starts_with("https://mclo.gs/")).map(String::from).ok_or_else(failed)
 }
 
 #[tauri::command]
@@ -1765,6 +1813,140 @@ async fn install_curseforge_modpack(state: &AppState, proyecto: &str, version: O
     let result = import_modpack(&download.file, &paths, Some(download.title.clone()), icon, source, &running, ram, progress).await;
     let _ = std::fs::remove_file(&download.file);
     result
+}
+
+/// Una versión más nueva del modpack de una instancia, para ofrecer actualizarla.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ModpackUpdate {
+    version_id: String,
+    version_number: String,
+    /// Minecraft de la versión nueva, si cambia: los mundos se convierten y no vuelven a abrir en el anterior.
+    minecraft: Option<String>,
+}
+
+/// ¿Hay una versión más nueva del modpack de esta instancia? (Solo los de Modrinth y CurseForge.)
+#[tauri::command]
+async fn modpack_actualizacion(state: State<'_, AppState>, id: String) -> Result<Option<ModpackUpdate>, String> {
+    let instance = instance_or_error(&state, &id)?;
+    let (Some(project), Some(installed)) = (instance.modpack_project.clone(), instance.modpack_version.clone()) else { return Ok(None) };
+    let versions = if curseforge::is_curseforge(&project) {
+        curseforge::project_versions(&project, &[], &[]).await?
+    } else {
+        modrinth::project_versions(&project, modrinth::MODPACK_LOADERS, &[]).await?
+    };
+    let Some(latest) = modrinth::best(&versions) else { return Ok(None) };
+    // Una beta más nueva que el jugador ya tenga no se cambia por la versión estable anterior.
+    let newer = latest.id != installed && versions.iter().find(|v| v.id == installed).is_none_or(|current| latest.published > current.published);
+    if !newer {
+        return Ok(None);
+    }
+    let games: Vec<&String> = latest.game_versions.iter().filter(|v| v.starts_with(|c: char| c.is_ascii_digit())).collect();
+    let minecraft = (!games.is_empty() && !games.iter().any(|v| **v == instance.minecraft_version)).then(|| games[0].clone());
+    Ok(Some(ModpackUpdate { version_id: latest.id.clone(), version_number: latest.version_number.clone(), minecraft }))
+}
+
+/// Actualiza el modpack de la instancia a otra versión (la más nueva si no se dice), en la misma instancia:
+/// conserva mundos, opciones, lo que agregó el jugador y los ajustes que cambió (actualizar.rs).
+#[tauri::command]
+async fn actualizar_modpack(app: AppHandle, state: State<'_, AppState>, id: String, version: Option<String>, tarea: Option<String>) -> Result<actualizar::Summary, String> {
+    let instance = instance_or_error(&state, &id)?;
+    // Mientras dura, no se puede abrir el juego ni copiar o restaurar sus mundos.
+    let _guard = mundos::starting(&app, "instancia", &id)?;
+    let job = descargas::start(tarea, "modpack", t!("Actualizar {}", "Update {}", instance.name))
+        .queued()
+        .retry("actualizar_modpack", serde_json::json!({ "id": id, "version": version }));
+    job.instance(Some(id.clone()));
+    let progress = job.progress("importar");
+    let paths = state.paths.clone();
+    let ram = state.settings.lock().unwrap().ram_gb;
+    job.run(update_modpack(&paths, &instance, version.as_deref(), ram, progress)).await
+}
+
+/// Lo de `actualizar_modpack` (también para el comando `--actualizar-modpack`).
+async fn update_modpack(
+    paths: &Paths,
+    instance: &instances::Instance,
+    version: Option<&str>,
+    ram: u32,
+    progress: impl Fn(String, f64) + Send + Sync + Clone + 'static,
+) -> Result<actualizar::Summary, String> {
+    let (Some(project), Some(installed)) = (instance.modpack_project.clone(), instance.modpack_version.clone()) else {
+        return Err(t!("Esta instancia no viene de un modpack de Modrinth o CurseForge.", "This instance does not come from a Modrinth or CurseForge modpack."));
+    };
+    let curse = curseforge::is_curseforge(&project);
+    let temp = paths.data.join("temporal");
+    progress(t!("Descargando la versión nueva del modpack…", "Downloading the new modpack version…"), 0.0);
+    let download = download_pack(curse, &project, version, &temp).await?;
+    let result = async {
+        if download.version_id == installed {
+            return Err(t!("Ya tienes esa versión del modpack.", "You already have that modpack version."));
+        }
+        let new_pack = actualizar::PackFiles::read(&download.file)?;
+        // Lo que traía la versión instalada, para saber qué es del modpack y qué agregó el jugador.
+        progress(t!("Revisando la versión que tienes…", "Checking the version you have…"), 0.03);
+        let old_pack = match download_pack(curse, &project, Some(&installed), &temp).await {
+            Ok(old) => {
+                let read = actualizar::PackFiles::read(&old.file);
+                let _ = std::fs::remove_file(&old.file);
+                read.ok()
+            }
+            Err(_) => None,
+        }
+        .ok_or(t!(
+            "No se pudo bajar la versión que tienes del modpack para comparar. Revisa tu internet y vuelve a intentarlo.",
+            "Could not download the modpack version you have to compare. Check your internet and try again."
+        ))?;
+        // La versión nueva se instala aparte, igual que de cero.
+        let staging = temp.join(format!("actualizar-{}", chrono::Utc::now().timestamp_millis()));
+        let mut staged_paths = paths.clone();
+        staged_paths.instances = staging.clone();
+        let source = serde_json::json!({
+            "source": if curse { "curseforge" } else { "modrinth" },
+            "projectId": download.project_id,
+            "versionId": download.version_id,
+            "versionNumber": download.version_number,
+        });
+        let report = progress.clone();
+        let imported = import_modpack(&download.file, &staged_paths, Some(instance.name.clone()), None, source, &HashSet::new(), ram, move |stage, f| report(stage, 0.05 + f * 0.85)).await;
+        let outcome = async {
+            let imported = imported?;
+            progress(t!("Pasando tus mundos, mods y ajustes…", "Carrying over your worlds, mods and settings…"), 0.92);
+            let fresh = imported.id.as_deref().and_then(|f| instances::find(&staged_paths, f)).ok_or(t!("No se pudo leer la versión nueva.", "Could not read the new version."))?;
+            let (paths, old) = (paths.clone(), instance.clone());
+            let label = t!("Antes de actualizar a {}", "Before updating to {}", download.version_number);
+            let mut summary = tauri::async_runtime::spawn_blocking(move || actualizar::apply(&paths, &old, &fresh, &old_pack, &new_pack, label)).await.map_err(|e| e.to_string())??;
+            summary.version = download.version_number.clone();
+            summary.warning = imported.warning;
+            summary.manual = imported.manual;
+            Ok(summary)
+        }
+        .await;
+        let _ = std::fs::remove_dir_all(&staging);
+        outcome
+    }
+    .await;
+    let _ = std::fs::remove_file(&download.file);
+    progress(t!("Listo", "Done"), 1.0);
+    result
+}
+
+/// El archivo de una versión de un modpack de CurseForge o de Modrinth.
+struct PackDownload {
+    file: PathBuf,
+    project_id: String,
+    version_id: String,
+    version_number: String,
+}
+
+async fn download_pack(curse: bool, project: &str, version: Option<&str>, temp: &Path) -> Result<PackDownload, String> {
+    Ok(if curse {
+        let d = curseforge::download_modpack(project, version, temp).await?;
+        PackDownload { file: d.file, project_id: d.project_id, version_id: d.version_id, version_number: d.version_number }
+    } else {
+        let d = modrinth::download_modpack(project, version, temp).await?;
+        PackDownload { file: d.file, project_id: d.project_id, version_id: d.version_id, version_number: d.version_number }
+    })
 }
 
 /// Arma en este PC una instancia que compartió un amigo por el chat. Devuelve su id.
@@ -3031,6 +3213,7 @@ fn system_ram_gb() -> u32 {
 ///   --jugar <instancia> [servidor]      abre el juego (y entra al servidor)
 ///   --probar-juego <instancia> [seg]    abre el juego, espera al menú principal y lo cierra
 ///   --buscar <texto> [mod|resourcepack|shader] [loader] [versión]   busca en Modrinth
+///   --populares <n> [curseforge]        los n modpacks más descargados (id y nombre, para el banco)
 ///   --instalar <instancia> <proyecto> [versión]                     instala con dependencias
 ///   --actualizaciones <instancia> [aplicar]
 ///   --exportar <instancia> <carpeta> [con-mundos]   paquete para Drive/USB (con la base de Minecraft)
@@ -3380,6 +3563,29 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             }
             Ok(out)
         }
+        "--firma" => {
+            // Si este PC puede firmar versiones (y con qué clave pública, para firma.rs › TRUSTED).
+            Ok(match firma::public_key() {
+                Some(public) => format!("Clave privada en {}\nPública: {public}\n", firma::key_path().unwrap().display()),
+                None => format!("No hay clave para firmar en {:?}\n", firma::key_path()),
+            })
+        }
+        "--populares" => {
+            // Para docs/banco-modpacks.py: una línea por modpack, «id<TAB>nombre».
+            let count: usize = args.get(1).and_then(|n| n.parse().ok()).unwrap_or(10).clamp(1, 50);
+            let query = modrinth::SearchQuery {
+                query: String::new(),
+                kind: "modpack".into(),
+                loaders: Vec::new(),
+                game_version: None,
+                categories: Vec::new(),
+                sort: "downloads".into(),
+                offset: 0,
+                source: args.get(2).cloned().unwrap_or_default(),
+            };
+            let results = tauri::async_runtime::block_on(buscar_contenido(query))?;
+            Ok(results.hits.iter().take(count).map(|hit| format!("{}\t{}\n", hit.id, hit.title.replace('\t', " "))).collect())
+        }
         "--instalar" => {
             let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
             let project = args.get(2).ok_or("Falta el proyecto.")?;
@@ -3529,6 +3735,27 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                 |_, _| {},
             ))?;
             Ok(format!("{} ({}) carpeta {:?}, actualizada: {}, en {:.0} s", result.name, result.kind, result.id, result.updated, started.elapsed().as_secs_f64()))
+        }
+        "--actualizar-modpack" => {
+            let id = args.get(1).ok_or("Falta la instancia.")?;
+            let instance = instances::find(paths, id).ok_or("No existe esa instancia.")?;
+            let started = std::time::Instant::now();
+            let summary = tauri::async_runtime::block_on(update_modpack(paths, &instance, args.get(2).map(String::as_str), settings.ram_gb, |_, _| {}))?;
+            let mut out = format!("{} -> {} en {:.0} s\n", instance.name, summary.version, started.elapsed().as_secs_f64());
+            out += &format!(
+                "SIGUEN: {}\nYA VIENEN: {}\nAJUSTES: {}\nDESACTIVADOS: {}\n",
+                summary.kept.join(", "),
+                summary.replaced.join(", "),
+                summary.settings,
+                summary.disabled
+            );
+            if let Some(warning) = &summary.warning {
+                out += &format!("AVISO: {warning}\n");
+            }
+            for file in &summary.manual {
+                out += &format!("MANUAL: {}/{}\n", file.folder, file.file_name);
+            }
+            Ok(out)
         }
         "--instalar-modpack" => {
             let project = args.get(1).ok_or("Falta el proyecto.")?;
@@ -4126,6 +4353,8 @@ fn main() {
             cuenta::startup(app.handle());
             hosting::init(app.handle());
             skins::init(app.handle());
+            std::thread::spawn(|| plataforma::register_version(env!("CARGO_PKG_VERSION")));
+            discord::init(&app.state::<AppState>().config.discord_client_id);
             mundos::resume_startup(app.handle());
             Ok(())
         })
@@ -4158,12 +4387,18 @@ fn main() {
             mundos::mundos_destinos,
             mundos::mundos_exportar,
             mundos::mundos_borrar,
+            modpack_actualizacion,
+            actualizar_modpack,
             mundos::mundos_borrar_revision,
             skins::skin_mia,
             skins::skin_buscar,
             skins::skin_usar,
             skins::skin_quitar,
             skins::skins_de,
+            skins::skin_png_disponible,
+            skins::skin_subir,
+            fallos::enviar_reporte_fallo,
+            compartir_registro,
             mundos::mundos_restaurar,
             mundos::mundos_anteriores,
             mundos::mundos_volver_anterior,

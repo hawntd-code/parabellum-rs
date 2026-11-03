@@ -52,6 +52,9 @@ pub struct Manifest {
     pub archive_size: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub archive_sha256: Option<String>,
+    /// Solo en las versiones de Parabellum: la firma de quien la publicó (firma.rs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
     pub installed_size: u64,
     pub exported_at: String,
     /// Huella del contenido del paquete (identidad.rs): Minecraft, loader y los mods por su SHA-1.
@@ -643,9 +646,11 @@ pub struct Installed {
 }
 
 /// Lo que un modpack actualizado conserva de la instancia anterior.
-pub(crate) const PRESERVED_ON_UPDATE: [&str; 14] = [
+pub(crate) const PRESERVED_ON_UPDATE: [&str; 15] = [
     "saves", "screenshots", "schematics", "options.txt", "optionsof.txt", "optionsshaders.txt", "servers.dat", "XaeroWaypoints",
     "XaeroWorldMap", "xaero", "journeymap", "local", ".lanzador/ultima-partida.txt", ".lanzador/ajustes.json",
+    // Las copias «antes de restaurar» de los mundos (mundos.rs): son del jugador, como los mundos.
+    ".lanzador/respaldos-mundos",
 ];
 
 pub fn valid_folder_name(name: &str) -> bool {
@@ -780,7 +785,7 @@ pub fn install_with(zip_path: &Path, paths: &Paths, sources: &HashMap<String, Pa
 /// Actualiza sin arriesgar los mundos: la carpeta vieja se aparta, sus datos del jugador se mueven a la
 /// nueva y lo que queda de la vieja pasa a ser un respaldo (respaldos.rs). Si algo falla, todo vuelve
 /// como estaba.
-fn replace_keeping_player_data(destination: &Path, staging: &Path, backup: &Path) -> std::io::Result<()> {
+pub(crate) fn replace_keeping_player_data(destination: &Path, staging: &Path, backup: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(backup.parent().unwrap())?;
     std::fs::rename(destination, backup)?;
     let mut moved: Vec<&str> = Vec::new();

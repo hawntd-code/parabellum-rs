@@ -32,6 +32,11 @@ pub struct Settings {
     pub message_sound: bool,
     /// El panel de Parabellum dentro del juego (amigos, chat, capturas): el mod se pone al jugar.
     pub game_panel: bool,
+    /// Mandar un reporte (sin datos personales) cuando el juego se cae (fallos.rs). None: todavía no se
+    /// le preguntó; el doctor lo pregunta la primera vez.
+    pub crash_reports: Option<bool>,
+    /// Mostrar en Discord a qué se juega (discord.rs).
+    pub discord: bool,
     /// Tamaño de la interfaz (1.0 = 100 %).
     pub ui_scale: f64,
     /// "es" o "en"; vacío hasta el primer arranque, que toma el de Windows.
@@ -95,6 +100,8 @@ impl Default for Settings {
             notifications: true,
             message_sound: true,
             game_panel: true,
+            crash_reports: None,
+            discord: true,
             ui_scale: 1.0,
             language: String::new(),
             sidebar_hidden: false,

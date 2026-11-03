@@ -60,7 +60,7 @@ fn cf(id: u64) -> String {
 
 // ================= HTTP
 
-fn base() -> String {
+pub(crate) fn base() -> String {
     std::env::var("PARABELLUM_CURSEFORGE_PUENTE").ok().filter(|b| !b.trim().is_empty()).unwrap_or_else(|| BRIDGE.to_string()).trim().trim_end_matches('/').to_string()
 }
 

@@ -486,6 +486,7 @@
               <button class="circle-btn big" id="detail-more" title="Más opciones"><svg><use href="#i-more"/></svg></button>
             </div>
             <div class="cf-pending hidden" id="cf-detail-pending"></div>
+            <div class="cf-pending hidden" id="modpack-update" role="status"></div>
             <div class="tabs" id="detail-tabs">
               <button class="tab active" data-tab="content"><svg><use href="#i-cubes"/></svg>Contenido</button>
               <button class="tab" data-tab="logs"><svg><use href="#i-terminal"/></svg>Registro</button>
@@ -524,6 +525,7 @@
                 </div>
                 <label class="toggle"><input type="checkbox" id="log-follow" checked><span></span>Seguir el final</label>
                 <button class="btn" id="log-copy"><svg><use href="#i-copy"/></svg>Copiar</button>
+                <button class="btn" id="log-share"><svg><use href="#i-external"/></svg>Compartir</button>
                 <button class="btn" id="log-folder"><svg><use href="#i-folder"/></svg>Carpeta</button>
               </div>
               <div class="log-file faint" id="log-file"></div>
@@ -758,6 +760,14 @@
             <div class="setting">
               <div class="grow"><b>Parabellum dentro del juego</b><span>Amigos, mensajes, capturas e invitaciones sin salir de Minecraft (tecla O). En Fabric, Forge y NeoForge compatibles.</span></div>
               <label class="toggle big"><input type="checkbox" id="game-panel"><span></span></label>
+            </div>
+            <div class="setting">
+              <div class="grow"><b>Enviar reportes de fallos</b><span>Cuando el juego se cierra por un error, se manda qué falló (versiones, mods y el final del registro, sin datos personales) para poder arreglarlo. Solo lo ve quien administra Parabellum.</span></div>
+              <label class="toggle big"><input type="checkbox" id="crash-reports"><span></span></label>
+            </div>
+            <div class="setting">
+              <div class="grow"><b>Mostrar en Discord a qué juegas</b><span>Con Discord abierto, tus amigos de Discord ven qué instancia juegas y desde cuándo.</span></div>
+              <label class="toggle big"><input type="checkbox" id="discord-activity"><span></span></label>
             </div>
             <div class="setting">
               <div class="grow"><b>Mi mundo abierto por playit.gg</b><span>Una dirección pública para tu mundo abierto en LAN, para quien no usa Parabellum. Tus amigos de Parabellum entran sin esto.</span></div>
@@ -1410,6 +1420,7 @@
       <div class="doc-body">
         <ol class="doc-steps hidden" id="doctor-steps"></ol>
         <ol class="doc-findings" id="doctor-findings"></ol>
+        <div class="doc-consent hidden" id="doctor-consent" role="status"></div>
         <div class="doc-raw hidden" id="doctor-raw">
           <span class="doc-raw-label">Lo que dice el registro</span>
           <pre id="doctor-reason"></pre>

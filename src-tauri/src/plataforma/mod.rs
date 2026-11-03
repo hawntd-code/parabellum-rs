@@ -14,6 +14,7 @@
 //!   JAVA_RUNTIME_PLATFORM   plataforma de los Java de Mojang ("windows-x64", "mac-os-arm64"…).
 //!   EXECUTABLE              nombre del programa al actualizarse ("Parabellum.exe").
 //!   SELF_UPDATE             si se actualiza solo con el catálogo (si no, nunca pide actualizarse).
+//!   SIGNED_UPDATES          si solo acepta versiones firmadas (firma.rs) y si publicar exige firmarlas.
 //!   CLASSPATH_SEPARATOR     separador de rutas del classpath de Java (";" o ":").
 //!   FORGE_SERVER_ARGS       archivo de argumentos de los servidores de Forge y NeoForge (1.17 en
 //!                           adelante): "win_args.txt" o "unix_args.txt" (cambia el separador).
@@ -23,7 +24,10 @@
 //!
 //! Funciones
 //!   web_proxy_supported()          proxy por ventana (Windows; macOS 14 o posterior).
-//!   data_root(exe)                 la carpeta de Parabellum (instancias, base, datos…).
+//!   data_root(exe)                 la carpeta de Parabellum (instancias, base, datos…): junto al programa
+//!                                  si es portable; si se instaló, la del usuario (%APPDATA%\Parabellum,
+//!                                  ~/Library/Application Support/Parabellum).
+//!   register_version(versión)      anotar la versión en los programas instalados del sistema (Windows).
 //!   java_binary(home, windowed)    el ejecutable de Java dentro de un runtime.
 //!   make_executable(ruta)          marcar un archivo descargado como programa (en Windows no hace falta).
 //!   java_runtime_platform(major)   de qué plataforma se baja el Java de Mojang que pide una versión: la
@@ -52,6 +56,8 @@
 //!   argfile_bytes(texto)           el contenido del archivo @argumentos en la codificación que lee Java.
 //!   firewall_open() / open_firewall()   si el firewall deja entrar a los servidores (conexión directa)
 //!                                  y abrirlo (pide permiso de administrador una vez).
+//!   discord_ipc(n)                 la conexión local con Discord número n (0 a 9), si está abierto
+//!                                  (Windows: \\?\pipe\discord-ipc-n; Mac: un socket en la carpeta temporal).
 //!   trait CommandExt               .no_console() (sin ventana negra) y .detached() (el juego sigue
 //!                                  abierto aunque se cierre Parabellum).
 //!
@@ -76,6 +82,10 @@ pub use windows::*;
 mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::*;
+
+/// La conexión local con Discord (discord.rs): se lee y se escribe como un archivo.
+pub trait DiscordPipe: std::io::Read + std::io::Write + Send {}
+impl<T: std::io::Read + std::io::Write + Send> DiscordPipe for T {}
 
 /// El agente de playit.gg que se descarga para hostear (el oficial, comprobado con su SHA-256).
 pub struct AgentDownload {

@@ -10,6 +10,8 @@ window.skins = (() => {
   let mine = null;
   let preview = null;
   let busy = false;
+  /** El puente puede subir PNG propios (tiene la clave de MineSkin). */
+  let uploads = false;
 
   const overlay = document.createElement("div");
   overlay.id = "skin-dialog";
@@ -101,6 +103,7 @@ window.skins = (() => {
       <div class="sk-side">${status}
         ${signedIn ? `<label class="label" for="sk-name">${t("Nombre de una cuenta premium", "Name of a premium account")}</label>
         <div class="sk-search"><input id="sk-name" maxlength="16" autocomplete="off" spellcheck="false" placeholder="${t("Por ejemplo, Notch", "For example, Notch")}" value="${html(preview?.name ?? "")}"><button class="btn" data-sk="search">${icon("search")}${t("Buscar", "Look up")}</button></div>
+        ${uploads ? `<div class="sk-upload"><span class="faint">${t("O sube la tuya: un PNG de 64×64, como los de Minecraft.", "Or upload your own: a 64×64 PNG, like Minecraft's.")}</span><label class="check"><input type="checkbox" id="sk-slim"><span>${t("Brazos delgados (Alex)", "Slim arms (Alex)")}</span></label><button class="btn" data-sk="upload">${icon("upload")}${t("Subir PNG…", "Upload PNG…")}</button></div>` : ""}
         <div class="field-error hidden" id="sk-error"></div>
         <div class="sk-actions">${preview ? `<button class="btn primary" data-sk="use">${icon("check")}${t("Usar esta skin", "Use this skin")}</button><button class="btn" data-sk="cancel">${t("Volver a la mía", "Back to mine")}</button>` : mine ? `<button class="btn" data-sk="remove">${icon("trash")}${t("Volver a la de siempre", "Back to the default")}</button>` : ""}</div>`
         : `<div class="wb-notice">${icon("user")}<span><b>${t("Inicia sesión con Google", "Sign in with Google")}</b>${t("Tu skin se guarda en tu cuenta de Parabellum, para que la vean tus amigos en cualquier PC.", "Your skin is saved in your Parabellum account, so your friends see it on any computer.")}</span></div><div class="sk-actions"><button class="btn primary" data-sk="sign-in">${t("Iniciar sesión", "Sign in")}</button></div>`}
@@ -120,8 +123,9 @@ window.skins = (() => {
     preview = null;
     openModal("#skin-dialog");
     $("#sk-body").innerHTML = `<div class="content-loading"><span class="spinner small"></span></div>`;
-    try { mine = state.social?.connected ? await invoke("skin_mia") : null; }
-    catch (error) { mine = null; render(); return fail(error); }
+    try {
+      [mine, uploads] = state.social?.connected ? await Promise.all([invoke("skin_mia"), invoke("skin_png_disponible").catch(() => false)]) : [null, false];
+    } catch (error) { mine = null; render(); return fail(error); }
     render();
     $("#sk-name")?.focus();
   }
@@ -142,6 +146,16 @@ window.skins = (() => {
         if (!name) return fail(t("Escribe el nombre de una cuenta premium.", "Type the name of a premium account."));
         preview = { name, view: await invoke("skin_buscar", { nombre: name }) };
         render();
+      }
+      if (action === "upload") {
+        const uploaded = await invoke("skin_subir", { delgada: !!$("#sk-slim")?.checked });
+        if (uploaded) {
+          mine = uploaded;
+          preview = null;
+          render();
+          await remember(myName(), mine);
+          toast(t("Listo: tus amigos te verán con tu skin desde la próxima partida.", "Done: your friends will see you with your skin from the next game."));
+        }
       }
       if (action === "use") {
         mine = await invoke("skin_usar", { nombre: preview.name });
@@ -187,5 +201,7 @@ window.skinsDemo = async (command, args) => {
   if (command === "skin_usar") return (demo.mine = { image: image(), slim: false, from: args.nombre, at: Date.now() });
   if (command === "skin_quitar") { demo.mine = null; return; }
   if (command === "skins_de") return {};
+  if (command === "skin_png_disponible") return true;
+  if (command === "skin_subir") return (demo.mine = { image: image(), slim: args.delgada, from: null, at: Date.now() });
   throw new Error("Demostración de skins: comando desconocido");
 };

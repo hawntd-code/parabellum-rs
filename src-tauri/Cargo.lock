@@ -3390,12 +3390,13 @@ dependencies = [
 
 [[package]]
 name = "parabellum"
-version = "0.41.0"
+version = "0.42.0"
 dependencies = [
  "base64 0.22.1",
  "block2",
  "chrono",
  "crc32fast",
+ "ed25519-dalek",
  "flate2",
  "futures",
  "getrandom 0.2.17",

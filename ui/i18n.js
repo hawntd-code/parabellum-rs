@@ -154,6 +154,12 @@ const HTML_EN = {
   "Un launcher nuevo desde cero: más ligero, más rápido y con un diseño renovado. Crea instancias de cualquier versión de Minecraft.": "A new launcher from scratch: lighter, faster and with a fresh design. Create instances of any Minecraft version.",
   "Octubre 2026": "October 2026",
   "Parabellum dentro del juego": "Parabellum in game",
+  "Enviar reportes de fallos": "Send crash reports",
+  "Compartir": "Share",
+  "Mostrar en Discord a qué juegas": "Show on Discord what you play",
+  "Con Discord abierto, tus amigos de Discord ven qué instancia juegas y desde cuándo.": "With Discord open, your Discord friends see which instance you play and since when.",
+  "Cuando el juego se cierra por un error, se manda qué falló (versiones, mods y el final del registro, sin datos personales) para poder arreglarlo. Solo lo ve quien administra Parabellum.":
+    "When the game closes because of an error, what failed is sent (versions, mods and the end of the log, without personal data) so it can be fixed. Only Parabellum's administrators see it.",
   "Leer el EULA": "Read the EULA",
   "Grupos": "Groups",
   "De tus amigos": "From your friends",

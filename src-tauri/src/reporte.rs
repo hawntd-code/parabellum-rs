@@ -14,7 +14,7 @@ use crate::paths::Paths;
 pub const MAX: usize = 1500;
 
 /// Corta un texto a `max` letras (sin partir un carácter).
-fn cut(text: &str, max: usize) -> String {
+pub(crate) fn cut(text: &str, max: usize) -> String {
     let text = text.trim();
     if text.chars().count() <= max {
         text.to_string()

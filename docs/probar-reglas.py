@@ -340,5 +340,20 @@ check("El nombre de origen es de Minecraft", False, "PUT", "skins/A", "A", {**sk
 check("Sin «from» también", True, "PUT", "skins/A", "A", {k: v for k, v in skin.items() if k != "from"})
 check("A quita su skin", True, "DELETE", "skins/A", "A")
 
+# ---------- 0.41: reportes de fallos (fallos.rs) ----------
+report = {"at": TS, "app": "0.41.0", "os": "windows x86_64", "minecraft": "1.20.1", "loader": "Fabric 0.16.10", "modpack": "", "mods": 3, "problem": "Falta un mod", "code": 1, "log": "registro"}
+rid = lambda n: f"{n:032x}"
+check("A manda un reporte", True, "PATCH", "", "A", {f"crashReports/A/{rid(1)}": report, "crashReportsLast/A": TS})
+check("A no manda otro antes de un minuto", False, "PATCH", "", "A", {f"crashReports/A/{rid(2)}": report, "crashReportsLast/A": TS})
+check("Nadie lee los reportes, ni quien los mandó", False, "GET", f"crashReports/A/{rid(1)}", "A")
+check("B no lee los de A", False, "GET", "crashReports/A", "B")
+check("No se listan", False, "GET", "crashReports", "B")
+check("B no manda a nombre de A", False, "PATCH", "", "B", {f"crashReports/A/{rid(3)}": report, "crashReportsLast/B": TS})
+check("Sin marcar la hora no pasa", False, "PATCH", "", "B", {f"crashReports/B/{rid(4)}": report})
+check("No acepta campos de más", False, "PATCH", "", "B", {f"crashReports/B/{rid(5)}": {**report, "correo": "x@y.z"}, "crashReportsLast/B": TS})
+check("El registro tiene tope", False, "PATCH", "", "B", {f"crashReports/B/{rid(6)}": {**report, "log": "x" * 21001}, "crashReportsLast/B": TS})
+check("B manda el suyo", True, "PATCH", "", "B", {f"crashReports/B/{rid(7)}": report, "crashReportsLast/B": TS})
+check("No se reescribe uno ya mandado", False, "PUT", f"crashReports/B/{rid(7)}", "B", report)
+
 print("\nTODO BIEN" if not fails else f"\n{fails} MAL")
 sys.exit(1 if fails else 0)

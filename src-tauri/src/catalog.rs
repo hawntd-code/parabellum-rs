@@ -1206,6 +1206,15 @@ pub fn newest_stable(catalog: &[Entry]) -> Option<&Entry> {
 pub async fn apply_launcher_update(entry: &Entry, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + Clone + 'static) -> Result<PathBuf, String> {
     let (zip, is_copy) = fetch(entry, paths, progress.clone()).await?;
     verify(&zip, &entry.manifest).await?;
+    // La huella ya coincide con el zip: falta que la haya firmado quien publica Parabellum.
+    if crate::plataforma::SIGNED_UPDATES {
+        if let Err(error) = crate::firma::verify(&entry.manifest.version, entry.manifest.archive_sha256.as_deref().unwrap_or_default(), entry.manifest.signature.as_deref()) {
+            if is_copy {
+                let _ = std::fs::remove_file(&zip);
+            }
+            return Err(error);
+        }
+    }
     let staging = paths.data.join("actualizacion");
     std::fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
     let installed = crate::plataforma::lanzador::install(&zip, &staging);
@@ -1256,6 +1265,16 @@ pub fn publish_launcher(out_dir: &Path, notes: &str, test: bool) -> Result<PathB
     }
     add_licenses(&mut zip)?;
     zip.finish()?;
+    let sha256 = packs::sha256_file(&zip_path).map_err(|e| e.to_string())?;
+    let signature = crate::firma::sign(version, &sha256);
+    if signature.is_none() && crate::plataforma::SIGNED_UPDATES {
+        let _ = std::fs::remove_file(&zip_path);
+        return Err(t!(
+            "Falta la clave para firmar la versión ({}). Sin firma, los Parabellum ya instalados no la aceptan.",
+            "The key to sign the version is missing ({}). Without a signature, installed Parabellum copies do not accept it.",
+            crate::firma::key_path().map(|p| p.display().to_string()).unwrap_or_default()
+        ));
+    }
     let manifest = Manifest {
         format: 1,
         kind: LAUNCHER_TYPE.into(),
@@ -1265,7 +1284,8 @@ pub fn publish_launcher(out_dir: &Path, notes: &str, test: bool) -> Result<PathB
         version: version.into(),
         archive: zip_name,
         archive_size: zip_path.metadata().map(|m| m.len()).unwrap_or(0),
-        archive_sha256: Some(packs::sha256_file(&zip_path).map_err(|e| e.to_string())?),
+        archive_sha256: Some(sha256),
+        signature,
         exported_at: chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, false),
         ..Default::default()
     };

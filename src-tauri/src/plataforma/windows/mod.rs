@@ -18,6 +18,8 @@ pub const MOJANG_OS: &str = "windows";
 pub const JAVA_RUNTIME_PLATFORM: &str = if cfg!(target_arch = "aarch64") { "windows-arm64" } else { "windows-x64" };
 pub const EXECUTABLE: &str = "Parabellum.exe";
 pub const SELF_UPDATE: bool = true;
+/// Solo se instalan versiones firmadas por quien publica Parabellum (firma.rs).
+pub const SIGNED_UPDATES: bool = true;
 pub const CLASSPATH_SEPARATOR: &str = ";";
 pub const FORGE_SERVER_ARGS: &str = "win_args.txt";
 pub const PLAYIT_AGENT: Option<AgentDownload> = Some(AgentDownload {
@@ -32,9 +34,36 @@ pub const WORLD_LOCK_BLOCKS_RENAME: bool = true;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const DETACHED_PROCESS: u32 = 0x0000_0008;
 
-/// Carpeta portable: todo cuelga de la carpeta del .exe (instancias, base, datos…).
+/// Lo que el instalador deja junto al exe (windows/instalador.nsh).
+const INSTALLED_MARKER: &str = "instalado.txt";
+
+fn installed(exe: &Path) -> bool {
+    exe.parent().is_some_and(|folder| folder.join(INSTALLED_MARKER).is_file())
+}
+
+/// Dónde viven instancias, base y datos. La versión portable (el zip, la de la escuela y las USB) los
+/// guarda junto al .exe, como siempre. La instalada, en %APPDATA%\Parabellum: la carpeta del programa
+/// es del instalador, y desinstalar no debe llevarse los mundos.
 pub fn data_root(exe: &Path) -> PathBuf {
-    exe.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."))
+    let folder = exe.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
+    match std::env::var_os("APPDATA") {
+        Some(appdata) if installed(exe) => PathBuf::from(appdata).join("Parabellum"),
+        _ => folder,
+    }
+}
+
+/// Si se instaló con el instalador: anota la versión en Aplicaciones de Windows (al actualizarse solo,
+/// el exe cambia sin pasar por el instalador).
+pub fn register_version(version: &str) {
+    let Ok(exe) = std::env::current_exe() else { return };
+    if !installed(&exe) {
+        return;
+    }
+    let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Parabellum";
+    let exists = Command::new("reg").args(["query", key, "/v", "DisplayVersion"]).no_console().output().ok().filter(|o| o.status.success());
+    if exists.is_some_and(|o| !String::from_utf8_lossy(&o.stdout).contains(version)) {
+        let _ = Command::new("reg").args(["add", key, "/v", "DisplayVersion", "/t", "REG_SZ", "/d", version, "/f"]).no_console().output();
+    }
 }
 
 // ================= Java
@@ -369,6 +398,12 @@ pub fn graphics_cards() -> Vec<String> {
 }
 
 /// Registro SRV de Minecraft: (destino, puerto).
+/// La conexión local con Discord: una tubería con nombre (como un archivo).
+pub fn discord_ipc(n: u8) -> Option<Box<dyn super::DiscordPipe>> {
+    let pipe = std::fs::OpenOptions::new().read(true).write(true).open(format!(r"\\?\pipe\discord-ipc-{n}")).ok()?;
+    Some(Box::new(pipe))
+}
+
 pub fn srv_lookup(host: &str) -> Option<(String, u16)> {
     use windows_sys::Win32::NetworkManagement::Dns::{DnsFree, DnsFreeRecordList, DnsQuery_W, DNS_QUERY_STANDARD, DNS_RECORDW, DNS_TYPE_SRV};
     let name: Vec<u16> = format!("_minecraft._tcp.{host}").encode_utf16().chain(std::iter::once(0)).collect();

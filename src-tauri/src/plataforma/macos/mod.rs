@@ -30,6 +30,8 @@ pub const JAVA_RUNTIME_PLATFORM: &str = if cfg!(target_arch = "aarch64") { "mac-
 // (lanzador.rs), con su propio id en el catálogo: nunca baja el .exe de Windows.
 pub const EXECUTABLE: &str = "Parabellum";
 pub const SELF_UPDATE: bool = true;
+/// TODO(mac): firmar las versiones de Mac (Diego, con su clave en firma.rs › TRUSTED) y pasarlo a true.
+pub const SIGNED_UPDATES: bool = false;
 pub const CLASSPATH_SEPARATOR: &str = ":";
 // El de Windows separa las rutas con «;» y aquí Java no encontraría la clase principal de Forge.
 pub const FORGE_SERVER_ARGS: &str = "unix_args.txt";
@@ -50,6 +52,9 @@ pub const WORLD_LOCK_BLOCKS_RENAME: bool = false;
 /// Dónde viven instancias, base y datos. Dentro de Parabellum.app no se puede escribir (y macOS la
 /// mueve a una carpeta temporal si viene de Descargas), así que van en ~/Library/Application Support.
 /// Fuera de una .app (compilando con cargo) queda junto al programa, como en Windows.
+/// En Mac no hay registro de programas instalados: nada que anotar.
+pub fn register_version(_version: &str) {}
+
 pub fn data_root(exe: &Path) -> PathBuf {
     let inside_app = exe.to_string_lossy().contains(".app/Contents/MacOS");
     match std::env::var_os("HOME") {
@@ -513,6 +518,17 @@ pub fn graphics_cards() -> Vec<String> {
 }
 
 /// Registro SRV de Minecraft con `dig` (viene con macOS).
+/// La conexión local con Discord: un socket en la carpeta temporal del usuario.
+pub fn discord_ipc(n: u8) -> Option<Box<dyn super::DiscordPipe>> {
+    let folders = ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"].iter().filter_map(|v| std::env::var(v).ok()).chain(std::iter::once("/tmp".to_string()));
+    for folder in folders {
+        if let Ok(socket) = std::os::unix::net::UnixStream::connect(std::path::Path::new(&folder).join(format!("discord-ipc-{n}"))) {
+            return Some(Box::new(socket));
+        }
+    }
+    None
+}
+
 pub fn srv_lookup(host: &str) -> Option<(String, u16)> {
     let output = Command::new("dig").args(["+short", "SRV", &format!("_minecraft._tcp.{host}")]).output().ok()?;
     // Cada línea: «prioridad peso puerto destino.»

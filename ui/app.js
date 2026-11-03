@@ -743,6 +743,7 @@ function renderInstance() {
   showLaunching();
   $("#detail-join").disabled = running;
   curseforgeAssistant.render();
+  checkModpackUpdate(i);
   // Al abrir otra instancia se vuelve a la pestaña Contenido con su contenido.
   if (state.contentFor !== i.id) {
     state.contentFor = i.id;
@@ -1295,6 +1296,7 @@ function renderDoctor() {
     );
   $("#doctor-findings").innerHTML = rows;
   $("#doctor-findings").classList.toggle("hidden", !rows);
+  renderDoctorConsent();
   renderDoctorSteps();
   const raw = !!doctor.reason && !findings.length && !doctor.loading && !doctor.result?.ok;
   $("#doctor-raw").classList.toggle("hidden", !raw);
@@ -1401,6 +1403,39 @@ async function disableCulprit() {
 }
 
 /** Los pasos de «Probar y arreglar solo» (y de cada arreglo), como una línea de tiempo. */
+/** La primera vez que se cae el juego: ¿mandar el reporte del fallo? (fallos.rs) */
+function renderDoctorConsent() {
+  const doctor = state.doctor;
+  const box = $("#doctor-consent");
+  const ask = doctor.mode === "crash" && !doctor.loading && state.settings.crashReports == null && !!state.social?.connected && !doctor.reported;
+  box.classList.toggle("hidden", !ask);
+  if (!ask || box.dataset.for === doctor.id) return;
+  box.dataset.for = doctor.id;
+  box.innerHTML = `${icon("flag")}<span class="grow"><b>${t("¿Mandamos este fallo a Parabellum?", "Send this crash to Parabellum?")}</b>${t("Así se puede arreglar para todos. Va sin datos personales y solo lo ve quien administra Parabellum.", "That way it can be fixed for everyone. It goes without personal data and only Parabellum's administrators see it.")}</span><span class="doc-consent-actions"><button class="btn small ghost" data-consent="no">${t("No, gracias", "No, thanks")}</button><button class="btn small" data-consent="once">${t("Mandar este", "Send this one")}</button><button class="btn small primary" data-consent="always">${t("Mandar siempre", "Always send")}</button></span>`;
+  for (const button of $$("[data-consent]", box)) {
+    button.onclick = async () => {
+      const choice = button.dataset.consent;
+      $$("[data-consent]", box).forEach((b) => (b.disabled = true));
+      try {
+        if (choice === "no") {
+          state.settings = await invoke("guardar_ajustes", { ajustes: { ...state.settings, crashReports: false } });
+        } else {
+          const sent = await invoke("enviar_reporte_fallo", { id: doctor.id, siempre: choice === "always" });
+          if (choice === "always") state.settings = { ...state.settings, crashReports: true };
+          toast(sent ? t("Gracias: se mandó el reporte del fallo.", "Thanks: the crash report was sent.") : t("Inicia sesión con Google para mandar reportes.", "Sign in with Google to send reports."));
+        }
+        doctor.reported = true;
+        renderSettings();
+      } catch (error) {
+        toast(String(error), "error");
+      } finally {
+        box.dataset.for = "";
+        renderDoctorConsent();
+      }
+    };
+  }
+}
+
 function renderDoctorSteps() {
   const doctor = state.doctor;
   const list = $("#doctor-steps");
@@ -4556,6 +4591,8 @@ function renderSettings() {
   $("#notifications").checked = s.notifications ?? true;
   $("#message-sound").checked = s.messageSound ?? true;
   $("#game-panel").checked = s.gamePanel ?? true;
+  $("#crash-reports").checked = s.crashReports === true;
+  $("#discord-activity").checked = s.discord ?? true;
   $("#ram").max = Math.max(4, Math.min(32, state.systemRam - 2));
   $("#ram").value = s.ramGb;
   $("#ram-max").textContent = `${$("#ram").max} GB`;
@@ -4620,6 +4657,9 @@ async function saveSettings(extra = {}) {
         notifications: $("#notifications").checked,
         messageSound: $("#message-sound").checked,
         gamePanel: $("#game-panel").checked,
+        // Apagado y sin haber dicho nada todavía sigue «sin preguntar»: el doctor lo pregunta una vez.
+        crashReports: $("#crash-reports").checked ? true : state.settings.crashReports == null ? null : false,
+        discord: $("#discord-activity").checked,
         ...extra,
       },
     });
@@ -4808,6 +4848,27 @@ function wireEvents() {
     toast(t("Registro copiado: pégalo donde quieras pedir ayuda.", "Log copied: paste it wherever you want to ask for help."));
   };
   $("#log-folder").onclick = () => invoke("abrir_registro", { id: state.current.id });
+  // Para el autor de un mod (o un foro): un enlace de mclo.gs en lugar de pegar el registro entero.
+  $("#log-share").onclick = async () => {
+    const ok = await confirmAction({
+      title: t("¿Compartir el registro?", "Share the log?"),
+      text: t("Se sube a mclo.gs, el sitio que usan los autores de mods para ver registros, y te da un enlace. Quien tenga el enlace lo puede ver; antes se quitan tu carpeta de usuario, correos y claves.", "It is uploaded to mclo.gs, the site mod authors use to read logs, and you get a link. Anyone with the link can see it; your user folder, emails and keys are removed first."),
+      ok: t("Subir y copiar el enlace", "Upload and copy the link"),
+      primary: true,
+    });
+    if (!ok) return;
+    const button = $("#log-share");
+    button.disabled = true;
+    try {
+      const url = await invoke("compartir_registro", { id: state.current.id });
+      const copied = await navigator.clipboard.writeText(url).then(() => true, () => false);
+      toast(copied ? t(`Enlace copiado: ${url}`, `Link copied: ${url}`) : t(`Enlace del registro: ${url}`, `Log link: ${url}`));
+    } catch (error) {
+      toast(String(error), "error");
+    } finally {
+      button.disabled = false;
+    }
+  };
 
   // Clic derecho sobre una instancia (mosaicos, filas y barra lateral)
   document.addEventListener("contextmenu", (event) => {
@@ -4990,6 +5051,8 @@ function wireEvents() {
   $("#close-to-tray").onchange = () => saveSettings();
   $("#notifications").onchange = () => saveSettings();
   $("#game-panel").onchange = () => saveSettings();
+  $("#crash-reports").onchange = () => saveSettings();
+  $("#discord-activity").onchange = () => saveSettings();
   $("#message-sound").onchange = () => {
     saveSettings();
     // Al activarlo se oye cómo suena.
@@ -6048,6 +6111,76 @@ async function checkUpdates(id) {
 
 const availableUpdates = () => (state.updates.for === state.current?.id ? state.updates.list.filter((u) => !state.heldBack.has(u.versionId)) : []);
 
+// ---------- Actualizar el modpack de la instancia (actualizar.rs) ----------
+/** id de la instancia → { at, update }: se pregunta como mucho cada 10 minutos por instancia. */
+const modpackUpdates = new Map();
+
+async function checkModpackUpdate(instance) {
+  if (!instance.modpackProject || !instance.modpackVersion) return renderModpackUpdate(instance, null);
+  const known = modpackUpdates.get(instance.id);
+  renderModpackUpdate(instance, known?.update ?? null);
+  if (known && Date.now() - known.at < 600e3) return;
+  modpackUpdates.set(instance.id, { at: Date.now(), update: known?.update ?? null });
+  try {
+    const update = await invoke("modpack_actualizacion", { id: instance.id });
+    modpackUpdates.set(instance.id, { at: Date.now(), update });
+    if (state.page === "instance" && state.current?.id === instance.id) renderModpackUpdate(state.current, update);
+  } catch {
+    // Sin conexión: se vuelve a preguntar la próxima vez.
+    modpackUpdates.delete(instance.id);
+  }
+}
+
+function renderModpackUpdate(instance, update) {
+  const box = $("#modpack-update");
+  box.classList.toggle("hidden", !update);
+  const key = update ? `${instance.id}:${update.versionId}` : "";
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  if (!update) return void (box.innerHTML = "");
+  box.innerHTML = `<span class="cf-pending-icon">${icon("update")}</span><span class="grow"><b>${t(`Hay una versión nueva del modpack: ${escapeHtml(update.versionNumber)}`, `A new modpack version is available: ${escapeHtml(update.versionNumber)}`)}</b><span>${t("Se actualiza en esta misma instancia. Tus mundos, opciones, los mods que agregaste y los ajustes que cambiaste se quedan.", "It updates in this same instance. Your worlds, options, the mods you added and the settings you changed stay.")}</span></span><button class="btn small primary" id="modpack-update-go">${icon("update")}${t("Actualizar", "Update")}</button>`;
+  $("#modpack-update-go").onclick = () => updateModpack(instance, update);
+}
+
+async function updateModpack(instance, update) {
+  if (state.running.has(instance.id)) return toast(t("Cierra el juego antes de actualizar el modpack.", "Close the game before updating the modpack."), "error");
+  const minecraft = update.minecraft
+    ? t(` Esta versión pasa de Minecraft ${instance.minecraftVersion} a ${update.minecraft}: tus mundos se convierten al abrirlos y ya no abren en la versión anterior. Si quieres, respáldalos antes en Drive.`, ` This version moves from Minecraft ${instance.minecraftVersion} to ${update.minecraft}: your worlds are converted when opened and no longer open in the previous version. If you like, back them up in Drive first.`)
+    : "";
+  const ok = await confirmAction({
+    title: t(`¿Actualizar ${instance.name} a ${update.versionNumber}?`, `Update ${instance.name} to ${update.versionNumber}?`),
+    text: t("Se instala la versión nueva y se le pasan tus mundos, opciones, los mods que agregaste y los ajustes que cambiaste. Lo que reemplaza queda en un respaldo, por si quieres volver.", "The new version is installed and your worlds, options, the mods you added and the settings you changed are carried over. What it replaces is kept in a backup, in case you want to go back.") + minecraft,
+    ok: t("Actualizar", "Update"),
+    primary: !update.minecraft,
+  });
+  if (!ok) return;
+  const button = $("#modpack-update-go");
+  if (button) button.disabled = true;
+  try {
+    const result = await invoke("actualizar_modpack", { id: instance.id, version: update.versionId });
+    modpackUpdates.delete(instance.id);
+    await reloadInstances();
+    const fresh = state.instances.find((i) => i.id === instance.id);
+    if (fresh && state.current?.id === instance.id) {
+      state.current = fresh;
+      if (state.page === "instance") renderInstance();
+    }
+    invalidateContent(instance.id);
+    const parts = [t(`${instance.name} quedó en ${result.version}.`, `${instance.name} is now on ${result.version}.`)];
+    if (result.kept.length) parts.push(t(`${result.kept.length === 1 ? "Sigue" : "Siguen"} ${plural(result.kept.length, "mod o paquete tuyo", "mods o paquetes tuyos")}.`, `${result.kept.length} of your ${result.kept.length === 1 ? "mods or packs stays" : "mods or packs stay"}.`));
+    if (result.settings) parts.push(t(`Se conservaron ${plural(result.settings, "ajuste tuyo", "ajustes tuyos")}.`, `${result.settings} of your ${result.settings === 1 ? "settings was" : "settings were"} kept.`));
+    if (result.disabled) parts.push(t(`${plural(result.disabled, "mod sigue desactivado", "mods siguen desactivados")}.`, `${result.disabled} ${result.disabled === 1 ? "mod stays" : "mods stay"} disabled.`));
+    if (result.replaced.length) parts.push(t(`Ya vienen en el modpack: ${result.replaced.join(", ")}.`, `Already included in the modpack: ${result.replaced.join(", ")}.`));
+    toast(parts.join(" "));
+    if (result.warning) toast(result.warning, "error");
+    showManualDownloads({ ...result, id: instance.id });
+  } catch (error) {
+    toast(String(error), "error");
+  } finally {
+    if (button?.isConnected) button.disabled = false;
+  }
+}
+
 async function applyUpdates(files) {
   const id = state.current?.id;
   if (!id || !files.length) return;
@@ -6214,7 +6347,7 @@ function wireExploreEvents() {
     if (state.current?.modpack) {
       const ok = await confirmAction({
         title: t("¿Actualizar todos los mods del modpack?", "Update all the modpack's mods?"),
-        text: t(`${state.current.name} trae versiones que su autor probó juntas. Actualizarlas todas puede hacer que el juego no abra o que cambie cómo funciona. Si quieres el modpack al día, es mejor instalar su versión nueva.`, `${state.current.name} includes versions its author tested together. Updating them all can stop the game from opening or change how it works. If you want the modpack up to date, it is better to install its new version.`),
+        text: t(`${state.current.name} trae versiones que su autor probó juntas. Actualizarlas todas puede hacer que el juego no abra o que cambie cómo funciona. Si quieres el modpack al día, es mejor actualizar el modpack completo cuando salga una versión nueva (aparece arriba).`, `${state.current.name} includes versions its author tested together. Updating them all can stop the game from opening or change how it works. If you want the modpack up to date, it is better to update the whole modpack when a new version comes out (it shows up above).`),
         ok: t("Actualizar de todos modos", "Update anyway"),
       });
       if (!ok) return;
@@ -7437,7 +7570,7 @@ function demoInvoke(command, args = {}) {
   const instances = [
     { id: "Vanilla 1.21.1", name: "Vanilla 1.21.1", versionId: "1.21.1", minecraftVersion: "1.21.1", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: now - 3600e3, created: now - 86400e3 * 4 },
     { id: "Survival con amigos", name: "Survival con amigos", versionId: "26.2", minecraftVersion: "26.2", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: null, created: now - 3600e3 },
-    { id: "Better MC BMC4", name: "Better MC BMC4", versionId: "forge-47.4.20", minecraftVersion: "1.20.1", loader: "Forge", jvmArgs: [], icon: null, ramGb: 8, lastPlayed: now - 86400e3 * 2, created: now - 86400e3 * 10 },
+    { id: "Better MC BMC4", name: "Better MC BMC4", versionId: "forge-47.4.20", minecraftVersion: "1.20.1", loader: "Forge", jvmArgs: [], icon: null, ramGb: 8, modpack: "Better MC BMC4 v48.4 · Modrinth", modpackProject: "shFhR8Vx", modpackVersion: "v1", lastPlayed: now - 86400e3 * 2, created: now - 86400e3 * 10 },
     { id: "Minecraft++", name: "Minecraft++", versionId: "fabric-loader-0.19.5-26.1.2", minecraftVersion: "26.1.2", loader: "Fabric", loaderVersion: "0.19.5", jvmArgs: [], icon: null, ramGb: null, lastPlayed: null, created: now - 86400e3 * 9 },
     { id: "Creativo", name: "Creativo", versionId: "1.21.11", minecraftVersion: "1.21.11", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: now - 86400e3 * 6, created: now - 86400e3 * 20 },
     { id: "Skyblock", name: "Skyblock", versionId: "1.20.1", minecraftVersion: "1.20.1", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: now - 86400e3 * 15, created: now - 86400e3 * 30 },
@@ -7596,6 +7729,10 @@ function demoInvoke(command, args = {}) {
     );
   // Modrinth de ejemplo (con los iconos reales del CDN de Modrinth)
   const later = (value, ms = 350) => new Promise((resolve) => setTimeout(() => resolve(value), ms));
+  if (command === "modpack_actualizacion") return args.id === "Better MC BMC4" ? { versionId: "v2", versionNumber: "v48.5", minecraft: null } : null;
+  if (command === "actualizar_modpack") return later({ version: "v48.5", kept: ["mi-mod.jar"], replaced: [], settings: 3, disabled: 1, warning: null }, 1200);
+  if (command === "compartir_registro") return later("https://mclo.gs/demo123", 600);
+  if (command === "enviar_reporte_fallo") return true;
   const demoIcons = {
     AANobbMI: "https://cdn.modrinth.com/data/AANobbMI/295862f4724dc3f78df3447ad6072b2dcd3ef0c9_96.webp",
     YL57xq9U: "https://cdn.modrinth.com/data/YL57xq9U/18d0e7f076d3d6ed5bedd472b853909aac5da202_96.webp",

@@ -229,6 +229,53 @@
         }
       }
     },
+    "crashReports": {
+      "$uid": {
+        "$id": {
+          ".write": "auth != null && auth.uid === $uid && !data.exists() && newData.exists() && newData.parent().parent().parent().child('crashReportsLast').child(auth.uid).val() === now && (!root.child('crashReportsLast').child(auth.uid).exists() || root.child('crashReportsLast').child(auth.uid).val() < now - 60000)",
+          ".validate": "$id.matches(/^[0-9a-f]{32}$/) && newData.hasChildren(['at', 'app', 'os', 'minecraft', 'loader', 'modpack', 'mods', 'problem', 'code', 'log'])",
+          "at": {
+            ".validate": "newData.isNumber() && newData.val() === now"
+          },
+          "app": {
+            ".validate": "newData.isString() && newData.val().length <= 20"
+          },
+          "os": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "minecraft": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          },
+          "loader": {
+            ".validate": "newData.isString() && newData.val().length <= 60"
+          },
+          "modpack": {
+            ".validate": "newData.isString() && newData.val().length <= 130"
+          },
+          "mods": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5000"
+          },
+          "problem": {
+            ".validate": "newData.isString() && newData.val().length <= 220"
+          },
+          "code": {
+            ".validate": "newData.isNumber()"
+          },
+          "log": {
+            ".validate": "newData.isString() && newData.val().length <= 21000"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "crashReportsLast": {
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.isNumber() && newData.val() === now"
+      }
+    },
     "skins": {
       "$uid": {
         ".read": "auth != null",

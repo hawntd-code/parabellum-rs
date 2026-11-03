@@ -1,9 +1,9 @@
 //! Skins entre jugadores de Parabellum (reglas en firebase-reglas.json):
 //!   skins/{uid} = { value, signature, from?, at }
 //! `value` y `signature` son la propiedad «textures» tal como la firma Mojang: la imagen vive en
-//! textures.minecraft.net y el juego la acepta sin mods (no deja skins de otros sitios). Hoy sale de una
-//! cuenta premium, por su nombre; subir un PNG propio necesita a alguien que lo suba a Mojang y queda para
-//! después.
+//! textures.minecraft.net y el juego la acepta sin mods (no deja skins de otros sitios). Sale de una cuenta
+//! premium, por su nombre, o de un PNG propio que el puente de Cloud Run sube a Mojang por MineSkin
+//! (puente-curseforge/main.py › skins; solo si el puente tiene su clave).
 //! El servidor de sesión local se la da al juego: al anfitrión de un mundo cuando entra un jugador
 //! (hasJoined, y de ahí a todos los que están dentro) y a cada jugador cuando pide un perfil (el suyo, o el
 //! de un amigo en las versiones que lo piden así).
@@ -228,19 +228,77 @@ pub async fn skin_buscar(nombre: String) -> Result<View, String> {
     view(&premium(nombre.trim()).await?).await
 }
 
-/// Usa la skin de esa cuenta premium: la ven los jugadores de Parabellum desde la siguiente partida.
-#[tauri::command]
-pub async fn skin_usar(app: AppHandle, nombre: String) -> Result<View, String> {
-    let (db, uid) = own(&app)?;
-    let mut skin = premium(nombre.trim()).await?;
+/// Guarda esa skin como la del jugador.
+async fn save(app: &AppHandle, mut skin: Skin) -> Result<View, String> {
+    let (db, uid) = own(app)?;
     skin.at = db.server_now();
     let mut data = json!({ "value": skin.value, "signature": skin.signature, "at": crate::firebase::server_timestamp() });
     if let Some(from) = &skin.from {
         data["from"] = json!(from);
     }
     db.put(&format!("skins/{uid}"), &data).await.map_err(|e| e.to_string())?;
-    forget_own(&app);
+    forget_own(app);
     view(&skin).await
+}
+
+/// Usa la skin de esa cuenta premium: la ven los jugadores de Parabellum desde la siguiente partida.
+#[tauri::command]
+pub async fn skin_usar(app: AppHandle, nombre: String) -> Result<View, String> {
+    own(&app)?;
+    save(&app, premium(nombre.trim()).await?).await
+}
+
+/// Si el puente puede subir skins en PNG (tiene la clave de MineSkin).
+#[tauri::command]
+pub async fn skin_png_disponible() -> bool {
+    static KNOWN: OnceLock<bool> = OnceLock::new();
+    if let Some(known) = KNOWN.get() {
+        return *known;
+    }
+    let answer = crate::download::client().get(format!("{}/skins/estado", crate::curseforge::base())).timeout(Duration::from_secs(8)).send().await;
+    let Ok(response) = answer else { return false };
+    let enabled = response.json::<Value>().await.ok().and_then(|v| v["enabled"].as_bool()).unwrap_or(false);
+    // Lo que diga el puente vale para toda la sesión; sin respuesta se vuelve a preguntar.
+    let _ = KNOWN.set(enabled);
+    enabled
+}
+
+/// Un PNG de skin: 64×64 (o 64×32, el formato de antes) y de menos de 24 KB.
+fn png_ok(bytes: &[u8]) -> bool {
+    bytes.len() <= 24 * 1024
+        && bytes.len() >= 24
+        && bytes.starts_with(b"\x89PNG\r\n\x1a\n")
+        && &bytes[12..16] == b"IHDR"
+        && u32::from_be_bytes(bytes[16..20].try_into().unwrap()) == 64
+        && matches!(u32::from_be_bytes(bytes[20..24].try_into().unwrap()), 64 | 32)
+}
+
+/// Sube una skin propia (PNG): el puente la sube a Mojang y devuelve la firmada. None si se canceló.
+#[tauri::command]
+pub async fn skin_subir(app: AppHandle, delgada: bool) -> Result<Option<View>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    own(&app)?;
+    let dialog = app.dialog().file().set_title(t!("Elegir tu skin (PNG de 64×64)", "Choose your skin (64×64 PNG)")).add_filter("PNG", &["png"]);
+    let Some(picked) = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_file()).await.map_err(|e| e.to_string())? else { return Ok(None) };
+    let bytes = std::fs::read(picked.into_path().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    if !png_ok(&bytes) {
+        return Err(t!("La skin tiene que ser un PNG de 64×64 (o 64×32) de menos de 24 KB, como las de Minecraft.", "The skin has to be a 64×64 (or 64×32) PNG under 24 KB, like Minecraft's."));
+    }
+    let response = crate::download::client()
+        .post(format!("{}/skins/generar?variant={}", crate::curseforge::base(), if delgada { "slim" } else { "classic" }))
+        .header("Content-Type", "image/png")
+        .timeout(Duration::from_secs(90))
+        .body(bytes)
+        .send()
+        .await
+        .map_err(|_| t!("No se pudo subir la skin. Revisa tu internet.", "Could not upload the skin. Check your internet."))?;
+    let status = response.status();
+    let answer: Value = response.json().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(answer["error"].as_str().map(String::from).unwrap_or_else(|| t!("No se pudo subir la skin.", "Could not upload the skin.")));
+    }
+    let skin = parse(&json!({ "value": answer["value"], "signature": answer["signature"], "at": 0 })).ok_or_else(|| t!("La skin que volvió no es válida.", "The skin that came back is not valid."))?;
+    save(&app, skin).await.map(Some)
 }
 
 /// Vuelve a la skin de siempre.
@@ -298,6 +356,24 @@ mod tests {
         assert_eq!(decode(&skin("http://textures.minecraft.net/texture/../x", None)), None);
         assert_eq!(decode(&value(json!({ "textures": {} }))), None, "sin skin propia");
         assert_eq!(decode("no es base64"), None);
+    }
+
+    #[test]
+    fn solo_pngs_de_skin() {
+        let png = |w: u32, h: u32| {
+            let mut bytes = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+            bytes.extend(w.to_be_bytes());
+            bytes.extend(h.to_be_bytes());
+            bytes.extend([8, 6, 0, 0, 0]);
+            bytes
+        };
+        assert!(png_ok(&png(64, 64)));
+        assert!(png_ok(&png(64, 32)));
+        assert!(!png_ok(&png(128, 128)), "las HD no las acepta Minecraft sin mods");
+        assert!(!png_ok(b"GIF89a, no es un PNG ni de lejos"));
+        let mut big = png(64, 64);
+        big.resize(30 * 1024, 0);
+        assert!(!png_ok(&big));
     }
 
     #[test]

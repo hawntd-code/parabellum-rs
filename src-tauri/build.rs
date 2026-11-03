@@ -9,7 +9,7 @@ fn main() {
     println!("cargo:rerun-if-changed=icons/icon.png");
     // Solo entran los campos que usa el exe (config.rs). Lo demás del archivo no: la clave de CurseForge,
     // por ejemplo, vive en el puente (puente-curseforge), y del exe, que se reparte, cualquiera la sacaría.
-    const EMBEDDED: [&str; 7] = ["driveFolderId", "driveApiKey", "googleClientId", "googleClientSecret", "firebaseApiKey", "firebaseDatabaseUrl", "supportName"];
+    const EMBEDDED: [&str; 8] = ["driveFolderId", "driveApiKey", "googleClientId", "googleClientSecret", "firebaseApiKey", "firebaseDatabaseUrl", "supportName", "discordClientId"];
     let content = std::fs::read_to_string("../config-integrada.json").unwrap_or_else(|_| "{}".into());
     let all: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&content).unwrap_or_default();
     let kept: serde_json::Map<String, serde_json::Value> = all.into_iter().filter(|(key, _)| EMBEDDED.contains(&key.as_str())).collect();

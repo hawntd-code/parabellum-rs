@@ -73,9 +73,23 @@ incluye imágenes del propio repositorio y respuestas/escritura simuladas; no en
 La aceptación con dos cuentas en Windows, las reglas en producción y la publicación estable se
 registran aparte en [0.37.0-chat.md](0.37.0-chat.md).
 
-## Carpeta portable
+## Carpeta portable e instalador
 
-Todo cuelga de la carpeta del .exe (o de `PARABELLUM_ROOT`):
+Hay dos formas de tener Parabellum en Windows, con el mismo exe:
+
+- **Portable** (el zip de Drive, el de la escuela y las USB): todo cuelga de la carpeta del .exe.
+- **Instalado** (desde la 0.42.0, `Parabellum_<versión>_x64-setup.exe`): se instala solo para el usuario,
+  sin pedir permisos de administrador, en `%LOCALAPPDATA%\Parabellum`, con acceso en el menú Inicio y
+  desinstalador en Aplicaciones. El instalador deja `instalado.txt` junto al exe
+  (`src-tauri/windows/instalador.nsh`), y con esa marca los datos van a `%APPDATA%\Parabellum`
+  (`plataforma::data_root`): desinstalar no se lleva instancias ni mundos. Se actualiza solo igual que el
+  portable (cambia el exe) y anota la versión nueva en Aplicaciones (`plataforma::register_version`).
+
+Para armar el instalador hace falta `cargo install tauri-cli --version "^2" --locked` (una vez). Desde
+`src-tauri`: `cargo tauri build --bundles nsis`; queda en `target/release/bundle/nsis/`. NSIS lo baja Tauri
+la primera vez. Sin firma, Windows muestra «Windows protegió su PC» igual que con el zip.
+
+`PARABELLUM_ROOT` manda sobre las dos. La carpeta, en los dos casos:
 
 ```
 Parabellum.exe
@@ -292,8 +306,31 @@ rutas que usa el launcher:
 El portal de CurseForge también corre en Cloud Run (carpeta `puente-portal/`); su dirección está en
 `ENDPOINT` de `src-tauri/src/curseforge_portal.rs`.
 
+## Banco de modpacks
+
+`python docs/banco-modpacks.py [--n 10] [--abrir]` instala y revisa (`--revisar`, la revisión de antes de
+jugar) los modpacks más descargados de Modrinth y de CurseForge (`--populares`) en una carpeta de prueba, y
+con `--abrir` los abre hasta el menú principal (`--probar-juego`). Deja un informe en Markdown y sale con
+código 1 si alguno falló. GitHub lo corre cada lunes sin `--abrir` (`.github/workflows/banco.yml`, 8 de
+cada sitio): si sale en rojo, algo dejó de instalarse.
+
+## Reportes de fallos
+
+Si el jugador lo permite (Ajustes, o la pregunta del doctor la primera vez que se cae el juego), cuando el
+juego se cierra por un error se manda a `crashReports/{uid}/{id}` lo necesario para saber qué falló
+(`fallos.rs`): versiones, loader, modpack, cuántos mods, lo que encontró el doctor y el informe de fallo o
+el final del registro, sin datos personales (`reporte::redact`). Las reglas dejan uno por minuto por
+cuenta y **nadie los puede leer desde Parabellum**: se ven en la consola de Firebase (Realtime Database ›
+`crashReports`).
+
 ## Publicar una versión
 
+0. **Firma** (desde la 0.42.0): «Publicar esta versión» firma el zip con la clave privada de
+   `%USERPROFILE%\.parabellum\firma-actualizaciones.clave` (`firma.rs`), y Windows solo se actualiza con
+   versiones firmadas por una clave de `firma.rs › TRUSTED`. Sin esa clave en el PC, publicar falla. **Guarda
+   una copia de ese archivo fuera del PC** (una USB, un gestor de contraseñas): si se pierde, las versiones
+   nuevas tendrían que llevar otra clave en `TRUSTED` y los ya instalados no se actualizarían solos.
+   `Parabellum.exe --firma` dice si el PC tiene la clave y cuál es la pública.
 1. **Drive** (lo hace Juan): Ajustes › Acerca de › «Publicar esta versión» deja `_parabellum` con
    `Parabellum-<versión>.zip`, su `.json` y `LEEME.txt`; «Subir a Drive» la sube y manda la anterior a la
    papelera de Drive. Con línea de comandos: `--publicar-launcher <carpeta> [notas] [pruebas]`. Si la
@@ -360,6 +397,7 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--externas` | Instancias de CurseForge, Prism y MultiMC en este PC |
 | `--importar-externa <carpeta>` | Copia una de ellas a Parabellum, con su loader |
 | `--instalar-modpack <proyecto> [versión]` | Instala un modpack de Modrinth como instancia nueva |
+| `--actualizar-modpack <instancia> [versión]` | Actualiza el modpack de esa instancia (Modrinth o CurseForge) a la versión dada o a la más nueva, conservando lo del jugador |
 | `--instalar-datapack <instancia> <mundo> <proyecto>` | Instala un data pack de Modrinth en un mundo |
 | `--revisar <instancia>` | La revisión de antes de jugar (lo que abriría el doctor) |
 | `--diagnosticar <instancia>` | Qué falla: revisión de mods (dependencias, loader, versión del juego, repetidos) y el último informe de fallo, con sus arreglos |
