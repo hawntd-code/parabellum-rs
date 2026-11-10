@@ -355,6 +355,24 @@ impl Publisher {
         Ok((uploaded, same))
     }
 
+    /// Manda a la papelera de Drive (se puede recuperar) un archivo del catálogo que ya no corresponde, con la
+    /// ruta relativa a `base` como en `publish`. Devuelve si estaba.
+    pub async fn remove(&self, base: &Path, file: &Path) -> Result<bool, String> {
+        let relative = file.strip_prefix(base).map_err(|_| t!("El archivo no está en la carpeta de paquetes.", "The file is not in the packages folder."))?;
+        let Some(name) = relative.file_name().map(|n| n.to_string_lossy().to_string()) else { return Ok(false) };
+        let mut parent = self.root.clone();
+        for dir in relative.parent().into_iter().flat_map(|d| d.components()) {
+            match self.find(&parent, &dir.as_os_str().to_string_lossy(), true).await? {
+                Some(found) => parent = found["id"].as_str().unwrap_or_default().to_string(),
+                None => return Ok(false),
+            }
+        }
+        match self.find(&parent, &name, false).await?.and_then(|f| f["id"].as_str().map(String::from)) {
+            Some(id) => self.trash(&id).await.map(|_| true),
+            None => Ok(false),
+        }
+    }
+
     /// Manda a la papelera de Drive los Parabellum-<versión>.zip/.json de la carpeta que no son los de
     /// `keep` (como en la carpeta local: solo queda la versión publicada).
     pub async fn remove_old_launchers(&self, folder: &str, keep: &[String]) -> Result<usize, String> {

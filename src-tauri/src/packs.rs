@@ -85,11 +85,33 @@ pub struct Manifest {
     /// tampoco las trae. Eran los 7 jars que Drive todavía revisaba.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub remote_base: Vec<RemoteFile>,
+    /// Los mods de CurseForge que su autor deja bajar desde un launcher (desde la 0.43): no van en ningún
+    /// zip, ni en el completo, y se bajan del CDN de CurseForge al instalar. Así un paquete de Drive no
+    /// reparte mods «All Rights Reserved» (los de FTB, por ejemplo). Solo los publica la comunidad
+    /// (`ExportOptions::curseforge_from_cdn`); lo exportado para una USB sigue llevándolo todo.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub curseforge: Vec<RemoteFile>,
+    /// El completo cuando hay `curseforge` (desde la 0.43): va con otro nombre y `archive` nombra uno que no
+    /// se sube. Las versiones anteriores no saben bajar esos mods y lo instalarían sin ellos; así no lo ven
+    /// en el catálogo (folder_entries se salta un paquete sin su zip).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub full_archive: Option<String>,
 }
 
 impl Manifest {
     pub fn is_base(&self) -> bool {
         self.kind == "base"
+    }
+
+    /// El nombre del zip completo, sea cual sea su forma.
+    pub fn full(&self) -> &str {
+        self.full_archive.as_deref().unwrap_or(&self.archive)
+    }
+
+    /// Lo que no viene en el zip y se baja al instalar: los de Modrinth y los de CurseForge, con sus enlaces
+    /// (para la lista de la instancia, que repone lo que falte sin el paquete).
+    pub fn downloadable(&self) -> Vec<RemoteFile> {
+        self.remote.iter().chain(&self.curseforge).cloned().collect()
     }
 
     /// El nombre del paquete ligero, sea cual sea su forma.
@@ -123,6 +145,12 @@ impl RemoteFile {
     /// Una biblioteca del loader: del maven de Fabric y dentro de base/libraries.
     pub fn valid_library(&self) -> bool {
         self.url.starts_with(FABRIC_MAVEN) && self.path.starts_with("libraries/") && self.well_formed()
+    }
+
+    /// Un mod, resource pack o shader del CDN de CurseForge (`Manifest::curseforge`), dentro de la instancia.
+    pub fn valid_curseforge(&self) -> bool {
+        let name = self.path.to_lowercase();
+        crate::curseforge::cdn_url(&self.url) && (name.ends_with(".jar") || name.ends_with(".zip")) && self.well_formed()
     }
 
     fn well_formed(&self) -> bool {
@@ -294,7 +322,7 @@ pub fn sha256_file(path: &Path) -> std::io::Result<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-fn relative(root: &Path, file: &Path) -> Option<String> {
+pub(crate) fn relative(root: &Path, file: &Path) -> Option<String> {
     Some(file.strip_prefix(root).ok()?.to_string_lossy().replace('\\', "/"))
 }
 
@@ -322,14 +350,25 @@ pub struct ExportOptions {
     /// Las bibliotecas del loader que están en el maven de Fabric (`remote_libraries`).
     #[serde(skip)]
     pub remote_base: Vec<RemoteFile>,
+    /// Los mods de CurseForge no van en ningún zip y se bajan al instalar (`Manifest::curseforge`). Lo pide
+    /// el paquete oficial de una comunidad, que va a Drive; para una USB tiene que ir todo dentro.
+    pub curseforge_from_cdn: bool,
+    /// Los de CurseForge que se pueden bajar desde un launcher (`curseforge::cdn_files`).
+    #[serde(skip)]
+    pub curseforge: Vec<RemoteFile>,
 }
 
 /// Lo que el paquete ligero deja fuera: los mods que están en Modrinth y, si hay alguno (si no, no sale
-/// ligero), las bibliotecas del loader que están en el maven de Fabric.
+/// ligero), las bibliotecas del loader que están en el maven de Fabric. Con `curseforge_from_cdn`, también
+/// los de CurseForge que no están en Modrinth (esos no van ni en el completo).
 pub async fn find_remote(instance: &Instance, paths: &Paths, options: &mut ExportOptions) {
     options.remote = remote_files(instance).await;
     if !options.remote.is_empty() {
         options.remote_base = remote_libraries(instance, paths).await;
+    }
+    if options.curseforge_from_cdn {
+        let on_modrinth: HashSet<String> = options.remote.iter().map(|r| r.path.to_lowercase()).collect();
+        options.curseforge = crate::curseforge::cdn_files(instance).await.into_iter().filter(|r| !on_modrinth.contains(&r.path.to_lowercase())).collect();
     }
 }
 
@@ -428,7 +467,6 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
 
     let pack_name = safe_file_name(&instance.name);
     let pack_dir = version_dir.join(&pack_name);
-    let pack_zip = pack_dir.join(format!("{pack_name}.zip"));
     let mut manifest = Manifest {
         format: 1,
         kind: "modpack".into(),
@@ -476,6 +514,24 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
     if !manifest.remote.is_empty() {
         manifest.remote_base = options.remote_base.iter().filter(|r| r.valid_library() && packed.contains(&format!("base/{}", r.path.to_lowercase()))).cloned().collect();
     }
+    // Los de CurseForge (si se pidió) no viajan en ningún zip: se bajan de su CDN al instalar.
+    let on_modrinth: HashSet<String> = manifest.remote.iter().map(|r| r.path.to_lowercase()).collect();
+    manifest.curseforge = options
+        .curseforge
+        .iter()
+        .filter(|r| r.valid_curseforge() && !on_modrinth.contains(&r.path.to_lowercase()) && packed.contains(&format!("instancia/{}", r.path.to_lowercase())))
+        .cloned()
+        .collect();
+    let outside: HashSet<String> = manifest.curseforge.iter().map(|r| format!("instancia/{}", r.path.to_lowercase())).collect();
+    let entries: Vec<(PathBuf, String)> = entries.into_iter().filter(|(_, name)| !outside.contains(&name.to_lowercase())).collect();
+    // Sin ellos, el completo cambia de nombre (Manifest::full_archive). El de la otra forma que haya quedado
+    // de una exportación anterior ya no corresponde (y el viejo los llevaba dentro).
+    if !manifest.curseforge.is_empty() {
+        manifest.full_archive = Some(full_name(&pack_name));
+    }
+    let other_form = if manifest.curseforge.is_empty() { full_name(&pack_name) } else { manifest.archive.clone() };
+    let _ = std::fs::remove_file(pack_dir.join(other_form));
+    let pack_zip = pack_dir.join(manifest.full());
     let lite_zip = pack_dir.join(lite_name(&pack_name));
     let lite_archive = (!manifest.remote.is_empty()).then(|| lite_name(&pack_name));
     if manifest.remote_base.is_empty() {
@@ -589,6 +645,11 @@ fn write_sidecar(zip_path: &Path, lite: Option<&Path>, json_path: &Path, mut man
 /// «RETORCIDOS _ EL PACK (ligero).zip», junto al completo.
 fn lite_name(pack_name: &str) -> String {
     format!("{pack_name} (ligero).zip")
+}
+
+/// «Retorcidos (completo).zip»: el completo sin los mods de CurseForge (Manifest::full_archive).
+fn full_name(pack_name: &str) -> String {
+    format!("{pack_name} (completo).zip")
 }
 
 // ================= Instalar
@@ -725,23 +786,33 @@ pub fn install_with(zip_path: &Path, paths: &Paths, sources: &HashMap<String, Pa
             return Ok(Installed { kind: "base".into(), name: manifest.name.clone(), folder: None, updated: false });
         }
         // El paquete ligero: lo que no trae el zip ya está bajado. Los mods (de Modrinth) van a la instancia y
-        // las bibliotecas del loader (del maven de Fabric), a base. `sources` las tiene como "base/…".
+        // las bibliotecas del loader (del maven de Fabric), a base. `sources` las tiene como "base/…". Los de
+        // CurseForge (`curseforge`) no vienen en ningún zip, ni en el completo: también están ya bajados.
         let in_zip: HashSet<String> = listed.iter().map(|(name, _, _)| name.to_lowercase()).collect();
         let pending = manifest
             .remote
             .iter()
             .map(|r| (r, r.valid(), r.path.to_lowercase(), "instancia", staging.as_path()))
-            .chain(manifest.remote_base.iter().map(|r| (r, r.valid_library(), format!("base/{}", r.path.to_lowercase()), "base", paths.base.as_path())));
+            .chain(manifest.remote_base.iter().map(|r| (r, r.valid_library(), format!("base/{}", r.path.to_lowercase()), "base", paths.base.as_path())))
+            .chain(manifest.curseforge.iter().map(|r| (r, r.valid_curseforge(), r.path.to_lowercase(), "instancia", staging.as_path())));
+        let from_curseforge: HashSet<String> = manifest.curseforge.iter().map(|r| r.path.to_lowercase()).collect();
         for (remote, valid, key, prefix, root) in pending {
             if in_zip.contains(&format!("{prefix}/{}", remote.path.to_lowercase())) {
                 continue;
             }
             let (Some(relative), Some(source)) = (crate::mrpack::safe_relative(&remote.path).filter(|_| valid), sources.get(&key)) else {
+                if prefix == "instancia" && from_curseforge.contains(&key) {
+                    return Err(t!(
+                        "{} trae mods de CurseForge que se bajan al instalarlo desde el catálogo de Parabellum (no vienen en el zip).",
+                        "{} has CurseForge mods that are downloaded when it is installed from the Parabellum catalog (they are not in the zip).",
+                        manifest.name
+                    ));
+                }
                 return Err(t!(
                     "Este es el paquete ligero de {}: sus mods se bajan de Modrinth al instalarlo desde el catálogo. Para instalarlo desde un archivo, usa «{}».",
                     "This is the lite package of {}: its mods are downloaded from Modrinth when installed from the catalog. To install it from a file, use «{}».",
                     manifest.name,
-                    manifest.archive
+                    manifest.full()
                 ));
             };
             let target = root.join(relative);
@@ -758,7 +829,7 @@ pub fn install_with(zip_path: &Path, paths: &Paths, sources: &HashMap<String, Pa
         let state = staging.join(STATE_DIR);
         std::fs::create_dir_all(&state).map_err(|e| e.to_string())?;
         std::fs::write(state.join(INSTALLED_MANIFEST), serde_json::to_vec_pretty(&manifest).unwrap()).map_err(|e| e.to_string())?;
-        crate::integridad::save_package(&staging, &listed, &manifest.remote);
+        crate::integridad::save_package(&staging, &listed, &manifest.downloadable());
         let destination = paths.instances.join(&folder);
         let updated = destination.exists();
         if updated {
@@ -892,6 +963,89 @@ mod tests {
         assert!(!remote("../fuera.jar", "https://cdn.modrinth.com/data/x.jar").valid(), "la ruta no sale de la instancia");
         assert!(!remote("C:/Windows/x.jar", "https://cdn.modrinth.com/data/x.jar").valid());
         assert!(!RemoteFile { sha1: "corto".into(), ..remote("mods/a.jar", "https://cdn.modrinth.com/a.jar") }.valid());
+    }
+
+    #[test]
+    fn archivos_de_curseforge_validos() {
+        let url = "https://edge.forgecdn.net/files/9405/148/ftb-quests-neoforge-2101.1.38.jar";
+        assert!(remote("mods/ftb-quests.jar", url).valid_curseforge());
+        assert!(remote("shaderpacks/a.zip", "https://mediafilez.forgecdn.net/files/1/2/a.zip").valid_curseforge());
+        assert!(!remote("mods/ftb-quests.jar", url).valid(), "no es de Modrinth");
+        assert!(!remote("mods/a.jar", "https://cdn.modrinth.com/data/a/versions/1/a.jar").valid_curseforge(), "solo del CDN de CurseForge");
+        assert!(!remote("mods/a.jar", "http://edge.forgecdn.net/files/1/2/a.jar").valid_curseforge());
+        assert!(!remote("mods/a.jar", "https://edge.forgecdn.net.ejemplo.com/a.jar").valid_curseforge());
+        assert!(!remote("mods/a.jar", "https://edge.forgecdn.net@ejemplo.com/a.jar").valid_curseforge());
+        assert!(!remote("../fuera.jar", url).valid_curseforge(), "la ruta no sale de la instancia");
+        assert!(!remote("options.txt", url).valid_curseforge(), "solo mods, resource packs y shaders");
+        assert!(!remote("mods/a.jar.disabled", url).valid_curseforge());
+    }
+
+    #[test]
+    fn el_completo_sin_los_de_curseforge_cambia_de_nombre() {
+        // Sin mods de CurseForge, el completo es `archive`, como siempre (y el .json sale igual que antes).
+        let old: Manifest = serde_json::from_str(r#"{"type":"modpack","archive":"A.zip"}"#).unwrap();
+        assert_eq!(old.full(), "A.zip");
+        let back = serde_json::to_value(&old).unwrap();
+        assert!(back.get("curseforge").is_none() && back.get("fullArchive").is_none());
+        // Con ellos, el completo es otro: las versiones anteriores buscan `archive`, no lo encuentran y no lo
+        // instalan sin esos mods.
+        let new: Manifest = serde_json::from_str(r#"{"type":"modpack","archive":"A.zip","fullArchive":"A (completo).zip","curseforge":[{"path":"mods/b.jar"}]}"#).unwrap();
+        assert_eq!(new.full(), "A (completo).zip");
+        assert_eq!(new.curseforge.len(), 1);
+        assert_eq!(full_name("A"), "A (completo).zip");
+    }
+
+    const FTB: &str = "https://edge.forgecdn.net/files/9405/148/b.jar";
+
+    /// El completo de un paquete de comunidad: trae mods/a.jar dentro y mods/b.jar se baja de CurseForge.
+    fn package_with_curseforge(root: &Path) -> (Paths, PathBuf) {
+        let paths = Paths::new(root);
+        std::fs::create_dir_all(&paths.base).unwrap();
+        register(&paths, &base_id("1.21.1"), "1");
+        let manifest = Manifest {
+            format: 1,
+            kind: "modpack".into(),
+            id: "comunidad".into(),
+            name: "Comunidad".into(),
+            version: "202611100000".into(),
+            minecraft_version: "1.21.1".into(),
+            folder: Some("Comunidad".into()),
+            archive: "Comunidad.zip".into(),
+            full_archive: Some(full_name("Comunidad")),
+            curseforge: vec![remote("mods/b.jar", FTB)],
+            ..Default::default()
+        };
+        let zip_path = root.join(full_name("Comunidad"));
+        let mut zip = ZipOut::create(&zip_path).unwrap();
+        zip.add_bytes(MANIFEST_IN_ARCHIVE, &serde_json::to_vec(&manifest).unwrap()).unwrap();
+        zip.add_bytes(&format!("instancia/{INSTANCE_FILE}"), br#"{"versionId":"1.21.1"}"#).unwrap();
+        zip.add_bytes("instancia/mods/a.jar", b"a").unwrap();
+        zip.finish().unwrap();
+        (paths, zip_path)
+    }
+
+    #[test]
+    fn instalar_con_mods_de_curseforge() {
+        let root = std::env::temp_dir().join(format!("parabellum-curseforge-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (paths, zip) = package_with_curseforge(&root);
+
+        // Sin el de CurseForge ya bajado: lo dice en vez de instalarlo a medias.
+        let error = install(&zip, &paths, |_, _| {}).unwrap_err();
+        assert!(error.contains("CurseForge"), "{error}");
+        assert!(!paths.instances.join("Comunidad").exists());
+
+        // Con él: los dos mods en su lugar, y la lista de la instancia sabe volver a bajarlo de CurseForge.
+        let downloaded = root.join("b-bajado.jar");
+        std::fs::write(&downloaded, b"b").unwrap();
+        let sources = HashMap::from([("mods/b.jar".to_string(), downloaded)]);
+        install_with(&zip, &paths, &sources, |_, _| {}).unwrap();
+        let folder = paths.instances.join("Comunidad");
+        assert_eq!(std::fs::read(folder.join("mods/a.jar")).unwrap(), b"a");
+        assert_eq!(std::fs::read(folder.join("mods/b.jar")).unwrap(), b"b");
+        let record = std::fs::read_to_string(folder.join(STATE_DIR).join(crate::integridad::RECORD)).unwrap();
+        assert!(record.contains(FTB), "{record}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     const LOADER: &str = "libraries/net/fabricmc/fabric-loader/0.19.5/fabric-loader-0.19.5.jar";

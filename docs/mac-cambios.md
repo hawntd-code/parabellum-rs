@@ -603,6 +603,22 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-11-09 · El paquete oficial de una comunidad baja los mods de CurseForge al instalar
+
+Pedido de Juan, para no repartir desde Drive los mods de FTB, que son «All Rights Reserved». Al publicar el
+paquete oficial de una comunidad, lo instalado desde CurseForge que su autor deja bajar desde un launcher no va
+en ningún zip. Se lista en `curseforge` del `.json` y se baja del CDN de CurseForge al instalar, con el ligero,
+con el completo y al actualizar por partes.
+- El completo pasa a `<Modpack> (completo).zip` (`fullArchive`), y `archive` nombra uno que no existe: las
+  versiones anteriores no ven esos paquetes y hay que actualizar Parabellum.
+- Exportar para una USB y «Subir a Drive» no cambian.
+- Código: `packs.rs` (`Manifest::curseforge`, `full_archive`, `RemoteFile::valid_curseforge`),
+  `curseforge::cdn_files`, `catalog.rs` (`fetch_curseforge`, `lite_plan`, `delta_update`), `comunidad.rs` y
+  `drive.rs` (`Publisher::remove`).
+- Detalles en `docs/desarrollo.md` › «Publicar en Drive».
+
+Mac: nada (todo es compartido). Al compilar la próxima versión de Mac, `cargo test` incluye las pruebas nuevas.
+
 ### 2026-11-03 · La web: vitrina, Rust, memoria medida, demo en la barra y preguntas animadas
 
 Pedido de Juan. Bajo la portada, una captura que llega inclinada y se endereza con el scroll, con un borde

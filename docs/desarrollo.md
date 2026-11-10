@@ -221,6 +221,29 @@ pero se usa el maven. Un ligero así se nombra en `liteZip`, no en `liteArchive`
 bajar `remoteBase`: lo instalaría sin el loader. Así la 0.35.0 sigue con el completo. Si el loader no es de
 Fabric (o no hay `remoteBase`), el ligero se sigue nombrando en `liteArchive` como antes.
 
+**Desde la 0.43, el paquete oficial de una comunidad no lleva los mods de CurseForge.** Pedido de Juan
+(2026-11-09) para no repartir desde Drive mods «All Rights Reserved», como los de FTB (Library, Teams,
+Quests y Chunks), que no están en Modrinth. Funciona así:
+- **Qué queda fuera.** Lo instalado desde CurseForge (`.lanzador/curseforge.json`) que su autor deja bajar
+  desde un launcher (`downloadUrl` del CDN), con la misma huella y tamaño que en la instancia, no va en
+  ningún zip, tampoco en el completo. El `.json` lo lista en `curseforge`, con enlaces de `edge.forgecdn.net`
+  (`curseforge::cdn_files`).
+- **Al instalar.** Se baja del CDN de CurseForge, que también pasa el filtro de la escuela:
+  - con el ligero, junto con los de Modrinth;
+  - con el completo y en la actualización por partes, antes de instalar (`catalog::fetch_curseforge`).
+- **Versiones anteriores.** Lo instalarían sin esos mods. Por eso el completo va como `<Modpack>
+  (completo).zip` en `fullArchive`, y `archive` nombra uno que no se sube: las versiones anteriores no lo ven
+  en el catálogo (`folder_entries` se salta un paquete sin su zip), y hay que actualizar Parabellum para
+  instalarlo.
+- **Al publicar.** Va a la papelera de Drive el `<Modpack>.zip` de antes, que sí los llevaba.
+- **Cuándo se usa.** Solo lo pide «Publicar y usar» de la comunidad (`ExportOptions::curseforge_from_cdn`).
+  Exportar para una USB o «Subir a Drive» siguen llevándolo todo dentro, y `--exportar … curseforge` hace
+  lo mismo que la comunidad.
+
+Probado con el modpack del servidor Retorcidos: 52 mods de Modrinth y 5 de CurseForge (los cuatro de FTB y
+Twilight Forest). El ligero bajó de 95 a 65 MB, el completo de 324 a 295 MB, y las instalaciones con el
+ligero y con el completo quedaron con los 59 mods idénticos a la instancia original.
+
 ## CurseForge (desde la 0.36.0)
 
 Explorar conserva las mismas pantallas y deja elegir Modrinth o CurseForge. Los ids `cf:<número>` se
@@ -390,8 +413,8 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--buscar <texto> [mod\|resourcepack\|shader] [loader] [versión]` | Busca en Modrinth |
 | `--instalar <instancia> <proyecto> [versión]` | Instala de Modrinth con dependencias compatibles |
 | `--actualizaciones <instancia> [aplicar]` | Lista (o aplica) las actualizaciones seguras |
-| `--exportar <instancia> <carpeta> [con-mundos] [sin-base]` | Paquete para Drive o USB (modpack, su versión ligera y la base de Minecraft; `sin-base`, sin la base) |
-| `--instalar-ligero <id>` | Instala con el paquete ligero de la carpeta `paquetes` y los mods del CDN de Modrinth, como desde Drive (para medir) |
+| `--exportar <instancia> <carpeta> [con-mundos] [sin-base] [curseforge]` | Paquete para Drive o USB (modpack, su versión ligera y la base de Minecraft; `sin-base`, sin la base; `curseforge`, sin los mods de CurseForge en los zips, como el paquete oficial de una comunidad) |
+| `--instalar-ligero <id>` | Instala con el paquete ligero de la carpeta `paquetes` y los mods del CDN de Modrinth (y de CurseForge), como desde Drive (para medir) |
 | `--exportar-mrpack <instancia> <archivo.mrpack>` | Modpack en formato de Modrinth |
 | `--importar <archivo> [nombre]` | Instala un .mrpack, un .zip de CurseForge o un paquete de Parabellum |
 | `--externas` | Instancias de CurseForge, Prism y MultiMC en este PC |

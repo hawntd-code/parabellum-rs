@@ -337,7 +337,7 @@ fn version(file: &Value) -> Option<Version> {
     })
 }
 
-fn cdn_url(url: &str) -> bool {
+pub(crate) fn cdn_url(url: &str) -> bool {
     url.strip_prefix("https://").and_then(|rest| rest.split('/').next()).is_some_and(|host| CDN_HOSTS.contains(&host.to_lowercase().as_str()))
 }
 
@@ -468,6 +468,43 @@ fn present(instance: &Instance) -> Vec<(String, String, IndexEntry)> {
 /// Proyectos y archivos de CurseForge instalados («cf:…»), para marcar «Instalado».
 pub fn installed(instance: &Instance) -> (Vec<String>, Vec<String>) {
     present(instance).into_iter().map(|(_, _, e)| (cf(e.project_id), cf(e.file_id))).unzip()
+}
+
+/// Lo instalado desde CurseForge que su autor deja bajar desde un launcher (`downloadUrl` del CDN), con la
+/// misma huella y el mismo tamaño que en la instancia: el paquete oficial de una comunidad no lo lleva en
+/// ningún zip y se baja al instalar (packs::find_remote, `Manifest::curseforge`). Las rutas, como las de
+/// `remote`: relativas a la carpeta de la instancia. Sin respuesta del puente, ninguno (todo sigue en el zip).
+pub async fn cdn_files(instance: &Instance) -> Vec<crate::packs::RemoteFile> {
+    let mut wanted: Vec<(String, u64, String, u64)> = Vec::new();
+    for (key, real, entry) in present(instance) {
+        let Some((kind, _)) = key.split_once('/') else { continue };
+        let Some(file) = crate::content::folder(instance, kind).map(|f| f.join(&real)) else { continue };
+        let (Some(path), Ok(meta)) = (crate::packs::relative(&instance.folder, &file), file.metadata()) else { continue };
+        wanted.push((path, entry.file_id, entry.sha1.to_lowercase(), meta.len()));
+    }
+    if wanted.is_empty() {
+        return Vec::new();
+    }
+    let ids: Vec<u64> = wanted.iter().map(|w| w.1).collect();
+    let mut files: HashMap<u64, Value> = HashMap::new();
+    for chunk in ids.chunks(500) {
+        let Ok(list) = post("/v1/mods/files", &json!({ "fileIds": chunk })).await else { return Vec::new() };
+        for f in list.as_array().into_iter().flatten() {
+            if let Some(id) = f["id"].as_u64() {
+                files.insert(id, f.clone());
+            }
+        }
+    }
+    wanted.into_iter().filter_map(|(path, id, sha1, size)| cdn_file(files.get(&id)?, path, sha1, size)).collect()
+}
+
+/// El archivo de CurseForge (`/v1/mods/files`) como RemoteFile, si se puede bajar del CDN y es el mismo que el
+/// de la instancia (SHA-1 y tamaño).
+fn cdn_file(file: &Value, path: String, sha1: String, size: u64) -> Option<crate::packs::RemoteFile> {
+    let url = file["downloadUrl"].as_str().filter(|u| cdn_url(u))?;
+    let published = file["hashes"].as_array().into_iter().flatten().find(|h| h["algo"] == 1).map(|h| text(h, "value"))?;
+    let remote = crate::packs::RemoteFile { path, url: url.to_string(), sha1, sha512: String::new(), size };
+    (published.eq_ignore_ascii_case(&remote.sha1) && count(&file["fileLength"]) == size && remote.valid_curseforge()).then_some(remote)
 }
 
 // ================= Plan de instalación (con dependencias)
@@ -1168,6 +1205,31 @@ mod tests {
         assert!(super::version(&blocked).unwrap().url.is_empty());
         blocked["downloadUrl"] = json!("https://ejemplo.com/jei.jar");
         assert!(super::version(&blocked).unwrap().url.is_empty());
+    }
+
+    #[test]
+    fn archivo_del_cdn_para_un_paquete_de_comunidad() {
+        let sha1 = "a".repeat(40);
+        let file = json!({
+            "id": 9405148,
+            "fileName": "ftb-quests-neoforge-2101.1.38.jar",
+            "fileLength": 1234,
+            "downloadUrl": "https://edge.forgecdn.net/files/9405/148/ftb-quests-neoforge-2101.1.38.jar",
+            "hashes": [{ "value": sha1.clone(), "algo": 1 }, { "value": "b".repeat(32), "algo": 2 }]
+        });
+        let path = || "mods/ftb-quests-neoforge-2101.1.38.jar".to_string();
+        let remote = cdn_file(&file, path(), sha1.clone(), 1234).unwrap();
+        assert_eq!(remote.url, "https://edge.forgecdn.net/files/9405/148/ftb-quests-neoforge-2101.1.38.jar");
+        assert!(remote.valid_curseforge());
+        // Otro archivo (otra huella u otro tamaño) que el de la instancia: va en el zip, como siempre.
+        assert!(cdn_file(&file, path(), "c".repeat(40), 1234).is_none());
+        assert!(cdn_file(&file, path(), sha1.clone(), 99).is_none());
+        // Si su autor no deja bajarlo desde un launcher, o el enlace no es del CDN, también.
+        let mut blocked = file.clone();
+        blocked["downloadUrl"] = Value::Null;
+        assert!(cdn_file(&blocked, path(), sha1.clone(), 1234).is_none());
+        blocked["downloadUrl"] = json!("https://ejemplo.com/ftb-quests.jar");
+        assert!(cdn_file(&blocked, path(), sha1, 1234).is_none());
     }
 
     #[test]

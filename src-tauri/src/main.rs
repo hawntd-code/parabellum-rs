@@ -3634,14 +3634,16 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
             Ok(out)
         }
         "--exportar" => {
-            // --exportar <instancia> <carpeta> [con-mundos] [sin-base]
+            // --exportar <instancia> <carpeta> [con-mundos] [sin-base] [curseforge]
+            // «curseforge»: como el paquete oficial de una comunidad, sin los mods de CurseForge en los zips.
             let instance = instances::find(paths, args.get(1).ok_or("Falta la instancia.")?).ok_or("No existe esa instancia.")?;
             let folder = PathBuf::from(args.get(2).ok_or("Falta la carpeta.")?);
             let with_worlds = args.iter().skip(3).any(|a| a == "con-mundos");
             let skip_base = args.iter().skip(3).any(|a| a == "sin-base");
+            let curseforge_from_cdn = args.iter().skip(3).any(|a| a == "curseforge");
             let include = packs::exportable(&instance).into_iter().filter(|e| e.checked || (with_worlds && e.name == "saves")).map(|e| e.name).collect();
             let started = std::time::Instant::now();
-            let mut options = packs::ExportOptions { include, skip_base, ..Default::default() };
+            let mut options = packs::ExportOptions { include, skip_base, curseforge_from_cdn, ..Default::default() };
             tauri::async_runtime::block_on(packs::find_remote(&instance, paths, &mut options));
             let result = packs::export(&instance, paths, &folder, &options, |_, _| {})?;
             Ok(format!("{result:#?}\nen {:.0} s", started.elapsed().as_secs_f64()))

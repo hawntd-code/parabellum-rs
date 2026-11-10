@@ -675,9 +675,10 @@ pub async fn publicar_paquete_comunidad(
     job.run(async {
         // Lo que se exporta normalmente (mods, configuración, opciones…), sin mundos.
         let include = crate::packs::exportable(&instance).into_iter().filter(|e| e.checked).map(|e| e.name).collect();
-        // Los mods que están en Modrinth: con ellos sale también el paquete ligero (catalog::install_lite).
-        progress(t!("Buscando qué mods están en Modrinth…", "Looking for which mods are on Modrinth…"), 0.0);
-        let mut options = crate::packs::ExportOptions { include, skip_base: true, ..Default::default() };
+        // Los mods que están en Modrinth: con ellos sale también el paquete ligero (catalog::install_lite). Los
+        // de CurseForge que su autor deja bajar desde un launcher no van en ningún zip: Drive no los reparte.
+        progress(t!("Buscando qué mods están en Modrinth y CurseForge…", "Looking for which mods are on Modrinth and CurseForge…"), 0.0);
+        let mut options = crate::packs::ExportOptions { include, skip_base: true, curseforge_from_cdn: true, ..Default::default() };
         crate::packs::find_remote(&instance, &paths, &mut options).await;
         let (exported, report) = (instance.clone(), progress.clone());
         let paths_copy = paths.clone();
@@ -690,6 +691,10 @@ pub async fn publicar_paquete_comunidad(
         let files = crate::drive::files_in(modpack.parent().unwrap_or(&out));
         let report = progress.clone();
         publisher.publish(&out, &crate::upload_order(files), move |stage, f| report(stage, 0.4 + f * 0.6)).await?;
+        if manifest.full_archive.is_some() {
+            // El completo de antes llevaba dentro los mods de CurseForge: no se sigue repartiendo.
+            let _ = publisher.remove(&out, &modpack.parent().unwrap_or(&out).join(&manifest.archive)).await;
+        }
         // El catálogo ya trae la versión nueva.
         crate::catalog_snapshot(&state, true).await;
         let package = Package {

@@ -128,8 +128,8 @@ fn load_local(folder: &Path) -> (Vec<Entry>, Vec<String>) {
             continue;
         };
         let dir = json.parent().unwrap();
-        let zip = dir.join(&manifest.archive);
-        if manifest.id.is_empty() || manifest.archive.is_empty() || !zip.is_file() {
+        let zip = dir.join(manifest.full());
+        if manifest.id.is_empty() || manifest.full().is_empty() || !zip.is_file() {
             continue;
         }
         let icon = manifest.icon.as_ref().and_then(|name| std::fs::read(dir.join(name)).ok()).and_then(|b| image_data_url(&b));
@@ -225,8 +225,9 @@ async fn folder_entries(children: &[Value], path: &str, paths: &Paths) -> (Vec<E
         if manifest.id.is_empty() {
             continue;
         }
-        let Some(zip) = by_name.get(&manifest.archive.to_lowercase()).filter(|z| z["id"].as_str().is_some_and(valid_id)) else {
-            warnings.push(t!("{path}{name}: falta «{}» en la misma carpeta.", "{path}{name}: «{}» is missing from the same folder.", manifest.archive));
+        // Con mods de CurseForge, el completo va con otro nombre (packs::Manifest::full_archive).
+        let Some(zip) = by_name.get(&manifest.full().to_lowercase()).filter(|z| z["id"].as_str().is_some_and(valid_id)) else {
+            warnings.push(t!("{path}{name}: falta «{}» en la misma carpeta.", "{path}{name}: «{}» is missing from the same folder.", manifest.full()));
             continue;
         };
         let icon = match manifest.icon.as_ref().and_then(|n| by_name.get(&n.to_lowercase())) {
@@ -618,12 +619,54 @@ async fn install_full(entry: &Entry, paths: &Paths, progress: impl Fn(String, f6
         }
         return Err(error);
     }
-    let (file, paths_copy) = (zip.clone(), paths.clone());
-    let result = tauri::async_runtime::spawn_blocking(move || packs::install(&file, &paths_copy, progress)).await.map_err(|e| e.to_string())?;
+    // Los mods de CurseForge no vienen ni en el completo. Si no se pueden bajar, el zip se queda para el
+    // siguiente intento.
+    let sources = fetch_curseforge(&entry.manifest, paths, progress.clone()).await?;
+    let (file, paths_copy, sources_copy) = (zip.clone(), paths.clone(), sources.clone());
+    let result = tauri::async_runtime::spawn_blocking(move || packs::install_with(&file, &paths_copy, &sources_copy, progress)).await.map_err(|e| e.to_string())?;
     if is_copy {
         let _ = std::fs::remove_file(&zip);
     }
+    if result.is_ok() {
+        forget_downloaded(paths, &sources);
+    }
     result
+}
+
+/// Los mods de CurseForge del paquete (`curseforge`), que no vienen en ningún zip: lo que falte en este PC se
+/// baja del CDN de CurseForge a la caché. Devuelve de dónde sale cada uno (como `lite_plan`).
+async fn fetch_curseforge(manifest: &Manifest, paths: &Paths, progress: impl Fn(String, f64) + Send + Sync + 'static) -> Result<HashMap<String, PathBuf>, String> {
+    if manifest.curseforge.is_empty() {
+        return Ok(HashMap::new());
+    }
+    if !manifest.curseforge.iter().all(packs::RemoteFile::valid_curseforge) {
+        return Err(t!("El paquete trae un mod de CurseForge con un enlace no permitido.", "The package has a CurseForge mod with a link that is not allowed."));
+    }
+    let (manifest_copy, paths_copy) = (manifest.clone(), paths.clone());
+    let plan = tauri::async_runtime::spawn_blocking(move || lite_plan(&manifest_copy, &paths_copy, true)).await.map_err(|e| e.to_string())?;
+    download::download_all(plan.downloads, move |count, files, bytes, all| {
+        progress(
+            t!(
+                "Bajando los mods de CurseForge: {count} de {files} ({:.0} de {:.0} MB)…",
+                "Downloading the mods from CurseForge: {count} of {files} ({:.0} of {:.0} MB)…",
+                bytes as f64 / 1048576.0,
+                all as f64 / 1048576.0
+            ),
+            bytes as f64 / all.max(1) as f64,
+        )
+    })
+    .await?;
+    Ok(plan.sources)
+}
+
+/// Lo bajado a la caché ya está en la instancia: sobra. Devuelve cuántos eran.
+fn forget_downloaded(paths: &Paths, sources: &HashMap<String, PathBuf>) -> usize {
+    let cache = modrinth_cache(paths);
+    let downloaded: Vec<&PathBuf> = sources.values().filter(|s| s.starts_with(&cache)).collect();
+    for source in &downloaded {
+        let _ = std::fs::remove_file(source);
+    }
+    downloaded.len()
 }
 
 // ================= El paquete ligero: el zip chico de Drive y los mods del CDN de Modrinth
@@ -642,7 +685,7 @@ fn modrinth_cache(paths: &Paths) -> PathBuf {
 }
 
 /// ¿Se instala con el paquete ligero? Solo de Drive, con todos sus archivos de Modrinth (y del maven de
-/// Fabric) bien formados.
+/// Fabric y del CDN de CurseForge) bien formados.
 pub fn uses_lite(entry: &Entry) -> bool {
     let manifest = &entry.manifest;
     entry.source == Source::Drive
@@ -650,6 +693,7 @@ pub fn uses_lite(entry: &Entry) -> bool {
         && !manifest.remote.is_empty()
         && manifest.remote.iter().all(packs::RemoteFile::valid)
         && manifest.remote_base.iter().all(packs::RemoteFile::valid_library)
+        && manifest.curseforge.iter().all(packs::RemoteFile::valid_curseforge)
 }
 
 /// De dónde sale cada archivo que el paquete ligero no trae (ruta en minúsculas -> archivo; las bibliotecas
@@ -658,19 +702,24 @@ struct LitePlan {
     sources: HashMap<String, PathBuf>,
     downloads: Vec<download::FileDownload>,
     bytes: u64,
-    /// Si entre lo que se baja hay bibliotecas del maven de Fabric (para el texto del progreso).
+    /// Si entre lo que se baja hay bibliotecas del maven de Fabric o mods de CurseForge (para el texto del
+    /// progreso).
     libraries: bool,
+    curseforge: bool,
 }
 
 /// Lo que ya está en este PC no se baja: el mismo archivo en la instancia que se actualiza o en base (por
-/// su SHA-1), o en la caché (allí solo llega comprobado).
-fn lite_plan(manifest: &Manifest, paths: &Paths) -> LitePlan {
+/// su SHA-1), o en la caché (allí solo llega comprobado). Con `only_curseforge`, solo los mods de CurseForge
+/// (`curseforge`), que no vienen ni en el completo.
+fn lite_plan(manifest: &Manifest, paths: &Paths, only_curseforge: bool) -> LitePlan {
     let folder = manifest.folder.clone().filter(|f| packs::valid_folder_name(f)).map(|f| paths.instances.join(f));
     let cache = modrinth_cache(paths);
-    let mut plan = LitePlan { sources: HashMap::new(), downloads: Vec::new(), bytes: 0, libraries: false };
-    let mods = manifest.remote.iter().map(|r| (r, r.path.to_lowercase(), folder.as_ref().zip(crate::mrpack::safe_relative(&r.path)).map(|(f, p)| f.join(p)), false));
-    let libraries = manifest.remote_base.iter().map(|r| (r, format!("base/{}", r.path.to_lowercase()), crate::mrpack::safe_relative(&r.path).map(|p| paths.base.join(p)), true));
-    for (remote, key, local, library) in mods.chain(libraries) {
+    let mut plan = LitePlan { sources: HashMap::new(), downloads: Vec::new(), bytes: 0, libraries: false, curseforge: false };
+    let in_instance = |r: &packs::RemoteFile| folder.as_ref().zip(crate::mrpack::safe_relative(&r.path)).map(|(f, p)| f.join(p));
+    let modrinth = manifest.remote.iter().filter(|_| !only_curseforge).map(|r| (r, r.path.to_lowercase(), in_instance(r), false, false));
+    let libraries = manifest.remote_base.iter().filter(|_| !only_curseforge).map(|r| (r, format!("base/{}", r.path.to_lowercase()), crate::mrpack::safe_relative(&r.path).map(|p| paths.base.join(p)), true, false));
+    let curseforge = manifest.curseforge.iter().map(|r| (r, r.path.to_lowercase(), in_instance(r), false, true));
+    for (remote, key, local, library, from_curseforge) in modrinth.chain(libraries).chain(curseforge) {
         let same = |file: &PathBuf| file.metadata().is_ok_and(|m| m.len() == remote.size) && crate::integridad::sha1_file(file).is_some_and(|h| h.eq_ignore_ascii_case(&remote.sha1));
         let cached = cache.join(&remote.sha1);
         let source = match local.filter(same) {
@@ -679,6 +728,7 @@ fn lite_plan(manifest: &Manifest, paths: &Paths) -> LitePlan {
                 if !cached.metadata().is_ok_and(|m| m.len() == remote.size) {
                     plan.bytes += remote.size;
                     plan.libraries |= library;
+                    plan.curseforge |= from_curseforge;
                     plan.downloads.push(download::FileDownload { url: remote.url.clone(), path: cached.clone(), sha1: Some(remote.sha1.clone()), size: Some(remote.size) });
                 }
                 cached
@@ -695,7 +745,7 @@ async fn fetch_lite(entry: &Entry, paths: &Paths, progress: impl Fn(String, f64)
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::Relaxed};
     let (lite_id, lite_size) = entry.lite.clone().ok_or_else(|| remote_zip::PREFER_FULL.to_string())?;
     let (manifest, paths_copy) = (entry.manifest.clone(), paths.clone());
-    let plan = tauri::async_runtime::spawn_blocking(move || lite_plan(&manifest, &paths_copy)).await.map_err(|e| e.to_string())?;
+    let plan = tauri::async_runtime::spawn_blocking(move || lite_plan(&manifest, &paths_copy, false)).await.map_err(|e| e.to_string())?;
     let total = (lite_size + plan.bytes).max(1);
     // Los dos avanzan a la vez: la barra es la suma y el texto, el de los mods mientras bajan.
     let zip_bytes = std::sync::Arc::new(AtomicU64::new(0));
@@ -711,11 +761,16 @@ async fn fetch_lite(entry: &Entry, paths: &Paths, progress: impl Fn(String, f64)
         }
     };
     let mods_report = {
-        let (progress, zip_bytes, mods_bytes, libraries) = (progress.clone(), zip_bytes.clone(), mods_bytes.clone(), plan.libraries);
+        let (progress, zip_bytes, mods_bytes, libraries, curseforge) = (progress.clone(), zip_bytes.clone(), mods_bytes.clone(), plan.libraries, plan.curseforge);
         move |count: usize, files: usize, bytes: u64, all: u64| {
             mods_bytes.store(bytes, Relaxed);
             let (done_mb, all_mb) = (bytes as f64 / 1048576.0, all as f64 / 1048576.0);
-            let stage = if libraries {
+            let stage = if curseforge {
+                t!(
+                    "Bajando los mods de Modrinth y CurseForge: {count} de {files} ({done_mb:.0} de {all_mb:.0} MB)…",
+                    "Downloading the mods from Modrinth and CurseForge: {count} of {files} ({done_mb:.0} of {all_mb:.0} MB)…"
+                )
+            } else if libraries {
                 t!(
                     "Bajando los mods y el loader: {count} de {files} ({done_mb:.0} de {all_mb:.0} MB)…",
                     "Downloading the mods and the loader: {count} of {files} ({done_mb:.0} of {all_mb:.0} MB)…"
@@ -781,14 +836,16 @@ pub(crate) async fn install_lite(entry: &Entry, paths: &Paths, progress: impl Fn
     if copy {
         let _ = std::fs::remove_file(&zip);
     }
-    let cache = modrinth_cache(paths);
-    let downloaded = sources.values().filter(|s| s.starts_with(&cache)).count();
-    for source in sources.values().filter(|s| s.starts_with(&cache)) {
-        let _ = std::fs::remove_file(source);
-    }
+    let downloaded = forget_downloaded(paths, &sources);
     log(
         paths,
-        &format!("{} {}: paquete ligero en {:.1} s ({downloaded} de Modrinth, {} ya estaban)", entry.manifest.name, entry.manifest.version, started.elapsed().as_secs_f64(), sources.len() - downloaded),
+        &format!(
+            "{} {}: paquete ligero en {:.1} s ({downloaded} bajados de Modrinth o CurseForge, {} ya estaban)",
+            entry.manifest.name,
+            entry.manifest.version,
+            started.elapsed().as_secs_f64(),
+            sources.len() - downloaded
+        ),
     );
     Ok(result)
 }
@@ -817,7 +874,7 @@ pub async fn prefetch(entry: &Entry, paths: &Paths, instances: &[Instance], prog
     };
     let result = if uses_lite(entry) {
         let (manifest, paths_copy) = (entry.manifest.clone(), paths.clone());
-        let plan = tauri::async_runtime::spawn_blocking(move || lite_plan(&manifest, &paths_copy)).await.map_err(|e| e.to_string())?;
+        let plan = tauri::async_runtime::spawn_blocking(move || lite_plan(&manifest, &paths_copy, false)).await.map_err(|e| e.to_string())?;
         let lite_size = entry.lite.as_ref().map(|(_, size)| *size).unwrap_or(0);
         if lite_size + plan.bytes > PREFETCH_LIMIT {
             return Ok(false);
@@ -992,15 +1049,18 @@ pub async fn install(
     let previous = installed.as_ref().and_then(|(_, m)| m.as_ref());
     let wants_delta = !manifest.is_base() && entry.source == Source::Drive && previous.is_some_and(|p| repair || manifest.version > p.version);
     if wants_delta {
-        let (url, size, manifest_copy, paths_copy, report) = (entry.url().unwrap(), entry.size, manifest.clone(), paths.clone(), progress.clone());
+        // Los mods de CurseForge no vienen en el zip: los que falten se bajan antes.
+        let sources = fetch_curseforge(manifest, paths, progress.clone()).await?;
+        let (url, size, manifest_copy, paths_copy, report, sources_copy) = (entry.url().unwrap(), entry.size, manifest.clone(), paths.clone(), progress.clone(), sources.clone());
         let scope = crate::descargas::current();
         let result = tauri::async_runtime::spawn_blocking(move || {
-            crate::descargas::enter(scope, || delta_update(&RemoteZip::new(&url, size), &manifest_copy, &paths_copy, &report))
+            crate::descargas::enter(scope, || delta_update(&RemoteZip::new(&url, size), &manifest_copy, &paths_copy, &sources_copy, &report))
         })
         .await
         .map_err(|e| e.to_string())?;
         match result {
             Ok(stats) => {
+                forget_downloaded(paths, &sources);
                 return Ok(CatalogInstall {
                     id: installed.map(|(i, _)| i.id.clone()),
                     name: manifest.name.clone(),
@@ -1030,8 +1090,9 @@ pub struct DeltaStats {
 }
 
 /// Actualiza una instancia instalada desde un paquete bajando del zip remoto solo lo que cambió
-/// (compara tamaño y CRC32). Conserva lo del jugador como la actualización completa.
-fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress: &(dyn Fn(String, f64) + Send + Sync)) -> Result<DeltaStats, String> {
+/// (compara tamaño y CRC32). Conserva lo del jugador como la actualización completa. Los mods de CurseForge
+/// (`curseforge`) no vienen en el zip: `sources` dice dónde están ya bajados (fetch_curseforge).
+fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, sources: &HashMap<String, PathBuf>, progress: &(dyn Fn(String, f64) + Send + Sync)) -> Result<DeltaStats, String> {
     progress(t!("Comparando con la versión de Drive…", "Comparing with the Drive version…"), 0.0);
     let folder_name = manifest.folder.clone().filter(|f| !f.is_empty()).unwrap_or_else(|| manifest.name.clone());
     if !packs::valid_folder_name(&folder_name) {
@@ -1080,6 +1141,22 @@ fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress
             }
         }
     }
+    // Los de CurseForge son del paquete aunque no vengan en el zip: no se quitan y, si cambiaron, se ponen.
+    let mut from_curseforge: Vec<(PathBuf, PathBuf, &packs::RemoteFile)> = Vec::new();
+    for file in &manifest.curseforge {
+        let relative = crate::mrpack::safe_relative(&file.path)
+            .filter(|_| file.valid_curseforge())
+            .ok_or(t!("El paquete trae una ruta no permitida: {}", "The package contains a path that is not allowed: {}", file.path))?;
+        let target = folder.join(&relative);
+        keep.insert(path_key(&target));
+        if let Some((first, _)) = file.path.split_once('/') {
+            managed_dirs.insert(first.to_lowercase());
+        }
+        let source = sources.get(&file.path.to_lowercase()).ok_or(t!("Falta bajar de CurseForge {}.", "{} still has to be downloaded from CurseForge.", file.path))?;
+        if path_key(source) != path_key(&target) {
+            from_curseforge.push((source.clone(), target, file));
+        }
+    }
 
     // instancia.json viene en el paquete; la memoria y los argumentos de Java propios se conservan.
     let old_settings = folder.join(STATE_DIR).join("instancia-anterior.json");
@@ -1126,6 +1203,14 @@ fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress
         );
         Ok(())
     })?;
+    for (source, target, file) in &from_curseforge {
+        backup.keep(target);
+        std::fs::create_dir_all(target.parent().unwrap()).map_err(|e| e.to_string())?;
+        let temp = PathBuf::from(format!("{}.parte", target.display()));
+        std::fs::copy(source, &temp).map_err(|e| t!("No se pudo copiar {}: {e}", "Could not copy {}: {e}", file.path))?;
+        std::fs::rename(&temp, target).map_err(|e| e.to_string())?;
+        done += file.size;
+    }
     crate::java::package_installed(paths, entries.iter().map(|e| e.name.as_str()));
 
     // Lo que el paquete ya no trae (por ejemplo, un mod quitado) va a la papelera.
@@ -1155,19 +1240,28 @@ fn delta_update(remote: &RemoteZip, manifest: &Manifest, paths: &Paths, progress
     }
     packs::keep_local_settings(&old_settings, &folder.join(INSTANCE_FILE));
     let _ = std::fs::remove_file(&old_settings);
-    let listed: Vec<(String, u32, u64)> = entries
+    let mut listed: Vec<(String, u32, u64)> = entries
         .iter()
         .filter(|e| !e.name.ends_with('/') && e.name.strip_prefix("instancia/").is_some_and(|rest| !preserved(rest)))
         .map(|e| (e.name.clone(), e.crc32, e.size))
         .collect();
-    crate::integridad::save_package(&folder, &listed, &manifest.remote);
+    for file in &manifest.curseforge {
+        let crc32 = crate::mrpack::safe_relative(&file.path).and_then(|relative| remote_zip::file_crc32(&folder.join(relative))).unwrap_or(0);
+        listed.push((format!("instancia/{}", file.path), crc32, file.size));
+    }
+    crate::integridad::save_package(&folder, &listed, &manifest.downloadable());
     std::fs::write(folder.join(STATE_DIR).join(packs::INSTALLED_MANIFEST), serde_json::to_vec_pretty(manifest).unwrap()).map_err(|e| e.to_string())?;
     // La referencia de la huella: lo que trae el paquete (identidad.rs).
-    let names: Vec<String> = entries.iter().filter(|e| !e.name.ends_with('/')).map(|e| e.name.clone()).collect();
+    let names: Vec<String> = entries
+        .iter()
+        .filter(|e| !e.name.ends_with('/'))
+        .map(|e| e.name.clone())
+        .chain(manifest.curseforge.iter().map(|f| format!("instancia/{}", f.path)))
+        .collect();
     crate::identidad::after_package_install(paths, &folder_name, manifest, &names);
     backup.finish(paths);
     progress(t!("Listo", "Done"), 1.0);
-    Ok(DeltaStats { files: wanted.len(), bytes: done })
+    Ok(DeltaStats { files: wanted.len() + from_curseforge.len(), bytes: done })
 }
 
 // ================= Actualizar el propio launcher

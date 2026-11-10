@@ -117,9 +117,11 @@ pub fn from_mrpack(info: &mrpack::Info, zip_path: &Path) -> Vec<Tracked> {
 
 /// Guarda la lista de un paquete de Parabellum instalado en `folder`: sus entradas "instancia/…" con
 /// el CRC32 y el tamaño que dice el zip. Las rutas quedan relativas a la carpeta del juego (gameDir).
-/// Lo que está en Modrinth (`remote`) lleva además su SHA-1 y su enlace: se repone sin el paquete.
+/// Lo que está en Modrinth o se baja de CurseForge (`Manifest::downloadable`) lleva además su SHA-1 y su
+/// enlace: se repone sin el paquete.
 pub fn save_package(folder: &Path, entries: &[(String, u32, u64)], remote: &[crate::packs::RemoteFile]) {
-    let remote: HashMap<String, &crate::packs::RemoteFile> = remote.iter().filter(|r| r.valid()).map(|r| (format!("instancia/{}", r.path.to_lowercase()), r)).collect();
+    let remote: HashMap<String, &crate::packs::RemoteFile> =
+        remote.iter().filter(|r| r.valid() || r.valid_curseforge()).map(|r| (format!("instancia/{}", r.path.to_lowercase()), r)).collect();
     let game = std::fs::read_to_string(folder.join(INSTANCE_FILE))
         .ok()
         .and_then(|t| serde_json::from_str::<Value>(&t).ok())
