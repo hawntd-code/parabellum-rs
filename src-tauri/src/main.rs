@@ -4496,6 +4496,7 @@ fn main() {
             comunidad::ver_invitacion,
             comunidad::unirse_comunidad,
             comunidad::salir_comunidad,
+            comunidad::eliminar_comunidad,
             comunidad::crear_invitacion,
             comunidad::borrar_invitacion,
             comunidad::cambiar_miembro,

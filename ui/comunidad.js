@@ -1109,11 +1109,52 @@ async function chooseInstanceFor(server) {
   return ok ? pick : null;
 }
 
+/** Eliminar la comunidad (solo el dueño): se borra para todos. Para no hacerlo sin querer, se escribe su nombre. */
+async function deleteCommunity() {
+  const d = community.detail;
+  if (d?.role !== "owner") return;
+  const others = d.members.filter((m) => !m.you).length;
+  const deleted = await cmDialog({
+    title: t(`Eliminar ${d.name}`, `Delete ${d.name}`),
+    subtitle: t("Se borra para todos y no se puede deshacer.", "It is deleted for everyone and cannot be undone."),
+    glyph: "trash",
+    body: `<p class="side-note no-top">${
+      others
+        ? t(`Sus ${plural(others, "miembro", "miembros")} dejarán de verla. `, `Its ${plural(others, "member", "members")} will stop seeing it. `)
+        : ""
+    }${t(
+      "Se borran sus anuncios, reglas, servidores, invitaciones y solicitudes de soporte. Los modpacks que están en Drive no se tocan.",
+      "Its announcements, rules, servers, invites and support requests are deleted. The modpacks on Drive are not touched.",
+    )}</p>
+      ${textField({ id: "cm-delete-name", label: t(`Escribe «${d.name}» para confirmar`, `Type «${d.name}» to confirm`), max: 40, autofocus: true })}`,
+    danger: `${icon("trash")}${t("Eliminar para siempre", "Delete forever")}`,
+    mount: (root) => {
+      const input = $("#cm-delete-name", root);
+      const button = $("#cm-dialog-danger");
+      const check = () => (button.disabled = input.value.trim() !== d.name.trim());
+      wireCounters(root);
+      input.addEventListener("input", check);
+      check();
+    },
+    onDanger: async () => {
+      if ($("#cm-delete-name").value.trim() !== d.name.trim()) return false;
+      await invoke("eliminar_comunidad", { id: d.id });
+      return true;
+    },
+  });
+  if (!deleted) return;
+  community.id = null;
+  community.detail = null;
+  toast(t(`${d.name} se eliminó.`, `${d.name} was deleted.`));
+  enterCommunities();
+}
+
 function communityMenu(anchor) {
   const d = community.detail;
   const items = [
     { label: t("Recargar", "Reload"), icon: "refresh", action: () => loadCommunity(d.id) },
     d.role !== "owner" ? { label: t("Salir de la comunidad", "Leave the community"), icon: "trash", danger: true, action: leaveCommunity } : null,
+    d.role === "owner" ? { label: t("Eliminar la comunidad", "Delete the community"), icon: "trash", danger: true, action: deleteCommunity } : null,
   ].filter(Boolean);
   contextMenu(anchor, items);
 }

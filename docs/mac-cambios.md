@@ -603,6 +603,21 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-11-09 · Eliminar una comunidad
+
+Pedido de Juan: se podían crear comunidades pero no borrarlas, y las de prueba estorbaban. Ahora el dueño
+tiene «Eliminar la comunidad» en el menú «⋮». Pide escribir el nombre y la borra para todos, con sus anuncios,
+reglas, servidores, paquetes, invitaciones y solicitudes de soporte.
+- Código: `comunidad::eliminar_comunidad`, en dos tandas, y `ui/comunidad.js` › `deleteCommunity`.
+- **Reglas de Firebase nuevas.** Dejan al dueño, ya con la comunidad borrada, quitar el soporte y su propio
+  lugar. Hay que publicarlas antes de la versión.
+- Probado:
+  - `docs/probar-reglas.py`, con 9 casos nuevos (TODO BIEN);
+  - la primera tanda con las reglas de antes;
+  - la ventana, en la demostración.
+
+Mac: nada (todo es compartido).
+
 ### 2026-11-09 · El paquete oficial de una comunidad baja los mods de CurseForge al instalar
 
 Pedido de Juan, para no repartir desde Drive los mods de FTB, que son «All Rights Reserved». Al publicar el

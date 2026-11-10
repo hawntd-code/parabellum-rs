@@ -355,6 +355,84 @@ pub async fn editar_comunidad(app: AppHandle, id: String, nombre: String, descri
     Ok(())
 }
 
+fn keys(value: &Value) -> Vec<String> {
+    value.as_object().map(|o| o.keys().cloned().collect()).unwrap_or_default()
+}
+
+/// La primera tanda para eliminar una comunidad: ella y lo de todos los demás (miembros y sus listas,
+/// anuncios, reglas, servidores, paquetes e invitaciones). Ya lo permiten las reglas de siempre. De
+/// `invite_codes` solo van los que siguen en inviteCodes: las reglas no dejan borrar uno que no existe.
+fn deletion_paths(cid: &str, owner: &str, members: &Value, posts: &Value, servers: &Value, packages: &Value, invites: &Value, invite_codes: &[String]) -> Map<String, Value> {
+    let mut update = Map::new();
+    update.insert(format!("communities/{cid}"), Value::Null);
+    update.insert(format!("communityRules/{cid}"), Value::Null);
+    update.insert(format!("userCommunities/{owner}/{cid}"), Value::Null);
+    for uid in keys(members).into_iter().filter(|uid| uid != owner) {
+        update.insert(format!("communityMembers/{cid}/{uid}"), Value::Null);
+        update.insert(format!("userCommunities/{uid}/{cid}"), Value::Null);
+    }
+    for (node, value) in [("communityPosts", posts), ("communityServers", servers), ("communityPackages", packages), ("communityInvites", invites)] {
+        for key in keys(value) {
+            update.insert(format!("{node}/{cid}/{key}"), Value::Null);
+        }
+    }
+    for code in invite_codes {
+        update.insert(format!("inviteCodes/{code}"), Value::Null);
+    }
+    update
+}
+
+/// La segunda tanda, cuando la comunidad ya no existe: las solicitudes de soporte (con sus mensajes y los
+/// avisos y listas de quien las abrió) y, al final, el lugar del dueño. Pide las reglas del 2026-11-09.
+fn cleanup_paths(cid: &str, owner: &str, tickets: &Value) -> Map<String, Value> {
+    let mut update = Map::new();
+    for (tid, ticket) in tickets.as_object().into_iter().flatten() {
+        update.insert(format!("supportTickets/{cid}/{tid}"), Value::Null);
+        update.insert(format!("supportMessages/{cid}/{tid}"), Value::Null);
+        if let Some(by) = ticket["by"].as_str().filter(|by| !by.is_empty() && !by.contains(['/', '.', '#', '$', '[', ']'])) {
+            update.insert(format!("supportByUser/{cid}/{by}/{tid}"), Value::Null);
+            update.insert(format!("supportNotify/{cid}/{by}/{tid}"), Value::Null);
+        }
+    }
+    update.insert(format!("communityMembers/{cid}/{owner}"), Value::Null);
+    update
+}
+
+/// Elimina la comunidad para todos (solo el dueño), con sus anuncios, reglas, servidores, paquetes,
+/// invitaciones y solicitudes de soporte. Los modpacks de Drive no se tocan. Va en dos tandas: la primera
+/// ya la permiten las reglas de siempre; la segunda (el soporte y el lugar del dueño) pide las del
+/// 2026-11-09. Si todavía no están publicadas, eso queda en Firebase sin que nadie lo vea, porque la
+/// comunidad ya no existe. Devuelve si se borró todo.
+#[tauri::command]
+pub async fn eliminar_comunidad(app: AppHandle, id: String) -> Result<bool, String> {
+    let (db, uid) = db(&app)?;
+    if !valid_id('c', 12, &id) {
+        return Err(t!("Comunidad no válida.", "Invalid community."));
+    }
+    let community = get(&db, format!("communities/{id}")).await?;
+    if !community.is_object() {
+        return Err(t!("Esa comunidad ya no existe.", "That community no longer exists."));
+    }
+    if text(&community, "owner") != uid {
+        return Err(t!("Solo el dueño puede eliminar la comunidad.", "Only the owner can delete the community."));
+    }
+    let (members, posts, servers, packages, invites) = futures::join!(
+        get(&db, format!("communityMembers/{id}")),
+        get(&db, format!("communityPosts/{id}")),
+        get(&db, format!("communityServers/{id}")),
+        get(&db, format!("communityPackages/{id}")),
+        get(&db, format!("communityInvites/{id}"))
+    );
+    let (members, posts, servers, packages, invites) = (members?, posts?, servers?, packages?, invites?);
+    let codes = keys(&invites);
+    let found = futures::future::join_all(codes.iter().map(|code| get(&db, format!("inviteCodes/{code}")))).await;
+    let live: Vec<String> = codes.into_iter().zip(found).filter(|(_, invite)| invite.as_ref().is_ok_and(|i| text(i, "cid") == id)).map(|(code, _)| code).collect();
+    let first = deletion_paths(&id, &uid, &members, &posts, &servers, &packages, &invites, &live);
+    db.patch("", &Value::Object(first)).await.map_err(db_error)?;
+    let tickets = get(&db, format!("supportTickets/{id}")).await.unwrap_or(Value::Null);
+    Ok(db.patch("", &Value::Object(cleanup_paths(&id, &uid, &tickets))).await.is_ok())
+}
+
 /// Lo público de una comunidad a partir de un código (para ver a qué te invitan antes de unirte).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -728,5 +806,37 @@ mod tests {
         assert!(valid_id('c', 12, &cid));
         assert!(!valid_id('c', 12, "c12"));
         assert!(!valid_id('v', 8, "v1234567X"));
+    }
+
+    #[test]
+    fn eliminar_una_comunidad_borra_todo_lo_suyo() {
+        let members = json!({ "A": { "role": "owner" }, "B": { "role": "admin" }, "C": { "role": "member" } });
+        let first = deletion_paths("c1", "A", &members, &json!({ "a1": {} }), &json!({ "v1": {} }), &json!({ "p1": {} }), &json!({ "VIVO2345": 1, "VIEJO234": 2 }), &["VIVO2345".to_string()]);
+        let mut paths: Vec<&str> = first.keys().map(String::as_str).collect();
+        paths.sort();
+        assert_eq!(
+            paths,
+            [
+                "communities/c1", "communityInvites/c1/VIEJO234", "communityInvites/c1/VIVO2345", "communityMembers/c1/B", "communityMembers/c1/C",
+                "communityPackages/c1/p1", "communityPosts/c1/a1", "communityRules/c1", "communityServers/c1/v1", "inviteCodes/VIVO2345",
+                "userCommunities/A/c1", "userCommunities/B/c1", "userCommunities/C/c1",
+            ]
+        );
+        // El dueño no se quita en la primera tanda: las reglas de siempre no lo dejan.
+        assert!(!first.contains_key("communityMembers/c1/A"));
+        assert!(first.values().all(Value::is_null));
+
+        let tickets = json!({ "t1": { "by": "C" }, "t2": { "by": "../x" } });
+        let mut rest: Vec<String> = cleanup_paths("c1", "A", &tickets).keys().cloned().collect();
+        rest.sort();
+        assert_eq!(
+            rest,
+            [
+                "communityMembers/c1/A", "supportByUser/c1/C/t1", "supportMessages/c1/t1", "supportMessages/c1/t2", "supportNotify/c1/C/t1",
+                "supportTickets/c1/t1", "supportTickets/c1/t2",
+            ]
+        );
+        // Sin solicitudes, solo el lugar del dueño.
+        assert_eq!(cleanup_paths("c1", "A", &Value::Null).len(), 1);
     }
 }

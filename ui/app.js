@@ -8001,7 +8001,7 @@ function demoInvoke(command, args = {}) {
   if (command === "canal_actualizaciones") return Promise.resolve({ ...state.settings, updateChannel: args.canal });
   if (command === "actualizar_red") return Promise.resolve(null);
   if (command === "ajustes_descargas") return Promise.resolve(Object.assign(settings, { downloadParallel: args.simultaneas, downloadLimitMb: args.limite }));
-  if (["duplicar_instancia", "eliminar_instancia", "activar_contenido", "eliminar_contenido", "detener", "agregar_contenido", "elegir_contenido", "cambiar_loader"].includes(command))
+  if (["duplicar_instancia", "eliminar_instancia", "activar_contenido", "eliminar_contenido", "detener", "agregar_contenido", "elegir_contenido", "cambiar_loader", "eliminar_comunidad"].includes(command))
     return Promise.reject("Modo demostración: esta acción solo funciona en Parabellum.exe.");
   if (command === "guardar_ajustes") return Promise.resolve(Object.assign(settings, args.ajustes));
   if (command === "jugar" || command === "crear_instancia") return Promise.reject("Modo demostración: abre Parabellum.exe para jugar.");

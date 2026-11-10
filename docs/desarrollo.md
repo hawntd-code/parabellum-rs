@@ -388,6 +388,16 @@ Sin ese archivo se compila igual, sin catálogo de Drive. Un `lanzador-config.js
 sustituye los valores que traiga. Las reglas de la base de datos de Firebase están en
 `firebase-reglas.json`.
 
+**Eliminar una comunidad (desde la 0.43).** Solo el dueño, desde el menú «⋮» de la comunidad. Hay que escribir
+su nombre para confirmar. `comunidad::eliminar_comunidad` borra en dos tandas:
+1. La comunidad, los demás miembros y su lista, los anuncios, las reglas, los servidores, los paquetes y las
+   invitaciones. Las reglas de antes ya lo permitían.
+2. Con la comunidad ya borrada: las solicitudes de soporte (mensajes, avisos y listas) y el lugar del dueño.
+   Eso pide las reglas del 2026-11-09: **publicarlas antes de la versión**. Con las de antes, esta tanda queda
+   pendiente sin que se note, porque la comunidad ya no existe para nadie.
+
+Los modpacks de Drive no se tocan. Las dos tandas están en `docs/probar-reglas.py` › «0.43».
+
 Variables de entorno, solo para pruebas (con `PARABELLUM_ROOT` apuntando a una carpeta de prueba):
 
 - `PARABELLUM_CURSEFORGE_PUENTE` y `PARABELLUM_MODRINTH_PUENTE`: la dirección de cada

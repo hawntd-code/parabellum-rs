@@ -288,6 +288,39 @@ check("F sin soporte ya no ve la cola", False, "GET", f"supportTickets/{CID}", "
 check("F sin soporte ya no lee los mensajes", False, "GET", f"supportMessages/{CID}/{TID}", "F")
 check("F sin soporte ya no avisa a E", False, "PUT", f"supportNotify/{CID}/E/{TID}", "F", NOW)
 
+# ---------- 0.43: eliminar una comunidad (comunidad.rs › eliminar_comunidad, en dos tandas)
+# K es la dueña, L administradora y M miembro que pidió ayuda. Todo como lo arma Parabellum.
+CID2, TID2 = "c0000000000e1", "t0000000002"
+req("PATCH", "", "owner", {
+    f"communities/{CID2}": {"name": "De prueba", "description": "", "owner": "K", "createdAt": NOW},
+    f"communityMembers/{CID2}/K": member("owner", "K") | {"joinedAt": NOW}, f"communityMembers/{CID2}/L": member("admin", "L") | {"joinedAt": NOW},
+    f"communityMembers/{CID2}/M": member("member", "M") | {"joinedAt": NOW},
+    f"userCommunities/K/{CID2}": True, f"userCommunities/L/{CID2}": True, f"userCommunities/M/{CID2}": True,
+    f"communityPosts/{CID2}/a1": {"title": "Hola", "text": "x", "author": "K", "at": NOW}, f"communityRules/{CID2}": {"text": "x", "at": NOW},
+    f"communityServers/{CID2}/v00000001": {"name": "S", "address": "a"}, f"communityPackages/{CID2}/p00000001": {"name": "P", "catalogId": "p", "minecraft": "1.21.1", "at": NOW},
+    "inviteCodes/KKKKKKKK": {"cid": CID2, "createdBy": "K", "expiresAt": NOW + 86400000}, f"communityInvites/{CID2}/KKKKKKKK": NOW + 86400000,
+    f"supportTickets/{CID2}/{TID2}": ticket(by="M", byName="M", at=NOW, updated=NOW, lastAt=NOW), f"supportByUser/{CID2}/M/{TID2}": NOW, f"supportNotify/{CID2}/M/{TID2}": NOW,
+    f"supportMessages/{CID2}/{TID2}/m000000000001": msg("M", at=NOW),
+})
+first = {f"communities/{CID2}": None, f"communityRules/{CID2}": None, f"userCommunities/K/{CID2}": None,
+         f"communityMembers/{CID2}/L": None, f"userCommunities/L/{CID2}": None, f"communityMembers/{CID2}/M": None, f"userCommunities/M/{CID2}": None,
+         f"communityPosts/{CID2}/a1": None, f"communityServers/{CID2}/v00000001": None, f"communityPackages/{CID2}/p00000001": None,
+         f"communityInvites/{CID2}/KKKKKKKK": None, "inviteCodes/KKKKKKKK": None}
+rest = {f"supportTickets/{CID2}/{TID2}": None, f"supportMessages/{CID2}/{TID2}": None, f"supportByUser/{CID2}/M/{TID2}": None,
+        f"supportNotify/{CID2}/M/{TID2}": None, f"communityMembers/{CID2}/K": None}
+check("L (admin) no elimina la comunidad", False, "PATCH", "", "L", first)
+check("M no borra la solicitud de soporte", False, "DELETE", f"supportTickets/{CID2}/{TID2}", "M")
+check("K no borra el soporte con la comunidad viva", False, "PATCH", "", "K", rest)
+check("K no se quita de dueña con la comunidad viva", False, "DELETE", f"communityMembers/{CID2}/K", "K")
+check("K elimina la comunidad (primera tanda)", True, "PATCH", "", "K", first)
+check("L (ya fuera) no borra el soporte", False, "PATCH", "", "L", {f"supportTickets/{CID2}/{TID2}": None})
+check("Nadie toma la comunidad eliminada", False, "PUT", f"communityMembers/{CID2}/M", "M", member("owner", "M"))
+check("K borra el soporte y su lugar (segunda tanda)", True, "PATCH", "", "K", rest)
+left = [path for path in list(first) + list(rest) + [f"supportMessages/{CID2}", f"communityMembers/{CID2}"] if req("GET", path, "owner")[1] is not None]
+if left:
+    fails += 1
+print(f"{'MAL' if left else 'OK '} No queda nada de la comunidad eliminada{f': quedan {left}' if left else ''}")
+
 # ---------- 0.37: buzones por persona y escritura efímera ----------
 meta37 = {"kind": "grupo", "name": "Chat 37", "owner": "A", "lastAt": 1, "lastText": "Hola", "lastUid": "A", "lastName": "TestA"}
 req("PUT", "chats/g37", "owner", {"members": {"A": True, "B": True}, "meta": meta37})
