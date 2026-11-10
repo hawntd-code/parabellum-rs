@@ -603,6 +603,15 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-11-10 · La web se publica sola
+
+Pedido de Juan. `.github/workflows/web.yml` arma y publica la web en Vercel cada vez que llega a `main` algo de
+`web/` o de `ui/`, y cada vez que se publica una release. Hace lo mismo que `web/construir.py` a mano: si cambió
+`web/publico`, lo sube como commit propio. Necesita los secretos `VERCEL_TOKEN`, `VERCEL_ORG_ID` y
+`VERCEL_PROJECT_ID` (Settings › Secrets and variables › Actions). Sin ellos, arma la web pero no la publica.
+
+Mac: nada. Una release `mac-v…` también la dispara, y así la tarjeta de Mac se pone al día sola.
+
 ### 2026-11-09 · Clave nueva para firmar las versiones de Windows
 
 Se perdió la clave privada del 2026-11-02 con la que se firmaban las versiones. `firma.rs › TRUSTED` confía

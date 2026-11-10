@@ -5,10 +5,14 @@ es una pieza de paginas/.
     python web/construir.py            arma web/publico/ (va al repo) y web/vista/ (para verla en tu PC)
     python web/construir.py despliegue  arma web/despliegue/ para Vercel, fijado al último commit de main
 
-Para publicar: construir, subir el commit a main y después «despliegue»; en Vercel van solo
-despliegue/preparar.mjs y despliegue/vercel.json. Al compilar, preparar.mjs baja de GitHub (el repo es
-público) las páginas, las imágenes, las fuentes y la demostración (ui/, que en el navegador usa datos de
-prueba), todo de ese commit.
+Se publica sola (desde el 2026-11-10, .github/workflows/web.yml): cada vez que llega a main algo de web/ o
+de ui/, y cada vez que se publica una release. El flujo hace lo mismo que a mano: construir, subir web/publico
+a main si cambió, «despliegue» y publicarlo en Vercel. Necesita los secretos VERCEL_TOKEN, VERCEL_ORG_ID y
+VERCEL_PROJECT_ID en GitHub.
+
+A mano: construir, subir el commit a main y después «despliegue». En Vercel van solo despliegue/preparar.mjs
+y despliegue/vercel.json. Al compilar, preparar.mjs baja de GitHub (el repo es público) las páginas, las
+imágenes, las fuentes y la demostración (ui/, que en el navegador usa datos de prueba), todo de ese commit.
 
 Las capturas de la web están en web/capturas/<es|en>/ (las rehace web/capturar.py): la interfaz a 2560×1600
 (1280×800 con densidad 2), en WebP y en cada idioma. No son las de docs/capturas (esas son del README).

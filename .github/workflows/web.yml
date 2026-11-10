@@ -1,0 +1,75 @@
+# Publica la web de Parabellum (web/, https://parabellum-roan.vercel.app) sola, sin que nadie tenga que correr
+# web/construir.py a mano (pedido de Juan, 2026-11-10):
+#   - cada vez que llega a main algo de la web o de la demostración (ui/);
+#   - cada vez que se publica una release (las páginas traen escritas las descargas de la más nueva);
+#   - a mano: Actions › Web › Run workflow.
+# Arma web/publico; si cambió, lo sube a main como commit propio (los commits hechos con GITHUB_TOKEN no vuelven
+# a disparar este flujo). Después arma web/despliegue, fijado a ese commit, y lo publica en Vercel.
+# Necesita tres secretos (Settings › Secrets and variables › Actions): VERCEL_TOKEN, VERCEL_ORG_ID y
+# VERCEL_PROJECT_ID. Sin ellos, arma todo pero no publica (lo avisa en el resumen).
+name: Web
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", "ui/**", ".github/workflows/web.yml"]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+# Una publicación a la vez y siempre la más reciente.
+concurrency:
+  group: web
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      # construir.py usa f-strings de Python 3.12 o más nuevo.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Armar web/publico
+        run: python web/construir.py
+
+      - name: Subir web/publico si cambió
+        run: |
+          if [ -n "$(git status --porcelain web/publico)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add web/publico
+            git commit -m "Web: páginas al día (automático)"
+            git push origin HEAD:main
+          else
+            echo "web/publico ya estaba al día."
+          fi
+
+      - name: Armar web/despliegue
+        run: |
+          git fetch origin main
+          python web/construir.py despliegue
+
+      - name: Publicar en Vercel
+        working-directory: web/despliegue
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::warning::Faltan los secretos de Vercel (VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID): la web se armó pero no se publicó."
+            echo "Faltan los secretos de Vercel: la web se armó pero no se publicó." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          url=$(npx --yes vercel@65.14.0 deploy --prod --yes --token "$VERCEL_TOKEN")
+          echo "Publicada: $url" >> "$GITHUB_STEP_SUMMARY"
