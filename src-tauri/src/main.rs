@@ -3559,6 +3559,14 @@ fn run_command(args: &[String], paths: &Paths, settings: &Settings) -> Result<St
                 None => format!("No hay clave para firmar en {:?}\n", firma::key_path()),
             })
         }
+        "--crear-firma" => {
+            // Crea la clave privada de este PC si no hay una (nunca la pisa) y dice la pública, para firma.rs › TRUSTED.
+            let public = firma::create_key()?;
+            Ok(format!(
+                "Clave privada en {}\nPública (para firma.rs › TRUSTED): {public}\nGuarda una copia de la privada fuera del PC (una USB o un gestor de contraseñas).\n",
+                firma::key_path().unwrap().display()
+            ))
+        }
         "--populares" => {
             // Para docs/banco-modpacks.py: una línea por modpack, «id<TAB>nombre».
             let count: usize = args.get(1).and_then(|n| n.parse().ok()).unwrap_or(10).clamp(1, 50);

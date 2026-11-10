@@ -354,6 +354,11 @@ cuenta y **nadie los puede leer desde Parabellum**: se ven en la consola de Fire
    una copia de ese archivo fuera del PC** (una USB, un gestor de contraseñas): si se pierde, las versiones
    nuevas tendrían que llevar otra clave en `TRUSTED` y los ya instalados no se actualizarían solos.
    `Parabellum.exe --firma` dice si el PC tiene la clave y cuál es la pública.
+   **La del 2026-11-02 se perdió.** La 0.43 confía solo en una clave nueva, creada el 2026-11-09 con
+   `Parabellum.exe --crear-firma`. Ese comando crea la privada si no hay una (nunca la pisa) y dice la pública,
+   que va en `TRUSTED`. Por eso, quien tenga la 0.42 o una anterior no se actualiza solo a la 0.43: le sale que
+   no viene firmada y la tiene que bajar una vez desde la web o de GitHub. Desde la 0.43 vuelve a actualizarse
+   solo.
 1. **Drive** (lo hace Juan): Ajustes › Acerca de › «Publicar esta versión» deja `_parabellum` con
    `Parabellum-<versión>.zip`, su `.json` y `LEEME.txt`; «Subir a Drive» la sube y manda la anterior a la
    papelera de Drive. Con línea de comandos: `--publicar-launcher <carpeta> [notas] [pruebas]`. Si la
@@ -455,6 +460,7 @@ Sin ventana, con el resultado en `datos/logs/comando.txt`:
 | `--espejo [filtro]` | Qué tiene el espejo de Minecraft en Drive (paquetes, capas y el espacio del Drive) |
 | `--espejo-subir <todo\|1.20.1,1.21.1…> [sin-loaders] [sin-servidores]` | Arma y sube el espejo (quien publica, con «Conectar Drive»); el avance va a `datos/logs/espejo.txt` |
 | `--instalar-catalogo <id> [reparar]` | Instala, actualiza o repara un paquete (bajando solo lo que cambió) |
+| `--crear-firma` | Crea la clave privada para firmar versiones en este PC (si ya hay una, no la toca) y dice la pública para `firma.rs › TRUSTED` |
 | `--publicar-launcher <carpeta> [notas] [pruebas]` | Prepara _parabellum; con `pruebas`, prepara _parabellum-pruebas para el canal de pruebas |
 
 ## Hoja de ruta

@@ -12,8 +12,9 @@ use base64::Engine;
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use std::path::PathBuf;
 
-/// Las claves públicas de quien publica Parabellum. Juan: la de su PC (2026-11-02).
-const TRUSTED: &[&str] = &["kKSSerolRufLdkQQkrbJc5AuEFhlQarH8JUL1etTUZc="];
+/// Las claves públicas de quien publica Parabellum. Juan: la de su PC (2026-11-09, creada con `--crear-firma`). La
+/// del 2026-11-02 (`kKSSerol…`) se perdió y ya no se acepta: las 0.42 y anteriores no se actualizan solas a la 0.43.
+const TRUSTED: &[&str] = &["ym5RlHzKfKgBTFFaj43OHyndub4TAk1vlpK0HfdnzJ0="];
 
 fn message(version: &str, sha256: &str) -> Vec<u8> {
     format!("parabellum-lanzador:{version}:{}", sha256.to_ascii_lowercase()).into_bytes()
@@ -30,9 +31,34 @@ pub fn key_path() -> Option<PathBuf> {
 }
 
 fn signing_key() -> Option<SigningKey> {
-    let text = std::fs::read_to_string(key_path()?).ok()?;
+    signing_key_at(&key_path()?)
+}
+
+fn signing_key_at(path: &std::path::Path) -> Option<SigningKey> {
+    let text = std::fs::read_to_string(path).ok()?;
     let seed: [u8; 32] = b64().decode(text.trim()).ok()?.try_into().ok()?;
     Some(SigningKey::from_bytes(&seed))
+}
+
+/// Crea la clave privada de este PC (`--crear-firma`) y devuelve la pública, para `TRUSTED`. Nunca pisa una que
+/// ya esté: perderla obliga a que los ya instalados se actualicen a mano una vez (pasó el 2026-11-09).
+pub fn create_key() -> Result<String, String> {
+    create_key_at(&key_path().ok_or("No se sabe cuál es la carpeta de usuario.")?)
+}
+
+fn create_key_at(path: &std::path::Path) -> Result<String, String> {
+    let public = |key: SigningKey| b64().encode(key.verifying_key().to_bytes());
+    if path.exists() {
+        return signing_key_at(path).map(public).ok_or_else(|| format!("{} ya existe pero no es una clave válida: no se toca.", path.display()));
+    }
+    let mut seed = [0u8; 32];
+    getrandom::getrandom(&mut seed).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(path.parent().ok_or("Ruta de la clave no válida.")?).map_err(|e| e.to_string())?;
+    // create_new: si apareció una entre medio, tampoco se pisa.
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(path).map_err(|e| e.to_string())?;
+    std::io::Write::write_all(&mut file, b64().encode(seed).as_bytes()).map_err(|e| e.to_string())?;
+    drop(file);
+    signing_key_at(path).map(public).ok_or_else(|| "La clave nueva no se pudo leer.".into())
 }
 
 /// La firma de esa versión, o None si en este PC no está la clave privada.
@@ -86,5 +112,27 @@ mod tests {
         let other = b64().encode(SigningKey::from_bytes(&[8u8; 32]).sign(&message("0.42.0", "abcd")).to_bytes());
         assert!(verify_with(&keys, "0.42.0", "abcd", Some(&other)).is_err(), "otra clave no");
         assert!(TRUSTED.iter().all(|k| b64().decode(k).is_ok_and(|b| b.len() == 32)));
+    }
+
+    #[test]
+    fn crear_la_clave_nunca_pisa_una_que_ya_esta() {
+        let root = std::env::temp_dir().join(format!("parabellum-firma-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let path = root.join(".parabellum").join("firma-actualizaciones.clave");
+        let public = create_key_at(&path).unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(b64().decode(saved.trim()).unwrap().len(), 32);
+        // La segunda vez devuelve la misma pública y el archivo queda igual.
+        assert_eq!(create_key_at(&path).unwrap(), public);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), saved);
+        // Firma y se verifica con esa pública.
+        let key = signing_key_at(&path).unwrap();
+        let signature = b64().encode(key.sign(&message("0.43.0", "abcd")).to_bytes());
+        assert!(verify_with(&[public.as_str()], "0.43.0", "abcd", Some(&signature)).is_ok());
+        // Un archivo que no es una clave tampoco se toca.
+        std::fs::write(&path, "otra cosa").unwrap();
+        assert!(create_key_at(&path).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "otra cosa");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

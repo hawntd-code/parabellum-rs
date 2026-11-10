@@ -603,6 +603,15 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-11-09 · Clave nueva para firmar las versiones de Windows
+
+Se perdió la clave privada del 2026-11-02 con la que se firmaban las versiones. `firma.rs › TRUSTED` confía
+ahora solo en una clave nueva, creada con el comando nuevo `--crear-firma`, que nunca pisa una clave que ya esté.
+Quien tenga la 0.42 o una anterior en Windows no se actualiza solo a la 0.43: le sale que no viene firmada y la
+tiene que bajar una vez desde la web. Desde la 0.43, las actualizaciones vuelven a ser automáticas.
+
+Mac: nada (Mac no firma: `SIGNED_UPDATES = false`).
+
 ### 2026-11-09 · Eliminar una comunidad
 
 Pedido de Juan: se podían crear comunidades pero no borrarlas, y las de prueba estorbaban. Ahora el dueño
