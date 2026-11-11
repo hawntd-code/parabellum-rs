@@ -615,6 +615,20 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-11-11 · En el paquete oficial de una comunidad, CurseForge gana a Modrinth
+
+Pedido de Juan («CurseForge es la plataforma más estable»). Hasta la 0.43.0, si un mod instalado desde
+CurseForge estaba con el mismo archivo en Modrinth, el paquete oficial de la comunidad lo bajaba de Modrinth.
+Ahora lo baja de CurseForge (`curseforge` del `.json`) y no va en ningún zip. Lo que no se instaló desde
+CurseForge, o cuyo autor no deja bajarlo desde un launcher, sigue como antes.
+- Código: `packs::find_remote` y `packs::from_curseforge_and_modrinth` (usada por `export`), con la prueba
+  `curseforge_gana_a_modrinth`.
+- No cambia el formato: las versiones que instalan `curseforge` (desde la 0.43.0) instalan estos paquetes.
+- Probado: `--exportar Retorcidos … sin-base curseforge` sobre la carpeta de pruebas del servidor (101 mods de
+  CurseForge y 4 de Modrinth).
+
+Mac: nada (todo es compartido).
+
 ### 2026-11-10 · La web se publica sola
 
 Pedido de Juan. `.github/workflows/web.yml` arma y publica la web en Vercel cada vez que llega a `main` algo de

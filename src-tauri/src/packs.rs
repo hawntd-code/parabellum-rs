@@ -360,16 +360,30 @@ pub struct ExportOptions {
 
 /// Lo que el paquete ligero deja fuera: los mods que están en Modrinth y, si hay alguno (si no, no sale
 /// ligero), las bibliotecas del loader que están en el maven de Fabric. Con `curseforge_from_cdn`, también
-/// los de CurseForge que no están en Modrinth (esos no van ni en el completo).
+/// los que se instalaron desde CurseForge (esos no van ni en el completo). Desde la 0.43.1, un mod instalado
+/// desde CurseForge se baja de CurseForge aunque el mismo archivo esté también en Modrinth: la comunidad
+/// eligió de dónde sale cada mod.
 pub async fn find_remote(instance: &Instance, paths: &Paths, options: &mut ExportOptions) {
     options.remote = remote_files(instance).await;
+    if options.curseforge_from_cdn {
+        options.curseforge = crate::curseforge::cdn_files(instance).await;
+        let from_curseforge: HashSet<String> = options.curseforge.iter().map(|r| r.path.to_lowercase()).collect();
+        options.remote.retain(|r| !from_curseforge.contains(&r.path.to_lowercase()));
+    }
     if !options.remote.is_empty() {
         options.remote_base = remote_libraries(instance, paths).await;
     }
-    if options.curseforge_from_cdn {
-        let on_modrinth: HashSet<String> = options.remote.iter().map(|r| r.path.to_lowercase()).collect();
-        options.curseforge = crate::curseforge::cdn_files(instance).await.into_iter().filter(|r| !on_modrinth.contains(&r.path.to_lowercase())).collect();
-    }
+}
+
+/// De lo que viaja en el paquete (`packed`: "instancia/mods/a.jar"…), qué se baja de CurseForge al instalar
+/// (no va en ningún zip) y qué de Modrinth (el ligero no lo trae). CurseForge gana (desde la 0.43.1): si el
+/// mismo archivo está en los dos, sale de CurseForge.
+fn from_curseforge_and_modrinth(curseforge: &[RemoteFile], modrinth: &[RemoteFile], packed: &HashSet<String>) -> (Vec<RemoteFile>, Vec<RemoteFile>) {
+    let name = |r: &RemoteFile| format!("instancia/{}", r.path.to_lowercase());
+    let curseforge: Vec<RemoteFile> = curseforge.iter().filter(|r| r.valid_curseforge() && packed.contains(&name(r))).cloned().collect();
+    let outside: HashSet<String> = curseforge.iter().map(name).collect();
+    let modrinth = modrinth.iter().filter(|r| r.valid() && packed.contains(&name(r)) && !outside.contains(&name(r))).cloned().collect();
+    (curseforge, modrinth)
 }
 
 /// Qué archivos de la instancia están en Modrinth, para el paquete ligero. Sin conexión con Modrinth,
@@ -508,21 +522,12 @@ pub fn export(instance: &Instance, paths: &Paths, out_dir: &Path, options: &Expo
         manifest.icon = Some(format!("{pack_name}.png"));
         entries.push((icon, format!("instancia/{STATE_DIR}/icono.png")));
     }
-    // Lo que está en Modrinth y de verdad viaja en el paquete: el ligero no lo trae.
     let packed: HashSet<String> = entries.iter().map(|(_, name)| name.to_lowercase()).collect();
-    manifest.remote = options.remote.iter().filter(|r| r.valid() && packed.contains(&format!("instancia/{}", r.path.to_lowercase()))).cloned().collect();
+    (manifest.curseforge, manifest.remote) = from_curseforge_and_modrinth(&options.curseforge, &options.remote, &packed);
+    let outside: HashSet<String> = manifest.curseforge.iter().map(|r| format!("instancia/{}", r.path.to_lowercase())).collect();
     if !manifest.remote.is_empty() {
         manifest.remote_base = options.remote_base.iter().filter(|r| r.valid_library() && packed.contains(&format!("base/{}", r.path.to_lowercase()))).cloned().collect();
     }
-    // Los de CurseForge (si se pidió) no viajan en ningún zip: se bajan de su CDN al instalar.
-    let on_modrinth: HashSet<String> = manifest.remote.iter().map(|r| r.path.to_lowercase()).collect();
-    manifest.curseforge = options
-        .curseforge
-        .iter()
-        .filter(|r| r.valid_curseforge() && !on_modrinth.contains(&r.path.to_lowercase()) && packed.contains(&format!("instancia/{}", r.path.to_lowercase())))
-        .cloned()
-        .collect();
-    let outside: HashSet<String> = manifest.curseforge.iter().map(|r| format!("instancia/{}", r.path.to_lowercase())).collect();
     let entries: Vec<(PathBuf, String)> = entries.into_iter().filter(|(_, name)| !outside.contains(&name.to_lowercase())).collect();
     // Sin ellos, el completo cambia de nombre (Manifest::full_archive). El de la otra forma que haya quedado
     // de una exportación anterior ya no corresponde (y el viejo los llevaba dentro).
@@ -978,6 +983,28 @@ mod tests {
         assert!(!remote("../fuera.jar", url).valid_curseforge(), "la ruta no sale de la instancia");
         assert!(!remote("options.txt", url).valid_curseforge(), "solo mods, resource packs y shaders");
         assert!(!remote("mods/a.jar.disabled", url).valid_curseforge());
+    }
+
+    #[test]
+    fn curseforge_gana_a_modrinth() {
+        let modrinth = |p: &str| remote(p, &format!("https://cdn.modrinth.com/data/x/versions/1/{p}"));
+        let curseforge = |p: &str| remote(p, &format!("https://edge.forgecdn.net/files/1/2/{p}"));
+        let packed: HashSet<String> = ["instancia/mods/a.jar", "instancia/mods/b.jar", "instancia/mods/c.jar"].map(String::from).into();
+        // a.jar está en los dos (se instaló desde CurseForge), b.jar solo en Modrinth, c.jar solo en CurseForge y
+        // d.jar no viaja en el paquete.
+        let (from_cf, from_mr) = from_curseforge_and_modrinth(
+            &[curseforge("mods/a.jar"), curseforge("mods/c.jar"), curseforge("mods/d.jar")],
+            &[modrinth("mods/a.jar"), modrinth("mods/b.jar"), modrinth("mods/d.jar")],
+            &packed,
+        );
+        assert_eq!(from_cf.iter().map(|r| r.path.as_str()).collect::<Vec<_>>(), ["mods/a.jar", "mods/c.jar"]);
+        assert_eq!(from_mr.iter().map(|r| r.path.as_str()).collect::<Vec<_>>(), ["mods/b.jar"]);
+        // Mayúsculas distintas: es el mismo archivo.
+        let (from_cf, from_mr) = from_curseforge_and_modrinth(&[curseforge("mods/A.jar")], &[modrinth("mods/a.jar")], &packed);
+        assert_eq!((from_cf.len(), from_mr.len()), (1, 0));
+        // Un enlace de CurseForge que no es de su CDN no cuenta: sigue saliendo de Modrinth.
+        let (from_cf, from_mr) = from_curseforge_and_modrinth(&[remote("mods/a.jar", "https://ejemplo.com/a.jar")], &[modrinth("mods/a.jar")], &packed);
+        assert_eq!((from_cf.len(), from_mr.len()), (0, 1));
     }
 
     #[test]

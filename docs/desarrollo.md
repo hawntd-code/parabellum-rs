@@ -228,6 +228,11 @@ Quests y Chunks), que no están en Modrinth. Funciona así:
   desde un launcher (`downloadUrl` del CDN), con la misma huella y tamaño que en la instancia, no va en
   ningún zip, tampoco en el completo. El `.json` lo lista en `curseforge`, con enlaces de `edge.forgecdn.net`
   (`curseforge::cdn_files`).
+- **Si también está en Modrinth.** Desde la 0.43.1 gana CurseForge: lo instalado desde CurseForge se baja de
+  CurseForge aunque el mismo archivo esté también en Modrinth (`packs::from_curseforge_and_modrinth`). Pedido de
+  Juan (2026-11-11), porque CurseForge le resulta más estable. En la 0.43.0 ganaba Modrinth. Con el modpack de
+  Retorcidos (107 mods), 101 se bajan de CurseForge y 4 de Modrinth (Easy NPC, y Alex's Mobs y Entity Culling,
+  que en CurseForge no dejan bajarse desde un launcher). El completo queda en 131 MB y el ligero en 100 MB.
 - **Al instalar.** Se baja del CDN de CurseForge, que también pasa el filtro de la escuela:
   - con el ligero, junto con los de Modrinth;
   - con el completo y en la actualización por partes, antes de instalar (`catalog::fetch_curseforge`).
