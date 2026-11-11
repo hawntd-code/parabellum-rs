@@ -163,6 +163,17 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
 
+- **0.43.1** · 2026-11-11 · En Drive (`_parabellum`, subida por Juan el 2026-11-11 con «Publicar esta versión»; el
+  `.json` lleva la firma) y en GitHub con instalador. Código del exe `3420d2c`; ZIP de `_parabellum`, 11 217 208
+  bytes, SHA-256 `79204899ff03adcaa9c053c967f3c8836e39bf73ebfa37519e37e50953b49990` (firmado); instalador
+  `Parabellum_0.43.1_x64-setup.exe`, 7 216 326 bytes, SHA-256
+  `e0f7d5bd9264c9074c1a42e4ecfa9cec73e775ce19b5158adf0ba718415864c2`.
+  [GitHub](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.43.1).
+  - En el paquete oficial de una comunidad, lo instalado desde CurseForge se baja de CurseForge aunque también esté
+    en Modrinth (antes ganaba Modrinth). Ver «Cambios de Windows» › 2026-11-11.
+  - Quien tenga la 0.43.0 se actualiza solo; la 0.42 sigue necesitando bajarla una vez a mano.
+  - Mac: nada que hacer por esta versión.
+
 - **0.43.0** · 2026-11-10 · En Drive (`_parabellum`, subida por Juan el 2026-11-10; el `.json` lleva la firma de la
   clave nueva) y en GitHub con instalador. Reglas de Firebase del 2026-11-09 publicadas por Juan antes de subirla.
   Código del exe `8036244`; ZIP de `_parabellum`, 11 216 181 bytes, SHA-256
