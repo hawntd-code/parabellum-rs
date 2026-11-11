@@ -163,6 +163,18 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
 
+- **0.43.0** · 2026-11-10 · En Drive (`_parabellum`, subida por Juan el 2026-11-10; el `.json` lleva la firma de la
+  clave nueva) y en GitHub con instalador. Reglas de Firebase del 2026-11-09 publicadas por Juan antes de subirla.
+  Código del exe `8036244`; ZIP de `_parabellum`, 11 216 181 bytes, SHA-256
+  `922706dc7d3f83351617c3e2ad7a827428d25304a19039bf6180d05bb3380e4f` (firmado); instalador
+  `Parabellum_0.43.0_x64-setup.exe`, 7 216 688 bytes, SHA-256
+  `c934f13019bc7ab3a794c15054739521f0236ee651d4a17f0d88965f4212574f`.
+  [GitHub](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.43.0).
+  - Paquete oficial de comunidad sin los mods de CurseForge en los zips (se bajan del CDN al instalar), el dueño
+    puede eliminar su comunidad y clave de firma nueva.
+  - **Quien tenga la 0.42 o una anterior no se actualiza solo**: la tiene que bajar una vez de la web o de GitHub.
+  - Mac: nada que hacer por esta versión (la clave nueva solo cuenta en Windows, `SIGNED_UPDATES`).
+
 - **0.42.0** · 2026-11-02 · En GitHub con instalador y en Drive (`_parabellum` y `_parabellum-pruebas`,
   subida por Juan el 2026-11-03; el `.json` de Drive lleva la firma). Las skins con PNG propio ya funcionan:
   el puente tiene la clave de MineSkin desde el 2026-11-03. Código del exe `7bd584f`; ZIP de `_parabellum`, 11 069 918 bytes, SHA-256
