@@ -626,6 +626,31 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-11-14 · Comunidad y Mi cuenta en la 0.44.0
+
+- Reglas tiene una vista de lectura y un editor con herramientas de formato. El mismo editor permite crear
+  y editar anuncios con una vista previa de su imagen y texto. La edición conserva las reacciones.
+- Los emojis se eligen junto al anuncio y las solicitudes de soporte se abren desde «Ayuda», al lado de
+  «Reglas». El formulario de la comunidad muestra las opciones de ingreso con su alcance.
+- El visor 3D de «Mi cuenta» y de la bienvenida admite rotación con ratón o teclado, brazos clásicos o
+  delgados y las dos capas de la skin. El mismo perfil conserva el banner y el nombre.
+- El chat muestra el nombre de la comunidad en la vista previa de sus invitaciones. Sigue leyendo las que
+  enviaron las versiones anteriores.
+- Mac: comprobar el visor en WKWebView y la selección de imágenes antes de publicar. El despliegue de
+  `firebase-reglas.json` habilita la edición de anuncios y los datos compartidos de la guía y los perfiles.
+
+### 2026-11-13 · Guía de bienvenida, perfiles y Comunidad
+
+- «Mi cuenta» reúne nombre, skin y banner. Los perfiles se pueden abrir desde la lista de miembros.
+- Una instalación nueva abre la guía con Google, nombre, skin, RAM y comunidad. Las existentes pueden abrirla
+  desde el menú del perfil. La visibilidad del directorio se elige en «Editar la comunidad».
+- Comunidad muestra las reglas en su propio diálogo. Los anuncios admiten una imagen y reacciones,
+  y los servidores pueden mostrar un enlace a su sitio web.
+- Se recompiló el mod de NeoForge 1.21/1.21.1. Pide por el puente local las texturas firmadas de los
+  jugadores que encuentra en el servidor, también cuando el panel de la O está desactivado.
+- Antes de distribuir, publicar `firebase-reglas.json`. En Mac, comprobar el selector de archivos y
+  la visualización del banner en WKWebView, y abrir Retorcidos con dos cuentas de Parabellum.
+
 ### 2026-11-11 · En el paquete oficial de una comunidad, CurseForge gana a Modrinth
 
 Pedido de Juan («CurseForge es la plataforma más estable»). Hasta la 0.43.0, si un mod instalado desde

@@ -53,7 +53,12 @@ pub struct Settings {
     pub download_limit_mb: f64,
     /// Canal de actualizaciones: "estable" o "pruebas" (ver canal.rs).
     pub update_channel: String,
+    /// Los ajustes anteriores a la guía pertenecen a una instalación existente.
+    #[serde(default = "existing_setup")]
+    pub setup_completed: bool,
 }
+
+fn existing_setup() -> bool { true }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
@@ -108,6 +113,7 @@ impl Default for Settings {
             download_parallel: 1,
             download_limit_mb: 0.0,
             update_channel: crate::canal::STABLE.into(),
+            setup_completed: false,
         }
     }
 }
@@ -135,6 +141,7 @@ fn from_old(text: &str) -> Option<Settings> {
     if let Some(ram) = old.ram_gb {
         settings.ram_gb = ram.clamp(1, 64);
     }
+    settings.setup_completed = true;
     Some(settings)
 }
 
@@ -285,5 +292,16 @@ mod tests {
         assert!(validate_username("con espacio").is_some());
         assert!(validate_username("").is_some());
         assert!(validate_username("abcdefghijklmnopq").is_some());
+    }
+
+    #[test]
+    fn la_guia_es_para_instalaciones_nuevas() {
+        assert!(!Settings::default().setup_completed);
+        let existing: Settings = serde_json::from_str(r#"{"username":"Hawntd","ramGb":8}"#).unwrap();
+        assert!(existing.setup_completed);
+        assert_eq!(existing.ram_gb, 8);
+        let new: Settings = serde_json::from_str(&serde_json::to_string(&Settings::default()).unwrap()).unwrap();
+        assert!(!new.setup_completed);
+        assert!(from_old(r#"{"Username":"Hawntd"}"#).unwrap().setup_completed);
     }
 }

@@ -56,6 +56,25 @@ pub struct Summary {
     pub caps: Caps,
 }
 
+/// Una ficha publicada por el staff en el directorio. Las comunidades existentes son privadas por defecto.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectoryEntry {
+    id: String,
+    name: String,
+    description: String,
+    image: Option<String>,
+    access: &'static str,
+    member: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectoryPage {
+    entries: Vec<DirectoryEntry>,
+    next: Option<String>,
+}
+
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Member {
@@ -74,7 +93,44 @@ pub struct Post {
     pub title: String,
     pub text: String,
     pub author_name: String,
+    pub mine: bool,
     pub at: i64,
+    pub image: Option<String>,
+    pub reactions: Vec<PostReaction>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct PostReaction {
+    pub emoji: &'static str,
+    pub count: usize,
+    pub mine: bool,
+}
+
+fn post_reactions(data: &Value, uid: &str) -> Vec<PostReaction> {
+    crate::chat::REACTIONS.iter().filter_map(|&emoji| {
+        let count = data.as_object().into_iter().flat_map(|reactions| reactions.values())
+            .filter(|value| value.as_str() == Some(emoji)).count();
+        (count > 0).then(|| PostReaction { emoji, count, mine: data[uid].as_str() == Some(emoji) })
+    }).collect()
+}
+
+fn website(value: Option<String>) -> Result<Option<String>, String> {
+    let Some(value) = value.map(|value| value.trim().to_owned()).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let error = || t!("Escribe un sitio web completo que empiece por https:// o http://.", "Enter a full website address starting with https:// or http://.");
+    let scheme = value.split_once("://").map(|(scheme, _)| scheme.to_ascii_lowercase());
+    if !matches!(scheme.as_deref(), Some("https" | "http")) {
+        return Err(error());
+    }
+    let url = reqwest::Url::parse(&value).map_err(|_| error())?;
+    if !matches!(url.scheme(), "https" | "http") || url.host().is_none()
+        || !url.username().is_empty() || url.password().is_some() || url.as_str().len() > 250
+        || url.as_str().contains(['"', '<', '>', '^', '|', '`'])
+    {
+        return Err(error());
+    }
+    Ok(Some(url.into()))
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -89,6 +145,8 @@ pub struct Server {
     /// Bedrock (Geyser), solo para mostrarla: «mc.ejemplo.com:19132».
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bedrock: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub website: Option<String>,
     /// El paquete oficial que pide (id en communityPackages).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub package: Option<String>,
@@ -125,6 +183,7 @@ pub struct Detail {
     #[serde(flatten)]
     pub summary: Summary,
     pub owner: String,
+    pub access: &'static str,
     pub members: Vec<Member>,
     pub posts: Vec<Post>,
     pub rules: String,
@@ -173,6 +232,14 @@ fn caps_of(value: &Value) -> Caps {
 
 fn is_admin(role: &str) -> bool {
     role == "owner" || role == "admin"
+}
+
+fn access_mode(value: &Value) -> &'static str {
+    match value.as_str() {
+        Some("open") => "open",
+        Some("invite") => "invite",
+        _ => "private",
+    }
 }
 
 fn summary(id: &str, community: &Value, me: &Value) -> Summary {
@@ -225,6 +292,61 @@ pub async fn comunidades(app: AppHandle) -> Result<Vec<Summary>, String> {
     Ok(list)
 }
 
+/// El directorio contiene solo fichas que el staff eligió publicar.
+#[tauri::command]
+pub async fn directorio_comunidades(app: AppHandle, despues: Option<String>) -> Result<DirectoryPage, String> {
+    let (db, uid) = db(&app)?;
+    const PAGE_SIZE: usize = 25;
+    let mut query = format!("communityDirectory?orderBy=%22%24key%22&limitToFirst={}", PAGE_SIZE + 2);
+    let after = despues.filter(|id| valid_id('c', 12, id));
+    if let Some(after) = &after {
+        query.push_str(&format!("&startAt=%22{after}%22"));
+    }
+    let membership_path = format!("userCommunities/{uid}");
+    let (page, memberships) = futures::join!(db.get(&query), db.get(&membership_path));
+    let page = match page {
+        Ok(page) => page,
+        // Las reglas anteriores dejan disponible el ingreso por código.
+        Err(firebase::DbError::Permission(_)) => Value::Null,
+        Err(error) => return Err(db_error(error)),
+    };
+    let memberships = memberships.map_err(db_error)?;
+    let mut listed = Vec::new();
+    for (id, access) in page.as_object().into_iter().flatten() {
+        if valid_id('c', 12, id) && after.as_ref() != Some(id) {
+            listed.push((id.clone(), access_mode(access)));
+        }
+    }
+    listed.sort_by(|left, right| left.0.cmp(&right.0));
+    let next = (listed.len() > PAGE_SIZE).then(|| listed[PAGE_SIZE - 1].0.clone());
+    listed.truncate(PAGE_SIZE);
+    let mut entries = Vec::new();
+    for batch in listed.chunks(6) {
+        let mut requests = Vec::new();
+        for (id, access) in batch {
+            if *access != "private" {
+                requests.push(directory_entry(db.clone(), id.clone(), *access, memberships[id] == true));
+            }
+        }
+        for result in futures::future::join_all(requests).await {
+            entries.extend(result?);
+        }
+    }
+    Ok(DirectoryPage { entries, next })
+}
+
+async fn directory_entry(db: Arc<Database>, id: String, access: &'static str, member: bool) -> Result<Option<DirectoryEntry>, String> {
+    let card = db.get(&format!("communities/{id}")).await.map_err(db_error)?;
+    Ok(card.is_object().then(|| DirectoryEntry {
+        id,
+        name: text(&card, "name"),
+        description: text(&card, "description"),
+        image: card["image"].as_str().map(String::from),
+        access,
+        member,
+    }))
+}
+
 /// Todo lo de una comunidad (tienes que ser miembro).
 #[tauri::command]
 pub async fn comunidad(app: AppHandle, id: String) -> Result<Detail, String> {
@@ -240,11 +362,12 @@ pub async fn comunidad(app: AppHandle, id: String) -> Result<Detail, String> {
     }
     let me = members[&uid].clone();
     let admin = is_admin(&text(&me, "role"));
-    let (posts, rules, servers, packages) = futures::join!(
+    let (posts, rules, servers, packages, access) = futures::join!(
         get(&db, format!("communityPosts/{id}")),
         get(&db, format!("communityRules/{id}")),
         get(&db, format!("communityServers/{id}")),
-        get(&db, format!("communityPackages/{id}"))
+        get(&db, format!("communityPackages/{id}")),
+        get(&db, format!("communityDirectory/{id}"))
     );
     let invites = if admin { get(&db, format!("communityInvites/{id}")).await.unwrap_or(Value::Null) } else { Value::Null };
     let now = chrono::Utc::now().timestamp_millis();
@@ -264,12 +387,25 @@ pub async fn comunidad(app: AppHandle, id: String) -> Result<Detail, String> {
     member_list.sort_by_key(|m| (match m.role.as_str() { "owner" => 0, "admin" => 1, _ => 2 }, m.name.to_lowercase()));
     let mut post_list: Vec<Post> = entries(&posts.unwrap_or_default())
         .into_iter()
-        .map(|(post_id, p)| Post { id: post_id, title: text(&p, "title"), text: text(&p, "text"), author_name: text(&p, "authorName"), at: p["at"].as_i64().unwrap_or(0) })
+        .map(|(post_id, p)| Post {
+            id: post_id,
+            title: text(&p, "title"),
+            text: text(&p, "text"),
+            author_name: text(&p, "authorName"),
+            mine: p["author"].as_str() == Some(&uid),
+            at: p["at"].as_i64().unwrap_or(0),
+            image: p["image"].as_str().filter(|data| crate::imagen::validate_social_image(data).is_ok()).map(String::from),
+            reactions: post_reactions(&p["reactions"], &uid),
+        })
         .collect();
     post_list.sort_by_key(|p| std::cmp::Reverse(p.at));
     let mut server_list: Vec<Server> = entries(&servers.unwrap_or_default())
         .into_iter()
-        .filter_map(|(sid, s)| serde_json::from_value::<Server>(s).ok().map(|server| Server { id: sid, ..server }))
+        .filter_map(|(sid, s)| serde_json::from_value::<Server>(s).ok().map(|mut server| {
+            server.id = sid;
+            server.website = website(server.website).unwrap_or_default();
+            server
+        }))
         .collect();
     server_list.sort_by(|a, b| a.order.unwrap_or(0.0).total_cmp(&b.order.unwrap_or(0.0)).then(a.name.cmp(&b.name)));
     let package_list: Vec<Package> = entries(&packages.unwrap_or_default())
@@ -310,6 +446,7 @@ pub async fn comunidad(app: AppHandle, id: String) -> Result<Detail, String> {
         catalog: info,
         summary: summary(&id, &community, &me),
         owner: text(&community, "owner"),
+        access: access_mode(&access.unwrap_or_default()),
         members: member_list,
         posts: post_list,
         rules: rules.ok().map(|r| text(&r, "text")).unwrap_or_default(),
@@ -337,19 +474,30 @@ pub async fn crear_comunidad(app: AppHandle, nombre: String, descripcion: String
     Ok(cid)
 }
 
-/// Cambia nombre, descripción o imagen (el dueño o un administrador). La imagen, como data URL ya
-/// reducida por la ventana (máx. ~88 KB).
+/// Cambia nombre, descripción, imagen o visibilidad (el dueño o un administrador).
 #[tauri::command]
-pub async fn editar_comunidad(app: AppHandle, id: String, nombre: String, descripcion: String, imagen: Option<String>) -> Result<(), String> {
+pub async fn editar_comunidad(app: AppHandle, id: String, nombre: String, descripcion: String, imagen: Option<String>, acceso: Option<String>) -> Result<(), String> {
+    if !valid_id('c', 12, &id) {
+        return Err(t!("Comunidad no válida.", "Invalid community."));
+    }
     let (db, _) = db(&app)?;
+    let path = format!("communities/{id}");
     let mut update = Map::new();
-    update.insert(format!("communities/{id}/name"), json!(nombre.trim()));
-    update.insert(format!("communities/{id}/description"), json!(descripcion.trim().chars().take(500).collect::<String>()));
+    update.insert(format!("{path}/name"), json!(nombre.trim()));
+    update.insert(format!("{path}/description"), json!(descripcion.trim().chars().take(500).collect::<String>()));
     if let Some(image) = imagen {
         if !image.starts_with("data:image/") || image.len() > 120_000 {
             return Err(t!("La imagen es muy grande.", "The image is too big."));
         }
-        update.insert(format!("communities/{id}/image"), json!(image));
+        update.insert(format!("{path}/image"), json!(image));
+    }
+    if let Some(mode) = acceso.as_deref() {
+        let entry = match mode {
+            "private" => Value::Null,
+            "invite" | "open" => json!(mode),
+            _ => return Err(t!("Elige cómo se entra a la comunidad.", "Choose how players join the community.")),
+        };
+        update.insert(format!("communityDirectory/{id}"), entry);
     }
     db.patch("", &Value::Object(update)).await.map_err(db_error)?;
     Ok(())
@@ -416,18 +564,22 @@ pub async fn eliminar_comunidad(app: AppHandle, id: String) -> Result<bool, Stri
     if text(&community, "owner") != uid {
         return Err(t!("Solo el dueño puede eliminar la comunidad.", "Only the owner can delete the community."));
     }
-    let (members, posts, servers, packages, invites) = futures::join!(
+    let (members, posts, servers, packages, invites, access) = futures::join!(
         get(&db, format!("communityMembers/{id}")),
         get(&db, format!("communityPosts/{id}")),
         get(&db, format!("communityServers/{id}")),
         get(&db, format!("communityPackages/{id}")),
-        get(&db, format!("communityInvites/{id}"))
+        get(&db, format!("communityInvites/{id}")),
+        get(&db, format!("communityDirectory/{id}"))
     );
     let (members, posts, servers, packages, invites) = (members?, posts?, servers?, packages?, invites?);
     let codes = keys(&invites);
     let found = futures::future::join_all(codes.iter().map(|code| get(&db, format!("inviteCodes/{code}")))).await;
     let live: Vec<String> = codes.into_iter().zip(found).filter(|(_, invite)| invite.as_ref().is_ok_and(|i| text(i, "cid") == id)).map(|(code, _)| code).collect();
-    let first = deletion_paths(&id, &uid, &members, &posts, &servers, &packages, &invites, &live);
+    let mut first = deletion_paths(&id, &uid, &members, &posts, &servers, &packages, &invites, &live);
+    if access_mode(&access.unwrap_or_default()) != "private" {
+        first.insert(format!("communityDirectory/{id}"), Value::Null);
+    }
     db.patch("", &Value::Object(first)).await.map_err(db_error)?;
     let tickets = get(&db, format!("supportTickets/{id}")).await.unwrap_or(Value::Null);
     Ok(db.patch("", &Value::Object(cleanup_paths(&id, &uid, &tickets))).await.is_ok())
@@ -480,13 +632,30 @@ pub async fn unirse_comunidad(app: AppHandle, codigo: String) -> Result<String, 
     let (db, uid) = db(&app)?;
     let code = clean_code(&codigo)?;
     let cid = invite_target(&db, &code).await?;
-    if get(&db, format!("communityMembers/{cid}/{uid}")).await.is_ok_and(|m| m.is_object()) {
+    join_community(&app, &db, &uid, cid, Some(&code)).await
+}
+
+#[tauri::command]
+pub async fn unirse_comunidad_publica(app: AppHandle, id: String) -> Result<String, String> {
+    if !valid_id('c', 12, &id) {
+        return Err(t!("Comunidad no válida.", "Invalid community."));
+    }
+    let (db, uid) = db(&app)?;
+    let access = get(&db, format!("communityDirectory/{id}")).await?;
+    if access_mode(&access) != "open" {
+        return Err(t!("Esta comunidad requiere un código de invitación.", "This community requires an invite code."));
+    }
+    join_community(&app, &db, &uid, id, None).await
+}
+
+async fn join_community(app: &AppHandle, db: &Database, uid: &str, cid: String, code: Option<&str>) -> Result<String, String> {
+    if get(db, format!("communityMembers/{cid}/{uid}")).await.is_ok_and(|m| m.is_object()) {
         // Ya estabas: solo vuelve a tu lista.
         let _ = db.put(&format!("userCommunities/{uid}/{cid}"), &json!(true)).await;
         return Ok(cid);
     }
     let update = json!({
-        format!("communityMembers/{cid}/{uid}"): { "role": "member", "name": my_name(&app), "joinedAt": firebase::server_timestamp(), "invite": code },
+        format!("communityMembers/{cid}/{uid}"): { "role": "member", "name": my_name(app), "joinedAt": firebase::server_timestamp(), "invite": code },
         format!("userCommunities/{uid}/{cid}"): true,
     });
     db.patch("", &update).await.map_err(db_error)?;
@@ -554,28 +723,74 @@ pub async fn sacar_de_comunidad(app: AppHandle, id: String, uid: String) -> Resu
     Ok(())
 }
 
-#[tauri::command]
-pub async fn publicar_anuncio(app: AppHandle, id: String, titulo: String, texto: String) -> Result<(), String> {
-    let (db, uid) = db(&app)?;
-    let title = titulo.trim();
+fn post_content(title: &str, text: &str, image: Option<String>) -> Result<Value, String> {
+    let title = title.trim();
     if title.is_empty() {
         return Err(t!("Escribe un título.", "Write a title."));
     }
-    let post = json!({
+    let text = text.trim();
+    if text.is_empty() && image.is_none() {
+        return Err(t!("Escribe un mensaje o adjunta una imagen.", "Write a message or attach an image."));
+    }
+    if let Some(image) = &image {
+        crate::imagen::validate_social_image(image)?;
+    }
+    Ok(json!({
         "title": title.chars().take(80).collect::<String>(),
-        "text": texto.trim().chars().take(2000).collect::<String>(),
-        "author": uid,
-        "authorName": my_name(&app),
-        "at": firebase::server_timestamp(),
-    });
+        "text": text.chars().take(2000).collect::<String>(),
+        "image": image,
+    }))
+}
+
+#[tauri::command]
+pub async fn publicar_anuncio(app: AppHandle, id: String, titulo: String, texto: String, imagen: Option<String>) -> Result<(), String> {
+    if !valid_id('c', 12, &id) {
+        return Err(t!("Esa comunidad no está disponible.", "That community is unavailable."));
+    }
+    let (db, uid) = db(&app)?;
+    let mut post = post_content(&titulo, &texto, imagen)?;
+    post["author"] = json!(uid);
+    post["authorName"] = json!(my_name(&app));
+    post["at"] = firebase::server_timestamp();
     db.put(&format!("communityPosts/{id}/{}", self::id("a", 12)), &post).await.map_err(db_error)?;
     Ok(())
 }
 
+fn post_path(id: &str, announcement: &str) -> Result<String, String> {
+    if !valid_id('c', 12, id) || announcement.is_empty() || announcement.len() > 64
+        || !announcement.bytes().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, b'-' | b'_')) {
+        return Err(t!("Ese anuncio no está disponible.", "That announcement is unavailable."));
+    }
+    Ok(format!("communityPosts/{id}/{announcement}"))
+}
+
+#[tauri::command]
+pub async fn editar_anuncio(app: AppHandle, id: String, anuncio: String, titulo: String, texto: String, imagen: Option<String>) -> Result<(), String> {
+    let path = post_path(&id, &anuncio)?;
+    let (db, _) = db(&app)?;
+    let content = post_content(&titulo, &texto, imagen)?;
+    // La edición solo escribe el contenido. Las reacciones pueden cambiar al mismo tiempo.
+    db.patch(&path, &content).await.map(|_| ()).map_err(db_error)
+}
+
+#[tauri::command]
+pub async fn reaccionar_anuncio(app: AppHandle, id: String, anuncio: String, emoji: Option<String>) -> Result<Vec<PostReaction>, String> {
+    let base = format!("{}/reactions", post_path(&id, &anuncio)?);
+    let (db, uid) = db(&app)?;
+    let path = format!("{base}/{uid}");
+    match emoji {
+        Some(emoji) if crate::chat::REACTIONS.contains(&emoji.as_str()) => db.put(&path, &json!(emoji)).await.map(|_| ()),
+        Some(_) => return Err(t!("Elige una de las reacciones disponibles.", "Choose one of the available reactions.")),
+        None => db.delete(&path).await,
+    }.map_err(db_error)?;
+    Ok(post_reactions(&get(&db, base).await?, &uid))
+}
+
 #[tauri::command]
 pub async fn borrar_anuncio(app: AppHandle, id: String, anuncio: String) -> Result<(), String> {
+    let path = post_path(&id, &anuncio)?;
     let (db, _) = db(&app)?;
-    db.delete(&format!("communityPosts/{id}/{anuncio}")).await.map_err(db_error)
+    db.delete(&path).await.map_err(db_error)
 }
 
 #[tauri::command]
@@ -588,6 +803,9 @@ pub async fn guardar_reglas(app: AppHandle, id: String, texto: String) -> Result
 /// Crea o cambia un servidor de la comunidad (sin `server.id`, uno nuevo).
 #[tauri::command]
 pub async fn guardar_servidor_comunidad(app: AppHandle, id: String, servidor: Server) -> Result<String, String> {
+    if !valid_id('c', 12, &id) {
+        return Err(t!("Esa comunidad no está disponible.", "That community is unavailable."));
+    }
     let (db, _) = db(&app)?;
     let sid = if valid_id('v', 8, &servidor.id) { servidor.id.clone() } else { self::id("v", 8) };
     let address = servidor.address.trim().to_string();
@@ -599,6 +817,7 @@ pub async fn guardar_servidor_comunidad(app: AppHandle, id: String, servidor: Se
         name: servidor.name.trim().chars().take(40).collect(),
         address: address.chars().take(100).collect(),
         bedrock: servidor.bedrock.map(|b| b.trim().chars().take(100).collect::<String>()).filter(|b| !b.is_empty()),
+        website: website(servidor.website)?,
         package: servidor.package.filter(|p| valid_id('p', 8, p)),
         order: servidor.order,
     };
@@ -609,6 +828,16 @@ pub async fn guardar_servidor_comunidad(app: AppHandle, id: String, servidor: Se
     }
     db.put(&format!("communityServers/{id}/{sid}"), &value).await.map_err(db_error)?;
     Ok(sid)
+}
+
+/// Cambia el paquete sin sobrescribir los otros campos de la ficha del servidor.
+#[tauri::command]
+pub async fn enlazar_paquete_servidor(app: AppHandle, id: String, servidor: String, paquete: String) -> Result<(), String> {
+    if !valid_id('c', 12, &id) || !valid_id('v', 8, &servidor) || !valid_id('p', 8, &paquete) {
+        return Err(t!("Ese servidor o paquete no está disponible.", "That server or package is unavailable."));
+    }
+    let (db, _) = db(&app)?;
+    db.put(&format!("communityServers/{id}/{servidor}/package"), &json!(paquete)).await.map(|_| ()).map_err(db_error)
 }
 
 #[tauri::command]
@@ -806,6 +1035,8 @@ mod tests {
         assert!(valid_id('c', 12, &cid));
         assert!(!valid_id('c', 12, "c12"));
         assert!(!valid_id('v', 8, "v1234567X"));
+        assert_eq!(access_mode(&Value::Null), "private");
+        assert_eq!(access_mode(&json!("open")), "open");
     }
 
     #[test]

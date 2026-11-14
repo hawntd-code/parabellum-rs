@@ -21,6 +21,7 @@ const community = {
   preparing: new Set(),
   /** El nombre de la instancia que se está publicando como paquete oficial. */
   publishing: null,
+  reacting: new Set(),
 };
 
 const roleNames = () => ({ owner: t("Dueño", "Owner"), admin: t("Administrador", "Admin"), member: t("Miembro", "Member") });
@@ -51,21 +52,23 @@ async function enterCommunities(id = null) {
 }
 
 async function loadCommunity(id) {
+  const request = community.loadRequest = (community.loadRequest ?? 0) + 1;
   community.id = id;
   community.loading = true;
   community.error = null;
   renderCommunities();
   try {
     const detail = await invoke("comunidad", { id });
-    if (community.id !== id) return;
+    if (community.loadRequest !== request) return;
     community.detail = detail;
     const summary = community.list?.find((c) => c.id === id);
     if (summary) Object.assign(summary, { name: detail.name, image: detail.image, description: detail.description });
   } catch (error) {
+    if (community.loadRequest !== request) return;
     community.detail = null;
     community.error = String(error);
   } finally {
-    community.loading = false;
+    if (community.loadRequest === request) community.loading = false;
   }
   renderCommunities();
   refreshCommunityStatus();
@@ -138,7 +141,7 @@ function renderCommunities() {
     )
     .join("");
   const body = $("#cm-body");
-  if (community.list === null || (community.loading && !community.detail)) {
+  if (community.list === null || community.loading) {
     body.innerHTML = `<div class="cm-skeleton"><div class="cm-hero"><span class="skel cm-image large"></span><div class="grow"><span class="skel line w30 tall"></span><span class="skel line w60"></span><span class="skel line w25 thin"></span></div></div><div class="cm-grid"><div class="cm-col"><div class="cm-section"><span class="skel line w20"></span><span class="skel block"></span><span class="skel block"></span></div></div><div class="cm-col side"><div class="cm-section"><span class="skel line w40"></span><span class="skel block short"></span></div><div class="cm-section"><span class="skel line w30"></span><span class="skel line w80"></span><span class="skel line w60"></span></div></div></div></div>`;
     return;
   }
@@ -168,6 +171,8 @@ function renderCommunities() {
         </div>
       </div>
       <div class="cm-hero-actions">
+        <button class="btn" data-cm="rules">${icon("flag")}${t("Reglas", "Rules")}</button>
+        <button class="btn cm-help-button" data-cm="help">${icon("chat")}${t("Ayuda", "Help")}<span class="cm-help-count hidden"></span></button>
         ${canAdmin() ? `<button class="btn" data-cm="invite">${icon("user-plus")}${t("Invitar", "Invite")}</button><button class="circle-btn" data-cm="edit" title="${t("Editar la comunidad", "Edit the community")}">${icon("pencil")}</button>` : ""}
         <button class="circle-btn" data-cm="more" title="${t("Más", "More")}">${icon("more")}</button>
       </div>
@@ -177,23 +182,18 @@ function renderCommunities() {
         <section class="cm-section"><div class="cm-section-head"><h3>${t("Servidores", "Servers")}</h3>${
           canAdmin() || myCaps().servers ? `<button class="btn small" data-cm="add-server">${icon("plus")}${t("Agregar", "Add")}</button>` : ""
         }</div><div id="cm-servers"></div></section>
-        ${supportStaff() ? supportSectionHtml() : ""}
         <section class="cm-section"><div class="cm-section-head"><h3>${t("Anuncios", "Announcements")}</h3>${
           canAdmin() ? `<button class="btn small" data-cm="add-post">${icon("plus")}${t("Nuevo anuncio", "New announcement")}</button>` : ""
-        }</div>${renderPosts(d)}</section>
+        }</div><div id="cm-posts">${renderPosts(d)}</div></section>
       </div>
       <div class="cm-col side">
         ${renderPackages(d)}
-        ${supportStaff() ? "" : supportSectionHtml()}
-        <section class="cm-section"><div class="cm-section-head"><h3>${t("Reglas", "Rules")}</h3>${
-          canAdmin() ? `<button class="circle-btn small" data-cm="edit-rules" title="${t("Editar las reglas", "Edit the rules")}">${icon("pencil")}</button>` : ""
-        }</div>${d.rules ? `<div class="markdown cm-markdown">${markdownHtml(d.rules)}</div>` : `<p class="side-note no-top">${t("Todavía no hay reglas.", "There are no rules yet.")}</p>`}</section>
         ${canAdmin() ? renderInvites(d) : ""}
         <section class="cm-section"><div class="cm-section-head"><h3>${t("Miembros", "Members")}</h3><span class="faint">${members}</span></div>${renderMembers(d)}</section>
       </div>
     </div>`;
   renderCommunityServers();
-  renderSupportSection();
+  renderCommunityHelpCount();
   for (const canvas of $$("#cm-body canvas[data-head]")) drawHead(canvas, canvas.dataset.head);
 }
 
@@ -211,13 +211,56 @@ function renderPosts(d) {
   return d.posts
     .map(
       (p) => `<article class="cm-post">
-        <div class="cm-post-head"><span class="cm-post-dot"></span><b>${escapeHtml(p.title)}</b><span class="faint">${escapeHtml(p.authorName)} · ${escapeHtml(relativeDate(new Date(p.at).toISOString()))}</span>${
-          canAdmin() ? `<button class="circle-btn small" data-cm-delete-post="${escapeHtml(p.id)}" title="${t("Borrar", "Delete")}">${icon("trash")}</button>` : ""
-        }</div>
+        <header class="cm-post-head"><span class="cm-post-dot" aria-hidden="true"></span>
+          <div class="cm-post-heading"><b>${escapeHtml(p.title)}</b><span class="faint">${escapeHtml(p.authorName)} · ${escapeHtml(relativeDate(new Date(p.at).toISOString()))}</span></div>
+          ${canAdmin() ? `<div class="cm-post-actions">
+            ${p.mine ? `<button class="circle-btn small" data-cm-edit-post="${escapeHtml(p.id)}" aria-label="${t("Editar anuncio", "Edit announcement")}" title="${t("Editar anuncio", "Edit announcement")}">${icon("pencil")}</button>` : ""}
+            <button class="circle-btn small" data-cm-delete-post="${escapeHtml(p.id)}" aria-label="${t("Borrar anuncio", "Delete announcement")}" title="${t("Borrar anuncio", "Delete announcement")}">${icon("trash")}</button>
+          </div>` : ""}
+        </header>
         ${p.text ? `<div class="markdown cm-markdown">${markdownHtml(p.text)}</div>` : ""}
+        ${p.image ? `<button type="button" class="cm-post-media" data-cm-photo="${escapeHtml(p.id)}" aria-label="${t("Ampliar imagen del anuncio", "Enlarge announcement image")}"><img loading="lazy" src="${escapeHtml(p.image)}" alt=""></button>` : ""}
+        <div class="cm-post-reactions" data-post-reactions="${escapeHtml(p.id)}">${postReactionsHtml(p)}</div>
       </article>`,
     )
     .join("");
+}
+
+function postReactionsHtml(post) {
+  return (post.reactions ?? []).map(r => `<button type="button" class="cm-emoji ${r.mine ? "is-mine" : ""}" aria-pressed="${r.mine}" data-cm-react="${escapeHtml(post.id)}" data-emoji="${escapeHtml(r.emoji)}"><span>${escapeHtml(r.emoji)}</span><span>${r.count}</span></button>`).join("")
+    + `<button type="button" class="cm-emoji cm-emoji-add" data-cm-pick-reaction="${escapeHtml(post.id)}" aria-label="${t("Reaccionar", "React")}" aria-haspopup="menu">${icon("smile")}</button>`;
+}
+
+async function reactToPost(post, emoji) {
+  const d = community.detail;
+  if (!d || !d.posts.includes(post) || community.reacting.has(post.id)) return;
+  community.reacting.add(post.id);
+  try {
+    const chosen = post.reactions?.some(r => r.emoji === emoji && r.mine) ? null : emoji;
+    const reactions = await invoke("reaccionar_anuncio", { id: d.id, anuncio: post.id, emoji: chosen });
+    if (community.detail?.id !== d.id) return;
+    const displayed = community.detail.posts.find(p => p.id === post.id);
+    if (!displayed) return;
+    displayed.reactions = reactions;
+    const row = $$("#cm-posts [data-post-reactions]").find(row => row.dataset.postReactions === post.id);
+    if (row) {
+      const restoreFocus = row.contains(document.activeElement);
+      row.innerHTML = postReactionsHtml(displayed);
+      if (restoreFocus) (row.querySelector("button.is-mine") ?? row.lastElementChild)?.focus();
+    }
+  } catch (error) {
+    toast(String(error), "error");
+  } finally {
+    community.reacting.delete(post.id);
+  }
+}
+
+function pickPostReaction(anchor, post) {
+  contextMenu(anchor, [], { emojis: {
+    list: REACTIONS,
+    current: post.reactions?.find(r => r.mine)?.emoji,
+    pick: emoji => reactToPost(post, emoji),
+  } });
 }
 
 function renderCommunityServers() {
@@ -255,6 +298,7 @@ function renderCommunityServers() {
             <div class="cm-server-lines">
               <button class="cm-address" data-copy="${escapeHtml(s.address)}" title="${t("Copiar la dirección", "Copy the address")}">${icon("copy")}<span>Java · ${escapeHtml(s.address)}</span></button>
               ${s.bedrock ? `<button class="cm-address" data-copy="${escapeHtml(s.bedrock)}" title="${t("Copiar la dirección", "Copy the address")}">${icon("copy")}<span>Bedrock · ${escapeHtml(s.bedrock)}</span></button>` : ""}
+              ${s.website ? `<button type="button" class="cm-address cm-web" data-cm-website="${escapeHtml(s.id)}" title="${escapeHtml(s.website)}">${icon("external")}<span>${t("Sitio web", "Website")}</span></button>` : ""}
             </div>
           </div>
           <span class="cm-state ${online ? "on" : status ? "off" : ""}">${online ? `${status.players}/${status.maxPlayers} ${t("jugando", "playing")}` : status ? t("Apagado", "Offline") : "…"}</span>
@@ -343,13 +387,14 @@ function renderMembers(d) {
         .join("");
       // El dueño administra a todos menos a sí mismo; un administrador, solo a los miembros.
       const manage = !m.you && m.role !== "owner" && (owner || (d.role === "admin" && m.role === "member"));
-      return `<${manage ? `button data-cm-member="${escapeHtml(m.uid)}" title="${t("Rol y permisos", "Role and permissions")}"` : "div"} class="cm-member ${manage ? "manage" : ""}">
+      return `<div class="cm-member"><button type="button" class="cm-member-profile" data-cm-profile="${escapeHtml(m.uid)}">
         <canvas width="8" height="8" class="head" data-head="${escapeHtml(m.name)}"></canvas>
         <span class="grow"><b>${escapeHtml(m.name)}${m.you ? ` <span class="faint">(${t("tú", "you")})</span>` : ""}</b>${
           m.role !== "member" || caps ? `<span class="cm-badges">${m.role !== "member" ? `<span class="tag accent">${escapeHtml(roleNames()[m.role])}</span>` : ""}${caps}</span>` : ""
         }</span>
-        ${manage ? icon("right") : ""}
-      </${manage ? "button" : "div"}>`;
+        </button>
+        ${manage ? `<button type="button" class="circle-btn small" data-cm-member="${escapeHtml(m.uid)}" aria-label="${escapeHtml(t(`Permisos de ${m.name}`, `Permissions for ${m.name}`))}" title="${t("Rol y permisos", "Role and permissions")}">${icon("sliders")}</button>` : ""}
+      </div>`;
     })
     .join("")}</div>`;
 }
@@ -358,13 +403,18 @@ function renderMembers(d) {
 /**
  * Abre #cm-dialog: cabecera con icono, título y subtítulo; `body` (HTML); abajo, quitar/borrar
  * (`danger`), Cancelar y el botón principal. `onOk` y `onDanger` devuelven true para cerrar (un error
- * se muestra dentro, sin cerrar). `mount(el)` conecta lo de adentro. Devuelve una promesa que se
+ * se muestra dentro, sin cerrar). `mount(el, finish)` conecta el contenido. Devuelve una promesa que se
  * resuelve al cerrar.
  */
-function cmDialog({ title, subtitle = "", glyph = "community", wide = false, body, ok = null, danger = null, secondary = null, cancel = t("Cancelar", "Cancel"), onOk, onDanger, mount }) {
+function cmDialog({ title, subtitle = "", glyph = "community", wide = false, variant = "", body, ok = null, danger = null, secondary = null, cancel = t("Cancelar", "Cancel"), onOk, onDanger, mount }) {
   return new Promise((resolve) => {
     const dialog = $("#cm-dialog");
-    dialog.querySelector(".modal").classList.toggle("wide", wide);
+    // Las respuestas de la ventana anterior (por ejemplo el catálogo) no pintan sobre otra.
+    if (community.cancelDialog?.() === false) return resolve(false);
+    const seq = community.dialogSeq = (community.dialogSeq ?? 0) + 1;
+    const modal = $(".modal", dialog);
+    modal.classList.toggle("wide", wide);
+    modal.dataset.variant = variant;
     $("#cm-dialog-icon").innerHTML = icon(glyph);
     $("#cm-dialog-title").textContent = title;
     $("#cm-dialog-subtitle").textContent = subtitle;
@@ -377,46 +427,76 @@ function cmDialog({ title, subtitle = "", glyph = "community", wide = false, bod
     if (ok) okButton.innerHTML = ok;
     $("#cm-dialog-danger").classList.toggle("hidden", !danger);
     if (danger) $("#cm-dialog-danger").innerHTML = danger;
+    $("#cm-dialog-danger").disabled = false;
     // Un segundo camino (se resuelve con "secundario"): por ejemplo, «Jugar así».
     $("#cm-dialog-secondary").classList.toggle("hidden", !secondary);
     if (secondary) $("#cm-dialog-secondary").innerHTML = secondary;
+    $("#cm-dialog-close").ariaLabel = t("Cerrar", "Close");
     $("#cm-dialog-cancel").textContent = cancel;
+    let finished = false;
+    let saving = false;
+    const closingControls = ["#cm-dialog-close", "#cm-dialog-cancel", "#cm-dialog-secondary"].map(selector => $(selector));
+    for (const control of closingControls) control.disabled = false;
     const finish = (value) => {
+      if (finished) return;
+      finished = true;
+      community.cancelDialog = null;
       closeModal("#cm-dialog");
       resolve(value);
     };
+    const cancelDialog = () => {
+      if (saving) return false;
+      finish(false);
+      return true;
+    };
     const run = async (handler, button) => {
+      if (finished || saving || button.disabled) return;
       if (!handler) return finish(true);
-      button.disabled = true;
+      saving = true;
+      const dangerButton = $("#cm-dialog-danger");
+      const dangerWasDisabled = dangerButton.disabled;
+      okButton.disabled = true;
+      dangerButton.disabled = true;
+      for (const control of closingControls) control.disabled = true;
       $("#cm-dialog-error").classList.add("hidden");
       try {
-        if (await handler()) finish(true);
+        const result = await handler();
+        if (result) finish(result);
       } catch (error) {
+        if (finished) return;
         $("#cm-dialog-error").innerHTML = window.errorRecovery.panel(error);
         $("#cm-dialog-error").classList.remove("hidden");
       } finally {
-        button.disabled = false;
+        saving = false;
+        if (!finished) {
+          okButton.disabled = false;
+          dangerButton.disabled = dangerWasDisabled;
+          for (const control of closingControls) control.disabled = false;
+        }
       }
     };
     okButton.onclick = () => run(onOk, okButton);
     $("#cm-dialog-danger").onclick = () => run(onDanger, $("#cm-dialog-danger"));
-    $("#cm-dialog-cancel").onclick = () => finish(false);
+    $("#cm-dialog-cancel").onclick = cancelDialog;
     $("#cm-dialog-secondary").onclick = () => finish("secundario");
-    $("#cm-dialog-close").onclick = () => finish(false);
-    community.cancelDialog = () => finish(false);
-    // Cada ventana tiene su número: lo que llega tarde (como el catálogo) no pinta sobre otra.
-    community.dialogSeq = (community.dialogSeq ?? 0) + 1;
+    $("#cm-dialog-close").onclick = cancelDialog;
+    community.cancelDialog = cancelDialog;
+    dialog.onclick = (event) => { if (event.target === dialog) cancelDialog(); };
     openModal("#cm-dialog");
-    mount?.($("#cm-dialog-body"));
-    requestAnimationFrame(() => $("#cm-dialog-body [data-autofocus]")?.focus());
+    const root = $("#cm-dialog-body");
+    $(".modal-body", dialog).scrollTop = 0;
+    root.oninput = () => $("#cm-dialog-error").classList.add("hidden");
+    wireCounters(root);
+    mount?.(root, finish);
+    requestAnimationFrame(() => { if (!finished && community.dialogSeq === seq) $("[data-autofocus]", root)?.focus(); });
   });
 }
 
 /** Un campo de texto con su contador. */
-function textField({ id, label, value = "", max, placeholder = "", rows = 0, hint = "", autofocus = false }) {
+function textField({ id, label, value = "", max, placeholder = "", rows = 0, hint = "", autofocus = false, type = "text" }) {
   const input = rows
     ? `<textarea id="${id}" rows="${rows}" maxlength="${max}" placeholder="${escapeHtml(placeholder)}" ${autofocus ? "data-autofocus" : ""}>${escapeHtml(value)}</textarea>`
-    : `<input id="${id}" maxlength="${max}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" autocomplete="off" spellcheck="false" ${autofocus ? "data-autofocus" : ""}>`;
+    : `<input type="${type}" id="${id}" maxlength="${max}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" autocomplete="off" spellcheck="false" ${autofocus ? "data-autofocus" : ""}>`;
   return `<label class="cm-field"><span class="cm-field-top"><span class="label">${escapeHtml(label)}</span><span class="faint cm-count" data-count="${id}">${value.length}/${max}</span></span>${input}${
     hint ? `<span class="faint cm-hint">${hint}</span>` : ""
   }</label>`;
@@ -436,6 +516,7 @@ function pickImageFile() {
     input.type = "file";
     input.accept = "image/*,.heic,.heif";
     input.onchange = () => resolve(input.files?.[0] ?? null);
+    input.oncancel = () => resolve(null);
     input.click();
   });
 }
@@ -457,38 +538,70 @@ async function communityImageFrom(file) {
 async function communityForm(existing = null) {
   let image = existing?.image ?? null;
   let changed = false;
-  const imageHtml = () => (image ? `<img src="${escapeHtml(image)}" alt="">` : icon("community"));
+  let imagePending = false;
+  const imageHtml = () => image ? `<img src="${escapeHtml(image)}" alt="">` : icon("community");
+  const access = existing?.access ?? "private";
+  const modes = [
+    { key: "private", glyph: "user-plus", title: t("Privada", "Private"), hint: t("Solo entran quienes reciben una invitación.", "Only invited players can join.") },
+    { key: "invite", glyph: "search", title: t("Visible con código", "Listed with a code"), hint: t("Aparece en el directorio. Para entrar hace falta un código.", "Appears in the directory. Players need an invite code to join.") },
+    { key: "open", glyph: "globe", title: t("Abierta", "Open"), hint: t("Cualquiera con sesión de Google puede encontrarla y unirse.", "Anyone signed in with Google can find and join it.") },
+  ];
   const saved = await cmDialog({
     title: existing ? t("Editar la comunidad", "Edit the community") : t("Crear comunidad", "Create community"),
-    subtitle: existing ? existing.name : t("Tú serás su dueño; después invitas a los demás.", "You will be its owner; then you invite the others."),
-    glyph: existing ? "pencil" : "plus",
-    body: `<div class="cm-identity">
-        <button class="cm-image-pick ${image ? "has-image" : ""}" id="cm-image-pick" title="${t("Cambiar la imagen", "Change the image")}">${imageHtml()}<span>${icon("camera")}${t("Cambiar", "Change")}</span></button>
-        <div class="grow">${textField({ id: "cm-name", label: t("Nombre", "Name"), value: existing?.name ?? "", max: 40, autofocus: true })}</div>
+    subtitle: existing?.name ?? "",
+    glyph: "community",
+    wide: true,
+    variant: "community",
+    body: `<div class="cm-community-profile">
+        <div class="cm-community-avatar">
+          <div id="cm-profile-image" class="cm-community-image">${imageHtml()}</div>
+          <button class="btn small" type="button" id="cm-image-pick">${icon("camera")}<span></span></button>
+        </div>
+        <div class="cm-fields">
+          ${textField({ id: "cm-name", label: t("Nombre de la comunidad", "Community name"), value: existing?.name ?? "", max: 40, autofocus: true })}
+          ${textField({ id: "cm-description", label: t("Descripción", "Description"), value: existing?.description ?? "", max: 500, rows: 3, placeholder: t("Cuenta qué se juega y qué encontrará quien se una.", "Describe what you play and what players will find when they join.") })}
+        </div>
       </div>
-      ${textField({ id: "cm-description", label: t("Descripción", "Description"), value: existing?.description ?? "", max: 500, rows: 3, placeholder: t("De qué se trata, qué versión, cuándo abre…", "What it is about, which version, when it opens…") })}`,
-    ok: existing ? t("Guardar", "Save") : t("Crear comunidad", "Create community"),
+      ${existing ? `<fieldset class="cm-access">
+        <legend>${t("Visibilidad e ingreso", "Visibility and access")}</legend>
+        ${modes.map(mode => `<label class="cm-access-option">
+          <input type="radio" name="cm-access" value="${mode.key}" ${mode.key === access ? "checked" : ""}>
+          <span class="cm-access-icon" aria-hidden="true">${icon(mode.glyph)}</span>
+          <span class="cm-access-copy"><b>${mode.title}</b><span>${mode.hint}</span></span>
+        </label>`).join("")}
+      </fieldset>` : ""}`,
+    ok: existing ? `${icon("check")}${t("Guardar cambios", "Save changes")}` : t("Crear comunidad", "Create community"),
     mount: (root) => {
-      wireCounters(root);
-      $("#cm-image-pick", root).onclick = async () => {
+      const picker = $("#cm-image-pick", root);
+      const updateImage = () => {
+        $("#cm-profile-image", root).innerHTML = imageHtml();
+        $("span", picker).textContent = image ? t("Cambiar imagen", "Change image") : t("Añadir imagen", "Add image");
+      };
+      updateImage();
+      picker.onclick = async () => {
         const file = await pickImageFile();
-        if (!file) return;
+        if (!file || !picker.isConnected) return;
+        picker.disabled = imagePending = true;
         try {
           image = await communityImageFrom(file);
+          if (!picker.isConnected) return;
           changed = true;
-          $("#cm-image-pick", root).classList.add("has-image");
-          $("#cm-image-pick", root).innerHTML = `${imageHtml()}<span>${icon("camera")}${t("Cambiar", "Change")}</span>`;
+          updateImage();
         } catch {
           toast(t("No se pudo abrir esa imagen.", "That image could not be opened."), "error");
+        } finally {
+          picker.disabled = imagePending = false;
         }
       };
     },
     onOk: async () => {
+      if (imagePending) throw t("Espera a que aparezca la imagen.", "Wait for the image to appear.");
       const name = $("#cm-name").value.trim();
       const description = $("#cm-description").value.trim();
       if (name.length < 2) throw t("Escribe un nombre (2 letras o más).", "Write a name (2 characters or more).");
       if (existing) {
-        await invoke("editar_comunidad", { id: existing.id, nombre: name, descripcion: description, imagen: changed ? image : null });
+        const selected = $('input[name="cm-access"]:checked')?.value ?? access;
+        await invoke("editar_comunidad", { id: existing.id, nombre: name, descripcion: description, imagen: changed ? image : null, acceso: selected !== access ? selected : null });
       } else {
         community.id = await invoke("crear_comunidad", { nombre: name, descripcion: description });
         if (changed) await invoke("editar_comunidad", { id: community.id, nombre: name, descripcion: description, imagen: image });
@@ -498,7 +611,8 @@ async function communityForm(existing = null) {
   });
   if (!saved) return;
   toast(existing ? t("Guardado.", "Saved.") : t("Comunidad creada: ahora invita a los demás.", "Community created: now invite the others."));
-  enterCommunities(community.id);
+  if (existing) loadCommunity(existing.id);
+  else enterCommunities(community.id);
 }
 
 /** Cambiar la imagen directo (clic en la imagen de arriba). */
@@ -510,76 +624,218 @@ async function quickImage() {
     const image = await communityImageFrom(file);
     await invoke("editar_comunidad", { id: d.id, nombre: d.name, descripcion: d.description, imagen: image });
     toast(t("Imagen cambiada.", "Image changed."));
-    loadCommunity(d.id);
+    if (community.id === d.id) loadCommunity(d.id);
   } catch (error) {
     toast(String(error), "error");
   }
 }
 
-/** Anuncio o reglas: texto con formato y su vista previa. */
-function markdownForm({ title, subtitle, glyph, withTitle, text = "", max, ok, onSave }) {
+function rulesArticle(text) {
+  return text ? `<article class="cm-rule-paper markdown cm-markdown">${markdownHtml(text)}</article>`
+    : `<div class="cm-reading-empty">${icon("flag")}<p>${t("Todavía no hay reglas.", "There are no rules yet.")}</p></div>`;
+}
+
+/** Aplica Markdown a la selección y devuelve el foco al texto. */
+function formatCommunityText(input, action) {
+  let { selectionStart: start, selectionEnd: end, value } = input;
+  const inline = action === "bold" || action === "italic";
+  const token = action === "bold" ? "**" : "*";
+  const sample = action === "heading" ? t("Título de la sección", "Section heading") : t("Texto", "Text");
+  if (!inline) {
+    start = value.slice(0, start).lastIndexOf("\n") + 1;
+    const newline = value.indexOf("\n", Math.max(start, end - 1));
+    end = newline === -1 ? value.length : newline;
+  }
+  const selected = value.slice(start, end);
+  const replacement = inline ? token + (selected || sample) + token
+    : (selected || sample).split("\n").map((line, i) => line ? (action === "heading" ? "## " : action === "ordered" ? `${i + 1}. ` : "- ") + line : "").join("\n");
+  input.focus();
+  if (value.length - selected.length + replacement.length > input.maxLength) return;
+  input.setRangeText(replacement, start, end, selected ? "end" : "select");
+  if (!selected) {
+    const offset = replacement.indexOf(sample);
+    input.setSelectionRange(start + offset, start + offset + sample.length);
+  }
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** El documento se puede escribir y leer a ancho completo en el mismo diálogo. */
+function markdownForm({ title, subtitle, glyph, post = null, text = "", max, ok, onSave }) {
+  const isPost = !!post;
+  let image = post?.image ?? null;
+  let filename = image ? t("Imagen publicada", "Published image") : "";
+  let attaching = false;
+  const textareaLabel = isPost ? t("Mensaje", "Message") : t("Contenido de las reglas", "Rules text");
+  const placeholder = isPost ? t("Cuenta qué pasa y cuándo pueden participar los jugadores.", "Say what's happening and when players can take part.")
+    : t("Empieza con un título para cada tema, como Convivencia o Juego limpio. Luego escribe las reglas debajo.", "Start with a heading for each topic, like Conduct or Fair play. Then write the rules underneath.");
+  const formatButton = (action, label, face) => `<button type="button" data-format="${action}" title="${label}" aria-label="${label}">${face}</button>`;
   return cmDialog({
     title,
     subtitle,
     glyph,
     wide: true,
-    body: `${withTitle ? textField({ id: "cm-post-title", label: t("Título", "Title"), max: 80, autofocus: true, placeholder: t("Por ejemplo: ¡Abrimos el 1 de diciembre!", "For example: We open on December 1!") }) : ""}
-      <div class="cm-editor">
-        ${textField({ id: "cm-text", label: withTitle ? t("Texto", "Text") : t("Lo verán todos los miembros", "All members will see it"), value: text, max, rows: withTitle ? 7 : 12, autofocus: !withTitle, hint: t("Admite **negritas**, *cursivas*, listas con «-» y enlaces.", "Supports **bold**, *italics*, lists with «-» and links.") })}
-        <div class="cm-preview"><span class="label">${t("Vista previa", "Preview")}</span><div class="markdown cm-markdown" id="cm-preview"></div></div>
-      </div>`,
+    variant: "writer",
+    body: `<div class="cm-writing-tabs" role="tablist" aria-label="${t("Redacción del documento", "Document mode")}">
+        <button type="button" id="cm-tab-write" role="tab" aria-controls="cm-write" aria-selected="true">${icon("pencil")}${t("Escribir", "Write")}</button>
+        <button type="button" id="cm-tab-preview" role="tab" aria-controls="cm-preview" aria-selected="false" tabindex="-1">${icon("file")}${t("Vista previa", "Preview")}</button>
+      </div>
+      <div class="cm-write cm-fields" id="cm-write" role="tabpanel" aria-labelledby="cm-tab-write">
+        ${isPost ? textField({ id: "cm-post-title", label: t("Título del anuncio", "Announcement title"), value: post.title ?? "", max: 80, autofocus: true, placeholder: t("Por ejemplo, abre el mercado de temporada", "For example, the seasonal market is opening") }) : ""}
+        <div class="cm-copy-panel">
+          <div class="cm-format-bar">
+            <label class="label" for="cm-text">${textareaLabel}</label>
+            <div class="cm-format-tools" role="group" aria-label="${t("Formato", "Formatting")}">
+              ${formatButton("heading", t("Título de sección", "Section heading"), "<b>H</b>")}
+              ${formatButton("bold", t("Negrita", "Bold"), "<b>B</b>")}
+              ${formatButton("italic", t("Cursiva", "Italic"), "<i>I</i>")}
+              ${formatButton("list", t("Lista con viñetas", "Bulleted list"), "<span>•</span>")}
+              ${formatButton("ordered", t("Lista numerada", "Numbered list"), "<span>1.</span>")}
+            </div>
+          </div>
+          <textarea id="cm-text" class="cm-copy-text ${isPost ? "" : "rules-copy"}" maxlength="${max}" placeholder="${escapeHtml(placeholder)}" ${isPost ? "" : "data-autofocus"}>${escapeHtml(text)}</textarea>
+          <div class="cm-copy-foot"><span class="cm-count faint" data-count="cm-text">${text.length}/${max}</span></div>
+        </div>
+        ${isPost ? `<div class="cm-post-attachment">
+          <button class="cm-post-attach" type="button" id="cm-post-attach"></button>
+          <button class="circle-btn small hidden" type="button" id="cm-post-remove" aria-label="${t("Quitar imagen", "Remove image")}" title="${t("Quitar imagen", "Remove image")}">${icon("trash")}</button>
+        </div>` : ""}
+      </div>
+      <div id="cm-preview" class="cm-reading-preview hidden" role="tabpanel" aria-labelledby="cm-tab-preview" tabindex="0"></div>`,
     ok,
     mount: (root) => {
-      wireCounters(root);
-      const update = () => {
-        const value = $("#cm-text", root).value.trim();
-        const heading = withTitle ? $("#cm-post-title", root).value.trim() : "";
-        $("#cm-preview", root).innerHTML =
-          (heading ? `<b class="cm-preview-title">${escapeHtml(heading)}</b>` : "") + (value ? markdownHtml(value) : `<p class="faint">${t("Escribe algo para verlo aquí.", "Write something to see it here.")}</p>`);
+      const input = $("#cm-text", root);
+      const heading = $("#cm-post-title", root);
+      const draft = $("#cm-write", root);
+      const preview = $("#cm-preview", root);
+      const writeTab = $("#cm-tab-write", root);
+      const previewTab = $("#cm-tab-preview", root);
+      const select = (showPreview) => {
+        draft.classList.toggle("hidden", showPreview);
+        preview.classList.toggle("hidden", !showPreview);
+        for (const [tab, active] of [[writeTab, !showPreview], [previewTab, showPreview]]) {
+          tab.setAttribute("aria-selected", String(active));
+          tab.tabIndex = active ? 0 : -1;
+        }
+        if (!showPreview) return;
+        const value = input.value.trim();
+        const headline = heading?.value.trim();
+        preview.innerHTML = isPost
+          ? `<article class="cm-post-preview">
+              <h3>${escapeHtml(headline || t("Anuncio sin título", "Untitled announcement"))}</h3>
+              ${value ? `<div class="markdown cm-markdown">${markdownHtml(value)}</div>` : ""}
+              ${image ? `<img class="cm-preview-image" src="${escapeHtml(image)}" alt="">` : ""}
+            </article>`
+          : rulesArticle(value);
       };
-      for (const input of $$("input, textarea", root)) input.addEventListener("input", update);
-      update();
+      writeTab.onclick = () => select(false);
+      previewTab.onclick = () => select(true);
+      $(".cm-writing-tabs", root).onkeydown = (event) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const showPreview = event.key === "End" || (event.key !== "Home" && event.target === writeTab);
+        select(showPreview);
+        (showPreview ? previewTab : writeTab).focus();
+      };
+      for (const tool of $$("[data-format]", root)) tool.onclick = () => formatCommunityText(input, tool.dataset.format);
+      if (isPost) {
+        const attach = $("#cm-post-attach", root);
+        const remove = $("#cm-post-remove", root);
+        const updateAttachment = () => {
+          attach.innerHTML = image ? `<img src="${escapeHtml(image)}" alt=""><span><b>${t("Cambiar imagen", "Replace image")}</b><small>${escapeHtml(filename)}</small></span>`
+            : `<span class="cm-attachment-icon">${icon("image")}</span><span><b>${t("Adjuntar imagen", "Attach image")}</b><small>${t("Se mostrará dentro del anuncio.", "It will appear inside the announcement.")}</small></span>`;
+          remove.classList.toggle("hidden", !image);
+        };
+        updateAttachment();
+        attach.onclick = async () => {
+          const file = await pickImageFile();
+          if (!file || !attach.isConnected) return;
+          attaching = true;
+          attach.disabled = remove.disabled = true;
+          try {
+            const resized = await reduceImage(file, 1200, 200000);
+            if (!attach.isConnected) return;
+            image = resized.data;
+            filename = file.name;
+            updateAttachment();
+            if (!preview.classList.contains("hidden")) select(true);
+          } catch (error) {
+            toast(String(error), "error");
+          } finally {
+            attaching = false;
+            attach.disabled = remove.disabled = false;
+          }
+        };
+        remove.onclick = () => {
+          image = null;
+          filename = "";
+          updateAttachment();
+          attach.focus();
+        };
+      }
     },
-    onOk: () => onSave($("#cm-text").value.trim(), withTitle ? $("#cm-post-title").value.trim() : ""),
+    onOk: () => {
+      if (attaching) throw t("Espera a que la imagen aparezca en la vista previa.", "Wait for the image to appear in the preview.");
+      return onSave($("#cm-text").value.trim(), $("#cm-post-title")?.value.trim() ?? "", image);
+    },
   });
 }
 
-async function addPost() {
+async function editPost(post = null) {
+  const { id, name } = community.detail;
   const ok = await markdownForm({
-    title: t("Nuevo anuncio", "New announcement"),
-    subtitle: t("Lo verán todos los miembros arriba de la comunidad.", "All members will see it at the top of the community."),
+    title: post ? t("Editar anuncio", "Edit announcement") : t("Nuevo anuncio", "New announcement"),
+    subtitle: name,
     glyph: "broadcast",
-    withTitle: true,
+    post: post ?? {},
+    text: post?.text ?? "",
     max: 2000,
-    ok: `${icon("send")}${t("Publicar", "Publish")}`,
-    onSave: async (text, heading) => {
+    ok: post ? `${icon("check")}${t("Guardar cambios", "Save changes")}` : `${icon("send")}${t("Publicar", "Publish")}`,
+    onSave: async (text, heading, image) => {
       if (!heading) throw t("Escribe un título.", "Write a title.");
-      await invoke("publicar_anuncio", { id: community.id, titulo: heading, texto: text });
+      if (!text && !image) throw t("Escribe un mensaje o adjunta una imagen.", "Write a message or attach an image.");
+      const content = { id, titulo: heading, texto: text, imagen: image };
+      if (post) await invoke("editar_anuncio", { ...content, anuncio: post.id });
+      else await invoke("publicar_anuncio", content);
       return true;
     },
   });
   if (ok) {
-    toast(t("Anuncio publicado.", "Announcement published."));
-    loadCommunity(community.id);
+    toast(post ? t("Anuncio actualizado.", "Announcement updated.") : t("Anuncio publicado.", "Announcement published."));
+    if (community.id === id) loadCommunity(id);
   }
 }
 
-async function editRules() {
-  const ok = await markdownForm({
+async function viewRules() {
+  const d = community.detail;
+  const edit = await cmDialog({
     title: t("Reglas", "Rules"),
-    subtitle: community.detail.name,
+    subtitle: d.name,
     glyph: "flag",
-    text: community.detail.rules,
+    wide: true,
+    variant: "rules",
+    body: rulesArticle(d.rules),
+    ok: canAdmin() ? `${icon("pencil")}${t("Editar reglas", "Edit rules")}` : null,
+    cancel: t("Cerrar", "Close"),
+  });
+  if (edit && community.id === d.id) editRules(d);
+}
+
+async function editRules(d) {
+  const ok = await markdownForm({
+    title: t("Editar reglas", "Edit rules"),
+    subtitle: d.name,
+    glyph: "flag",
+    text: d.rules,
     max: 4000,
-    ok: t("Guardar", "Save"),
+    ok: `${icon("check")}${t("Guardar reglas", "Save rules")}`,
     onSave: async (text) => {
-      await invoke("guardar_reglas", { id: community.id, texto: text });
+      await invoke("guardar_reglas", { id: d.id, texto: text });
       return true;
     },
   });
   if (ok) {
     toast(t("Reglas guardadas.", "Rules saved."));
-    loadCommunity(community.id);
+    if (community.id === d.id) loadCommunity(d.id);
   }
 }
 
@@ -597,11 +853,12 @@ async function editServer(server = null) {
     subtitle: d.name,
     glyph: "server",
     body: `${textField({ id: "cm-server-name", label: t("Nombre", "Name"), value: server?.name ?? "", max: 40, autofocus: true, placeholder: t("Por ejemplo: Survival", "For example: Survival") })}
-      <div class="cm-field"><span class="label">${t("Dirección para Java", "Address for Java")}</span>
+      <div class="cm-field"><label class="label" for="cm-server-address">${t("Dirección para Java", "Address for Java")}</label>
         <div class="cm-inline"><input id="cm-server-address" maxlength="100" value="${escapeHtml(server?.address ?? "")}" placeholder="mc.ejemplo.com" autocomplete="off" spellcheck="false"><button class="btn" id="cm-server-test" type="button">${icon("refresh")}${t("Probar", "Test")}</button></div>
         <span class="cm-test faint" id="cm-server-test-result"></span>
       </div>
       ${textField({ id: "cm-server-bedrock", label: t("Dirección para Bedrock (opcional)", "Address for Bedrock (optional)"), value: server?.bedrock ?? "", max: 100, placeholder: "mc.ejemplo.com:19132", hint: t("Solo se muestra para copiarla: Bedrock entra con su propio juego.", "It is only shown to copy it: Bedrock joins with its own game.") })}
+      ${textField({ id: "cm-server-website", label: t("Sitio web (opcional)", "Website (optional)"), value: server?.website ?? "", type: "url", max: 250, placeholder: "https://ejemplo.com" })}
       <div class="cm-field"><span class="label">${t("Paquete que piden para entrar", "Package required to join")}</span>
         <div class="cm-options">
           <label class="cm-option"><input type="radio" name="cm-server-package" value="" ${!server?.package && !(!server && d.packages.length === 1) ? "checked" : ""}><span class="cm-pack-art cm-pack-none">${icon("cubes")}</span><span class="grow"><b>${t("Ninguno", "None")}</b><span class="faint">${t("Cada quien entra con la instancia que elija.", "Everyone joins with the instance they choose.")}</span></span></label>
@@ -611,7 +868,6 @@ async function editServer(server = null) {
     ok: t("Guardar", "Save"),
     danger: server ? `${icon("trash")}${t("Quitar servidor", "Remove server")}` : null,
     mount: (root) => {
-      wireCounters(root);
       $("#cm-server-test", root).onclick = async () => {
         const address = $("#cm-server-address", root).value.trim();
         const result = $("#cm-server-test-result", root);
@@ -634,6 +890,8 @@ async function editServer(server = null) {
       const name = $("#cm-server-name").value.trim();
       const address = $("#cm-server-address").value.trim();
       if (!name || !address) throw t("Escribe el nombre y la dirección.", "Write the name and the address.");
+      const website = $("#cm-server-website").value.trim();
+      if (website && !/^https?:\/\//i.test(website)) throw t("El sitio web debe empezar por https:// o http://.", "The website must start with https:// or http://.");
       await invoke("guardar_servidor_comunidad", {
         id: d.id,
         servidor: {
@@ -641,6 +899,7 @@ async function editServer(server = null) {
           name,
           address,
           bedrock: $("#cm-server-bedrock").value.trim() || null,
+          website: website || null,
           package: $("input[name=cm-server-package]:checked")?.value || null,
           order: server?.order ?? null,
         },
@@ -652,7 +911,7 @@ async function editServer(server = null) {
       return true;
     },
   });
-  if (saved) loadCommunity(d.id);
+  if (saved && community.id === d.id) loadCommunity(d.id);
 }
 
 /** Invitar: el código (para copiarlo) y a quién mandarlo por mensaje, amigos o grupos, varios a la vez. */
@@ -719,6 +978,7 @@ async function inviteToCommunity() {
     onOk: async () => {
       const targets = $$(".cm-target input:checked").map((i) => i.value);
       if (!targets.length) return true;
+      if (!invite) throw t("Genera un código para enviar la invitación.", "Generate a code to send the invitation.");
       const text = `${INVITE_PREFIX}${JSON.stringify({ t: "comunidad", n: d.name, c: invite.code })}`;
       for (const target of targets) {
         const chat = target.startsWith("f:") ? await invoke("chat_con_amigo", { uid: target.slice(2) }) : target.slice(2);
@@ -739,7 +999,6 @@ async function manageMember(uid) {
   if (!m) return;
   const owner = d.role === "owner";
   let role = m.role;
-  const removed = { value: false };
   const saved = await cmDialog({
     title: m.name,
     subtitle: t(`En la comunidad desde ${new Date(m.joinedAt).toLocaleDateString(locale(), { day: "numeric", month: "long" })}`, `In the community since ${new Date(m.joinedAt).toLocaleDateString(locale(), { day: "numeric", month: "long" })}`),
@@ -775,22 +1034,22 @@ async function manageMember(uid) {
       await invoke("cambiar_miembro", { id: d.id, uid, rol: role, permisos: caps });
       return true;
     },
-    onDanger: async () => {
-      const ok = await confirmAction({
-        title: t(`Sacar a ${m.name}`, `Remove ${m.name}`),
-        text: t("Podrá volver si alguien le da otro código.", "They can come back if someone gives them another code."),
-        ok: t("Sacar", "Remove"),
-      });
-      if (!ok) return false;
-      await invoke("sacar_de_comunidad", { id: d.id, uid });
-      removed.value = true;
-      return true;
-    },
+    onDanger: () => "remove",
   });
-  if (saved) {
-    toast(removed.value ? t(`${m.name} ya no está en la comunidad.`, `${m.name} is no longer in the community.`) : t("Permisos guardados.", "Permissions saved."));
-    loadCommunity(d.id);
+  if (!saved) return;
+  if (saved === "remove") {
+    const removed = await removeFromCommunity({
+      title: t(`Sacar a ${m.name}`, `Remove ${m.name}`),
+      text: t("Podrá volver con un código de invitación.", "They can return with an invite code."),
+      ok: t("Sacar", "Remove"),
+      remove: () => invoke("sacar_de_comunidad", { id: d.id, uid }),
+    });
+    if (!removed) return;
+    toast(t(`${m.name} ya no está en la comunidad.`, `${m.name} is no longer in the community.`));
+  } else {
+    toast(t("Permisos guardados.", "Permissions saved."));
   }
+  if (community.id === d.id) loadCommunity(d.id);
 }
 
 /** El paquete oficial: una de tus instancias (se publica sola en Drive) o un modpack que ya está en Drive. */
@@ -823,7 +1082,7 @@ async function choosePackage(replace = null) {
       <p class="faint cm-hint" id="cm-pack-hint"></p>
       <div class="cm-pick-grid" id="cm-pack-list"></div>`,
     ok: t("Elegir", "Choose"),
-    mount: (root) => {
+    mount: (root, finish) => {
       const paint = () => {
         for (const b of $$("[data-tab]", root)) b.classList.toggle("active", b.dataset.tab === tab);
         const hint = $("#cm-pack-hint", root);
@@ -836,7 +1095,7 @@ async function choosePackage(replace = null) {
               : `${t("Para subirla hace falta conectar Drive.", "To upload it you need to connect Drive.")} <button class="link-btn" id="cm-connect-drive" type="button">${t("Ir a Ajustes › Acerca de", "Go to Settings › About")}</button>`
             : t("Los modpacks del catálogo de Drive. Se pide la versión que está ahora.", "The Drive catalog modpacks. The version there now is required.");
         $("#cm-connect-drive", root)?.addEventListener("click", () => {
-          closeModal("#cm-dialog");
+          finish(false);
           openSettings("about");
         });
         if (tab === "drive" && drivePacks === null) {
@@ -917,8 +1176,8 @@ async function linkServersToOnlyPackage() {
   if (!fresh || fresh.packages.length !== 1 || !(isAdminRole(fresh.role) || fresh.caps?.servers)) return;
   const pk = fresh.packages[0].id;
   const loose = fresh.servers.filter((s) => !s.package);
-  for (const server of loose) await invoke("guardar_servidor_comunidad", { id: fresh.id, servidor: { ...server, package: pk } }).catch(() => {});
-  if (loose.length) toast(t(`Los servidores ahora piden ${fresh.packages[0].name}.`, `The servers now require ${fresh.packages[0].name}.`));
+  const linked = await Promise.allSettled(loose.map(server => invoke("enlazar_paquete_servidor", { id: fresh.id, servidor: server.id, paquete: pk })));
+  if (linked.some(result => result.status === "fulfilled")) toast(t(`Los servidores enlazados ahora piden ${fresh.packages[0].name}.`, `Linked servers now require ${fresh.packages[0].name}.`));
 }
 
 function packageMenu(anchor, pk) {
@@ -953,20 +1212,23 @@ async function requireDriveVersion(p) {
 }
 
 async function removePackage(p) {
-  const ok = await confirmAction({
+  const id = community.id;
+  const ok = await removeFromCommunity({
     title: t(`Quitar ${p.name}`, `Remove ${p.name}`),
     text: t("Los servidores que lo pedían dejarán de pedir paquete. No se borra de Drive.", "The servers that required it will no longer require a package. It is not deleted from Drive."),
     ok: t("Quitar", "Remove"),
+    remove: () => invoke("borrar_paquete_comunidad", { id, paquete: p.id }),
   });
-  if (!ok) return;
-  try {
-    await invoke("borrar_paquete_comunidad", { id: community.id, paquete: p.id });
-    loadCommunity(community.id);
-  } catch (error) {
-    toast(String(error), "error");
-  }
+  if (ok && community.id === id) loadCommunity(id);
 }
 
+function removeFromCommunity({ title, text, ok, remove }) {
+  return cmDialog({
+    title, glyph: "trash", body: `<p class="side-note no-top">${escapeHtml(text)}</p>`,
+    danger: `${icon("trash")}${escapeHtml(ok)}`,
+    onDanger: async () => { await remove(); return true; },
+  });
+}
 /** Instalar o actualizar el paquete oficial (sin entrar al servidor). Devuelve la instancia. */
 async function installPackage(pk) {
   const d = community.detail;
@@ -1023,16 +1285,19 @@ async function joinWithCode(code) {
 async function leaveCommunity() {
   const d = community.detail;
   if (d.role === "owner") return toast(t("Eres el dueño: no puedes salir de tu comunidad.", "You are the owner: you cannot leave your community."), "error");
-  const ok = await confirmAction({ title: t(`Salir de ${d.name}`, `Leave ${d.name}`), text: t("Para volver necesitarás otro código.", "To come back you will need another code."), ok: t("Salir", "Leave") });
+  const ok = await removeFromCommunity({
+    title: t(`Salir de ${d.name}`, `Leave ${d.name}`),
+    text: t("Para volver necesitarás otro código.", "To come back you will need another code."),
+    ok: t("Salir", "Leave"),
+    remove: () => invoke("salir_comunidad", { id: d.id }),
+  });
   if (!ok) return;
-  try {
-    await invoke("salir_comunidad", { id: d.id });
+  if (community.id === d.id) {
+    community.loadRequest++;
     community.id = null;
     community.detail = null;
-    enterCommunities();
-  } catch (error) {
-    toast(String(error), "error");
   }
+  enterCommunities();
 }
 
 /** «Jugar»: instala o actualiza el paquete oficial si hace falta y entra directo al servidor. */
@@ -1059,7 +1324,7 @@ async function playCommunityServer(sid) {
     toast(String(error), "error");
   } finally {
     community.preparing.delete(sid);
-    loadCommunity(d.id);
+    if (community.id === d.id) loadCommunity(d.id);
   }
 }
 
@@ -1132,7 +1397,6 @@ async function deleteCommunity() {
       const input = $("#cm-delete-name", root);
       const button = $("#cm-dialog-danger");
       const check = () => (button.disabled = input.value.trim() !== d.name.trim());
-      wireCounters(root);
       input.addEventListener("input", check);
       check();
     },
@@ -1173,12 +1437,30 @@ function wireCommunityEvents() {
     const target = event.target.closest("button");
     if (!target) return;
     const d = community.detail;
+    if (!d || d.id !== community.id) return;
     if (target.dataset.copy) {
       navigator.clipboard?.writeText(target.dataset.copy).then(() => toast(t("Copiado.", "Copied.")));
       return;
     }
     if (target.dataset.cmPlay) return playCommunityServer(target.dataset.cmPlay);
+    if (target.dataset.cmWebsite) {
+      const url = d.servers.find(s => s.id === target.dataset.cmWebsite)?.website;
+      if (url) invoke("abrir_enlace", { url }).catch(error => toast(String(error), "error"));
+      return;
+    }
+    const post = d.posts.find(p => p.id === (target.dataset.cmEditPost ?? target.dataset.cmReact ?? target.dataset.cmPickReaction ?? target.dataset.cmPhoto));
+    if (post) {
+      if (target.dataset.cmEditPost) return editPost(post);
+      if (target.dataset.cmReact) return reactToPost(post, target.dataset.emoji);
+      if (target.dataset.cmPickReaction) return pickPostReaction(target, post);
+      return mediaGallery.open([{ key: post.id, name: post.authorName, at: post.at, caption: post.title, src: post.image }]);
+    }
     if (target.dataset.cmEditServer) return editServer(d.servers.find((s) => s.id === target.dataset.cmEditServer));
+    if (target.dataset.cmProfile) {
+      const member = d.members.find(m => m.uid === target.dataset.cmProfile);
+      if (!member) return;
+      return member.you ? navigate("account") : chatExperience.profile(member.uid, member.name);
+    }
     if (target.dataset.cmMember) return manageMember(target.dataset.cmMember);
     if (target.dataset.cmPackage) return packageMenu(target, target.dataset.cmPackage);
     if (target.dataset.cmChanges) {
@@ -1191,9 +1473,14 @@ function wireCommunityEvents() {
         .finally(() => loadCommunity(d.id));
     }
     if (target.dataset.cmDeletePost) {
-      return confirmAction({ title: t("Borrar el anuncio", "Delete the announcement"), text: t("Nadie lo verá más.", "Nobody will see it anymore."), ok: t("Borrar", "Delete") }).then(
-        (ok) => ok && invoke("borrar_anuncio", { id: d.id, anuncio: target.dataset.cmDeletePost }).then(() => loadCommunity(d.id), (e) => toast(String(e), "error")),
-      );
+      const announcement = d.posts.find(p => p.id === target.dataset.cmDeletePost);
+      if (!announcement) return;
+      return removeFromCommunity({
+        title: t("Borrar el anuncio", "Delete the announcement"),
+        text: t(`«${announcement.title}» se quitará de la comunidad.`, `“${announcement.title}” will be removed from the community.`),
+        ok: t("Borrar", "Delete"),
+        remove: () => invoke("borrar_anuncio", { id: d.id, anuncio: announcement.id }),
+      }).then(ok => { if (ok && community.id === d.id) loadCommunity(d.id); });
     }
     if (target.dataset.cmDeleteCode) {
       return invoke("borrar_invitacion", { id: d.id, codigo: target.dataset.cmDeleteCode }).then(() => loadCommunity(d.id), (e) => toast(String(e), "error"));
@@ -1204,8 +1491,9 @@ function wireCommunityEvents() {
       image: quickImage,
       more: () => communityMenu(target),
       "add-server": () => editServer(null),
-      "add-post": addPost,
-      "edit-rules": editRules,
+      "add-post": () => editPost(),
+      rules: viewRules,
+      help: openCommunityHelp,
       "add-package": () => choosePackage(null),
     };
     actions[target.dataset.cm]?.();

@@ -6,7 +6,8 @@
 //! (puente-curseforge/main.py › skins; solo si el puente tiene su clave).
 //! El servidor de sesión local se la da al juego: al anfitrión de un mundo cuando entra un jugador
 //! (hasJoined, y de ahí a todos los que están dentro) y a cada jugador cuando pide un perfil (el suyo, o el
-//! de un amigo en las versiones que lo piden así).
+//! de un amigo en las versiones que lo piden así). NeoForge 1.21.1 también pide las skins de la
+//! lista de jugadores al entrar a un servidor dedicado.
 
 use base64::Engine;
 use serde::Serialize;
@@ -22,8 +23,9 @@ use crate::AppState;
 static APP: OnceLock<AppHandle> = OnceLock::new();
 /// Nombre en minúsculas → (cuándo se leyó, su skin).
 static CACHE: OnceLock<Mutex<HashMap<String, (Instant, Option<Skin>)>>> = OnceLock::new();
-/// Cuánto vale lo leído de la base: poco, para que un cambio de skin se vea en la siguiente partida.
-const FRESH: Duration = Duration::from_secs(120);
+/// Caché positiva y negativa para que los cambios se propaguen durante la partida.
+const FRESH: Duration = Duration::from_secs(60);
+const ABSENT: Duration = Duration::from_secs(20);
 /// Lo más que espera el juego por una skin antes de seguir con la de siempre.
 const LOOKUP: Duration = Duration::from_secs(4);
 
@@ -91,19 +93,23 @@ fn database(app: &AppHandle) -> Option<std::sync::Arc<crate::firebase::Database>
 
 /// La skin de un jugador de Parabellum por su nombre (None si no tiene, o sin sesión).
 pub async fn for_name(name: &str) -> Option<Skin> {
+    let db = database(APP.get()?)?;
+    lookup(&db, name).await
+}
+
+async fn lookup(db: &crate::firebase::Database, name: &str) -> Option<Skin> {
     if settings::validate_username(name).is_some() {
         return None;
     }
     let key = name.to_lowercase();
     if let Some((at, skin)) = cache().lock().unwrap().get(&key) {
-        if at.elapsed() < FRESH {
+        if at.elapsed() < if skin.is_some() { FRESH } else { ABSENT } {
             return skin.clone();
         }
     }
-    let db = database(APP.get()?)?;
     let lookup = async {
         let uid = db.get(&format!("names/{key}")).await.map_err(|_| ())?;
-        let Some(uid) = uid.as_str().filter(|u| !u.is_empty() && u.len() <= 128 && u.chars().all(|c| c.is_ascii_alphanumeric())) else {
+        let Some(uid) = uid.as_str().filter(|u| !u.is_empty() && u.len() <= 128 && u.bytes().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, b'-' | b'_'))) else {
             return Ok(None);
         };
         Ok::<_, ()>(parse(&db.get(&format!("skins/{uid}")).await.map_err(|_| ())?))
@@ -120,6 +126,27 @@ pub async fn properties(name: &str) -> Vec<Value> {
         .await
         .map(|s| vec![json!({ "name": "textures", "value": s.value, "signature": s.signature })])
         .unwrap_or_default()
+}
+
+/// Propiedades para los perfiles que ya están presentes en el cliente multijugador.
+pub async fn for_players(request: &Value) -> Value {
+    let Some(db) = APP.get().and_then(database) else { return json!({}) };
+    player_textures(&db, request).await
+}
+
+pub(crate) async fn player_textures(db: &crate::firebase::Database, request: &Value) -> Value {
+    use futures::stream::{self, StreamExt};
+
+    let mut names: Vec<_> = request.as_array().into_iter().flatten().filter_map(Value::as_str)
+        .filter(|name| settings::validate_username(name).is_none()).take(24)
+        .map(str::to_ascii_lowercase).collect();
+    names.sort_unstable();
+    names.dedup();
+    let found: serde_json::Map<String, Value> = stream::iter(names).map(async |name| {
+        let skin = lookup(db, &name).await?;
+        Some((name, json!({ "value": skin.value, "signature": skin.signature })))
+    }).buffer_unordered(8).filter_map(std::future::ready).collect().await;
+    Value::Object(found)
 }
 
 /// El nombre de un jugador conocido por su UUID: las cuentas de este PC y los amigos.

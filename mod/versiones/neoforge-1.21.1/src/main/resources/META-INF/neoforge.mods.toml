@@ -9,6 +9,9 @@ displayName = "Parabellum"
 description = "Amigos, chat, capturas e invitaciones de Parabellum dentro del juego."
 logoFile = "assets/parabellum/icon.png"
 
+[[mixins]]
+config = "parabellum-neoforge.mixins.json"
+
 [[dependencies.parabellum]]
 modId = "minecraft"
 type = "required"

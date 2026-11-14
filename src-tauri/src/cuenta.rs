@@ -30,6 +30,8 @@ pub struct SocialState {
     /// Puerto del servidor de sesión local (None si no se pudo abrir).
     pub session_port: Mutex<Option<u16>>,
     profile_generation: AtomicU64,
+    rename: tokio::sync::Mutex<()>,
+    sign_in: tokio::sync::Mutex<()>,
     tracker: Mutex<(Option<String>, Tracker)>,
     tray_hint_shown: AtomicBool,
     seen: Mutex<Seen>,
@@ -152,9 +154,10 @@ pub fn estado_social(app: AppHandle) -> SocialView {
 
 /// Abre el navegador para elegir la cuenta de Google; al volver conecta con los amigos.
 #[tauri::command]
-pub async fn iniciar_sesion_google(app: AppHandle, recordar: bool) -> Result<SocialView, String> {
+pub async fn iniciar_sesion_google(app: AppHandle, recordar: bool, configurar_nombre: Option<bool>) -> Result<SocialView, String> {
+    let state = app.state::<AppState>();
+    let _sign_in = state.social.sign_in.try_lock().map_err(|_| t!("Ya hay un inicio de sesión en curso.", "A sign-in is already in progress."))?;
     let config = {
-        let state = app.state::<AppState>();
         if !available(&state) {
             return Err(t!("Esta copia de Parabellum no trae las claves de Google. Descarga la versión más reciente.", "This copy of Parabellum does not include the Google keys. Download the latest version."));
         }
@@ -166,7 +169,10 @@ pub async fn iniciar_sesion_google(app: AppHandle, recordar: bool) -> Result<Soc
         s.notice = None;
     });
     let result = GoogleAccount::sign_in(&config).await;
-    update_status(&app, |s| s.signing_in = false);
+    update_status(&app, |s| {
+        s.signing_in = false;
+        s.connecting = result.is_ok();
+    });
     let account = Arc::new(result.inspect_err(|e| update_status(&app, |s| s.error = Some(e.clone())))?);
     let paths = app.state::<AppState>().paths.clone();
     if recordar {
@@ -176,8 +182,9 @@ pub async fn iniciar_sesion_google(app: AppHandle, recordar: bool) -> Result<Soc
     }
     *app.state::<AppState>().social.google.lock().unwrap() = Some(account.clone());
     show_window(&app);
-    apply_profile(&app, &account, true).await;
-    connect(&app).await;
+    let defer_name = configurar_nombre.unwrap_or(false);
+    apply_profile(&app, &account, true, defer_name).await;
+    connect(&app, defer_name).await;
     Ok(view(&app))
 }
 
@@ -192,8 +199,10 @@ pub async fn cerrar_sesion_google(app: AppHandle) -> SocialView {
 
 /// Vuelve a intentar conectar con los amigos (la sesión de Google sigue iniciada).
 #[tauri::command]
-pub async fn reconectar_amigos(app: AppHandle) -> SocialView {
-    connect(&app).await;
+pub async fn reconectar_amigos(app: AppHandle, configurar_nombre: Option<bool>) -> SocialView {
+    let state = app.state::<AppState>();
+    let Ok(_sign_in) = state.social.sign_in.try_lock() else { return view(&app) };
+    connect(&app, configurar_nombre.unwrap_or(false)).await;
     view(&app)
 }
 
@@ -227,7 +236,7 @@ pub async fn eliminar_amigo(app: AppHandle, uid: String) -> Result<(), String> {
 
 // ================= Conexión
 
-async fn connect(app: &AppHandle) {
+async fn connect(app: &AppHandle, configuring_name: bool) {
     let Some(account) = google_account(app) else { return };
     if social(app).is_some() {
         return;
@@ -265,7 +274,9 @@ async fn connect(app: &AppHandle) {
             *app.state::<AppState>().social.seen.lock().unwrap() =
                 Seen { quiet_until: Some(std::time::Instant::now() + Duration::from_secs(10)), ..Seen::default() };
             *app.state::<AppState>().social.social.lock().unwrap() = Some(social.clone());
-            claim_name(app, &social).await;
+            if !is_unnamed_setup(app, configuring_name) {
+                claim_name(app, &social).await;
+            }
             social.set_presence(current_presence(app).map(|(p, _)| p).unwrap_or_else(Presence::online));
             social.start();
             start_chat(app, &social);
@@ -317,7 +328,7 @@ fn current_profile(settings: &Settings) -> Profile {
 
 /// Al iniciar sesión: si la cuenta ya tiene perfil, se usa (la cuenta de este PC queda en la lista
 /// para cambiar con un clic); si no, se guarda el de este PC.
-async fn apply_profile(app: &AppHandle, account: &GoogleAccount, announce: bool) {
+async fn apply_profile(app: &AppHandle, account: &GoogleAccount, announce: bool, configuring_name: bool) {
     let notice = match account.load_profile().await {
         Ok(Some(remote)) if settings::validate_username(&remote.username).is_none() => {
             let state = app.state::<AppState>();
@@ -348,6 +359,7 @@ async fn apply_profile(app: &AppHandle, account: &GoogleAccount, announce: bool)
                 announce.then(|| t!("Se cargó tu perfil guardado: ahora juegas como {}.", "Your saved profile was loaded: you now play as {}.", remote.username))
             }
         }
+        Ok(_) if is_unnamed_setup(app, configuring_name) => None,
         Ok(_) => {
             let profile = current_profile(&app.state::<AppState>().settings.lock().unwrap());
             match account.save_profile(&profile).await {
@@ -358,6 +370,10 @@ async fn apply_profile(app: &AppHandle, account: &GoogleAccount, announce: bool)
         Err(error) => Some(t!("Sesión iniciada, pero no se pudo leer tu perfil: {error}", "Signed in, but your profile could not be read: {error}")),
     };
     update_status(app, |s| s.notice = notice);
+}
+
+fn is_unnamed_setup(app: &AppHandle, active: bool) -> bool {
+    active && app.state::<AppState>().settings.lock().unwrap().username == Settings::default().username
 }
 
 /// Al abrir Parabellum con la sesión ya guardada manda lo de este PC: el nombre que el jugador
@@ -554,7 +570,93 @@ pub async fn enviar_mensaje(app: AppHandle, chat: String, texto: String, respues
 }
 
 #[tauri::command]
-pub async fn perfil_jugador(app: AppHandle, uid: String) -> Result<serde_json::Value, String> { chat_ready(&app)?.profile(&uid).await }
+pub async fn perfil_jugador(app: AppHandle, uid: String) -> Result<serde_json::Value, String> {
+    let (db, _) = crate::comunidad::db(&app)?;
+    public_profile(&db, &uid).await
+}
+
+#[tauri::command]
+pub async fn cambiar_nombre_perfil(app: AppHandle, nombre: String) -> Result<Settings, String> {
+    let nombre = nombre.trim();
+    if let Some(error) = settings::validate_username(nombre) {
+        return Err(error);
+    }
+    let state = app.state::<AppState>();
+    let _rename = state.social.rename.lock().await;
+    let mut settings = state.settings.lock().unwrap().clone();
+    let previous = settings.username.clone();
+    if settings.accounts.iter().any(|account| account.username.eq_ignore_ascii_case(nombre)) {
+        return Err(t!("Ya tienes otra cuenta con ese nombre.", "You already have another account with that name."));
+    }
+    settings.username = nombre.to_string();
+    let active = social(&app);
+    if let Some(social) = &active {
+        let uuid = settings::dashed(&settings.effective_uuid());
+        social.claim_name(nombre, &uuid).await.map_err(|error| match error {
+            ClaimError::Taken => t!("Ese nombre ya lo usa otra cuenta de Parabellum.", "Another Parabellum account already uses that name."),
+            ClaimError::Other(error) => error,
+        })?;
+    }
+    let mut current = state.settings.lock().unwrap().clone();
+    if current.username != previous {
+        if let Some(social) = &active { claim_name(&app, social).await; }
+        return Err(t!("Cambió la cuenta en uso. Vuelve a abrir «Mi cuenta».", "The active account changed. Reopen “My account”."));
+    }
+    current.username = nombre.to_string();
+    match crate::ajustes::save_all(&app, current) {
+        Ok(saved) => {
+            if let Some(chat) = chat_service(&app) {
+                chat.set_my_name(nombre);
+            }
+            update_status(&app, |s| s.name_conflict = None);
+            Ok(saved)
+        }
+        Err(error) => {
+            if let Some(social) = &active { claim_name(&app, social).await; }
+            Err(error)
+        }
+    }
+}
+
+pub(crate) async fn public_profile(db: &crate::firebase::Database, uid: &str) -> Result<serde_json::Value, String> {
+    if uid.is_empty() || uid.len() > 128 || !uid.bytes().all(|c| c.is_ascii_alphanumeric() || b"_-".contains(&c)) {
+        return Err(t!("Ese perfil no está disponible.", "That profile is unavailable."));
+    }
+    let profile_path = format!("users/{uid}");
+    let banner_path = format!("profileBanners/{uid}");
+    let (profile, banner) = futures::join!(db.get(&profile_path), db.get(&banner_path));
+    let profile = profile.map_err(|error| error.to_string())?;
+    if !profile["name"].is_string() {
+        return Err(t!("Ese perfil ya no está disponible.", "That profile is no longer available."));
+    }
+    let banner = banner.ok().and_then(|value| value.as_str().filter(|data| crate::imagen::validate_social_image(data).is_ok()).map(String::from));
+    Ok(serde_json::json!({ "name": profile["name"], "uuid": profile["uuid"], "banner": banner }))
+}
+
+#[tauri::command]
+pub async fn banner_mio(app: AppHandle) -> Result<Option<String>, String> {
+    let (db, uid) = crate::comunidad::db(&app)?;
+    let value = match db.get(&format!("profileBanners/{uid}")).await {
+        Ok(value) => value,
+        // Una instalación con las reglas anteriores todavía puede abrir Mi cuenta.
+        Err(crate::firebase::DbError::Permission(_)) => return Ok(None),
+        Err(error) => return Err(error.to_string()),
+    };
+    Ok(value.as_str().filter(|data| crate::imagen::validate_social_image(data).is_ok()).map(String::from))
+}
+
+#[tauri::command]
+pub async fn guardar_banner(app: AppHandle, imagen: Option<String>) -> Result<(), String> {
+    let (db, uid) = crate::comunidad::db(&app)?;
+    let path = format!("profileBanners/{uid}");
+    match imagen {
+        Some(image) => {
+            crate::imagen::validate_social_image(&image)?;
+            db.put(&path, &serde_json::json!(image)).await.map(|_| ())
+        }
+        None => db.delete(&path).await,
+    }.map_err(|error| error.to_string())
+}
 
 #[tauri::command]
 pub async fn imagenes_chat(app: AppHandle, chat: String, antes: Option<String>) -> Result<serde_json::Value, String> { chat_ready(&app)?.media_page(&chat, antes.as_deref()).await }
@@ -761,8 +863,13 @@ pub fn startup(app: &AppHandle) {
                         Ok(account) => {
                             let account = Arc::new(account);
                             *app.state::<AppState>().social.google.lock().unwrap() = Some(account.clone());
-                            upload_profile(&app, &account).await;
-                            connect(&app).await;
+                            let configuring_name = !app.state::<AppState>().settings.lock().unwrap().setup_completed;
+                            if is_unnamed_setup(&app, configuring_name) {
+                                apply_profile(&app, &account, false, true).await;
+                            } else {
+                                upload_profile(&app, &account).await;
+                            }
+                            connect(&app, configuring_name).await;
                         }
                         Err(error) => update_status(&app, |s| {
                             s.connecting = false;

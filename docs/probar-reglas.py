@@ -33,7 +33,8 @@ def token(uid):
 
 def req(method, path, uid, body=None):
     # El emulador toma «Authorization: Bearer» como administrador; el usuario va en ?auth= (como Parabellum).
-    url = f"{BASE}/{path}.json?ns={NS}" + ("" if uid == "owner" else "&auth=" + token(uid))
+    path, _, query = path.partition("?")
+    url = f"{BASE}/{path}.json?ns={NS}" + (f"&{query}" if query else "") + ("" if uid in ("owner", "") else "&auth=" + token(uid))
     data = None if body is None else json.dumps(body).encode()
     headers = {"Content-Type": "application/json"} | ({"Authorization": "Bearer owner"} if uid == "owner" else {})
     r = urllib.request.Request(url, data=data, method=method, headers=headers)
@@ -164,6 +165,22 @@ member = lambda role, name, **extra: {"role": role, "name": name, "joinedAt": TS
 check("A crea su comunidad (dueño)", True, "PATCH", "", "A", {
     f"communities/{CID}": {"name": "Parabellum", "description": "El servidor", "owner": "A", "createdAt": TS},
     f"communityMembers/{CID}/A": member("owner", "Juan"), f"userCommunities/A/{CID}": True})
+directory = f"communityDirectory/{CID}"
+directory_query = "communityDirectory?orderBy=%22%24key%22&limitToFirst=27"
+check("Un jugador puede leer el directorio paginado", True, "GET", directory_query, "B")
+check("El directorio requiere paginación", False, "GET", "communityDirectory", "B")
+check("El directorio requiere sesión", False, "GET", directory_query, "")
+check("El dueño elige que su comunidad aparezca por código", True, "PUT", directory, "A", "invite")
+check("Aparecer en el directorio con código no abre la comunidad", False, "PUT", f"communityMembers/{CID}/D", "D", member("member", "D"))
+check("Un jugador ajeno no cambia la visibilidad", False, "PUT", directory, "D", "open")
+assert req("GET", directory_query, "B") == (200, {CID: "invite"})
+assert req("GET", directory_query + f"&startAt=%22{CID}%22", "B") == (200, {CID: "invite"})
+check("El dueño puede abrirla", True, "PUT", directory, "A", "open")
+check("El ingreso directo crea membresía y lista en una operación", True, "PATCH", "", "D", {
+    f"communityMembers/{CID}/D": member("member", "D"), f"userCommunities/D/{CID}": True})
+check("El ingreso directo no permite darse permisos", False, "PUT", f"communityMembers/{CID}/C", "C", member("member", "C", caps={"servers": True}))
+check("D sale otra vez", True, "PATCH", "", "D", {f"communityMembers/{CID}/D": None, f"userCommunities/D/{CID}": None})
+check("El dueño retira la comunidad del directorio", True, "DELETE", directory, "A")
 check("B no se pone como dueño de la de A", False, "PUT", f"communityMembers/{CID}/B", "B", member("owner", "B"))
 check("B no crea una comunidad a nombre de A", False, "PUT", "communities/c0000000000b2", "B", {"name": "Falsa", "owner": "A", "createdAt": TS})
 check("B no entra sin código", False, "PUT", f"communityMembers/{CID}/B", "B", member("member", "B"))
@@ -197,12 +214,58 @@ check("C (miembro) no publica anuncios", False, "PUT", f"communityPosts/{CID}/p1
 check("B (admin) publica un anuncio", True, "PUT", f"communityPosts/{CID}/p1", "B", {"title": "Abrimos", "text": "El 1 de diciembre", "author": "B", "authorName": "B", "at": TS})
 check("B no publica a nombre de A", False, "PUT", f"communityPosts/{CID}/p2", "B", {"title": "Falso", "text": "x", "author": "A", "at": TS})
 check("C (miembro) lee los anuncios", True, "GET", f"communityPosts/{CID}", "C")
+post = f"communityPosts/{CID}/a0123456789ab"
+jpeg = "data:image/jpeg;base64,/9j/2Q=="
+check("B publica un anuncio con imagen y sin texto", True, "PUT", post, "B", {"title": "La plaza", "image": jpeg, "author": "B", "at": TS})
+check("B no publica un anuncio vacío", False, "PUT", f"{post}0", "B", {"title": "Vacío", "text": "", "author": "B", "at": TS})
+check("B no publica una imagen remota", False, "PUT", f"{post}0", "B", {"title": "Imagen", "image": "https://ejemplo.com/a.jpg", "author": "B", "at": TS})
+check("C reacciona al anuncio", True, "PUT", f"{post}/reactions/C", "C", "❤️")
+check("A conserva su propia reacción", True, "PUT", f"{post}/reactions/A", "A", "🔥")
+check("C cambia su reacción", True, "PUT", f"{post}/reactions/C", "C", "😂")
+check("D (fuera) no reacciona", False, "PUT", f"{post}/reactions/D", "D", "👍")
+check("C no puede reaccionar por A", False, "PUT", f"{post}/reactions/A", "C", "😮")
+check("B (admin) tampoco reacciona por A", False, "PUT", f"{post}/reactions/A", "B", "😮")
+check("B (admin) no puede quitar la reacción de A", False, "DELETE", f"{post}/reactions/A", "B")
+before_edit = req("GET", post, "B")[1]
+check("B edita su anuncio y quita la imagen en la misma operación", True, "PATCH", post, "B", {"title": "Mercado", "text": "Abre el sábado", "image": None})
+if req("GET", post, "B") != (200, {k: v for k, v in (before_edit | {"title": "Mercado", "text": "Abre el sábado"}).items() if k != "image"}):
+    fails += 1
+    print("MAL Al editar se perdieron datos o reacciones del anuncio")
+check("B no puede dejar su anuncio vacío", False, "PATCH", post, "B", {"text": "", "image": None})
+check("B no puede cambiar la fecha de su anuncio", False, "PATCH", post, "B", {"title": "Nuevo", "at": TS})
+check("A no puede editar el anuncio de B", False, "PATCH", post, "A", {"title": "Nuevo"})
+check("C no puede editar el anuncio de B", False, "PATCH", post, "C", {"title": "Nuevo"})
+check("B no crea un anuncio mediante la edición", False, "PATCH", f"{post}0", "B", {"title": "Nuevo", "text": "Otro"})
+check("C no puede escribir un emoji fuera de la lista", False, "PUT", f"{post}/reactions/C", "C", "💣")
+check("C no puede reaccionar a un anuncio inexistente", False, "PUT", f"{post}0/reactions/C", "C", "👍")
+check("C quita su propia reacción", True, "DELETE", f"{post}/reactions/C", "C")
+check("B elimina el anuncio con sus reacciones", True, "DELETE", post, "B")
+check("C puede reaccionar a un anuncio anterior", True, "PUT", f"communityPosts/{CID}/p1/reactions/C", "C", "👍")
+check("C guarda su banner", True, "PUT", "profileBanners/C", "C", jpeg)
+check("A puede ver el banner de C", True, "GET", "profileBanners/C", "A")
+check("A no puede cambiar el banner de C", False, "PUT", "profileBanners/C", "A", jpeg)
+check("C no puede escribir HTML en datos de imagen", False, "PUT", "profileBanners/C", "C", "data:image/jpeg;base64,<b>")
+check("Cambiar el nombre no escribe sobre el banner", True, "PATCH", "", "C", {"names/nuevoc": "C", "users/C": {"name": "NuevoC", "uuid": ""}})
+if req("GET", "profileBanners/C", "A") != (200, jpeg):
+    fails += 1
+    print("MAL El banner de C cambió con el nombre")
+check("C puede quitar su banner", True, "DELETE", "profileBanners/C", "C")
 check("C (publicar) no edita los servidores", False, "PUT", f"communityServers/{CID}/v00000001", "C", {"name": "Principal", "address": "mc.ejemplo.com"})
 check("C (publicar) sube el paquete oficial", True, "PUT", f"communityPackages/{CID}/p00000001", "C", {"name": "Oficial", "catalogId": "parabellum-oficial", "version": "1.0.0", "minecraft": "26.3", "loader": "Fabric", "at": TS})
 check("A edita los servidores", True, "PUT", f"communityServers/{CID}/v00000001", "A", {"name": "Principal", "address": "mc.ejemplo.com", "bedrock": "mc.ejemplo.com:19132", "package": "p00000001"})
+check("A agrega el sitio web al servidor", True, "PUT", f"communityServers/{CID}/v00000001/website", "A", "https://ejemplo.com/servidor")
+check("A cambia solo el paquete del servidor", True, "PUT", f"communityServers/{CID}/v00000001/package", "A", "p00000002")
+if req("GET", f"communityServers/{CID}/v00000001/website", "B") != (200, "https://ejemplo.com/servidor"):
+    fails += 1
+    print("MAL El paquete sobrescribió el sitio web")
+check("C no puede cambiar el sitio web", False, "DELETE", f"communityServers/{CID}/v00000001/website", "C")
+check("A no puede guardar un enlace javascript", False, "PUT", f"communityServers/{CID}/v00000001/website", "A", "javascript:alert(1)")
 check("C (miembro) no cambia las reglas", False, "PUT", f"communityRules/{CID}", "C", {"text": "nada", "at": TS, "by": "C"})
 check("A escribe las reglas", True, "PUT", f"communityRules/{CID}", "A", {"text": "Respeto", "at": TS, "by": "A"})
 check("B (admin) cambia la descripción", True, "PUT", f"communities/{CID}/description", "B", "Nueva")
+check("B (admin) puede listar la comunidad", True, "PATCH", "", "B", {directory: "invite", f"communities/{CID}/description": "Nueva"})
+check("C (miembro) no cambia cómo se entra", False, "PUT", directory, "C", "open")
+check("B (admin) puede retirarla del directorio", True, "DELETE", directory, "B")
 check("B (admin) no cambia el dueño", False, "PUT", f"communities/{CID}/owner", "B", "B")
 check("C (miembro) no cambia el nombre", False, "PUT", f"communities/{CID}/name", "C", "Mía")
 check("C sale de la comunidad", True, "PATCH", "", "C", {f"communityMembers/{CID}/C": None, f"userCommunities/C/{CID}": None})

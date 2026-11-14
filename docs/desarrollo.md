@@ -138,21 +138,37 @@ primera vez que entras a un mundo, uno te dice cómo abrirlo. Funciona en Fabric
 la 1.16.5 a la 26.3 (las versiones más usadas); Parabellum pone el mod solo al jugar. Se apaga en
 Ajustes › Comportamiento. El código y cómo compilarlo: [mod/README.md](../mod/README.md).
 
+## Guía de bienvenida y directorio
+
+Una carpeta portable nueva abre la guía después de la pantalla de carga. El orden es Google, nombre,
+skin, RAM y comunidad. «Hacerlo más tarde» y «Finalizar» guardan `setupCompleted` en
+`datos/ajustes.json`. Los ajustes anteriores se leen con la guía completada. Se puede volver a abrir
+desde el menú del perfil. Para recorrerla en el navegador, abre la demostración con `?bienvenida` o
+`?bienvenida&en`.
+
+Las comunidades muestran su ficha en la guía al elegir una opción de directorio en «Editar la
+comunidad». `communityDirectory/{cid}` guarda el modo de ingreso. La guía lee el nombre, la
+descripción y la imagen desde la ficha que ya usa Comunidad. Las comunidades privadas siguen
+aceptando invitaciones. El directorio y el ingreso directo requieren las reglas de Firebase nuevas.
+
 ## Skins (desde la 0.41.0)
 
-Cada jugador elige la skin de una cuenta premium (menú de la cuenta → «Skin»). Parabellum la pide a Mojang
+Cada jugador elige la skin en «Mi cuenta». Parabellum importa la de una cuenta premium desde Mojang
 (`api.minecraftservices.com` y `sessionserver.mojang.com`) y guarda la propiedad `textures` firmada en
 `skins/{uid}` de Firebase (la leen solo los jugadores con sesión). Minecraft solo acepta imágenes de
 `textures.minecraft.net` con firma de Mojang, así que no se pueden servir PNG propios sin subirlos antes a
-Mojang (MineSkin; pendiente).
+Mojang. Cuando el puente tiene configurado MineSkin, «Mi cuenta» también admite un PNG propio.
 
 El juego la recibe del servidor de sesión local (`sesion_local.rs` → `skins.rs`):
 - `hasJoined`: el anfitrión de un mundo LAN o P2P pregunta por quien entra; la respuesta lleva su skin (por su
   nombre: `names/{nombre}` → `skins/{uid}`) y el juego se la pasa a todos los que están dentro;
 - `/session/minecraft/profile/{uuid}`: la tuya al abrir el juego y la de un amigo en versiones viejas (el
   UUID se busca entre las cuentas del PC y los amigos).
+- En Retorcidos (NeoForge 1.21.1), el mod de cada cliente pide al puente local las texturas de los
+  jugadores que ve en el servidor. Minecraft verifica las firmas antes de mostrar las texturas. El
+  cliente usa el UUID que envía el servidor y hace esta consulta aunque el panel de la O esté apagado.
 
-Lo leído se recuerda 2 minutos y la imagen se guarda en `datos/skins/`. Sin sesión de Google, o si Firebase no
+Lo leído se recuerda alrededor de un minuto y la imagen se guarda en `datos/skins/`. Sin sesión de Google, o si Firebase no
 contesta en 4 s, el juego sigue con la skin de siempre.
 
 ## Hostear partida

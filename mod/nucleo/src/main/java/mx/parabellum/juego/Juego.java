@@ -49,10 +49,25 @@ public final class Juego {
         return actual;
     }
 
+    public static boolean soloSkins() {
+        return Boolean.getBoolean("parabellum.soloSkins");
+    }
+
+    /** El callback se ejecuta en el hilo del cliente. */
+    public boolean pedirSkins(JsonArray nombres, java.util.function.Consumer<JsonObject> resultado) {
+        if (puente == null || !puente.conectado()) return false;
+        JsonObject data = new JsonObject();
+        data.add("nombres", nombres);
+        puente.pedir("skins_jugadores", data, (respuesta, error) ->
+            resultado.accept(error == null && respuesta != null && respuesta.isJsonObject() ? respuesta.getAsJsonObject() : null));
+        return true;
+    }
+
     // ================= Llamadas de la versión del juego
 
     public void tick() {
         if (puente != null) puente.atender();
+        if (soloSkins()) return;
         avisos.tick();
         java.io.File nueva = capturas.revisar();
         if (nueva != null) aviso(T.t("Captura guardada", "Screenshot saved"), nueva.getName(), plataforma.tecla() + T.t(" › Capturas para mandarla", " › Screenshots to send it"), false);

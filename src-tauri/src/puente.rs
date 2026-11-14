@@ -233,6 +233,7 @@ fn watch_chat(app: &AppHandle, request: &Value, tx: &mpsc::UnboundedSender<Strin
 async fn handle(app: &AppHandle, op: &str, request: &Value) -> Result<Value, String> {
     match op {
         "estado" => Ok(snapshot(app)),
+        "skins_jugadores" => Ok(crate::skins::for_players(&request["nombres"]).await),
         "chat_amigo" => Ok(json!({ "chat": chat_service(app)?.direct(text(request, "uid")?).await? })),
         "enviar" => chat_service(app)?.send_text(text(request, "chat")?, text(request, "texto")?, request["respuesta"].as_str().filter(|r| !r.is_empty())).await.map(|_| Value::Null),
         "reaccionar" => {

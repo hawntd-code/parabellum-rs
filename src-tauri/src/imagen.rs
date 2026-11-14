@@ -6,6 +6,22 @@
 /// Más grande no hace falta: el chat la reduce a 1280 px y el icono a 64.
 const MAX_SIDE: u32 = 2048;
 pub const MAX_BYTES: usize = 25 * 1024 * 1024;
+/// Límite del JPEG que se guarda en Firebase para un anuncio o un banner.
+pub const SOCIAL_IMAGE_LIMIT: usize = 200_000;
+
+pub fn validate_social_image(data: &str) -> Result<(), String> {
+    use base64::Engine;
+
+    let valid = data.len() <= SOCIAL_IMAGE_LIMIT
+        && data.strip_prefix("data:image/jpeg;base64,")
+            .and_then(|encoded| base64::engine::general_purpose::STANDARD.decode(encoded).ok())
+            .is_some_and(|bytes| bytes.starts_with(&[0xff, 0xd8, 0xff]) && bytes.ends_with(&[0xff, 0xd9]));
+    if valid {
+        Ok(())
+    } else {
+        Err(t!("Elige otra imagen para guardar.", "Choose another image to save."))
+    }
+}
 
 /// La imagen como PNG (RGBA), reducida a MAX_SIDE de lado como mucho.
 /// Si los primeros bytes son de una imagen (PNG, JPEG, GIF, WebP, BMP, TIFF, ICO, HEIC/AVIF, JPEG XR o

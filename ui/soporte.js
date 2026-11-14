@@ -11,6 +11,7 @@
 const support = {
   /** La cola de la comunidad abierta: { community, staff, tickets }. */
   view: null,
+  failedCommunity: null,
   /** Filtro del equipo: «abiertas», «mias» o «cerradas». */
   filter: "abiertas",
   /** La solicitud abierta en la ventana: { community, id }. */
@@ -44,11 +45,16 @@ async function loadSupport(cid) {
   try {
     view = await invoke("soporte", { id: cid });
   } catch {
+    if (community.id === cid && support.view?.community !== cid) {
+      support.failedCommunity = cid;
+      renderSupportSection();
+    }
     return;
   }
   if (community.id !== cid) return;
   const before = support.view?.community === cid ? new Set(support.view.tickets.filter((x) => x.unread).map((x) => x.id)) : null;
   support.view = { community: cid, ...view };
+  support.failedCommunity = null;
   // Te respondieron (y no la tienes abierta): un aviso.
   for (const ticket of view.tickets) {
     if (before && ticket.unread && !before.has(ticket.id) && support.open?.id !== ticket.id) {
@@ -59,10 +65,52 @@ async function loadSupport(cid) {
   if (support.open?.community === cid) renderTicketHead();
 }
 
-// ---------- La sección en la comunidad ----------
-/** Para el equipo, la cola con filtros (en la columna ancha); para el jugador, sus solicitudes. */
-function supportSectionHtml() {
-  return `<section class="cm-section" id="cm-support"></section>`;
+// ---------- El botón de Ayuda de la comunidad ----------
+async function openCommunityHelp() {
+  const d = community.detail;
+  if (!d || d.id !== community.id) return;
+  const action = await cmDialog({
+    title: t("Ayuda", "Help"),
+    subtitle: d.name,
+    glyph: "chat",
+    wide: true,
+    variant: "help",
+    body: '<div id="cm-support" class="cm-help-desk"></div>',
+    cancel: t("Cerrar", "Close"),
+    mount: (root, finish) => {
+      const box = $("#cm-support", root);
+      renderSupportSection();
+      if (support.view?.community !== d.id) loadSupport(d.id);
+      box.onclick = (event) => {
+        const button = event.target.closest("button");
+        if (!button) return;
+        if (button.dataset.sp === "ask") return finish({ ask: true });
+        if (button.dataset.sp === "retry") {
+          support.failedCommunity = null;
+          renderSupportSection();
+          return loadSupport(d.id);
+        }
+        if (button.dataset.spTicket) return finish({ ticket: button.dataset.spTicket });
+        if (button.dataset.spFilter) {
+          support.filter = button.dataset.spFilter;
+          renderSupportSection();
+          $("[data-sp-filter].active", box)?.focus({ preventScroll: true });
+        }
+      };
+    },
+  });
+  if (!action || community.id !== d.id) return;
+  if (action.ask) return askForHelp({ cid: d.id, fromHelp: true });
+  return openSupportTicket(action.ticket, { fromHelp: true });
+}
+
+function renderCommunityHelpCount() {
+  const badge = $(".cm-help-count");
+  if (!badge) return;
+  const count = support.notices?.communities?.[community.id] ?? 0;
+  badge.classList.toggle("hidden", !count);
+  badge.textContent = count > 9 ? "9+" : String(count);
+  badge.title = t("Avisos de ayuda", "Help notifications");
 }
 
 function renderSupportSection() {
@@ -71,19 +119,21 @@ function renderSupportSection() {
   if (!box || !d) return;
   const view = support.view?.community === d.id ? support.view : null;
   const staff = supportStaff();
-  const ask = `<button class="btn small" data-sp="ask">${icon("chat")}${t("Pedir ayuda", "Ask for help")}</button>`;
+  const ask = `<button class="btn primary small" data-sp="ask">${icon("plus")}${t("Pedir ayuda", "Ask for help")}</button>`;
+  const heading = staff ? t("Solicitudes de ayuda", "Help requests") : t("Mis solicitudes", "My requests");
   if (!view) {
-    box.innerHTML = `<div class="cm-section-head"><h3>${staff ? t("Solicitudes de ayuda", "Help requests") : t("Ayuda", "Help")}</h3>${staff ? "" : ask}</div><span class="skel block short"></span>`;
+    const failed = support.failedCommunity === d.id;
+    box.innerHTML = `<div class="cm-section-head"><h3>${heading}</h3>${ask}</div>${failed
+      ? `<div class="sp-empty"><p>${t("No se pudieron cargar las solicitudes.", "Could not load help requests.")}</p><button class="btn small" data-sp="retry">${icon("refresh")}${t("Reintentar", "Try again")}</button></div>`
+      : `<div class="content-loading" role="status"><span class="spinner small"></span>${t("Cargando solicitudes…", "Loading requests…")}</div>`}`;
     return;
   }
   const me = myUid();
   if (!staff) {
-    box.innerHTML = `<div class="cm-section-head"><h3>${t("Ayuda", "Help")}</h3>${ask}</div>${
+    box.innerHTML = `<div class="cm-section-head"><h3>${heading}</h3>${ask}</div>${
       view.tickets.length
         ? `<div class="sp-list compact">${view.tickets.map((x) => ticketRowHtml(x, { compact: true })).join("")}</div>`
-        : `<p class="side-note no-top">${escapeHtml(
-            t(`¿Algo no funciona? Pide ayuda: la lee el equipo de soporte de ${d.name}.`, `Something not working? Ask for help: ${d.name}'s support team reads it.`),
-          )}</p>`
+        : `<div class="sp-empty">${icon("chat")}<p>${t("Aquí aparecerán tus conversaciones con el equipo de soporte.", "Your conversations with the support team will appear here.")}</p></div>`
     }`;
     return;
   }
@@ -100,7 +150,7 @@ function renderSupportSection() {
     mias: t("No tienes solicitudes tomadas. Abre una y pulsa «Tomar».", "You have no requests taken. Open one and press «Take»."),
     cerradas: t("Todavía no se cerró ninguna.", "None has been closed yet."),
   }[support.filter];
-  box.innerHTML = `<div class="cm-section-head"><h3>${t("Solicitudes de ayuda", "Help requests")}</h3>${
+  box.innerHTML = `<div class="cm-section-head"><h3>${heading}</h3>${
     waiting ? `<span class="sp-waiting">${escapeHtml(plural(waiting, t("esperando", "waiting"), t("esperando", "waiting")))}</span>` : ""
   }${ask}</div>
     <div class="sp-filters">${chip("abiertas", t("Abiertas", "Open"))}${chip("mias", t("Mías", "Mine"))}${chip("cerradas", t("Cerradas", "Closed"))}</div>
@@ -127,7 +177,7 @@ function ticketRowHtml(x, { compact = false } = {}) {
 
 // ---------- Pedir ayuda ----------
 /** El formulario: tema, qué pasó, la instancia y su diagnóstico (se ve antes de mandarlo). */
-async function askForHelp({ cid = community.id, instance = null, note = "" } = {}) {
+async function askForHelp({ cid = community.id, instance = null, note = "", fromHelp = false } = {}) {
   if (community.detail?.id !== cid) await loadCommunity(cid);
   const d = community.detail;
   if (!d) return;
@@ -140,16 +190,17 @@ async function askForHelp({ cid = community.id, instance = null, note = "" } = {
   let seq = 0;
   const loadDiagnosis = async (root) => {
     const id = $("#sp-instance", root)?.value || null;
+    const preview = $("#sp-diagnosis", root);
     const mine = ++seq;
     diagnosis = null;
-    $("#sp-diagnosis", root).innerHTML = `<span class="spinner tiny"></span>${t("Revisando la instancia…", "Checking the instance…")}`;
+    preview.innerHTML = `<span class="spinner tiny"></span>${t("Revisando la instancia…", "Checking the instance…")}`;
     try {
       const report = await invoke("reporte_problema", { id });
       if (mine !== seq) return;
       diagnosis = report.text;
-      $("#sp-diagnosis", root).textContent = diagnosis;
+      preview.textContent = diagnosis;
     } catch (error) {
-      if (mine === seq) $("#sp-diagnosis", root).textContent = String(error);
+      if (mine === seq) preview.textContent = String(error);
     }
   };
   const tid = await new Promise((resolve) => {
@@ -178,7 +229,6 @@ async function askForHelp({ cid = community.id, instance = null, note = "" } = {
         </div>`,
       ok: `${icon("send")}${t("Enviar", "Send")}`,
       mount: (root) => {
-        wireCounters(root);
         $("#sp-instance", root)?.addEventListener("change", () => loadDiagnosis(root));
         $("#sp-attach", root).addEventListener("change", (event) => $("#sp-diagnosis", root).classList.toggle("off", !event.target.checked));
         loadDiagnosis(root);
@@ -197,16 +247,19 @@ async function askForHelp({ cid = community.id, instance = null, note = "" } = {
       },
     }).then(() => resolve(opened));
   });
-  if (!tid) return;
+  if (!tid) {
+    if (fromHelp && community.id === cid) return openCommunityHelp();
+    return;
+  }
   toast(t("Listo: el equipo de soporte ya la ve.", "Done: the support team can see it now."));
   await loadSupport(cid);
-  openSupportTicket(tid);
+  openSupportTicket(tid, { fromHelp });
 }
 
 // ---------- La conversación ----------
-async function openSupportTicket(tid) {
+async function openSupportTicket(tid, { fromHelp = false } = {}) {
   const cid = community.id;
-  support.open = { community: cid, id: tid, ticket: support.view?.tickets.find((x) => x.id === tid) ?? null };
+  support.open = { community: cid, id: tid, fromHelp, ticket: support.view?.tickets.find((x) => x.id === tid) ?? null };
   support.messages = null;
   $("#sp-card-form").classList.add("hidden");
   $("#sp-input").value = "";
@@ -235,9 +288,11 @@ async function openSupportTicket(tid) {
 
 function closeSupportTicket() {
   if (!support.open) return;
+  const { fromHelp, community: cid } = support.open;
   support.open = null;
   closeModal("#support-dialog");
   invoke("soporte_escuchar", {}).catch(() => {});
+  if (fromHelp && community.id === cid && state.page === "communities") openCommunityHelp();
 }
 
 function renderTicketHead() {
@@ -534,6 +589,7 @@ function renderSupportNotices() {
   $("#communities-badge").classList.toggle("hidden", total === 0);
   $("#communities-badge").title = t("Soporte: respuestas o solicitudes que esperan", "Support: answers or requests waiting");
   for (const tab of $$("#cm-tabs .cm-tab[data-community]")) tab.classList.toggle("notice", !!support.notices?.communities?.[tab.dataset.community]);
+  renderCommunityHelpCount();
 }
 
 /** Al pulsar la notificación: la comunidad y la solicitud. */
@@ -549,16 +605,6 @@ async function openSupportFromNotice({ community: cid, ticket: tid }) {
 // ---------- Eventos ----------
 function wireSupportEvents() {
   listen("tarjetas-cambiadas", () => { if (support.open) refreshCardSettings().then(renderTicketMessages).catch(() => {}); });
-  $("#cm-body").addEventListener("click", (event) => {
-    const target = event.target.closest("button");
-    if (!target || !target.closest("#cm-support")) return;
-    if (target.dataset.sp === "ask") return askForHelp();
-    if (target.dataset.spTicket) return openSupportTicket(target.dataset.spTicket);
-    if (target.dataset.spFilter) {
-      support.filter = target.dataset.spFilter;
-      renderSupportSection();
-    }
-  });
   $("#sp-close").onclick = closeSupportTicket;
   $("#support-dialog").addEventListener("click", (event) => {
     if (event.target.id === "support-dialog") return closeSupportTicket();

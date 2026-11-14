@@ -151,6 +151,7 @@ pub fn save_all(app: &AppHandle, mut ajustes: Settings) -> Result<Settings, Stri
         ajustes.favorite_chats = current.favorite_chats.clone();
         ajustes.favorite_mods = current.favorite_mods.clone();
         ajustes.favorites_owner = current.favorites_owner.clone();
+        ajustes.setup_completed |= current.setup_completed;
     }
     ajustes.ram_gb = ajustes.ram_gb.clamp(1, 64);
     ajustes.ui_scale = if ajustes.ui_scale.is_finite() { ajustes.ui_scale.clamp(0.8, 1.5) } else { 1.0 };

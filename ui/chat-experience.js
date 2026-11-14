@@ -1,6 +1,5 @@
 /* Continuidad del chat: perfiles, escritura y galería. Conserva los componentes de Parabellum. */
 const chatExperience = {
-  profiles: new Map(),
   messageMarkup: new Map(),
   profileRequest: 0,
   syncClock() {
@@ -50,14 +49,15 @@ const chatExperience = {
     box.dataset.scope = state.chatOpen ?? "";
     return true;
   },
-  async profile(uid) {
+  async profile(uid, fallbackName = null) {
     if (!uid) return;
     const request = ++this.profileRequest;
     const friend = state.social?.friends?.friends?.find(f => f.uid === uid);
     const member = allChats().flatMap(c => c.members).find(m => m.uid === uid);
-    const name = friend?.name ?? member?.name ?? t("Jugador", "Player");
+    const name = friend?.name ?? member?.name ?? fallbackName ?? t("Jugador", "Player");
+    window.skins?.setCover($("#player-cover"), null);
     $("#player-name").textContent = name;
-    $("#player-status").textContent = friend ? friendStatus(friend) : t("Miembro de la conversación", "Conversation member");
+    $("#player-status").textContent = friend ? friendStatus(friend) : member ? t("Miembro de la conversación", "Conversation member") : t("Jugador de Parabellum", "Parabellum player");
     $("#player-status").classList.toggle("is-online", !!friend?.online);
     $("#player-avatar").innerHTML = presenceHead(name, friend);
     for (const canvas of $$("#player-avatar canvas")) drawHead(canvas, canvas.dataset.head);
@@ -70,11 +70,15 @@ const chatExperience = {
     message.onclick = () => { closeModal("#player-dialog"); direct ? openChat(direct.id) : messageFriend(uid); };
     openModal("#player-dialog");
     try {
-      const cached = this.profiles.get(uid);
-      const profile = cached && Date.now() - cached.at < 60000 ? cached.value : await invoke("perfil_jugador", {uid});
-      this.profiles.set(uid, {at:Date.now(),value:profile});
+      const profile = await invoke("perfil_jugador", {uid});
       if (request !== this.profileRequest) return;
+      window.skins?.setCover($("#player-cover"), profile.banner);
       $("#player-name").textContent = profile.name || name;
+      window.skins?.refreshFace(profile.name || name);
+      if (profile.name && profile.name !== name) {
+        $("#player-avatar").innerHTML = presenceHead(profile.name, friend);
+        for (const canvas of $$("#player-avatar canvas")) drawHead(canvas, canvas.dataset.head);
+      }
       const rows = [[t("Nombre en Minecraft", "Minecraft name"),profile.name || name]];
       if (friend?.presence?.pack) rows.push([t("Jugando", "Playing"),friend.presence.pack]);
       if (friend?.presence?.minecraft) rows.push([t("Versión de Minecraft", "Minecraft version"),friend.presence.minecraft]);
@@ -82,7 +86,7 @@ const chatExperience = {
       $("#player-details").innerHTML = `<dl class="profile-facts">${rows.map(([label,value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>`;
     } catch (error) {
       if (request === this.profileRequest) $("#player-details").innerHTML = `<p class="inline-error">${escapeHtml(friendlyError(String(error)))}</p><button class="btn small" id="player-retry">${t("Reintentar", "Retry")}</button>`;
-      $("#player-retry")?.addEventListener("click", () => this.profile(uid));
+      $("#player-retry")?.addEventListener("click", () => this.profile(uid, fallbackName));
     }
   },
   openHeader() {

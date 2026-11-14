@@ -48,6 +48,13 @@ fn build_for(loader: &str, minecraft: &str) -> Option<&'static Build> {
     BUILDS.iter().find(|b| b.loader == loader && compare(minecraft, b.from).is_ge() && compare(minecraft, b.until).is_lt())
 }
 
+/// El mismo mod comparte las skins con clientes NeoForge 1.21 y 1.21.1.
+pub fn remote_skins(instance: &Instance) -> bool {
+    build_for(&instance.loader, &instance.minecraft_version).is_some_and(|build| {
+        build.loader == "NeoForge" && build.from == "1.21"
+    }) && !disabled_by_crash(instance)
+}
+
 /// Marca de que el mod hizo caer el juego en esta instancia (con la versión de Parabellum de ese momento).
 const DISABLED_FILE: &str = "sin-panel.txt";
 
@@ -59,10 +66,16 @@ fn disabled_by_crash(instance: &Instance) -> bool {
 
 /// Antes de abrir el juego: pone el mod (si hay para su versión y está activado) o lo quita.
 pub fn install(instance: &Instance, enabled: bool) {
+    install_features(instance, enabled, false);
+}
+
+pub fn install_features(instance: &Instance, panel: bool, skins: bool) {
     let path = instance.game_dir.join("mods").join(FILE_NAME);
-    match build_for(&instance.loader, &instance.minecraft_version).filter(|_| enabled && !disabled_by_crash(instance)) {
+    match build_for(&instance.loader, &instance.minecraft_version).filter(|_| (panel || skins) && !disabled_by_crash(instance)) {
         Some(build) => {
-            free_panel_key(&instance.minecraft_version, &instance.game_dir.join("options.txt"));
+            if panel {
+                free_panel_key(&instance.minecraft_version, &instance.game_dir.join("options.txt"));
+            }
             let same = std::fs::metadata(&path).is_ok_and(|m| m.len() == build.jar.len() as u64) && std::fs::read(&path).is_ok_and(|b| b == build.jar);
             if !same {
                 let _ = std::fs::create_dir_all(instance.game_dir.join("mods"));

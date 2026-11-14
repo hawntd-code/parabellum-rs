@@ -6,6 +6,7 @@
   <title>Parabellum</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="mundos.css">
+  <link rel="stylesheet" href="bienvenida.css">
 </head>
 <body class="booting">
   <!-- ================= Pantalla de carga: actualización y sesión de Google ================= -->
@@ -86,7 +87,7 @@
               <div class="home-summary" id="home-summary">
                 <div class="summary-tile hidden" id="tile-steps">
                   <div class="tile-head"><span class="tile-icon"><svg><use href="#i-sparkle"/></svg></span><h3>Primeros pasos</h3></div>
-                  <div class="steps" id="steps-list"></div>
+                  <button class="btn" type="button" id="resume-setup"></button>
                 </div>
               </div>
               <h1 class="section-title">Biblioteca</h1>
@@ -124,6 +125,7 @@
               <h2>Bienvenido a Parabellum</h2>
               <p class="muted">¿Listo para empezar a jugar?</p>
               <button class="btn primary" id="empty-new"><svg><use href="#i-plus"/></svg>Crear una instancia</button>
+              <button class="btn ghost" type="button" id="empty-setup"></button>
               <p class="hint">Pulsa <kbd>N</kbd> para crear una instancia rápido</p>
             </div>
           </div>
@@ -421,6 +423,31 @@
                   <div class="group-list" id="fp-groups"></div>
                 </aside>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page hidden" id="page-account" aria-labelledby="my-account-title">
+          <div class="account-page">
+            <article class="account-card account-profile">
+              <div class="profile-cover account-cover" id="my-account-cover">
+                <div class="account-cover-actions">
+                  <button class="btn small" type="button" data-account="banner"></button>
+                  <button class="btn small hidden" type="button" data-account="remove-banner"></button>
+                </div>
+              </div>
+              <div class="account-profile-body">
+                <canvas class="account-avatar head" id="my-account-avatar" width="8" height="8"></canvas>
+                <h1 id="my-account-title"></h1>
+                <p id="my-account-status" class="faint"></p>
+              </div>
+            </article>
+            <div class="account-grid">
+              <section class="account-card account-fields" aria-labelledby="my-account-name-title">
+                <h2 id="my-account-name-title"></h2>
+                <form id="my-account-name-form" class="cm-fields"></form>
+              </section>
+              <div id="sk-body"></div>
             </div>
           </div>
         </section>
@@ -782,11 +809,8 @@
             <div class="profile">
               <canvas width="8" height="8" class="head huge" id="settings-head"></canvas>
               <div class="grow">
-                <label class="label" for="username">Nombre de jugador</label>
-                <input id="username" maxlength="16" autocomplete="off" spellcheck="false">
-                <p class="field-error hidden" id="username-error"></p>
-                <p class="saved-hint hidden" id="username-saved">Guardado</p>
-                <p class="muted small-text" style="margin-top:8px">Con tu nombre se genera tu identidad (UUID), igual que en los servidores no premium. Si juegas con amigos, usen nombres distintos.</p>
+                <b id="settings-player-name"></b>
+                <div><button type="button" class="btn small" id="settings-my-account"></button></div>
               </div>
             </div>
             <label class="label">UUID</label>
@@ -1095,7 +1119,7 @@
   </div>
 
   <div class="overlay hidden" id="player-dialog">
-    <div class="modal player-profile"><div class="profile-cover"></div><div id="player-avatar" class="profile-avatar"></div><button class="circle-btn profile-close" id="player-close" title="Cerrar"><svg><use href="#i-close"/></svg></button><div class="modal-body"><h2 id="player-name"></h2><p id="player-status" class="muted"></p><div id="player-details"></div><div class="profile-shared" id="player-shared"></div><div class="modal-actions"><button class="btn primary" id="player-message">Enviar mensaje</button></div></div></div>
+    <div class="modal player-profile"><div class="profile-cover" id="player-cover"></div><div id="player-avatar" class="profile-avatar"></div><button class="circle-btn profile-close" id="player-close" title="Cerrar"><svg><use href="#i-close"/></svg></button><div class="modal-body"><h2 id="player-name"></h2><p id="player-status" class="muted"></p><div id="player-details"></div><div class="profile-shared" id="player-shared"></div><div class="modal-actions"><button class="btn primary" id="player-message">Enviar mensaje</button></div></div></div>
   </div>
 
   <!-- ================= Confirmación ================= -->
@@ -1219,8 +1243,7 @@
       <div class="modal-body">
         <label class="label" for="account-name">Nombre de jugador</label>
         <input id="account-name" maxlength="16" autocomplete="off" spellcheck="false">
-        <p class="muted small-text hidden" id="account-rename-hint">Es el nombre que verán en el juego y tus amigos. Tus mundos e instancias no cambian.</p>
-        <div id="account-uuid-box">
+        <div>
           <label class="label" for="account-uuid">UUID fijo (opcional)</label>
           <input id="account-uuid" maxlength="36" autocomplete="off" spellcheck="false" placeholder="Vacío: el que sale de su nombre">
         </div>
@@ -1339,6 +1362,31 @@
     </div>
   </div>
 
+  <div class="overlay hidden" id="setup-dialog">
+    <div class="modal setup-modal" aria-describedby="setup-description">
+      <header class="modal-head setup-head">
+        <div class="setup-brand"><img src="logo.png" alt=""><span id="setup-label"></span></div>
+        <button type="button" class="circle-btn" id="setup-close"><svg><use href="#i-close"/></svg></button>
+      </header>
+      <div class="setup-main">
+        <ol class="setup-steps" id="setup-steps"></ol>
+        <div class="modal-body setup-body">
+          <h2 id="setup-title" tabindex="-1"></h2>
+          <p class="muted" id="setup-description"></p>
+          <div id="setup-content"></div>
+          <p class="field-error hidden" id="setup-error" role="alert"></p>
+        </div>
+      </div>
+      <footer class="setup-footer">
+        <button type="button" class="btn ghost" id="setup-back"></button>
+        <div class="setup-footer-actions">
+          <button type="button" class="btn ghost hidden" id="setup-later"></button>
+          <button type="button" class="btn primary" id="setup-next"></button>
+        </div>
+      </footer>
+    </div>
+  </div>
+
   <!-- Ventanas de Comunidades (ui/comunidad.js › cmDialog): cada una arma su cuerpo -->
   <div class="overlay hidden" id="cm-dialog">
     <div class="modal cm-modal">
@@ -1349,7 +1397,9 @@
       </div>
       <div class="modal-body">
         <div class="cm-fields" id="cm-dialog-body"></div>
-        <p class="field-error hidden" id="cm-dialog-error"></p>
+        <p class="field-error hidden" id="cm-dialog-error" role="alert"></p>
+      </div>
+      <div class="cm-dialog-footer">
         <div class="modal-actions">
           <button class="btn danger-ghost hidden" id="cm-dialog-danger"></button>
           <button class="btn" id="cm-dialog-cancel">Cancelar</button>
@@ -1556,6 +1606,8 @@
   <script src="comunidad.js"></script>
   <script src="soporte.js"></script>
   <script src="mundos.js"></script>
+  <script src="skin-viewer.js"></script>
   <script src="skins.js"></script>
+  <script src="bienvenida.js"></script>
 </body>
 </html>

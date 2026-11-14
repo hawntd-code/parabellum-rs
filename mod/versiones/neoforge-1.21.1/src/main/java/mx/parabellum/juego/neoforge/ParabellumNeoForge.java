@@ -17,9 +17,18 @@ import net.minecraft.client.gui.screens.PauseScreen;
 @Mod(value = "parabellum", dist = Dist.CLIENT)
 public final class ParabellumNeoForge extends Base {
     public ParabellumNeoForge(IEventBus bus) {
-        bus.addListener(RegisterKeyMappingsEvent.class, evento -> evento.register(ABRIR));
         bus.addListener(FMLClientSetupEvent.class, evento -> Juego.iniciar(this));
-        NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class, evento -> tick());
+        NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class, evento -> {
+            if (Juego.soloSkins()) {
+                Juego juego = Juego.actual();
+                if (juego != null) juego.tick();
+            } else {
+                tick();
+            }
+            SkinsRemotas.tick();
+        });
+        if (Juego.soloSkins()) return;
+        bus.addListener(RegisterKeyMappingsEvent.class, evento -> evento.register(ABRIR));
         NeoForge.EVENT_BUS.addListener(RenderGuiEvent.Post.class, evento -> dibujarAvisos(evento.getGuiGraphics()));
         NeoForge.EVENT_BUS.addListener(ScreenEvent.Init.Post.class, evento -> {
             if (evento.getScreen() instanceof PauseScreen) evento.addListener(botonPausa(evento.getScreen()));

@@ -199,6 +199,19 @@ fn preview(text: &str) -> String {
     }
 }
 
+// Firebase conserva el mensaje completo para mostrar la tarjeta al abrir el chat.
+fn text_preview(text: &str) -> String {
+    let Some(payload) = text.strip_prefix(crate::puente::INVITE_PREFIX) else { return preview(text) };
+    if let Ok(invite) = serde_json::from_str::<Value>(payload) {
+        match (invite["t"].as_str(), invite["n"].as_str().filter(|name| !name.trim().is_empty())) {
+            (Some("comunidad"), Some(name)) => return preview(&format!("✉ Invitación a {name}")),
+            (Some("servidor"), Some(name)) => return preview(&format!("🎮 Invitación: {name}")),
+            _ => {}
+        }
+    }
+    "✉ Invitación".into()
+}
+
 impl Chat {
     pub fn new(
         db: Arc<Database>,
@@ -711,7 +724,7 @@ impl Chat {
         if let Some(original) = reply_to {
             message["reply"] = self.quote(safe(id)?, safe(original)?).await?;
         }
-        match self.send(id, &key, message, &preview(text), Map::new()).await {
+        match self.send(id, &key, message, &text_preview(text), Map::new()).await {
             Ok(()) => Ok(key),
             Err(error) => {
                 if delivery.is_some() && self.db.get(&format!("messages/{id}/{key}")).await.is_ok_and(|old| matches(&old)) { Ok(key) }
@@ -790,13 +803,6 @@ impl Chat {
 
     // ================= Editar y borrar (solo los mensajes propios)
 
-    /// Solo datos públicos del jugador. La cuenta de Google y sus datos no salen de este método.
-    pub async fn profile(&self, uid: &str) -> Result<Value, String> {
-        let data = self.db.get(&format!("users/{}", safe(uid)?)).await.map_err(|e| e.to_string())?;
-        if !data["name"].is_string() { return Err(t!("Ese perfil ya no está disponible.", "That profile is no longer available.")); }
-        Ok(json!({"name":data["name"],"uuid":data["uuid"]}))
-    }
-
     pub async fn set_typing(&self, id: Option<&str>) {
         let id = id.and_then(|s| safe(s).ok()).map(str::to_string);
         let previous = std::mem::replace(&mut *self.typing_chat.lock().unwrap(), id.clone());
@@ -856,8 +862,7 @@ impl Chat {
             let text = message["text"].as_str().unwrap_or_default();
             match crate::compartir::decode(text) {
                 Some(recipe) => preview(&format!("📦 {}", recipe.name)),
-                None if text.starts_with(crate::puente::INVITE_PREFIX) => "🎮 Invitación".into(),
-                None => preview(text),
+                None => text_preview(text),
             }
         }
     }
@@ -1085,5 +1090,14 @@ mod tests {
         assert!(safe("d_abc_DEF-1").is_ok());
         assert!(safe("../x").is_err() && safe("a/b").is_err() && safe("").is_err());
         assert_eq!(preview("  hola\n  mundo "), "hola mundo");
+    }
+
+    #[test]
+    fn vista_previa_de_invitaciones_del_chat() {
+        let invite = format!(r#"{}{{"t":"comunidad","n":"Pueblo de los Retorcidos","c":"ABCD2345"}}"#, crate::puente::INVITE_PREFIX);
+        assert_eq!(text_preview(&invite), "✉ Invitación a Pueblo de los Retorcidos");
+        assert_eq!(Chat::preview_of(&json!({"text": invite})), "✉ Invitación a Pueblo de los Retorcidos");
+        assert_eq!(text_preview("parabellum:invitacion:{"), "✉ Invitación");
+        assert_eq!(text_preview("¿Nos vemos?"), "¿Nos vemos?");
     }
 }

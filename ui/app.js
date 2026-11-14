@@ -85,6 +85,7 @@ const pages = {
   hosted: { title: "", icon: "server", sidebar: false },
   friends: { title: t("Amigos", "Friends"), icon: "users", sidebar: false },
   communities: { title: t("Comunidades", "Communities"), icon: "community", sidebar: false },
+  account: { title: t("Mi cuenta", "My account"), icon: "user", sidebar: false },
   chat: { title: t("Mensajes", "Messages"), icon: "chat", sidebar: false },
   instance: { title: "", icon: "cubes", sidebar: false },
 };
@@ -319,12 +320,19 @@ function toast(message, kind = "info") {
 }
 
 function contextMenu(anchor, items, { matchWidth = false, emojis = null, at = null } = {}) {
-  $$(".menu").forEach((m) => m.remove());
+  const emojiOnly = !!emojis && !items.length;
+  const closeCurrentPicker = emojiOnly && $(".menu-reactions")?.reactionAnchor === anchor;
+  $$(".menu").forEach((m) => m.dismiss?.());
+  if (closeCurrentPicker) return;
   const menu = document.createElement("div");
   menu.className = "menu";
+  if (emojiOnly) {
+    menu.classList.add("menu-reactions");
+    menu.reactionAnchor = anchor;
+  }
   // Con `emojis` ({ list, current, pick }): una fila para reaccionar encima de las entradas.
   const emojiRow = emojis
-    ? `<div class="menu-emojis">${emojis.list.map((e) => `<button data-emoji="${escapeHtml(e)}" class="${e === emojis.current ? "current" : ""}" aria-label="${escapeHtml(e)}">${e}</button>`).join("")}</div>${items.length ? "<hr>" : ""}`
+    ? `<div class="menu-emojis">${emojis.list.map((e) => `<button data-emoji="${escapeHtml(e)}" class="${e === emojis.current ? "current" : ""}" aria-label="${escapeHtml(e)}">${escapeHtml(e)}</button>`).join("")}</div>${items.length ? "<hr>" : ""}`
     : "";
   // Una entrada puede llevar la cabeza de un jugador en lugar de icono, una línea debajo y una marca.
   menu.innerHTML = items
@@ -347,7 +355,11 @@ function contextMenu(anchor, items, { matchWidth = false, emojis = null, at = nu
   const [width, height] = [menu.offsetWidth, menu.offsetHeight];
   let left = rect.right - width;
   let top = rect.bottom + 6;
-  if (at) {
+  if (emojiOnly) {
+    left = rect.left - 6;
+    if (top + height > innerHeight - 10) top = rect.top - height - 8;
+    menu.classList.toggle("above", top < rect.top);
+  } else if (at) {
     left = at.x + width > innerWidth - 10 ? at.x - width : at.x;
     top = at.y + height > innerHeight - 10 ? at.y - height : at.y;
   } else if (left < 10) {
@@ -357,19 +369,27 @@ function contextMenu(anchor, items, { matchWidth = false, emojis = null, at = nu
     top = rect.top - height - 6;
   }
   const clamp = (value, max) => Math.max(10, Math.min(value, max));
-  menu.style.left = `${clamp(left, innerWidth - width - 10)}px`;
+  left = clamp(left, innerWidth - width - 10);
+  menu.style.left = `${left}px`;
   menu.style.top = `${clamp(top, innerHeight - height - 10)}px`;
+  if (emojiOnly) menu.style.setProperty("--arrow-x", `${(rect.left + rect.right) / 2 - left}px`);
   menu.setAttribute("role", "menu");
+  if (emojiOnly) menu.setAttribute("aria-label", anchor.getAttribute("aria-label") ?? t("Reaccionar", "React"));
   const buttons = [...menu.querySelectorAll("button")];
-  for (const button of buttons) button.setAttribute("role", "menuitem");
-  const close = (refocus) => {
+  for (const button of buttons) {
+    button.setAttribute("role", emojiOnly ? "menuitemradio" : "menuitem");
+    if (emojiOnly) button.setAttribute("aria-checked", String(button.dataset.emoji === emojis.current));
+  }
+  const events = new AbortController();
+  const close = menu.dismiss = (refocus = false) => {
+    events.abort();
     menu.remove();
     if (refocus && anchor.isConnected) anchor.focus();
   };
   menu.onclick = (event) => {
     const emoji = event.target.closest("[data-emoji]");
     const button = event.target.closest("[data-i]");
-    close(!button && !emoji);
+    close(emojiOnly || (!button && !emoji));
     if (emoji) emojis.pick(emoji.dataset.emoji);
     else if (button) items[button.dataset.i].action();
   };
@@ -380,8 +400,8 @@ function contextMenu(anchor, items, { matchWidth = false, emojis = null, at = nu
       event.preventDefault();
       buttons[(i + buttons.length) % buttons.length]?.focus();
     };
-    if (event.key === "ArrowDown") go(index + 1);
-    else if (event.key === "ArrowUp") go(index - 1);
+    if (event.key === "ArrowDown" || (emojiOnly && event.key === "ArrowRight")) go(index + 1);
+    else if (event.key === "ArrowUp" || (emojiOnly && event.key === "ArrowLeft")) go(index - 1);
     else if (event.key === "Home") go(0);
     else if (event.key === "End") go(buttons.length - 1);
     else if (event.key === "Escape" || event.key === "Tab") {
@@ -390,8 +410,17 @@ function contextMenu(anchor, items, { matchWidth = false, emojis = null, at = nu
       close(true);
     }
   };
-  buttons[0]?.focus({ preventScroll: true });
-  setTimeout(() => document.addEventListener("click", () => menu.remove(), { once: true }), 0);
+  (menu.querySelector(".current") ?? buttons[0])?.focus({ preventScroll: true });
+  setTimeout(() => document.addEventListener("click", (event) => {
+    if (!menu.contains(event.target)) close();
+  }, { signal: events.signal }), 0);
+  if (emojiOnly) {
+    window.addEventListener("scroll", () => {
+      const current = anchor.getBoundingClientRect();
+      if (!anchor.isConnected || Math.abs(current.top - rect.top) > 1 || Math.abs(current.left - rect.left) > 1) close();
+    }, { capture: true, signal: events.signal });
+    window.addEventListener("resize", () => close(), { signal: events.signal });
+  }
 }
 
 // ======================================================================
@@ -437,6 +466,7 @@ function navigate(page, param = null, record = true) {
   if (page === "servers") enterServers();
   if (page === "friends") renderFriendsPage();
   if (page === "communities") enterCommunities(param);
+  if (page === "account") window.skins?.open();
   if (page === "chat") enterChat();
   else if (state.chatOpen) closeChat();
   // La página anterior se queda un momento debajo, desvaneciéndose, mientras entra la nueva.
@@ -1811,9 +1841,9 @@ function openAccountMenu(anchor) {
   contextMenu(anchor, [
     { head: s.username, label: s.username, sub: s.uuid ? t("En uso · UUID fijo", "In use · fixed UUID") : t("En uso", "In use"), checked: true, action: () => {} },
     ...s.accounts.map((a, i) => ({ head: a.username, label: a.username, sub: a.uuid ? "UUID fijo" : "", action: () => switchAccount(i) })),
-    { icon: "user", label: t("Skin", "Skin"), separator: true, action: () => window.skins.open() },
-    { icon: "brush", label: t("Cambiar nombre", "Change name"), action: () => openAccountDialog("rename") },
-    { icon: "user-plus", label: t("Añadir cuenta", "Add account"), action: () => openAccountDialog("add") },
+    { icon: "user", label: t("Mi cuenta", "My account"), separator: true, action: () => navigate("account") },
+    { icon: "sparkle", label: t("Configuración guiada", "Setup guide"), action: () => welcomeGuide.open() },
+    { icon: "user-plus", label: t("Añadir cuenta", "Add account"), action: openAccountDialog },
     { icon: "settings", label: t("Administrar cuentas", "Manage accounts"), action: () => openSettings("profile") },
   ], { matchWidth: true });
 }
@@ -1833,6 +1863,7 @@ async function switchAccount(index) {
   const accounts = [{ username: s.username, uuid: s.uuid }, ...s.accounts.filter((_, i) => i !== index)];
   try {
     await saveAccounts({ username: target.username, uuid: target.uuid, accounts });
+    if (state.page === "account") window.skins?.open();
     toast(t(`Ahora juegas como ${target.username}.`, `You now play as ${target.username}.`));
   } catch (error) {
     toast(String(error), "error");
@@ -1855,15 +1886,10 @@ async function removeAccount(index) {
   }
 }
 
-/** "add": otra cuenta (y pasar a usarla); "rename": cambiar el nombre de la cuenta en uso. */
-function openAccountDialog(mode = "add") {
-  state.accountDialog = mode;
-  const rename = mode === "rename";
-  $("#account-title").textContent = rename ? t("Cambiar nombre de jugador", "Change player name") : t("Añadir cuenta", "Add account");
-  $("#account-ok").textContent = rename ? t("Guardar", "Save") : t("Añadir y usar", "Add and use");
-  $("#account-uuid-box").classList.toggle("hidden", rename);
-  $("#account-rename-hint").classList.toggle("hidden", !rename);
-  $("#account-name").value = rename ? state.settings.username : "";
+function openAccountDialog() {
+  $("#account-title").textContent = t("Añadir cuenta", "Add account");
+  $("#account-ok").textContent = t("Añadir y usar", "Add and use");
+  $("#account-name").value = "";
   $("#account-uuid").value = "";
   $("#account-error").classList.add("hidden");
   openModal("#account-dialog");
@@ -1887,18 +1913,6 @@ async function addAccount() {
     $("#account-error").classList.remove("hidden");
   };
   if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) return fail(t("El nombre debe tener de 1 a 16 letras, números o guiones bajos (sin espacios ni acentos).", "The name must have 1 to 16 letters, numbers or underscores (no spaces or accents)."));
-  if (state.accountDialog === "rename") {
-    if (name === s.username) return closeModal("#account-dialog");
-    if (otherAccountNamed(name)) return fail(t("Ya tienes otra cuenta con ese nombre: cámbiate a ella desde «Jugando como».", "You already have another account with that name: switch to it from «Playing as»."));
-    try {
-      await saveAccounts({ username: name });
-      closeModal("#account-dialog");
-      toast(t(`Ahora te llamas ${name}.`, `Your name is now ${name}.`));
-    } catch (error) {
-      fail(String(error));
-    }
-    return;
-  }
   if (uuid && !validUuid(uuid)) return fail(t("El UUID tiene 32 letras y números (0–9, a–f), con o sin guiones. Déjalo vacío si no lo necesitas.", "The UUID has 32 letters and numbers (0–9, a–f), with or without dashes. Leave it empty if you do not need it."));
   if ([s.username, ...s.accounts.map((a) => a.username)].some((n) => n.toLowerCase() === name.toLowerCase())) return fail(t("Ya tienes una cuenta con ese nombre.", "You already have an account with that name."));
   try {
@@ -1928,19 +1942,7 @@ function renderAccounts() {
 }
 
 function renderSteps() {
-  const steps = [
-    { done: state.instances.length > 0, label: t("Crea tu primera instancia", "Create your first instance"), action: openCreate },
-    { done: state.settings.username !== "Jugador", label: t("Elige tu nombre de jugador", "Choose your player name"), action: () => openAccountDialog("rename"), always: true },
-    { done: !!state.social?.signedIn, label: t("Inicia sesión con Google", "Sign in with Google"), action: signInGoogle, disabled: state.social?.available === false },
-  ];
-  $("#steps-list").innerHTML = `<div>${steps
-    .map(
-      (s, i) => `<button class="step ${s.done ? "done" : ""}" data-step="${i}" ${(s.done && !s.always) || s.disabled ? "disabled" : ""}>
-        ${icon(s.done ? "check-circle" : "circle")}<span class="grow">${s.label}</span>${s.soon ? `<span class="soon">${t("Pronto", "Soon")}</span>` : ""}</button>`,
-    )
-    .join("")}</div>`;
-  $$("#steps-list .step").forEach((button) => (button.onclick = () => steps[button.dataset.step].action?.()));
-  $("#tile-steps")?.classList.toggle("hidden", steps.every((s) => s.done));
+  $("#tile-steps").classList.toggle("hidden", state.settings?.setupCompleted !== false);
 }
 
 // ======================================================================
@@ -2015,7 +2017,7 @@ function renderFriends() {
   let notice = null;
   let kind = "";
   if (s.nameConflict) {
-    notice = t(`El nombre "${s.nameConflict}" ya lo usa otro jugador de Parabellum. Cámbialo con «Jugando como» › Cambiar nombre: tus amigos no podrían encontrarte.`, `The name "${s.nameConflict}" is already used by another Parabellum player. Change it with «Playing as» › Change name: your friends would not be able to find you.`);
+    notice = t(`El nombre "${s.nameConflict}" ya lo usa otro jugador de Parabellum. Puedes cambiarlo en «Mi cuenta».`, `The name "${s.nameConflict}" is already used by another Parabellum player. You can change it in “My account”.`);
     kind = "danger";
   } else if (s.warning) {
     notice = s.warning;
@@ -2455,9 +2457,19 @@ function chatTime(ms) {
   return date.toLocaleDateString(locale(), { day: "numeric", month: "short" });
 }
 
-/** La vista previa de una imagen se guarda en español en la base de datos (la ven todos). */
 function chatPreview(text) {
-  return text === "📷 Imagen" ? t("📷 Imagen", "📷 Image") : text;
+  if (text === "📷 Imagen") return t("📷 Imagen", "📷 Image");
+  if (text?.startsWith(INVITE_PREFIX)) {
+    const invite = parseInvite(text);
+    const name = typeof invite?.n === "string" ? invite.n.trim() : "";
+    if (invite?.t === "comunidad" && name) return t(`✉ Invitación a ${name}`, `✉ Invite to ${name}`);
+    if (invite?.t === "servidor" && name) return t(`🎮 Invitación: ${name}`, `🎮 Invite: ${name}`);
+    return t("✉ Invitación", "✉ Invitation");
+  }
+  if (text?.startsWith("✉ Invitación a ")) return t(text, `✉ Invite to ${text.slice("✉ Invitación a ".length)}`);
+  if (text === "✉ Invitación" || text === "🎮 Invitación") return text.replace("Invitación", t("Invitación", "Invitation"));
+  if (text?.startsWith("🎮 Invitación: ")) return text.replace("Invitación", t("Invitación", "Invite"));
+  return text;
 }
 
 function chatAvatar(chat) {
@@ -2510,7 +2522,7 @@ function renderChatList() {
   $("#chat-search-box").classList.toggle("hidden", allChats().length + (state.social?.friends?.friends?.length ?? 0) < 6 && !state.chatFilter);
   const query = (state.chatFilter ?? "").trim().toLowerCase();
   const matches = (...texts) => !query || texts.some((text) => (text ?? "").toLowerCase().includes(query));
-  const chats = allChats().filter((c) => matches(c.name, c.lastText, ...(c.members ?? []).map((m) => m.name)));
+  const chats = allChats().filter((c) => matches(c.name, chatPreview(c.lastText), ...(c.members ?? []).map((m) => m.name)));
   const friends = (state.social?.friends?.friends ?? []).filter((f) => matches(f.name));
   // Amigos con los que todavía no hay conversación: para empezar una.
   const talking = new Set(allChats().filter((c) => c.kind === "directo").flatMap((c) => c.members.map((m) => m.uid)));
@@ -2834,9 +2846,7 @@ function messagePreview(m) {
   if (m.image) return t("📷 Imagen", "📷 Image");
   const share = parseShare(m.text);
   if (share) return `📦 ${share.n}`;
-  const invite = parseInvite(m.text);
-  if (invite) return invite.t === "comunidad" ? `🛡️ ${t(`Invitación a ${invite.n}`, `Invite to ${invite.n}`)}` : `🎮 ${t("Invitación", "Invite")}`;
-  return (m.text ?? "").replace(/\s+/g, " ").trim();
+  return (chatPreview(m.text) ?? "").replace(/\s+/g, " ").trim();
 }
 
 function replyQuoteHtml(reply, messages) {
@@ -3312,10 +3322,10 @@ function autoGrow(textarea) {
 }
 
 /** Reduce una imagen (máx. 1280 px y ~330 KB en JPEG) para enviarla por el chat. */
-async function reduceImage(source) {
+async function reduceImage(source, maxSide = 1280, maxLength = 440000) {
   // Un archivo (elegido o pegado) o un data URL (soltado en la ventana, ya leído por Parabellum).
   const image = typeof source === "string" ? await loadImage(source) : await loadImageFile(source);
-  let scale = Math.min(1, 1280 / Math.max(image.naturalWidth, image.naturalHeight));
+  let scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
   for (let attempt = 0; attempt < 8; attempt++) {
     const width = Math.max(1, Math.round(image.naturalWidth * scale));
     const height = Math.max(1, Math.round(image.naturalHeight * scale));
@@ -3328,7 +3338,7 @@ async function reduceImage(source) {
     ctx.drawImage(image, 0, 0, width, height);
     for (const quality of [0.82, 0.72, 0.6]) {
       const data = canvas.toDataURL("image/jpeg", quality);
-      if (data.length <= 440000) return { data, width, height };
+      if (data !== "data:," && data.length <= maxLength) return { data, width, height };
     }
     scale *= 0.75;
   }
@@ -4580,7 +4590,8 @@ function selectSettingsSection(section) {
 
 function renderSettings() {
   const s = state.settings;
-  $("#username").value = s.username;
+  $("#settings-player-name").textContent = s.username;
+  $("#settings-my-account").innerHTML = icon("user") + t("Mi cuenta", "My account");
   $("#uuid-fixed").checked = !!s.uuid;
   $("#uuid-input").value = s.uuid ?? "";
   $("#uuid-input").classList.toggle("hidden", !s.uuid);
@@ -4604,10 +4615,7 @@ function renderSettings() {
 }
 
 async function updateSettingsTexts() {
-  const name = $("#username").value.trim();
-  const valid = /^[A-Za-z0-9_]{1,16}$/.test(name);
-  $("#username-error").textContent = t("El nombre debe tener de 1 a 16 letras, números o guiones bajos (sin espacios ni acentos).", "The name must have 1 to 16 letters, numbers or underscores (no spaces or accents).");
-  $("#username-error").classList.toggle("hidden", valid);
+  const name = state.settings.username;
   const fixed = $("#uuid-fixed").checked;
   const typed = $("#uuid-input").value.trim();
   $("#uuid-error").classList.toggle("hidden", !fixed || !typed || validUuid(typed));
@@ -4615,7 +4623,7 @@ async function updateSettingsTexts() {
     const hex = typed.replaceAll("-", "").toLowerCase();
     $("#uuid-text").textContent = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
   } else {
-    $("#uuid-text").textContent = valid ? await invoke("uuid_offline", { nombre: name }) : "—";
+    $("#uuid-text").textContent = await invoke("uuid_offline", { nombre: name });
   }
   drawHead($("#settings-head"), name);
   const ram = Number($("#ram").value);
@@ -4631,14 +4639,6 @@ function queueSave() {
 }
 
 async function saveSettings(extra = {}) {
-  const name = $("#username").value.trim();
-  if (!/^[A-Za-z0-9_]{1,16}$/.test(name)) return;
-  if (name !== state.settings.username && otherAccountNamed(name)) {
-    $("#username-error").textContent = t("Ya tienes otra cuenta con ese nombre: cámbiate a ella desde «Jugando como».", "You already have another account with that name: switch to it from «Playing as».");
-    $("#username-error").classList.remove("hidden");
-    return;
-  }
-  const renamed = name !== state.settings.username;
   // Con "UUID fijo" a medio escribir se conserva el que había.
   const typed = $("#uuid-input").value.trim();
   const uuid = !$("#uuid-fixed").checked ? "" : validUuid(typed) ? typed : state.settings.uuid;
@@ -4646,7 +4646,6 @@ async function saveSettings(extra = {}) {
     state.settings = await invoke("guardar_ajustes", {
       ajustes: {
         ...state.settings,
-        username: name,
         uuid,
         ramGb: Number($("#ram").value),
         windowWidth: Number($("#win-width").value) || state.settings.windowWidth,
@@ -4663,12 +4662,6 @@ async function saveSettings(extra = {}) {
     });
     renderSidebar();
     renderSteps();
-    if (renamed) {
-      // Se guarda solo al escribir: se avisa para que se note.
-      $("#username-saved").classList.remove("hidden");
-      clearTimeout(state.savedHintTimer);
-      state.savedHintTimer = setTimeout(() => $("#username-saved").classList.add("hidden"), 2200);
-    }
   } catch (error) {
     toast(String(error), "error");
   }
@@ -4740,6 +4733,10 @@ function wireEvents() {
   for (const button of $$(".rail-btn[data-page]")) button.onclick = () => navigate(button.dataset.page);
   for (const button of [$("#rail-new"), $("#home-new"), $("#empty-new")]) button.onclick = openCreate;
   $("#rail-settings").onclick = () => openSettings("appearance");
+  for (const button of [$("#empty-setup"), $("#resume-setup")]) {
+    button.textContent = t("Abrir la guía", "Open setup guide");
+    button.onclick = () => welcomeGuide.open();
+  }
   $("#rail-avatar").onclick = () => openAccountMenu($("#rail-avatar"));
   $("#status").onclick = () => {
     const running = state.instances.find((i) => state.running.has(i.id));
@@ -5036,9 +5033,9 @@ function wireEvents() {
     if (event.target.id === "settings-dialog") closeModal("#settings-dialog");
   };
   for (const button of $$(".settings-nav button")) button.onclick = () => selectSettingsSection(button.dataset.section);
-  $("#username").oninput = () => {
-    updateSettingsTexts();
-    queueSave();
+  $("#settings-my-account").onclick = () => {
+    closeModal("#settings-dialog");
+    navigate("account");
   };
   $("#ram").oninput = () => {
     updateSettingsTexts();
@@ -5075,7 +5072,7 @@ function wireEvents() {
     updateSettingsTexts();
     queueSave();
   };
-  $("#account-add").onclick = () => openAccountDialog("add");
+  $("#account-add").onclick = openAccountDialog;
   $("#account-list").onclick = (event) => {
     const use = event.target.closest("[data-use-account]");
     if (use) return switchAccount(Number(use.dataset.useAccount));
@@ -5127,9 +5124,9 @@ function wireEvents() {
       return;
     }
     if (event.key === "Escape") {
+      if (topModal()?.id === "setup-dialog") { welcomeGuide.dismiss(); return; }
       if (topModal()?.id === "worlds-dialog") { window.worldBackups?.close(); return; }
-      if (topModal()?.id === "skin-dialog") { window.skins?.close(); return; }
-      if (topModal()?.id === "cm-dialog") community.cancelDialog?.();
+      if (topModal()?.id === "cm-dialog") { community.cancelDialog?.(); return; }
       else if (topModal()?.id === "support-dialog") closeSupportTicket();
       closeModal("#create-dialog");
       closeModal("#settings-dialog");
@@ -5407,6 +5404,7 @@ async function init() {
   navigate("home", null, false);
   curseforgeAssistant.init();
   initChatExperience();
+  if (state.settings.setupCompleted === false) welcomeGuide.open();
   // Al volver a la ventana (o desde la bandeja) se piden los datos al momento, sin esperar avisos.
   let lastSync = Date.now();
   const resync = async () => {
@@ -6559,7 +6557,7 @@ function toggleDownloads(open = !downloadsOpen()) {
   button.setAttribute("aria-expanded", String(open));
   if (!open) return;
   state.downloadsUnseen = null;
-  $$(".menu").forEach((m) => m.remove());
+  $$(".menu").forEach((m) => m.dismiss?.());
   const rect = button.getBoundingClientRect();
   panel.style.top = `${Math.round(rect.bottom + 6)}px`;
   panel.style.right = `${Math.max(12, Math.round(innerWidth - rect.right))}px`;
@@ -7562,8 +7560,10 @@ function updateExportDestination() {
 // ======================================================================
 function demoInvoke(command, args = {}) {
   if (command.startsWith("mundos_")) return window.worldsDemo(command, args);
-  if (command.startsWith("skin")) return window.skinsDemo(command, args);
+  if (command.startsWith("skin") || command === "banner_mio" || command === "guardar_banner") return window.skinsDemo(command, args);
   const now = Date.now();
+  const params = new URLSearchParams(location.search);
+  const firstRun = params.has("bienvenida");
   const instances = [
     { id: "Vanilla 1.21.1", name: "Vanilla 1.21.1", versionId: "1.21.1", minecraftVersion: "1.21.1", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: now - 3600e3, created: now - 86400e3 * 4 },
     { id: "Survival con amigos", name: "Survival con amigos", versionId: "26.2", minecraftVersion: "26.2", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: null, created: now - 3600e3 },
@@ -7573,9 +7573,10 @@ function demoInvoke(command, args = {}) {
     { id: "Skyblock", name: "Skyblock", versionId: "1.20.1", minecraftVersion: "1.20.1", loader: "Vanilla", jvmArgs: [], icon: null, ramGb: null, lastPlayed: now - 86400e3 * 15, created: now - 86400e3 * 30 },
   ];
   const settings = demoInvoke.settings ?? (demoInvoke.settings = {
-    username: "GxxseS", uuid: "", accounts: [{ username: "Hawntd", uuid: "" }], ramGb: 6, theme: "oscuro", windowWidth: 1280, windowHeight: 720, minimizeOnLaunch: true,
+    username: firstRun ? "Jugador" : "GxxseS", uuid: "", accounts: firstRun ? [] : [{ username: "Hawntd", uuid: "" }], ramGb: firstRun ? 4 : 6, theme: "oscuro", windowWidth: 1280, windowHeight: 720, minimizeOnLaunch: true,
+    setupCompleted: !firstRun,
     // Con «?en» en la dirección, la demostración sale en inglés.
-    language: location.search.includes("en") && !location.search.includes("actualizacion") ? "en" : "es",
+    language: params.has("en") ? "en" : "es",
     servers: [{ name: "UniversoCraft", address: "mc.universocraft.com", instance: "Vanilla 1.21.1" }],
   });
   const demo = {
@@ -7597,7 +7598,7 @@ function demoInvoke(command, args = {}) {
     consola_servidor: ["[12:00:01] [Server thread/INFO]: Starting minecraft server version 1.20.1", "[12:01:15] [Server thread/INFO]: Done (74.012s)! For help, type \"help\"", "[12:03:40] [Server thread/INFO]: Hawntd joined the game", "[12:04:02] [Server thread/INFO]: <Hawntd> ¡Hola!"],
     preparar_servidor: { worlds: ["Mi mundo"], mods: 99, recommendedRam: 4, gameRam: 6, totalMb: 8100, freeMb: 2300 },
     ajustes_servidor: { name: "Survival con amigos", ramGb: 4, jvmArgs: [], eula: true, motd: "Survival con amigos", maxPlayers: 10, gamemode: "survival", difficulty: "normal", pvp: true, viewDistance: 8, simulationDistance: 6, allowFlight: true },
-    estado_inicial: { settings, offlineUuid: "8b67db88-c6fb-3d4d-bbee-71f84a0e752d", instances, version: "0.1.0 (demostración)", root: "C:\\Users\\Juan\\Desktop\\Parabellum", systemRamGb: 16 },
+    estado_inicial: { settings, offlineUuid: "8b67db88-c6fb-3d4d-bbee-71f84a0e752d", instances: firstRun ? [] : instances, version: "0.1.0 (demostración)", root: "C:\\Users\\Juan\\Desktop\\Parabellum", systemRamGb: 16 },
     listar_instancias: instances,
     uuid_offline: "8b67db88-c6fb-3d4d-bbee-71f84a0e752d",
     juegos_abiertos: [],
@@ -7622,13 +7623,15 @@ function demoInvoke(command, args = {}) {
   };
   const soon = (value) => new Promise((resolve) => setTimeout(() => resolve(value), 300));
   if (command === "estado_social" || command === "iniciar_sesion_google" || command === "reconectar_amigos") {
+    if (command === "iniciar_sesion_google" || command === "reconectar_amigos") demoInvoke.signedIn = true;
+    if ((demoInvoke.signedIn ?? !firstRun) === false) return soon({ available: true, signedIn: false, connected: false, synced: false });
     const now = Date.now();
     return soon({
       available: true, signedIn: true, email: "gxxses@uabc.edu.mx", displayName: "Juan", signingIn: false, connecting: false, connected: true, serverNow:now,
       error: null, warning: null, nameConflict: null, notice: null,
       me: { state: "playing", pack: "Better MC BMC4", world: "single", address: "silly-cat.sa.e4mc.link", lan: "192.168.1.20:51234" },
       friends: {
-        name: "GxxseS",
+        name: settings.username === "Jugador" ? null : settings.username,
         requests: [{ uid: "r1", name: "Steve_22" }],
         friends: [
           { uid: "f1", name: "Hawntd", online: true, worldOpen: true, lastSeen: now, presence: { state: "playing", pack: "Minecraft++", packFolder: "Minecraft++", minecraft: "26.1.2", world: "single", address: "happy-fox.sa.e4mc.link" } },
@@ -7639,11 +7642,14 @@ function demoInvoke(command, args = {}) {
       },
     });
   }
-  if (command === "cerrar_sesion_google") return soon({ available: true, signedIn: false, connected: false });
+  if (command === "cerrar_sesion_google") {
+    demoInvoke.signedIn = false;
+    return soon({ available: true, signedIn: false, connected: false });
+  }
   if (command === "chats") {
     const now = Date.now();
     return soon([
-      { id: "d_a_f1", kind: "directo", name: "Hawntd", members: [{ uid: "me", name: "GxxseS", you: true }, { uid: "f1", name: "Hawntd", you: false }], lastText: "¿Abres tu mundo? Ya tengo el modpack", lastName: "Hawntd", lastAt: now - 120e3, unread: true, owner: null, photo: null, canEdit: false },
+      { id: "d_a_f1", kind: "directo", name: "Hawntd", members: [{ uid: "me", name: "GxxseS", you: true }, { uid: "f1", name: "Hawntd", you: false }], lastText: 'parabellum:invitacion:{"t":"comunidad","n":"Retorcidos","c":"ABCD2345"}', lastName: "Hawntd", lastAt: now - 120e3, unread: true, owner: null, photo: null, canEdit: false },
       { id: "g_demo", kind: "grupo", name: "Los del salón", members: [{ uid: "me", name: "GxxseS", you: true }, { uid: "f2", name: "Alex_mx", you: false }, { uid: "f3", name: "Dani", you: false }], lastText: "📷 Imagen", lastName: "Dani", lastAt: now - 3600e3, unread: false, owner: "me", photo: null, canEdit: true },
       { id: "g_demo2", kind: "grupo", name: "Los panas", members: [{ uid: "me", name: "GxxseS", you: true }, { uid: "f1", name: "Hawntd", you: false }], lastText: "", lastName: "", lastAt: now - 86400e3, unread: false, owner: "f1", photo: `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#2f9e6e"/><circle cx="32" cy="28" r="14" fill="#fff"/></svg>')}`, canEdit: false },
     ]);
@@ -7672,7 +7678,15 @@ function demoInvoke(command, args = {}) {
     return soon(null);
   }
   if (command === "imagen_chat") return soon(args.mensaje === "foto1" ? "../docs/capturas/instancia.png" : args.mensaje === "foto2" ? "../docs/capturas/servidor.png" : args.mensaje === "foto3" ? "../docs/capturas/comunidades.png" : `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#6d4bd8"/><text x="320" y="190" font-size="40" text-anchor="middle" fill="white">Captura</text></svg>')}`);
-  if (command === "perfil_jugador") return soon({name:state.social?.friends?.friends?.find(f => f.uid === args.uid)?.name ?? "Alex_mx",uuid:""});
+  if (command === "perfil_jugador") return soon({
+    name: state.social?.friends?.friends?.find(f => f.uid === args.uid)?.name ?? community.detail?.members.find(m => m.uid === args.uid)?.name,
+    banner: window.demoSkin?.profiles?.[args.uid] ?? null,
+  });
+  if (command === "cambiar_nombre_perfil") {
+    if (firstRun && args.nombre.toLowerCase() === "hawntd") return Promise.reject("Ese nombre ya lo usa otra cuenta de Parabellum.");
+    if (state.social?.friends) state.social.friends.name = args.nombre;
+    return soon(Object.assign(settings, { username: args.nombre }));
+  }
   if (command === "imagenes_chat") return soon({images:(window.demoChatMessages?.[args.chat] ?? []).filter(m => m.image),more:false,cursor:null});
   if (command === "enviar_mensaje") return new Promise(resolve => {
     const key = args.envio ?? String(Date.now());
@@ -7872,7 +7886,7 @@ function demoInvoke(command, args = {}) {
   if (command === "detener_busqueda") return Promise.resolve(null);
   if (command === "escribiendo" || command === "confirmar_arranque") return Promise.resolve(null);
   // Soporte (soporte.js): la vista del equipo; con ?jugador, la de quien pidió ayuda (Dani).
-  const player = new URLSearchParams(location.search).has("jugador");
+  const player = params.has("jugador") || firstRun;
   window.demoSupport ??= {
     settings: [
       { id: "launcher.message_sound", label: "Sonido de mensajes", kind: "bool", min: null, max: null, options: [], since: "0.33.0", value: true },
@@ -7930,17 +7944,47 @@ function demoInvoke(command, args = {}) {
   if (command === "soporte_abrir") return later("t0000000002", 700);
   if (["soporte_enviar", "soporte_tomar", "soporte_estado", "soporte_tarjeta", "soporte_escuchar", "soporte_visto"].includes(command)) return later(null, 200);
   if (command === "soporte_avisos") return Promise.resolve(player ? { total: 1, communities: { c0000000000a1: 1 } } : { total: 2, communities: { c0000000000a1: 2 } });
-  if (command === "comunidades") return Promise.resolve([{ id: "c0000000000a1", name: "Parabellum", description: "El servidor de Parabellum", image: null, role: player ? "member" : "owner", caps: {} }]);
-  if (command === "comunidad")
-    return Promise.resolve({
-      id: "c0000000000a1", name: "Parabellum", description: "El servidor de Parabellum: survival con amigos, 26.3.", image: null, role: player ? "member" : "owner", caps: {}, owner: "yo",
+  const sampleCommunities = [
+    { id: "c0000000000a1", name: firstRun ? "Retorcidos" : "Parabellum", description: firstRun ? "Un pueblo medieval, comercio y aventuras con mods." : "El servidor de Parabellum", access: "open", image: null },
+    { id: "c0000000000a2", name: "Los del salón", description: "Survival entre amigos.", access: "invite", image: null },
+  ];
+  if (["comunidades", "comunidad", "directorio_comunidades", "ver_invitacion", "unirse_comunidad", "unirse_comunidad_publica", "editar_comunidad"].includes(command)) {
+    const entries = demoInvoke.directory ??= sampleCommunities;
+    const joined = demoInvoke.joined ??= new Set(firstRun ? [] : [entries[0].id]);
+    const code = (args.codigo ?? "").trim().toUpperCase().replace(/[\s-]/g, "");
+    const card = entries.find(entry => entry.id === args.id);
+    const invited = code === "ABCD2345" ? entries[1] : null;
+    if (command === "comunidades") return soon(entries.filter(entry => joined.has(entry.id)).map(entry => ({ ...entry, role: player ? "member" : "owner", caps: {} })));
+    if (command === "directorio_comunidades") return soon({ entries: entries.filter(entry => entry.access !== "private").map(entry => ({ ...entry, member: joined.has(entry.id) })), next: null });
+    if (command === "ver_invitacion") {
+      return invited ? soon({ ...invited, member: joined.has(invited.id) }) : Promise.reject(t("Ese código no existe o ya venció.", "That code does not exist or has expired."));
+    }
+    if (command === "unirse_comunidad" || command === "unirse_comunidad_publica") {
+      const target = command === "unirse_comunidad" ? invited : card?.access === "open" ? card : null;
+      if (!target) return Promise.reject(t("Esta comunidad requiere un código de invitación.", "This community requires an invite code."));
+      joined.add(target.id);
+      return soon(target.id);
+    }
+    if (command === "editar_comunidad") {
+      Object.assign(card, { name: args.nombre, description: args.descripcion, image: args.imagen ?? card.image, access: args.acceso ?? card.access });
+      if (card.id === entries[0].id) Object.assign(demoCommunity(), card);
+      return soon();
+    }
+    const detail = demoCommunity();
+    return soon(structuredClone(card?.id === entries[0].id ? { ...detail, access: card.access }
+      : { ...detail, ...card, posts: [], rules: "", servers: [], packages: [], invites: [], local: {}, catalog: {} }));
+  }
+
+  function demoCommunity() {
+    return demoInvoke.community ??= {
+      id: "c0000000000a1", name: firstRun ? "Retorcidos" : "Parabellum", description: firstRun ? sampleCommunities[0].description : "El servidor de Parabellum: survival con amigos, 26.3.", image: null, role: player ? "member" : "owner", caps: {}, owner: "yo",
       members: [
         { uid: "yo", name: "Hawntd", role: "owner", caps: {}, joinedAt: Date.now() - 864e5, you: !player },
         { uid: "f2", name: "Alex_mx", role: "admin", caps: { support: true }, joinedAt: Date.now() - 6e7, you: false },
         { uid: "f3", name: "Dani", role: "member", caps: {}, joinedAt: Date.now() - 3e7, you: player },
       ],
       posts: [
-        { id: "a1", title: "¡Abrimos el 1 de diciembre!", text: "Entren con **Parabellum** para tener el paquete oficial:\n- Sodium y Fabric API\n- Minimapa", authorName: "Hawntd", at: Date.now() - 36e5 },
+        { id: "a1", title: "¡Abrimos el 1 de diciembre!", text: "Entren con **Parabellum** para tener el paquete oficial:\n- Sodium y Fabric API\n- Minimapa", authorName: "Hawntd", mine: !player, at: Date.now() - 36e5 },
         { id: "a2", title: "Pruebas del servidor", text: "El sábado probamos el servidor. *Traigan amigos.*", authorName: "Alex_mx", at: Date.now() - 2 * 864e5 },
       ],
       rules: "1. **Respeto** a todos.\n2. Nada de trampas.\n3. Diviértanse.",
@@ -7952,7 +7996,49 @@ function demoInvoke(command, args = {}) {
       invites: [{ code: "ABCD2345", expiresAt: Date.now() + 6 * 864e5 }],
       local: { p00000001: { state: "modificada", catalogId: "parabellum-oficial", wanted: "1.0.0", instance: "Vanilla 1.21.1", installed: "1.0.0", source: false, changes: { state: "modificada", added: ["xray-ultimate-1.21.jar", "freecam-1.2.4.jar"], removed: ["sodium-fabric-0.6.0.jar"], minecraft: null, loader: null, package: "parabellum-oficial", version: "1.0.0", origin: "instalado" } } },
       catalog: { p00000001: { icon: null, mods: 12, size: 182e6, description: "", version: "1.0.0" } },
+    };
+  }
+  if (command === "publicar_anuncio") {
+    demoCommunity().posts.unshift({
+      id: `a${Date.now().toString(36)}`, title: args.titulo, text: args.texto, image: args.imagen,
+      authorName: settings.username, mine: true, at: Date.now(), reactions: [],
     });
+    return soon();
+  }
+  if (command === "borrar_anuncio") {
+    const detail = demoCommunity();
+    detail.posts = detail.posts.filter(post => post.id !== args.anuncio);
+    return soon();
+  }
+  if (command === "editar_anuncio") {
+    const post = demoCommunity().posts.find(post => post.id === args.anuncio && post.mine);
+    if (!post) return Promise.reject(t("Ese anuncio no está disponible.", "That announcement is unavailable."));
+    Object.assign(post, { title: args.titulo, text: args.texto, image: args.imagen });
+    return soon();
+  }
+  if (command === "reaccionar_anuncio") {
+    const post = demoCommunity().posts.find(post => post.id === args.anuncio);
+    const reactions = (post.reactions ?? []).map(r => ({ ...r, count: r.count - Number(r.mine), mine: false }));
+    if (args.emoji) {
+      const chosen = reactions.find(r => r.emoji === args.emoji);
+      if (chosen) { chosen.mine = true; chosen.count++; }
+      else reactions.push({ emoji: args.emoji, count: 1, mine: true });
+    }
+    post.reactions = reactions.filter(r => r.count > 0);
+    return soon(structuredClone(post.reactions));
+  }
+  if (command === "guardar_reglas") {
+    demoCommunity().rules = args.texto;
+    return soon();
+  }
+  if (command === "guardar_servidor_comunidad") {
+    const server = { ...args.servidor, id: args.servidor.id || `v${Date.now().toString(36)}` };
+    const servers = demoCommunity().servers;
+    const index = servers.findIndex(s => s.id === server.id);
+    if (index < 0) servers.push(server);
+    else servers[index] = server;
+    return soon(server.id);
+  }
   if (command === "huella_instancia")
     return later({
       installationId: "7f3c2a10-5b1e-4c8a-9d2f-0a1b2c3d4e5f",

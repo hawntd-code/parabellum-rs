@@ -745,10 +745,13 @@ async fn jugar(app: AppHandle, state: State<'_, AppState>, id: String, servidor:
         }
     }
     let launched = instance.clone();
-    let session = cuenta::session_arguments(&app);
+    let mut session = cuenta::session_arguments(&app);
     let ram_gb = instance.ram_gb.unwrap_or(settings.ram_gb);
-    // El panel de Parabellum dentro del juego (amigos y chat), si hay mod para esta versión.
-    juego::install(&instance, settings.game_panel);
+    let remote_skins = juego::remote_skins(&instance);
+    if !settings.game_panel && remote_skins {
+        session.push("-Dparabellum.soloSkins=true".into());
+    }
+    juego::install_features(&instance, settings.game_panel, remote_skins);
     let mut child = tauri::async_runtime::spawn_blocking(move || {
         let mut plan = launch::plan(&launched, &settings, &paths)?;
         // Mundos LAN y e4mc de amigos sin "Invalid session".
@@ -4472,6 +4475,9 @@ fn main() {
             cuenta::marcar_leido,
             cuenta::enviar_mensaje,
             cuenta::perfil_jugador,
+            cuenta::cambiar_nombre_perfil,
+            cuenta::banner_mio,
+            cuenta::guardar_banner,
             cuenta::imagenes_chat,
             cuenta::enviar_imagen,
             cuenta::imagen_chat,
@@ -4498,11 +4504,13 @@ fn main() {
             confirmar_arranque,
             canal_actualizaciones,
             comunidad::comunidades,
+            comunidad::directorio_comunidades,
             comunidad::comunidad,
             comunidad::crear_comunidad,
             comunidad::editar_comunidad,
             comunidad::ver_invitacion,
             comunidad::unirse_comunidad,
+            comunidad::unirse_comunidad_publica,
             comunidad::salir_comunidad,
             comunidad::eliminar_comunidad,
             comunidad::crear_invitacion,
@@ -4510,9 +4518,12 @@ fn main() {
             comunidad::cambiar_miembro,
             comunidad::sacar_de_comunidad,
             comunidad::publicar_anuncio,
+            comunidad::editar_anuncio,
+            comunidad::reaccionar_anuncio,
             comunidad::borrar_anuncio,
             comunidad::guardar_reglas,
             comunidad::guardar_servidor_comunidad,
+            comunidad::enlazar_paquete_servidor,
             comunidad::borrar_servidor_comunidad,
             comunidad::guardar_paquete_comunidad,
             comunidad::paquete_comunidad,

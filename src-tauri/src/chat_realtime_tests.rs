@@ -88,7 +88,18 @@ async fn chat37_buzones_envio_idempotente_escritura_y_cliente_anterior() {
     assert!(db_c.get("chatInbox/A").await.is_err());
     assert!(db_c.put("typing/g_test0/C",&crate::firebase::server_timestamp()).await.is_err());
     admin("users/B/email", &json!("privado@example.invalid")).await;
-    assert!(chat_a.profile("B").await.unwrap().get("email").is_none());
+    let jpeg = "data:image/jpeg;base64,/9j/2Q==";
+    db_b.put("profileBanners/B", &json!(jpeg)).await.unwrap();
+    let profile = crate::cuenta::public_profile(&db_a, "B").await.unwrap();
+    assert_eq!(profile, json!({"name":"TestB","uuid":"","banner":jpeg}));
+    {
+        use base64::Engine;
+        let texture = json!({"textures":{"SKIN":{"url":"http://textures.minecraft.net/texture/012345"}}});
+        let value = base64::engine::general_purpose::STANDARD.encode(texture.to_string());
+        db_b.put("skins/B", &json!({"value":value,"signature":"ZmlybWE=","at":crate::firebase::server_timestamp()})).await.unwrap();
+        let found = crate::skins::player_textures(&db_a, &json!(["TestB","testb","TestC","no/válido"])).await;
+        assert_eq!(found, json!({"testb":{"value":value,"signature":"ZmlybWE="}}));
+    }
     let mut archive = serde_json::Map::new();
     for index in 0..305 {
         let mut message = json!({"from":"A","name":"TestA","at":index});

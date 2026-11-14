@@ -26,6 +26,13 @@
         }
       }
     },
+    "profileBanners": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.isString() && newData.val().length <= 200000 && newData.val().matches(/^data:image\\/jpeg;base64,[A-Za-z0-9+\\/]+=*$/)"
+      }
+    },
     "requests": {
       "$to": {
         ".read": "auth != null && auth.uid === $to",
@@ -360,11 +367,19 @@
         }
       }
     },
+    "communityDirectory": {
+      ".read": "auth != null && query.orderByKey && query.limitToFirst != null && query.limitToFirst <= 27",
+      "$cid": {
+        ".read": "auth != null",
+        ".write": "auth != null && (root.child('communities').child($cid).child('owner').val() === auth.uid || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin')",
+        ".validate": "$cid.matches(/^c[0-9a-z]{12}$/) && newData.parent().parent().child('communities').child($cid).exists() && (newData.val() === 'invite' || newData.val() === 'open')"
+      }
+    },
     "communityMembers": {
       "$cid": {
         ".read": "auth != null && data.child(auth.uid).exists()",
         "$uid": {
-          ".write": "auth != null && (($uid === auth.uid && !data.exists() && newData.child('role').val() === 'owner' && !newData.child('caps').exists() && newData.parent().parent().parent().child('communities').child($cid).child('owner').val() === auth.uid) || ($uid === auth.uid && !data.exists() && newData.child('role').val() === 'member' && !newData.child('caps').exists() && root.child('inviteCodes').child(newData.child('invite').val()).child('cid').val() === $cid && root.child('inviteCodes').child(newData.child('invite').val()).child('expiresAt').val() > now) || ($uid === auth.uid && !newData.exists() && data.child('role').val() !== 'owner') || ($uid !== auth.uid && root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' && data.exists() && data.child('role').val() !== 'owner' && (!newData.exists() || newData.child('role').val() === 'member' || newData.child('role').val() === 'admin')) || ($uid !== auth.uid && root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin' && data.child('role').val() === 'member' && (!newData.exists() || newData.child('role').val() === 'member')) || ($uid === auth.uid && !newData.exists() && data.child('role').val() === 'owner' && !root.child('communities').child($cid).exists()))",
+          ".write": "auth != null && (($uid === auth.uid && !data.exists() && newData.child('role').val() === 'owner' && !newData.child('caps').exists() && newData.parent().parent().parent().child('communities').child($cid).child('owner').val() === auth.uid) || ($uid === auth.uid && !data.exists() && newData.child('role').val() === 'member' && !newData.child('caps').exists() && root.child('communities').child($cid).exists() && ((newData.child('invite').isString() && root.child('inviteCodes').child(newData.child('invite').val()).child('cid').val() === $cid && root.child('inviteCodes').child(newData.child('invite').val()).child('expiresAt').val() > now) || (!newData.child('invite').exists() && root.child('communityDirectory').child($cid).val() === 'open'))) || ($uid === auth.uid && !newData.exists() && data.child('role').val() !== 'owner') || ($uid !== auth.uid && root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' && data.exists() && data.child('role').val() !== 'owner' && (!newData.exists() || newData.child('role').val() === 'member' || newData.child('role').val() === 'admin')) || ($uid !== auth.uid && root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin' && data.child('role').val() === 'member' && (!newData.exists() || newData.child('role').val() === 'member')) || ($uid === auth.uid && !newData.exists() && data.child('role').val() === 'owner' && !root.child('communities').child($cid).exists()))",
           ".validate": "newData.hasChildren(['role', 'name', 'joinedAt'])",
           "role": {
             ".validate": "newData.val() === 'owner' || newData.val() === 'admin' || newData.val() === 'member'"
@@ -450,6 +465,9 @@
           "bedrock": {
             ".validate": "newData.isString() && newData.val().length <= 100"
           },
+          "website": {
+            ".validate": "newData.isString() && newData.val().length <= 250 && (newData.val().beginsWith('https://') || newData.val().beginsWith('http://'))"
+          },
           "package": {
             ".validate": "newData.isString() && newData.val().length <= 20"
           },
@@ -466,22 +484,35 @@
       "$cid": {
         ".read": "auth != null && root.child('communityMembers').child($cid).child(auth.uid).exists()",
         "$pid": {
-          ".write": "auth != null && (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin')",
-          ".validate": "newData.hasChildren(['title', 'text', 'author', 'at'])",
+          ".write": "auth != null && (!data.exists() || !newData.exists()) && (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin')",
+          ".validate": "newData.hasChildren(['title', 'author', 'at']) && ((newData.child('text').isString() && newData.child('text').val().length > 0) || newData.child('image').isString())",
           "title": {
+            ".write": "auth != null && data.parent().child('author').val() === auth.uid && (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin')",
             ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 80"
           },
           "text": {
+            ".write": "auth != null && data.parent().child('author').val() === auth.uid && (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin')",
             ".validate": "newData.isString() && newData.val().length <= 2000"
           },
           "author": {
-            ".validate": "newData.val() === auth.uid"
+            ".validate": "newData.val() === (data.exists() ? data.val() : auth.uid)"
           },
           "authorName": {
             ".validate": "newData.isString() && newData.val().length <= 16"
           },
           "at": {
             ".validate": "newData.isNumber()"
+          },
+          "image": {
+            ".write": "auth != null && data.parent().child('author').val() === auth.uid && (root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'owner' || root.child('communityMembers').child($cid).child(auth.uid).child('role').val() === 'admin')",
+            ".validate": "newData.isString() && newData.val().length <= 200000 && newData.val().matches(/^data:image\\/jpeg;base64,[A-Za-z0-9+\\/]+=*$/)"
+          },
+          "reactions": {
+            ".validate": "newData.hasChildren()",
+            "$uid": {
+              ".write": "auth != null && auth.uid === $uid && root.child('communityMembers').child($cid).child(auth.uid).exists() && data.parent().parent().child('title').exists()",
+              ".validate": "auth.uid === $uid && (newData.val() === '👍' || newData.val() === '❤️' || newData.val() === '😂' || newData.val() === '😮' || newData.val() === '😢' || newData.val() === '🔥')"
+            }
           },
           "$other": {
             ".validate": false
