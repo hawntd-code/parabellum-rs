@@ -63,11 +63,11 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td align="center" valign="top">
 <br>
-<a href="https://github.com/hawntd-code/parabellum-rs/releases/download/v0.43.1/Parabellum_0.43.1_x64-setup.exe"><img alt="Descargar el instalador de Parabellum 0.43.1 para Windows" src="https://img.shields.io/badge/Descargar-v0.43.1-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
+<a href="https://github.com/hawntd-code/parabellum-rs/releases/download/v0.44.0/Parabellum_0.44.0_x64-setup.exe"><img alt="Descargar el instalador de Parabellum 0.44.0 para Windows" src="https://img.shields.io/badge/Descargar-v0.44.0-7f50f2?style=for-the-badge&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoOC40djguNEgzem05LjYgMEgyMXY4LjRoLTguNHpNMyAxMi42aDguNFYyMUgzem05LjYgMEgyMVYyMWgtOC40eiIvPjwvc3ZnPg%3D%3D"></a>
 <br><br>
-<sub>Windows 10 u 11 de 64 bits · instalador de 7.2 MB · 11 nov 2026</sub>
+<sub>Windows 10 u 11 de 64 bits · instalador de 8.5 MB · 14 nov 2026</sub>
 <br>
-<sub>¿Para la escuela o una USB? <a href="https://github.com/hawntd-code/parabellum-rs/releases/download/v0.43.1/Parabellum-0.43.1.zip">Versión portable (zip de 11.2 MB)</a></sub>
+<sub>¿Para la escuela o una USB? <a href="https://github.com/hawntd-code/parabellum-rs/releases/download/v0.44.0/Parabellum-0.44.0.zip">Versión portable (zip de 13.6 MB)</a></sub>
 <br><br>
 </td>
 <td align="center" valign="top">
@@ -81,13 +81,13 @@ Baja la versión más nueva para tu computadora. Después Parabellum se actualiz
 <tr>
 <td valign="top">
 
-**Lo nuevo en la 0.43.1**
+**Lo nuevo en la 0.44.0**
 
-- **Si tienes la 0.42, bájala una vez desde aquí:** la 0.43 trajo una clave de firma nueva y la 0.42 no se actualiza sola. Desde la 0.43, sí.
-- **Modpacks de comunidad desde CurseForge:** lo que se instaló desde CurseForge se baja de CurseForge, aunque también esté en Modrinth.
-- De la 0.43.0: los mods de CurseForge no van dentro del paquete de una comunidad, y el dueño puede eliminar su comunidad.
+- La guía de bienvenida reúne Google, el nombre de jugador, la skin, la RAM y la búsqueda de comunidades.
+- Las reglas y los anuncios se escriben con vista previa. Puedes editar tus anuncios, elegir reacciones junto al texto y abrir las solicitudes desde **Ayuda**.
+- **Mi cuenta** reúne nombre, banner y visor 3D. En Retorcidos, los jugadores con Parabellum ven las skins de los demás usando NeoForge 1.21.1.
 
-<sub>[Notas completas](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.43.1)</sub>
+<sub>[Notas completas](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.44.0)</sub>
 
 </td>
 <td valign="top">

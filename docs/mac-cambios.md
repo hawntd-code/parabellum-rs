@@ -163,6 +163,13 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
 
+- **0.44.0** · 2026-11-14 · En Drive (`_parabellum`) y en GitHub con instalador. Código del exe `c36c2b9`.
+  ZIP firmado de 13 604 719 bytes, SHA-256 `9fe754cd80ed04335b78e856c8168bb4e2214025a4e170ad913a633677fc870c`.
+  Instalador de 8 484 409 bytes, SHA-256 `44a5fbb94fe604a5c4eb5f8863cf3f4fa46512f2894b577760677e4a89626f18`.
+  [GitHub](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.44.0).
+  - Guía de bienvenida, «Mi cuenta» con banner y visor 3D y skins compartidas en Retorcidos con NeoForge 1.21.1.
+  - Reglas con vista de lectura, anuncios editables con reacciones junto al texto y solicitudes desde «Ayuda».
+
 - **0.43.1** · 2026-11-11 · En Drive (`_parabellum`, subida por Juan el 2026-11-11 con «Publicar esta versión»; el
   `.json` lleva la firma) y en GitHub con instalador. Código del exe `3420d2c`; ZIP de `_parabellum`, 11 217 208
   bytes, SHA-256 `79204899ff03adcaa9c053c967f3c8836e39bf73ebfa37519e37e50953b49990` (firmado); instalador
