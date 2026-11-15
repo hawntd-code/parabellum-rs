@@ -163,6 +163,13 @@ Lo que faltaba para que Mac estuviera a la par de Windows en la 0.28.0 (publicad
 Lo que ya tienen los compañeros: Windows en `_parabellum` y Mac en `_parabellum-mac`. La más nueva, arriba.
 Desde la 0.30.1 hay también un canal de pruebas: `_parabellum-pruebas` y `_parabellum-mac-pruebas`.
 
+- **0.44.1** · 2026-11-14 · En Drive (`_parabellum` y `_parabellum-pruebas`, subida por Juan con «Publicar esta
+  versión»; el `.json` lleva la firma) y en GitHub con instalador. Código del exe `2322ff1`.
+  ZIP firmado de 11 281 696 bytes, SHA-256 `3137868308c76f2bf7733c68a488265c3a4fe474df85f868b3113e4456f7dd28`.
+  Instalador de 7 287 518 bytes, SHA-256 `0b06340d0299c20680bb69c7adb7f3f08d29c44e9438bcf500c7652cc6761373`.
+  [GitHub](https://github.com/hawntd-code/parabellum-rs/releases/tag/v0.44.1).
+  - En servidores NeoForge 1.21.1 (Retorcidos) las skins se piden al entrar cada jugador y cada 10-15 min, no cada
+    22-62 s: unas 20 veces menos lecturas de Firebase. Mac: nada.
 - **0.44.0** · 2026-11-14 · En Drive (`_parabellum`) y en GitHub con instalador. Código del exe `c36c2b9`.
   ZIP firmado de 13 604 719 bytes, SHA-256 `9fe754cd80ed04335b78e856c8168bb4e2214025a4e170ad913a633677fc870c`.
   Instalador de 8 484 409 bytes, SHA-256 `44a5fbb94fe604a5c4eb5f8863cf3f4fa46512f2894b577760677e4a89626f18`.
