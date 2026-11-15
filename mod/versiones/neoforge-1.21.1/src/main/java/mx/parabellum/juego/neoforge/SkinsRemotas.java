@@ -1,6 +1,7 @@
 package mx.parabellum.juego.neoforge;
 
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
@@ -19,13 +20,34 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
-/** Usa la textura firmada de Parabellum cuando el cliente recibe un perfil de un servidor dedicado. */
+/**
+ * Usa la textura firmada de Parabellum cuando el cliente recibe un perfil de un servidor dedicado.
+ *
+ * <p>Cada consulta le cuesta a Parabellum una o dos lecturas de Firebase por jugador, así que no se sondea: se
+ * pregunta por un jugador cuando aparece en la lista (los que entran juntos, como al conectarse, van en una sola
+ * consulta) y después solo de vez en cuando, por si cambió de skin. Mirar la lista cada segundo no usa la red.
+ */
 public final class SkinsRemotas {
     private record Entry(long expires, CompletableFuture<PlayerSkin> texture) {}
     private static final Pattern NAME = Pattern.compile("[A-Za-z0-9_]{1,16}");
+    /** Cada cuánto se mira si hay jugadores nuevos en la lista (solo en memoria). */
+    private static final long CHECK = TimeUnit.SECONDS.toNanos(1);
+    /** Se espera un poco tras ver al primero para juntar a los que entran a la vez. */
+    private static final long GATHER = TimeUnit.MILLISECONDS.toNanos(1500);
+    /** Cada cuánto se vuelve a preguntar por un jugador que ya se conoce, por si cambió de skin. */
+    private static final long WITH_SKIN = TimeUnit.MINUTES.toNanos(15);
+    private static final long WITHOUT_SKIN = TimeUnit.MINUTES.toNanos(10);
+    /** Si Parabellum no contesta, no se insiste enseguida. */
+    private static final long RETRY = TimeUnit.SECONDS.toNanos(30);
+    /** Una respuesta que nunca llegó no bloquea las siguientes. */
+    private static final long LOST = TimeUnit.SECONDS.toNanos(60);
+    private static final int BATCH = 24;
     private static final Map<UUID, Entry> ENTRIES = new ConcurrentHashMap<>();
     private static ClientPacketListener connection;
-    private static long next = System.nanoTime();
+    private static long nextCheck = System.nanoTime();
+    private static long waitingSince;
+    private static long retryAt;
+    private static long requestedAt;
     private static boolean pending;
 
     private SkinsRemotas() {}
@@ -37,50 +59,72 @@ public final class SkinsRemotas {
         if (current != connection) {
             connection = current;
             ENTRIES.clear();
-            next = now;
+            nextCheck = now;
+            waitingSince = 0;
+            retryAt = now;
             pending = false;
         }
+        if (pending && now - requestedAt > LOST) pending = false;
         Juego juego = Juego.actual();
-        if (current == null || juego == null || pending || now - next < 0) return;
-        next = now + TimeUnit.SECONDS.toNanos(3);
+        if (current == null || juego == null || pending || now - nextCheck < 0) return;
+        nextCheck = now + CHECK;
         ENTRIES.keySet().removeIf(uuid -> current.getPlayerInfo(uuid) == null);
         var profiles = new LinkedHashMap<UUID, String>();
-        JsonArray names = new JsonArray();
         for (PlayerInfo info : current.getOnlinePlayers()) {
             GameProfile player = info.getProfile();
             Entry entry = ENTRIES.get(player.getId());
             if (entry != null && now - entry.expires() < 0) continue;
             if (!NAME.matcher(player.getName()).matches()) continue;
             profiles.put(player.getId(), player.getName());
-            names.add(player.getName());
-            if (profiles.size() == 24) break;
+            if (profiles.size() == BATCH) break;
         }
-        if (!profiles.isEmpty()) {
-            pending = juego.pedirSkins(names, data -> received(current, profiles, data));
+        if (profiles.isEmpty()) {
+            waitingSince = 0;
+            return;
         }
+        if (waitingSince == 0) waitingSince = now;
+        if (now - waitingSince < GATHER || now - retryAt < 0) return;
+        JsonArray names = new JsonArray();
+        profiles.values().forEach(names::add);
+        requestedAt = now;
+        pending = juego.pedirSkins(names, data -> received(current, profiles, data));
+        // Una línea por consulta en latest.log: así se ve cada cuánto pregunta (al entrar alguien y cada 10-15 min).
+        if (pending) System.out.println("[Parabellum] Skins: consulta por " + names.size() + " jugador(es) de la lista");
+        else retryAt = now + RETRY;
+        waitingSince = 0;
     }
 
     private static void received(ClientPacketListener request, Map<UUID, String> profiles, JsonObject data) {
         if (request != connection) return;
         pending = false;
-        if (data == null) return;
         long checked = System.nanoTime();
+        if (data == null) {
+            // Parabellum cerrado o sin conexión: se vuelve a intentar más tarde, sin dar a nadie por «sin skin».
+            retryAt = checked + RETRY;
+            return;
+        }
         for (var player : profiles.entrySet()) {
             UUID id = player.getKey();
             String name = player.getValue();
-            var texture = data.get(name.toLowerCase(Locale.ROOT));
             if (connection.getPlayerInfo(id) == null) continue;
-            if (texture == null || !texture.isJsonObject()) {
-                ENTRIES.put(id, new Entry(checked + TimeUnit.SECONDS.toNanos(22), null));
+            JsonElement texture = data.get(name.toLowerCase(Locale.ROOT));
+            Property property = texture != null && texture.isJsonObject() ? property(texture.getAsJsonObject()) : null;
+            if (property == null) {
+                ENTRIES.put(id, new Entry(checked + WITHOUT_SKIN, null));
                 continue;
             }
-            JsonObject property = texture.getAsJsonObject();
             GameProfile cosmetic = new GameProfile(id, name);
-            cosmetic.getProperties().put("textures", new Property("textures",
-                property.get("value").getAsString(), property.get("signature").getAsString()));
+            cosmetic.getProperties().put("textures", property);
             var skin = Minecraft.getInstance().getSkinManager().getOrLoad(cosmetic).exceptionally(error -> null);
-            ENTRIES.put(id, new Entry(checked + TimeUnit.SECONDS.toNanos(62), skin));
+            ENTRIES.put(id, new Entry(checked + WITH_SKIN, skin));
         }
+    }
+
+    private static Property property(JsonObject texture) {
+        JsonElement value = texture.get("value");
+        JsonElement signature = texture.get("signature");
+        if (value == null || signature == null || !value.isJsonPrimitive() || !signature.isJsonPrimitive()) return null;
+        return new Property("textures", value.getAsString(), signature.getAsString());
     }
 
     public static PlayerSkin forPlayer(PlayerInfo player, PlayerSkin original) {

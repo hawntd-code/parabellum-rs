@@ -7,7 +7,7 @@
 //! El servidor de sesión local se la da al juego: al anfitrión de un mundo cuando entra un jugador
 //! (hasJoined, y de ahí a todos los que están dentro) y a cada jugador cuando pide un perfil (el suyo, o el
 //! de un amigo en las versiones que lo piden así). NeoForge 1.21.1 también pide las skins de la
-//! lista de jugadores al entrar a un servidor dedicado.
+//! lista de jugadores de un servidor dedicado: de cada jugador al verlo entrar, y luego cada 10 o 15 minutos.
 
 use base64::Engine;
 use serde::Serialize;
@@ -23,9 +23,11 @@ use crate::AppState;
 static APP: OnceLock<AppHandle> = OnceLock::new();
 /// Nombre en minúsculas → (cuándo se leyó, su skin).
 static CACHE: OnceLock<Mutex<HashMap<String, (Instant, Option<Skin>)>>> = OnceLock::new();
-/// Caché positiva y negativa para que los cambios se propaguen durante la partida.
-const FRESH: Duration = Duration::from_secs(60);
-const ABSENT: Duration = Duration::from_secs(20);
+/// Cuánto se recuerda lo leído, con skin o sin ella. Cada consulta son una o dos lecturas de Firebase, y en un
+/// servidor cada jugador pregunta por todos los que ve: el mod pregunta al ver entrar a alguien y luego cada 10 o
+/// 15 minutos (`SkinsRemotas`), y aquí se le contesta de memoria si vuelve a preguntar antes de 5 minutos.
+const FRESH: Duration = Duration::from_secs(300);
+const ABSENT: Duration = Duration::from_secs(300);
 /// Lo más que espera el juego por una skin antes de seguir con la de siempre.
 const LOOKUP: Duration = Duration::from_secs(4);
 

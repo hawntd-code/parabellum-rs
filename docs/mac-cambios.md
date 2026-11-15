@@ -633,6 +633,20 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-11-14 · Skins en servidores NeoForge sin sondeo (0.44.1)
+
+Pedido de Juan: en la 0.44.0, el mod de NeoForge 1.21.1 preguntaba cada 22 s (sin skin) o 62 s (con skin) por cada
+jugador visible, y el launcher solo recordaba 20 o 60 s, así que casi cada consulta eran una o dos lecturas de
+Firebase. Con 30 jugadores, unas 35 lecturas por segundo entre todos: del orden del límite del plan gratis.
+- `SkinsRemotas.java`: pregunta por cada jugador al verlo entrar a la lista (los que llegan juntos van en una consulta
+  de hasta 24) y luego cada 15 min si tiene skin o cada 10 si no. Si Parabellum no contesta, espera 30 s; una
+  respuesta perdida no lo bloquea más de 60 s. Unas 20 veces menos lecturas.
+- `skins.rs`: lo leído se recuerda 5 minutos (antes 60 s con skin y 20 sin ella).
+- El `.jar` de `src-tauri/juego/mods/parabellum-neoforge-1.21.1.jar` se rehízo cambiando solo las clases de
+  `SkinsRemotas` (javac 21 contra las librerías de NeoForge 21.1.265; en este PC no están los JDK de `~/.jdks`).
+  Con `python mod/compilar.py neoforge-1.21.1` sale lo mismo.
+- Mac: nada que cambiar en el código; al compilar en Mac entra solo.
+
 ### 2026-11-14 · Comunidad y Mi cuenta en la 0.44.0
 
 - Reglas tiene una vista de lectura y un editor con herramientas de formato. El mismo editor permite crear

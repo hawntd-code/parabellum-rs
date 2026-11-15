@@ -167,9 +167,12 @@ El juego la recibe del servidor de sesión local (`sesion_local.rs` → `skins.r
 - En Retorcidos (NeoForge 1.21.1), el mod de cada cliente pide al puente local las texturas de los
   jugadores que ve en el servidor. Minecraft verifica las firmas antes de mostrar las texturas. El
   cliente usa el UUID que envía el servidor y hace esta consulta aunque el panel de la O esté apagado.
+  No sondea (desde la 0.44.1): pregunta por cada jugador al verlo entrar a la lista (los que llegan juntos van en
+  una sola consulta de hasta 24) y luego solo cada 15 minutos si tiene skin o cada 10 si no tiene, por si la
+  cambió. Si Parabellum no contesta, espera 30 s. Antes preguntaba cada 22 o 62 s por cada jugador visible.
 
-Lo leído se recuerda alrededor de un minuto y la imagen se guarda en `datos/skins/`. Sin sesión de Google, o si Firebase no
-contesta en 4 s, el juego sigue con la skin de siempre.
+Lo leído se recuerda 5 minutos y la imagen se guarda en `datos/skins/`. Cada consulta cuesta una o dos lecturas de
+Firebase. Sin sesión de Google, o si Firebase no contesta en 4 s, el juego sigue con la skin de siempre.
 
 ## Hostear partida
 
