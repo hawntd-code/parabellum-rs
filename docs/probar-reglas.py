@@ -427,6 +427,12 @@ skin = {"value": "eyJ0ZXh0dXJlcyI6e319", "signature": "c2lnbmF0dXJh+/==", "from"
 check("A guarda su skin", True, "PUT", "skins/A", "A", skin)
 check("B (otro jugador) lee la skin de A", True, "GET", "skins/A", "B")
 check("Z, sin ser su amigo, también la lee", True, "GET", "skins/A", "Z")
+# Los servidores (plugin de Retorcidos SMP) leen nombre y skin sin sesión, de uno en uno.
+check("Un servidor sin sesión lee la skin de A", True, "GET", "skins/A", "")
+check("Un servidor sin sesión lee de quién es un nombre", True, "GET", "names/nuevoc", "")
+check("Sin sesión no se listan todas las skins", False, "GET", "skins", "")
+check("Sin sesión no se listan todos los nombres", False, "GET", "names", "")
+check("Sin sesión no se escribe una skin", False, "PUT", "skins/A", "", skin)
 check("No se lista la skin de todos", False, "GET", "skins", "B")
 check("B no cambia la skin de A", False, "PUT", "skins/A", "B", skin)
 check("La skin no acepta campos de más", False, "PUT", "skins/A", "A", {**skin, "url": "http://x"})
