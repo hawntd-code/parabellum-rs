@@ -640,6 +640,17 @@ bórralo y créalo otra vez (o cambia `win_args.txt` por `unix_args.txt` en ese 
 
 ## Cambios de Windows
 
+### 2026-11-18 · Las skins de Parabellum se pueden leer sin sesión (para servidores)
+
+Pedido de Juan: que en Retorcidos SMP (Paper) todos vean la skin que cada quien puso en Parabellum, aunque jueguen
+con otro launcher o desde Bedrock. El plugin del servidor la busca al entrar cada jugador y se la pone en su perfil
+(es una textura firmada por Mojang, así que los clientes normales la aceptan).
+- `firebase-reglas.json`: `names/$name` y `skins/$uid` ahora tienen `".read": true` (antes `auth != null`). Solo
+  se leen de uno en uno (no hay lectura en `names` ni en `skins` completos), y lo que dicen ya es público en el juego:
+  qué cuenta usa ese nombre y la textura de su skin. Escribir sigue pidiendo la sesión del dueño.
+- Hay que **publicar las reglas en la consola de Firebase** (Realtime Database › Reglas) para que funcione.
+- Mac: nada que cambiar.
+
 ### 2026-11-14 · Skins en servidores NeoForge sin sondeo (0.44.1)
 
 Pedido de Juan: en la 0.44.0, el mod de NeoForge 1.21.1 preguntaba cada 22 s (sin skin) o 62 s (con skin) por cada

@@ -2,7 +2,7 @@
   "rules": {
     "names": {
       "$name": {
-        ".read": "auth != null",
+        ".read": true,
         ".write": "auth != null && (!data.exists() || data.val() === auth.uid)",
         ".validate": "newData.isString() && newData.val() === auth.uid && $name.matches(/^[a-z0-9_]{1,16}$/)"
       }
@@ -285,7 +285,7 @@
     },
     "skins": {
       "$uid": {
-        ".read": "auth != null",
+        ".read": true,
         ".write": "auth != null && auth.uid === $uid",
         ".validate": "newData.hasChildren(['value', 'signature', 'at'])",
         "value": {
